@@ -1,0 +1,232 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.datetime",
+  "tools": [
+    {
+      "name": "get-current",
+      "description": "Get current date and time in specified timezone",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "Timezone (e.g., 'Europe/Madrid', 'America/New_York'). Defaults to local",
+            "default": "local"
+          },
+          "format": {
+            "type": "string",
+            "description": "Output format (e.g., 'yyyy-MM-dd HH:mm:ss'). Defaults to ISO",
+            "default": "iso"
+          }
+        }
+      }
+    },
+    {
+      "name": "format",
+      "description": "Format a date/time string",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Date/time string to format"
+          },
+          "format": {
+            "type": "string",
+            "description": "Output format (e.g., 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')"
+          },
+          "inputFormat": {
+            "type": "string",
+            "description": "Input format if datetime is not ISO (optional)"
+          }
+        },
+        "required": [
+          "datetime",
+          "format"
+        ]
+      }
+    },
+    {
+      "name": "parse",
+      "description": "Parse a date/time string",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Date/time string to parse"
+          },
+          "format": {
+            "type": "string",
+            "description": "Expected format (e.g., 'yyyy-MM-dd HH:mm:ss'). Optional if ISO"
+          }
+        },
+        "required": [
+          "datetime"
+        ]
+      }
+    },
+    {
+      "name": "convert-timezone",
+      "description": "Convert time between timezones",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Date/time string"
+          },
+          "fromTimezone": {
+            "type": "string",
+            "description": "Source timezone (e.g., 'Europe/Madrid')"
+          },
+          "toTimezone": {
+            "type": "string",
+            "description": "Target timezone (e.g., 'America/New_York')"
+          }
+        },
+        "required": [
+          "datetime",
+          "fromTimezone",
+          "toTimezone"
+        ]
+      }
+    },
+    {
+      "name": "add",
+      "description": "Add duration to a date/time",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Base date/time string"
+          },
+          "duration": {
+            "type": "object",
+            "description": "Duration to add (e.g., {days: 5, hours: 2})",
+            "properties": {
+              "years": {
+                "type": "number"
+              },
+              "months": {
+                "type": "number"
+              },
+              "days": {
+                "type": "number"
+              },
+              "hours": {
+                "type": "number"
+              },
+              "minutes": {
+                "type": "number"
+              },
+              "seconds": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "required": [
+          "datetime",
+          "duration"
+        ]
+      }
+    },
+    {
+      "name": "subtract",
+      "description": "Subtract duration from a date/time",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Base date/time string"
+          },
+          "duration": {
+            "type": "object",
+            "description": "Duration to subtract (e.g., {days: 5, hours: 2})",
+            "properties": {
+              "years": {
+                "type": "number"
+              },
+              "months": {
+                "type": "number"
+              },
+              "days": {
+                "type": "number"
+              },
+              "hours": {
+                "type": "number"
+              },
+              "minutes": {
+                "type": "number"
+              },
+              "seconds": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "required": [
+          "datetime",
+          "duration"
+        ]
+      }
+    },
+    {
+      "name": "diff",
+      "description": "Calculate difference between two dates",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "Start date/time"
+          },
+          "end": {
+            "type": "string",
+            "description": "End date/time"
+          },
+          "unit": {
+            "type": "string",
+            "enum": [
+              "years",
+              "months",
+              "days",
+              "hours",
+              "minutes",
+              "seconds",
+              "milliseconds"
+            ],
+            "description": "Unit for the result (default: milliseconds)"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ]
+      }
+    },
+    {
+      "name": "is-valid",
+      "description": "Validate a date/time string",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "datetime": {
+            "type": "string",
+            "description": "Date/time string to validate"
+          },
+          "format": {
+            "type": "string",
+            "description": "Expected format (optional if ISO)"
+          }
+        },
+        "required": [
+          "datetime"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.higgsfield",
+  "name": "Higgsfield",
+  "version": "1.0.0",
+  "description": "Generate AI images and videos with Higgsfield - text-to-image, image-to-video, and consistent character generation with Soul.",
+  "type": "ai",
+  "icon": "icon.png",
+  "category": "ai",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": [
+        "API_KEY",
+        "API_SECRET"
+      ]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "higgsfield",
+    "ai",
+    "image-generation",
+    "video-generation",
+    "text-to-image",
+    "image-to-video",
+    "soul",
+    "character"
+  ]
+}

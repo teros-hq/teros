@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.conversations",
+  "name": "Conversations",
+  "version": "1.0.0",
+  "description": "Access and search past conversations and messages from the database",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "systemSecrets": [],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["conversations", "history", "search", "messages", "memory"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

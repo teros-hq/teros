@@ -1,0 +1,41 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.monday",
+  "name": "Monday.com",
+  "version": "0.9.0",
+  "description": "Monday.com work management - boards, items, groups, columns, updates",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "mcp/src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": false,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "monday",
+    "boards",
+    "items",
+    "project-management",
+    "work-management"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

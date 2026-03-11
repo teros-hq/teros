@@ -1,0 +1,124 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.homey",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Homey API credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "homey-get-user",
+      "description": "Get authenticated user information from Homey",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "homey-list-devices",
+      "description": "List all devices connected to Homey with their zone, class, capabilities, and availability status",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "homey-get-device",
+      "description": "Get detailed information and current state of a specific Homey device by ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "description": "Device ID"
+          }
+        },
+        "required": [
+          "device_id"
+        ]
+      }
+    },
+    {
+      "name": "homey-set-capability",
+      "description": "Set a device capability value (e.g., turn on/off, set brightness, temperature). Use homey-list-devices to find device IDs and capabilities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "description": "Device ID"
+          },
+          "capability": {
+            "type": "string",
+            "description": "Capability name (e.g., 'onoff', 'dim', 'target_temperature')"
+          },
+          "value": {
+            "description": "Value to set (boolean for onoff, number 0-1 for dim, number for temperature)"
+          }
+        },
+        "required": [
+          "device_id",
+          "capability",
+          "value"
+        ]
+      }
+    },
+    {
+      "name": "homey-list-flows",
+      "description": "List all flows (automations) configured in Homey",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "homey-trigger-flow",
+      "description": "Trigger (run) a Homey flow by its ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "flow_id": {
+            "type": "string",
+            "description": "Flow ID to trigger"
+          }
+        },
+        "required": [
+          "flow_id"
+        ]
+      }
+    },
+    {
+      "name": "homey-list-zones",
+      "description": "List all zones (rooms/areas) configured in Homey",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "homey-rename-device",
+      "description": "Rename a Homey device",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "description": "Device ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the device"
+          }
+        },
+        "required": [
+          "device_id",
+          "name"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "cli": {
+    "version": ">= 16.28.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "APP_VARIANT": "development",
+        "EXPO_PUBLIC_WS_URL": "ws://localhost:10001/ws"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_WS_URL": "wss://your-backend-domain.com/ws"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_WS_URL": "wss://your-backend-domain.com/ws"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

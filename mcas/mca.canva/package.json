@@ -1,0 +1,16 @@
+{
+  "name": "@teros/mca-canva",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "@teros/shared": "2.0.0"
+  }
+}

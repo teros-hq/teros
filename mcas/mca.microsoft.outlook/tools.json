@@ -1,0 +1,497 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.microsoft.outlook",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-messages",
+      "description": "List email messages from inbox or a specific folder. Supports filtering by unread, importance, etc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of messages to return (default: 10, max: 100)"
+          },
+          "folderId": {
+            "type": "string",
+            "description": "Mail folder ID or well-known name (e.g., \"Inbox\", \"SentItems\", \"Drafts\", \"DeletedItems\", \"Archive\"). Defaults to Inbox."
+          },
+          "filter": {
+            "type": "string",
+            "description": "OData $filter expression (e.g., \"isRead eq false\", \"importance eq 'high'\")"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-message",
+      "description": "Get full details of a specific email message by ID, including body and attachments.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to retrieve"
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Send an email message from the connected Outlook account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient email address(es), comma-separated"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body (plain text, Markdown, or HTML)"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC recipients (comma-separated)"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC recipients (comma-separated)"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false, auto-detects Markdown)"
+          },
+          "importance": {
+            "type": "string",
+            "description": "Message importance: low, normal, high (default: normal)"
+          },
+          "attachments": {
+            "type": "array",
+            "description": "Array of file attachments to include",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Local file path"
+                },
+                "filename": {
+                  "type": "string",
+                  "description": "Optional custom filename"
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "reply-message",
+      "description": "Reply to an existing email message.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to reply to"
+          },
+          "body": {
+            "type": "string",
+            "description": "Reply body"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          },
+          "replyAll": {
+            "type": "boolean",
+            "description": "Whether to reply to all recipients (default: false)"
+          }
+        },
+        "required": [
+          "messageId",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "forward-message",
+      "description": "Forward an email message to other recipients.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to forward"
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient email address(es), comma-separated"
+          },
+          "comment": {
+            "type": "string",
+            "description": "Optional comment to include with the forwarded message"
+          }
+        },
+        "required": [
+          "messageId",
+          "to"
+        ]
+      }
+    },
+    {
+      "name": "search-messages",
+      "description": "Search for email messages. Supports searching by subject, body, sender, etc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query text (searches subject, body, sender, etc.)"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of results (default: 10)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "modify-message",
+      "description": "Modify a message: mark as read/unread, set importance, add categories, or flag it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to modify"
+          },
+          "isRead": {
+            "type": "boolean",
+            "description": "Mark as read (true) or unread (false)"
+          },
+          "importance": {
+            "type": "string",
+            "description": "Set importance: low, normal, high"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Set category labels (replaces existing)"
+          },
+          "flag": {
+            "type": "string",
+            "description": "Set flag status: notFlagged, flagged, complete"
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
+      "name": "move-message",
+      "description": "Move a message to a different mail folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to move"
+          },
+          "destinationFolderId": {
+            "type": "string",
+            "description": "Destination folder ID or well-known name (e.g., \"Inbox\", \"Archive\", \"DeletedItems\", \"JunkEmail\")"
+          }
+        },
+        "required": [
+          "messageId",
+          "destinationFolderId"
+        ]
+      }
+    },
+    {
+      "name": "delete-message",
+      "description": "Delete a message (moves to Deleted Items) or permanently delete it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to delete"
+          },
+          "permanent": {
+            "type": "boolean",
+            "description": "If true, permanently deletes the message. Otherwise moves to Deleted Items (default: false)"
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
+      "name": "list-drafts",
+      "description": "List all draft emails in the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of drafts to return (default: 10, max: 100)"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-draft",
+      "description": "Create a draft email message.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient email address(es)"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC recipients (comma-separated)"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC recipients (comma-separated)"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          },
+          "importance": {
+            "type": "string",
+            "description": "Message importance: low, normal, high"
+          }
+        },
+        "required": [
+          "to",
+          "subject",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "update-draft",
+      "description": "Update an existing draft email by replacing its content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "description": "The ID of the draft to update"
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient email address(es)"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC recipients (comma-separated)"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC recipients (comma-separated)"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          }
+        },
+        "required": [
+          "draftId"
+        ]
+      }
+    },
+    {
+      "name": "send-draft",
+      "description": "Send an existing draft email.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "description": "The ID of the draft to send"
+          }
+        },
+        "required": [
+          "draftId"
+        ]
+      }
+    },
+    {
+      "name": "delete-draft",
+      "description": "Delete a draft email.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "description": "The ID of the draft to delete"
+          }
+        },
+        "required": [
+          "draftId"
+        ]
+      }
+    },
+    {
+      "name": "list-folders",
+      "description": "List all mail folders in the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeChildFolders": {
+            "type": "boolean",
+            "description": "Whether to include child folders (default: false)"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-folder",
+      "description": "Create a new mail folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "description": "Name for the new folder"
+          },
+          "parentFolderId": {
+            "type": "string",
+            "description": "Parent folder ID (optional, creates at top level if omitted)"
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      }
+    },
+    {
+      "name": "delete-folder",
+      "description": "Delete a mail folder and all its contents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "The ID of the folder to delete"
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      }
+    },
+    {
+      "name": "get-attachment",
+      "description": "Get the content of an email attachment by its attachment ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message containing the attachment"
+          },
+          "attachmentId": {
+            "type": "string",
+            "description": "The ID of the attachment to retrieve"
+          },
+          "saveToFile": {
+            "type": "boolean",
+            "description": "If true, saves the attachment to /workspace/email-attachments/"
+          }
+        },
+        "required": [
+          "messageId",
+          "attachmentId"
+        ]
+      }
+    },
+    {
+      "name": "store-attachment",
+      "description": "Download and store an email attachment to the local filesystem.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message containing the attachment"
+          },
+          "attachmentId": {
+            "type": "string",
+            "description": "The ID of the attachment to store"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Optional output directory path"
+          }
+        },
+        "required": [
+          "messageId",
+          "attachmentId"
+        ]
+      }
+    },
+    {
+      "name": "list-rules",
+      "description": "List all inbox rules (mail filters) for the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

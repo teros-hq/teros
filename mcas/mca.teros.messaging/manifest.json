@@ -1,0 +1,35 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.messaging",
+  "name": "Messaging",
+  "version": "0.9.0",
+  "description": "Send multimedia messages to the user: images, audio, video, and documents",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["messaging", "images", "audio", "video", "media"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

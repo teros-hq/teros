@@ -1,0 +1,41 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.trello",
+  "name": "Trello",
+  "version": "1.0.0",
+  "description": "Trello project management - boards, lists, cards, labels, members",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": ["TRELLO_API_KEY"],
+      "userSecrets": ["TRELLO_TOKEN"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["trello", "boards", "cards", "project-management", "kanban"]
+}

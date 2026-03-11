@@ -1,0 +1,86 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.perplexity",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Perplexity API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "perplexity-search",
+      "description": "Search the web using Perplexity AI with real-time information. Returns comprehensive answers with sources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The search query or question to ask Perplexity AI"
+          },
+          "model": {
+            "type": "string",
+            "description": "Model to use (default: sonar)",
+            "enum": [
+              "sonar",
+              "sonar-pro",
+              "sonar-reasoning"
+            ],
+            "default": "sonar"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "perplexity-chat",
+      "description": "Have a multi-turn conversation with Perplexity AI. Can maintain context across messages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messages": {
+            "type": "array",
+            "description": "Array of message objects with role (system/user/assistant) and content",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "system",
+                    "user",
+                    "assistant"
+                  ]
+                },
+                "content": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "role",
+                "content"
+              ]
+            }
+          },
+          "model": {
+            "type": "string",
+            "description": "Model to use (default: sonar)",
+            "enum": [
+              "sonar",
+              "sonar-pro",
+              "sonar-reasoning"
+            ],
+            "default": "sonar"
+          }
+        },
+        "required": [
+          "messages"
+        ]
+      }
+    }
+  ]
+}

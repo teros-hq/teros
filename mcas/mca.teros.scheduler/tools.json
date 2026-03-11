@@ -1,0 +1,152 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.scheduler",
+  "tools": [
+    {
+      "name": "schedule-reminder",
+      "description": "Schedule a reminder message to be sent at a specific time. Supports natural language time expressions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "description": "Time expression. Examples: \"at 17:00\", \"at 5:30pm\", \"tomorrow at 9:00\", \"in 30 minutes\", \"in 2 hours\", \"in 1 hour and 30 minutes\", or ISO format \"2025-10-28T17:00:00\""
+          },
+          "message": {
+            "type": "string",
+            "description": "The reminder message to send"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID where the reminder should be sent"
+          }
+        },
+        "required": [
+          "time",
+          "message",
+          "channelId"
+        ]
+      }
+    },
+    {
+      "name": "list-reminders",
+      "description": "List all pending reminders, optionally filtered by channel ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Optional channel ID to filter reminders"
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel-reminder",
+      "description": "Cancel a pending reminder by its ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reminderId": {
+            "type": "number",
+            "description": "The ID of the reminder to cancel"
+          }
+        },
+        "required": [
+          "reminderId"
+        ]
+      }
+    },
+    {
+      "name": "create-recurring-task",
+      "description": "Create a recurring task using cron expression. Examples: '0 9 * * *' (daily at 9am), '0 10-22 * * 1-5' (hourly on weekdays 10am-10pm)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cronExpression": {
+            "type": "string",
+            "description": "Cron expression (5 fields: minute hour day month weekday). Examples: \"0 9 * * *\", \"0 10-22 * * 1-5\", \"*/15 * * * *\""
+          },
+          "message": {
+            "type": "string",
+            "description": "The message to send on each execution"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID where messages should be sent"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone (default: \"Europe/Madrid\")"
+          }
+        },
+        "required": [
+          "cronExpression",
+          "message",
+          "channelId"
+        ]
+      }
+    },
+    {
+      "name": "list-recurring-tasks",
+      "description": "List all recurring tasks, optionally filtered by channel ID",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Optional channel ID to filter tasks"
+          }
+        }
+      }
+    },
+    {
+      "name": "enable-recurring-task",
+      "description": "Enable (resume) a recurring task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "The ID of the task to enable"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    {
+      "name": "disable-recurring-task",
+      "description": "Disable (pause) a recurring task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "The ID of the task to disable"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    {
+      "name": "delete-recurring-task",
+      "description": "Permanently delete a recurring task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "The ID of the task to delete"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    }
+  ]
+}

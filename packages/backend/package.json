@@ -1,0 +1,44 @@
+{
+  "name": "@teros/backend",
+  "version": "2.0.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "yarn sync && tsx src/index.ts",
+    "sync": "tsx src/scripts/sync-mcas.ts && tsx src/scripts/sync-models.ts && tsx ../../scripts/generate-mca-tools.ts",
+    "seed": "tsx src/scripts/seed-agents.ts",
+    "sync-mcas": "tsx src/scripts/sync-mcas.ts",
+    "sync-mcas:dry": "tsx src/scripts/sync-mcas.ts --dry-run",
+    "sync-models": "tsx src/scripts/sync-models.ts",
+    "sync-models:dry": "tsx src/scripts/sync-models.ts --dry-run",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:claude-creds": "tsx src/scripts/test-claude-code-credentials.ts",
+    "oauth:login": "tsx src/scripts/claude-oauth-login.ts",
+    "oauth:status": "tsx src/scripts/test-claude-code-credentials.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@sentry/node": "^10.32.1",
+    "@teros/core": "*",
+    "@teros/shared": "*",
+    "bcrypt": "^5.1.1",
+    "croner": "^9.1.0",
+    "dotenv": "^16.4.7",
+    "mongodb": "^6.11.0",
+    "nodemailer": "^7.0.11",
+    "resend": "^6.9.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/nodemailer": "^7.0.9",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

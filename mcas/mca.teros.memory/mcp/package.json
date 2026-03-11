@@ -1,0 +1,17 @@
+{
+  "name": "mca-teros-memory",
+  "version": "2.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@qdrant/js-client-rest": "^1.12.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "tsx": "^4.0.0"
+  }
+}

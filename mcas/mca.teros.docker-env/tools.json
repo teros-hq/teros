@@ -1,0 +1,183 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.docker-env",
+  "tools": [
+    {
+      "name": "env-create",
+      "description": "Launch a docker-compose stack from a local workspace directory as an ephemeral environment. Returns immediately with envId and status \"creating\" — the build happens in the background. Use env-status to poll until status is \"running\". The environment is isolated in its own Docker network scoped to your user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "localPath": {
+            "type": "string",
+            "description": "Absolute path to the local workspace directory containing the docker-compose file. Example: /workspace/my-project"
+          },
+          "composeFile": {
+            "type": "string",
+            "description": "Path to docker-compose file relative to localPath (default: docker-compose.yml)",
+            "default": "docker-compose.yml"
+          },
+          "envVars": {
+            "type": "object",
+            "description": "Additional environment variables to inject into the compose stack (key-value pairs)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds for docker-compose up --build (default: 300)",
+            "default": 300
+          }
+        },
+        "required": [
+          "localPath"
+        ]
+      }
+    },
+    {
+      "name": "env-status",
+      "description": "Get detailed status of a Docker environment. Useful for polling after env-create until the environment is \"running\". Returns status, URLs, services, createdAt, error (if failed), and last build log lines. Possible statuses: creating, building, running, stopped, error.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID returned by env-create"
+          },
+          "buildLogLines": {
+            "type": "number",
+            "description": "Number of recent build log lines to include in the response (default: 20, max: 100)",
+            "default": 20
+          }
+        },
+        "required": [
+          "envId"
+        ]
+      }
+    },
+    {
+      "name": "env-exec",
+      "description": "Execute a command inside a running environment. The command runs in the context of the docker-compose project (e.g. `npx playwright test`, `npm run build`, `curl http://app:3000/health`). Returns stdout, stderr, and exit code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID returned by env-create"
+          },
+          "service": {
+            "type": "string",
+            "description": "Name of the service/container to run the command in (as defined in docker-compose)"
+          },
+          "command": {
+            "type": "string",
+            "description": "Command to execute inside the container (e.g. \"npx playwright test --reporter=json\")"
+          },
+          "workdir": {
+            "type": "string",
+            "description": "Working directory inside the container (optional, defaults to container default)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in seconds (default: 120, max: 600)",
+            "default": 120
+          }
+        },
+        "required": [
+          "envId",
+          "service",
+          "command"
+        ]
+      }
+    },
+    {
+      "name": "env-logs",
+      "description": "Fetch recent logs from a service in a running environment. Returns the last N lines of container output.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID returned by env-create"
+          },
+          "service": {
+            "type": "string",
+            "description": "Name of the service to get logs from (as defined in docker-compose). Omit to get logs from all services."
+          },
+          "lines": {
+            "type": "number",
+            "description": "Number of log lines to return (default: 50, max: 200)",
+            "default": 50
+          },
+          "timestamps": {
+            "type": "boolean",
+            "description": "Include timestamps in log output (default: true)",
+            "default": true
+          }
+        },
+        "required": [
+          "envId"
+        ]
+      }
+    },
+    {
+      "name": "env-list",
+      "description": "List all environments for the current user/workspace. Shows envId, status (including intermediate states: creating, building, running, stopped, error), localPath, services, and URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "env-restart",
+      "description": "Restart a Docker environment: stops all containers and brings them back up. Useful to reload config changes or recover from a stopped state. Returns immediately — use env-status to poll until status is \"running\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID to restart"
+          },
+          "rebuild": {
+            "type": "boolean",
+            "description": "If true, rebuild images before restarting (equivalent to docker-compose up --build). Default: false.",
+            "default": false
+          }
+        },
+        "required": [
+          "envId"
+        ]
+      }
+    },
+    {
+      "name": "env-destroy",
+      "description": "Stop and remove a Docker environment: runs docker-compose down, removes containers, networks, and volumes. The local workspace directory (localPath) is NOT deleted. This action is irreversible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID to destroy"
+          },
+          "removeVolumes": {
+            "type": "boolean",
+            "description": "Also remove named Docker volumes (default: true)",
+            "default": true
+          }
+        },
+        "required": [
+          "envId"
+        ]
+      }
+    },
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies Docker socket connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

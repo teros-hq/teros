@@ -1,0 +1,35 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.datetime",
+  "name": "DateTime",
+  "version": "0.9.0",
+  "description": "Date and time utilities with timezone support. Provides clock, calendar, and time conversion tools.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "mcp/src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["datetime", "time", "timezone", "calendar", "date", "clock"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

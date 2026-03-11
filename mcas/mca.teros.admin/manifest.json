@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.admin",
+  "name": "Teros Admin",
+  "version": "2.0.0",
+  "description": "Administrative tools for managing Teros backend - restart, status, health checks",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "admin"
+  },
+  "systemSecrets": ["ADMIN_API_URL", "ADMIN_API_KEY"],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["admin", "system", "restart", "management"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

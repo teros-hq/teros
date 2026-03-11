@@ -1,0 +1,139 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.trello",
+  "tools": [
+    {
+      "name": "list-boards",
+      "description": "List all boards accessible to authenticated user",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-board",
+      "description": "Create a new board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-board",
+      "description": "Get details of a specific board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-board",
+      "description": "Update board properties (name, description, background, etc)",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "delete-board",
+      "description": "Delete a board permanently",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-board-lists",
+      "description": "Get all lists in a board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-list",
+      "description": "Create a new list in a board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-list",
+      "description": "Update a list (change color, name, position, etc)",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-cards",
+      "description": "Get all cards in a list",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-card",
+      "description": "Get details of a specific card",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-card",
+      "description": "Create a new card in a list",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "update-card",
+      "description": "Update a card (move to different list, change name, description, etc)",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "add-comment",
+      "description": "Add a comment to a card",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "get-card-actions",
+      "description": "Get actions/activity history for a card",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "list-labels",
+      "description": "List all labels on a board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "create-label",
+      "description": "Create a label on a board",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "add-label-to-card",
+      "description": "Add a label to a card",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "remove-label-from-card",
+      "description": "Remove a label from a card",
+      "inputSchema": {
+        "type": "object"
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search for cards across all boards",
+      "inputSchema": {
+        "type": "object"
+      }
+    }
+  ]
+}

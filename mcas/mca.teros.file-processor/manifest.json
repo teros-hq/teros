@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.file-processor",
+  "name": "File Processor",
+  "version": "0.9.0",
+  "description": "Convert files to Markdown, transcribe audio, convert Markdown to PDF",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "utility",
+  "entrypoint": "mcp/src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "systemSecrets": ["OPENAI_API_KEY"],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["file", "convert", "markdown", "pdf", "audio", "transcribe"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

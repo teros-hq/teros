@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 6 hexagon points logo - DEV version with pink/rose gradient -->
+  
+  <defs>
+    <!-- Gradient: Rose 400 (#FB7185) top to Rose 700 (#BE123C) bottom -->
+    <linearGradient id="roseGradient" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#FB7185;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#BE123C;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Hexagon points (circles with rose gradient) -->
+  <!-- Top -->
+  <circle cx="256" cy="76.8" r="35.84" fill="url(#roseGradient)"/>
+  <!-- Top Right -->
+  <circle cx="411.2" cy="166.4" r="35.84" fill="url(#roseGradient)"/>
+  <!-- Top Left -->
+  <circle cx="100.8" cy="166.4" r="35.84" fill="url(#roseGradient)"/>
+  <!-- Bottom Right -->
+  <circle cx="411.2" cy="345.6" r="35.84" fill="url(#roseGradient)"/>
+  <!-- Bottom Left -->
+  <circle cx="100.8" cy="345.6" r="35.84" fill="url(#roseGradient)"/>
+  <!-- Bottom -->
+  <circle cx="256" cy="435.2" r="35.84" fill="url(#roseGradient)"/>
+</svg>

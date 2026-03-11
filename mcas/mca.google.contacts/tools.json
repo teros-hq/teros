@@ -1,0 +1,305 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.google.contacts",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-contacts",
+      "description": "List contacts from Google Contacts. Returns name, email, phone numbers. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageSize": {
+            "type": "number",
+            "description": "Number of contacts per page (default: 100, max: 1000)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Token for pagination (from previous response)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-contact",
+      "description": "Get a specific contact by resource name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact resource name (e.g., 'people/c123456789')"
+          }
+        },
+        "required": [
+          "resourceName"
+        ]
+      }
+    },
+    {
+      "name": "search-contacts",
+      "description": "Search for contacts by query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query (name, email, phone, etc.)"
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Number of results per page (default: 30, max: 30)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "create-contact",
+      "description": "Create a new contact.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "givenName": {
+            "type": "string",
+            "description": "First name"
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Last name"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number"
+          },
+          "organization": {
+            "type": "string",
+            "description": "Company/organization name"
+          },
+          "title": {
+            "type": "string",
+            "description": "Job title"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes/biography"
+          }
+        },
+        "required": [
+          "givenName"
+        ]
+      }
+    },
+    {
+      "name": "update-contact",
+      "description": "Update an existing contact.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact resource name (e.g., 'people/c123456789')"
+          },
+          "givenName": {
+            "type": "string",
+            "description": "First name"
+          },
+          "familyName": {
+            "type": "string",
+            "description": "Last name"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number"
+          },
+          "organization": {
+            "type": "string",
+            "description": "Company/organization name"
+          },
+          "title": {
+            "type": "string",
+            "description": "Job title"
+          }
+        },
+        "required": [
+          "resourceName"
+        ]
+      }
+    },
+    {
+      "name": "delete-contact",
+      "description": "Delete a contact.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact resource name (e.g., 'people/c123456789')"
+          }
+        },
+        "required": [
+          "resourceName"
+        ]
+      }
+    },
+    {
+      "name": "list-contact-groups",
+      "description": "List all contact groups (labels) from Google Contacts. Returns group name, member count, and type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageSize": {
+            "type": "number",
+            "description": "Maximum number of groups to return (default: 100, max: 1000)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Token for pagination (from previous response)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-contact-group",
+      "description": "Get detailed information about a specific contact group, including its members.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact group resource name (e.g., 'contactGroups/abc123')"
+          },
+          "maxMembers": {
+            "type": "number",
+            "description": "Maximum number of members to return (default: 100, max: 1000)"
+          }
+        },
+        "required": [
+          "resourceName"
+        ]
+      }
+    },
+    {
+      "name": "create-contact-group",
+      "description": "Create a new contact group (label) in Google Contacts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the contact group (must be unique)"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "update-contact-group",
+      "description": "Update an existing contact group (rename it).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact group resource name (e.g., 'contactGroups/abc123')"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the contact group"
+          }
+        },
+        "required": [
+          "resourceName",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "delete-contact-group",
+      "description": "Delete a contact group. This does NOT delete the contacts in the group, only the group itself.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact group resource name (e.g., 'contactGroups/abc123')"
+          },
+          "deleteContacts": {
+            "type": "boolean",
+            "description": "If true, also delete the contacts in this group (default: false)"
+          }
+        },
+        "required": [
+          "resourceName"
+        ]
+      }
+    },
+    {
+      "name": "add-contacts-to-group",
+      "description": "Add one or more contacts to a contact group.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact group resource name (e.g., 'contactGroups/abc123')"
+          },
+          "contactResourceNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of contact resource names to add (e.g., ['people/c123', 'people/c456'])"
+          }
+        },
+        "required": [
+          "resourceName",
+          "contactResourceNames"
+        ]
+      }
+    },
+    {
+      "name": "remove-contacts-from-group",
+      "description": "Remove one or more contacts from a contact group.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "resourceName": {
+            "type": "string",
+            "description": "Contact group resource name (e.g., 'contactGroups/abc123')"
+          },
+          "contactResourceNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of contact resource names to remove (e.g., ['people/c123', 'people/c456'])"
+          }
+        },
+        "required": [
+          "resourceName",
+          "contactResourceNames"
+        ]
+      }
+    }
+  ]
+}

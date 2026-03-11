@@ -1,0 +1,10 @@
+{
+  "name": "mca-google-drive",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "googleapis": "^144.0.0",
+    "google-auth-library": "^9.15.1"
+  }
+}

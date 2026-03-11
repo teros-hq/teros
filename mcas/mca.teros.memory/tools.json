@@ -1,0 +1,230 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.memory",
+  "tools": [
+    {
+      "name": "memory-search-conversations",
+      "description": "Search through conversation history using semantic search",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query to find relevant conversations"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return",
+            "default": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "memory-get-recent-conversations",
+      "description": "Get most recent conversations",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of conversations to return",
+            "default": 10
+          }
+        }
+      }
+    },
+    {
+      "name": "memory-save-conversation",
+      "description": "Save a conversation to memory with importance scoring",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userMessage": {
+            "type": "string",
+            "description": "The user's message"
+          },
+          "assistantResponse": {
+            "type": "string",
+            "description": "The assistant's response"
+          },
+          "filesModified": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of files that were modified",
+            "default": []
+          },
+          "commandsRun": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of commands that were executed",
+            "default": []
+          }
+        },
+        "required": [
+          "userMessage",
+          "assistantResponse"
+        ]
+      }
+    },
+    {
+      "name": "memory-save-knowledge",
+      "description": "Save a piece of knowledge to the knowledge base",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "The knowledge content to save"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "user_preferences",
+              "project_data",
+              "commands",
+              "coding_patterns",
+              "tools",
+              "workflows"
+            ],
+            "description": "Category of knowledge"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score (0-1)",
+            "default": 0.8
+          }
+        },
+        "required": [
+          "content",
+          "category"
+        ]
+      }
+    },
+    {
+      "name": "memory-search-knowledge",
+      "description": "Search through the knowledge base",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "user_preferences",
+              "project_data",
+              "commands",
+              "coding_patterns",
+              "tools",
+              "workflows"
+            ],
+            "description": "Optional category filter"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results",
+            "default": 5
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "memory-get-knowledge-by-category",
+      "description": "Get all knowledge items in a specific category",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "user_preferences",
+              "project_data",
+              "commands",
+              "coding_patterns",
+              "tools",
+              "workflows"
+            ],
+            "description": "Knowledge category"
+          }
+        },
+        "required": [
+          "category"
+        ]
+      }
+    },
+    {
+      "name": "memory-calculate-importance",
+      "description": "Calculate importance score for a message",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userMessage": {
+            "type": "string",
+            "description": "The user's message"
+          },
+          "assistantResponse": {
+            "type": "string",
+            "description": "The assistant's response"
+          },
+          "filesModified": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of files modified",
+            "default": []
+          },
+          "commandsRun": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of commands run",
+            "default": []
+          }
+        },
+        "required": [
+          "userMessage",
+          "assistantResponse"
+        ]
+      }
+    },
+    {
+      "name": "memory-get-context-for-query",
+      "description": "Get relevant memory context for a user query (what would be injected into the prompt)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "The user's query"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "memory-stats",
+      "description": "Get memory statistics for the current agent (collection sizes, point counts)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

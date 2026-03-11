@@ -1,0 +1,40 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.perplexity",
+  "name": "Perplexity AI",
+  "version": "1.0.0",
+  "description": "AI-powered web search with real-time information using Perplexity API. Provides comprehensive answers with sources.",
+  "type": "ai",
+  "icon": "icon.png",
+  "category": "ai",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": ["APIKEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["search", "ai", "perplexity", "web-search", "real-time", "research"]
+}

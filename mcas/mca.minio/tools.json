@@ -1,0 +1,266 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.minio",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies MinIO credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-buckets",
+      "description": "List all buckets in the MinIO server",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "create-bucket",
+      "description": "Create a new bucket",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket to create (lowercase, 3-63 chars)"
+          },
+          "region": {
+            "type": "string",
+            "description": "Region for the bucket (optional, default: us-east-1)"
+          }
+        },
+        "required": [
+          "bucket"
+        ]
+      }
+    },
+    {
+      "name": "delete-bucket",
+      "description": "Delete a bucket (must be empty)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket to delete"
+          }
+        },
+        "required": [
+          "bucket"
+        ]
+      }
+    },
+    {
+      "name": "bucket-exists",
+      "description": "Check if a bucket exists",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket to check"
+          }
+        },
+        "required": [
+          "bucket"
+        ]
+      }
+    },
+    {
+      "name": "list-objects",
+      "description": "List objects in a bucket with optional prefix filter",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Filter objects by prefix/folder (optional)"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "List recursively (default: true)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of objects to return (default: 100)"
+          }
+        },
+        "required": [
+          "bucket"
+        ]
+      }
+    },
+    {
+      "name": "upload-object",
+      "description": "Upload a file or content to a bucket",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "Name/path for the object in the bucket"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Local file path to upload (use this OR content)"
+          },
+          "content": {
+            "type": "string",
+            "description": "String content to upload (use this OR filePath)"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "MIME type (optional, auto-detected if possible)"
+          }
+        },
+        "required": [
+          "bucket",
+          "objectName"
+        ]
+      }
+    },
+    {
+      "name": "download-object",
+      "description": "Download an object from a bucket",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "Name/path of the object to download"
+          },
+          "destPath": {
+            "type": "string",
+            "description": "Local destination path (optional, defaults to ~/Downloads/minio/)"
+          }
+        },
+        "required": [
+          "bucket",
+          "objectName"
+        ]
+      }
+    },
+    {
+      "name": "delete-object",
+      "description": "Delete an object from a bucket",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "Name/path of the object to delete"
+          }
+        },
+        "required": [
+          "bucket",
+          "objectName"
+        ]
+      }
+    },
+    {
+      "name": "copy-object",
+      "description": "Copy an object within or between buckets",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceBucket": {
+            "type": "string",
+            "description": "Source bucket name"
+          },
+          "sourceObject": {
+            "type": "string",
+            "description": "Source object name/path"
+          },
+          "destBucket": {
+            "type": "string",
+            "description": "Destination bucket name"
+          },
+          "destObject": {
+            "type": "string",
+            "description": "Destination object name/path"
+          }
+        },
+        "required": [
+          "sourceBucket",
+          "sourceObject",
+          "destBucket",
+          "destObject"
+        ]
+      }
+    },
+    {
+      "name": "get-presigned-url",
+      "description": "Generate a presigned URL for temporary access to an object",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "Name/path of the object"
+          },
+          "expiry": {
+            "type": "number",
+            "description": "URL expiry time in seconds (default: 3600 = 1 hour, max: 604800 = 7 days)"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method: GET (download) or PUT (upload)",
+            "enum": [
+              "GET",
+              "PUT"
+            ]
+          }
+        },
+        "required": [
+          "bucket",
+          "objectName"
+        ]
+      }
+    },
+    {
+      "name": "get-object-info",
+      "description": "Get metadata/info about an object (size, type, etag, etc.)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Name of the bucket"
+          },
+          "objectName": {
+            "type": "string",
+            "description": "Name/path of the object"
+          }
+        },
+        "required": [
+          "bucket",
+          "objectName"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.bash",
+  "tools": [
+    {
+      "name": "bash",
+      "description": "Execute a bash command with timeout and working directory support. Returns stdout, stderr, and exit code.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The bash command to execute"
+          },
+          "description": {
+            "type": "string",
+            "description": "A 5-10 word description of what this command does"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in milliseconds (default: 120000 / 2 minutes, max: 600000 / 10 minutes)",
+            "default": 120000
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory to execute the command in (optional)"
+          }
+        },
+        "required": [
+          "command",
+          "description"
+        ]
+      }
+    }
+  ]
+}

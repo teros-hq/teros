@@ -1,0 +1,8 @@
+{
+  "google": {
+    "clientId": "your-google-client-id.apps.googleusercontent.com",
+    "clientSecret": "your-google-client-secret",
+    "redirectUri": "http://localhost:3000/auth/google/callback"
+  },
+  "appUrl": "http://localhost:8081"
+}

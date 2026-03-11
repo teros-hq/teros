@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+data/
+
+# Environment & secrets
+.env
+.env.deploy
+.secrets/**/*.json
+!.secrets/**/*.example.json
+!.secrets/README.md
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+
+# Media uploads
+packages/backend/media/
+
+# Ansible
+infra/ansible/.vault-pass
+/backups
+/workspace

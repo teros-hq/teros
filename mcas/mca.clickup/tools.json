@@ -1,0 +1,412 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.clickup",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Get the authenticated ClickUp user information.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-workspaces",
+      "description": "Get all ClickUp workspaces (teams) the user belongs to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-members",
+      "description": "Get all members of a ClickUp workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace (team) ID"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "get-spaces",
+      "description": "Get all spaces in a ClickUp workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace (team) ID"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Include archived spaces (default: false)"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "get-folders",
+      "description": "Get all folders in a ClickUp space.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spaceId": {
+            "type": "string",
+            "description": "The space ID"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Include archived folders (default: false)"
+          }
+        },
+        "required": [
+          "spaceId"
+        ]
+      }
+    },
+    {
+      "name": "create-folder",
+      "description": "Create a new folder in a ClickUp space.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "spaceId": {
+            "type": "string",
+            "description": "The space ID where the folder will be created"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the new folder"
+          }
+        },
+        "required": [
+          "spaceId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "get-lists",
+      "description": "Get all lists in a ClickUp folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "The folder ID"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Include archived lists (default: false)"
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      }
+    },
+    {
+      "name": "create-list",
+      "description": "Create a new list inside a ClickUp folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "The folder ID where the list will be created"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the new list"
+          },
+          "content": {
+            "type": "string",
+            "description": "Description/content of the list (optional)"
+          }
+        },
+        "required": [
+          "folderId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "get-tasks",
+      "description": "Get tasks from a ClickUp list with optional filters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "The list ID to get tasks from"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Include archived tasks (default: false)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 0)"
+          },
+          "orderBy": {
+            "type": "string",
+            "description": "Field to order by: id, created, updated, due_date (default: created)"
+          },
+          "reverse": {
+            "type": "boolean",
+            "description": "Reverse the order (default: false)"
+          },
+          "subtasks": {
+            "type": "boolean",
+            "description": "Include subtasks (default: false)"
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by status names"
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      }
+    },
+    {
+      "name": "get-task",
+      "description": "Get detailed information about a specific ClickUp task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    {
+      "name": "create-task",
+      "description": "Create a new task in a ClickUp list.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "The list ID where the task will be created"
+          },
+          "name": {
+            "type": "string",
+            "description": "Task name/title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description (markdown supported)"
+          },
+          "priority": {
+            "type": "string",
+            "description": "Task priority: urgent, high, normal, low",
+            "enum": [
+              "urgent",
+              "high",
+              "normal",
+              "low"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "Task status (must match a status in the list)"
+          },
+          "assignees": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Array of user IDs to assign"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of tag names"
+          },
+          "dueDate": {
+            "type": "number",
+            "description": "Due date as Unix timestamp in milliseconds"
+          },
+          "startDate": {
+            "type": "number",
+            "description": "Start date as Unix timestamp in milliseconds"
+          },
+          "timeEstimate": {
+            "type": "number",
+            "description": "Time estimate in milliseconds"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Parent task ID to create as a subtask"
+          }
+        },
+        "required": [
+          "listId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "update-task",
+      "description": "Update an existing ClickUp task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New task name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New task description"
+          },
+          "priority": {
+            "type": "string",
+            "description": "New priority: urgent, high, normal, low",
+            "enum": [
+              "urgent",
+              "high",
+              "normal",
+              "low"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "New status"
+          },
+          "dueDate": {
+            "type": "number",
+            "description": "New due date as Unix timestamp in milliseconds"
+          },
+          "startDate": {
+            "type": "number",
+            "description": "New start date as Unix timestamp in milliseconds"
+          },
+          "timeEstimate": {
+            "type": "number",
+            "description": "New time estimate in milliseconds"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    {
+      "name": "delete-task",
+      "description": "Delete a ClickUp task permanently.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID to delete"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    },
+    {
+      "name": "search-tasks",
+      "description": "Search for tasks across a ClickUp workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace (team) ID to search in"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query text"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 0)"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "add-comment",
+      "description": "Add a comment to a ClickUp task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID to comment on"
+          },
+          "commentText": {
+            "type": "string",
+            "description": "The comment text (markdown supported)"
+          },
+          "notifyAll": {
+            "type": "boolean",
+            "description": "Notify all assignees of the task (default: false)"
+          }
+        },
+        "required": [
+          "taskId",
+          "commentText"
+        ]
+      }
+    },
+    {
+      "name": "get-comments",
+      "description": "Get all comments on a ClickUp task.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    }
+  ]
+}

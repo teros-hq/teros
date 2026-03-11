@@ -1,0 +1,59 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 6 hexagon points logo - static version with black background -->
+  <!-- Gradient: Cyan 500 (#06B6D4) top to Cyan 800 (#155E75) bottom -->
+  
+  <defs>
+    <!-- Gradient covering full canvas height -->
+    <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#155E75;stop-opacity:1" />
+    </linearGradient>
+    
+    <!-- Trail gradient for particle 1: from ball (300,270) to tail tip (238,251) -->
+    <linearGradient id="trailGradient1" x1="300" y1="270" x2="238" y2="251" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#06B6D4;stop-opacity:0" />
+    </linearGradient>
+    
+    <!-- Trail gradient for particle 2: from ball (170,260) to tail tip (170,200) -->
+    <linearGradient id="trailGradient2" x1="170" y1="260" x2="170" y2="200" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#06B6D4;stop-opacity:0" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Black background -->
+  <rect width="512" height="512" fill="#000000"/>
+  
+  <!-- Connection lines (subtle gray, thicker) -->
+  <line x1="256" y1="76.8" x2="411.2" y2="166.4" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  <line x1="411.2" y1="166.4" x2="411.2" y2="345.6" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  <line x1="411.2" y1="345.6" x2="256" y2="435.2" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  <line x1="256" y1="435.2" x2="100.8" y2="345.6" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  <line x1="100.8" y1="345.6" x2="100.8" y2="166.4" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  <line x1="100.8" y1="166.4" x2="256" y2="76.8" stroke="#888888" stroke-width="20" opacity="0.15"/>
+  
+  <!-- Particle 1: traveling from top-left toward bottom-right -->
+  <!-- Center at (300, 270), radius 7, diameter 14, trail 5x = 70px back -->
+  <polygon points="295,263 305,277 238,251" fill="url(#trailGradient1)"/>
+  <circle cx="300" cy="270" r="7" fill="#06B6D4"/>
+  
+  <!-- Particle 2: traveling from top toward bottom-left -->
+  <!-- Center at (170, 260), radius 6, diameter 12, trail 5x = 60px back -->
+  <polygon points="176,260 164,260 170,200" fill="url(#trailGradient2)"/>
+  <circle cx="170" cy="260" r="6" fill="#06B6D4"/>
+  
+  <!-- Hexagon points (circles with full-canvas gradient) -->
+  <!-- Top - will be cyan-500 -->
+  <circle cx="256" cy="76.8" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Top Right - cyan-500/600 -->
+  <circle cx="411.2" cy="166.4" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Top Left - cyan-500/600 -->
+  <circle cx="100.8" cy="166.4" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom Right - cyan-700 -->
+  <circle cx="411.2" cy="345.6" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom Left - cyan-700 -->
+  <circle cx="100.8" cy="345.6" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom - will be cyan-800 -->
+  <circle cx="256" cy="435.2" r="35.84" fill="url(#cyanGradient)"/>
+</svg>

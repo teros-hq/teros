@@ -1,0 +1,40 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.kelify",
+  "name": "Kelify AI Property Search",
+  "description": "AI-powered conversational property search API for real estate listings",
+  "version": "1.0.0",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "ai",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Kelify",
+    "email": "contact@kelify.com"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": ["KELIFY_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["real estate", "property search", "ai", "conversational", "kelify"]
+}

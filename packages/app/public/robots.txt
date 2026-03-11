@@ -1,0 +1,11 @@
+# Teros AI Platform - Robots.txt
+# Allow search engines to index the site
+
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://os.teros.ai/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1

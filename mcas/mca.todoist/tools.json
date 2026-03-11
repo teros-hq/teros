@@ -1,0 +1,270 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.todoist",
+  "tools": [
+    {
+      "name": "todoist_list_tasks",
+      "description": "List tasks with optional filtering",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Filter by project ID"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Filter string (e.g., 'today', 'overdue')"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of tasks to return",
+            "default": 100
+          }
+        }
+      }
+    },
+    {
+      "name": "todoist_get_task",
+      "description": "Get a specific task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to retrieve"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "todoist_create_task",
+      "description": "Create a new task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Task content/description"
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Project ID (defaults to inbox)"
+          },
+          "dueString": {
+            "type": "string",
+            "description": "Due date (e.g., 'tomorrow', '2025-01-01')"
+          },
+          "priority": {
+            "type": "number",
+            "enum": [1, 2, 3, 4],
+            "description": "Priority (1=urgent, 4=none)",
+            "default": 4
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label IDs"
+          }
+        },
+        "required": ["content"]
+      }
+    },
+    {
+      "name": "todoist_update_task",
+      "description": "Update an existing task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to update"
+          },
+          "content": {
+            "type": "string",
+            "description": "Updated task content"
+          },
+          "dueString": {
+            "type": "string",
+            "description": "Updated due date"
+          },
+          "priority": {
+            "type": "number",
+            "enum": [1, 2, 3, 4],
+            "description": "Updated priority"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "todoist_complete_task",
+      "description": "Mark a task as completed",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to complete"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "todoist_delete_task",
+      "description": "Delete a task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to delete"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "todoist_list_projects",
+      "description": "List all projects",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "todoist_get_project",
+      "description": "Get a specific project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to retrieve"
+          }
+        },
+        "required": ["projectId"]
+      }
+    },
+    {
+      "name": "todoist_create_project",
+      "description": "Create a new project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Parent project ID for sub-projects"
+          },
+          "color": {
+            "type": "string",
+            "description": "Project color"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "todoist_update_project",
+      "description": "Update an existing project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "Updated project name"
+          },
+          "color": {
+            "type": "string",
+            "description": "Updated project color"
+          }
+        },
+        "required": ["projectId"]
+      }
+    },
+    {
+      "name": "todoist_delete_project",
+      "description": "Delete a project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to delete"
+          }
+        },
+        "required": ["projectId"]
+      }
+    },
+    {
+      "name": "todoist_list_labels",
+      "description": "List all labels",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "todoist_create_label",
+      "description": "Create a new label",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Label name"
+          },
+          "color": {
+            "type": "string",
+            "description": "Label color"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "todoist_add_comment",
+      "description": "Add comment to a task",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to comment on"
+          },
+          "content": {
+            "type": "string",
+            "description": "Comment content"
+          }
+        },
+        "required": ["taskId", "content"]
+      }
+    },
+    {
+      "name": "todoist_list_sections",
+      "description": "List sections in a project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          }
+        },
+        "required": ["projectId"]
+      }
+    }
+  ]
+}

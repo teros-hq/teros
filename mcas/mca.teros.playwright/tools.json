@@ -1,0 +1,577 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.playwright",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Playwright browser availability.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "browser-close",
+      "description": "Close the page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "browser-resize",
+      "description": "Resize the browser window",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "number",
+            "description": "Width of the browser window"
+          },
+          "height": {
+            "type": "number",
+            "description": "Height of the browser window"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ]
+      }
+    },
+    {
+      "name": "browser-console-messages",
+      "description": "Returns console messages with filtering options",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "info",
+              "debug"
+            ],
+            "default": "info",
+            "description": "Level of the console messages to return. Each level includes the messages of more severe levels. Defaults to \"info\"."
+          },
+          "limit": {
+            "type": "number",
+            "default": 50,
+            "description": "Max messages to return (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "default": 0,
+            "description": "Skip first N messages (for pagination)"
+          },
+          "search": {
+            "type": "string",
+            "description": "Filter messages containing this text (case-insensitive)"
+          },
+          "sinceTimestamp": {
+            "type": "number",
+            "description": "Only messages after this timestamp (ms). Use lastTimestamp from previous response to iterate."
+          },
+          "since": {
+            "type": "string",
+            "enum": [
+              "all",
+              "last-navigation",
+              "last-action"
+            ],
+            "default": "all",
+            "description": "Preset filters: all, since last navigation, since last action (click/type/etc)"
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-console-errors",
+      "description": "Returns only error messages (shortcut for level=error)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "default": 20,
+            "description": "Max errors to return (default: 20)"
+          },
+          "search": {
+            "type": "string",
+            "description": "Filter errors containing this text (case-insensitive)"
+          },
+          "sinceTimestamp": {
+            "type": "number",
+            "description": "Only errors after this timestamp (ms)"
+          },
+          "since": {
+            "type": "string",
+            "enum": [
+              "all",
+              "last-navigation",
+              "last-action"
+            ],
+            "default": "all",
+            "description": "Preset filters"
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-console-clear",
+      "description": "Clear all captured console messages",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "browser-handle-dialog",
+      "description": "Handle a dialog",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accept": {
+            "type": "boolean",
+            "description": "Whether to accept the dialog."
+          },
+          "promptText": {
+            "type": "string",
+            "description": "The text of the prompt in case of a prompt dialog."
+          }
+        },
+        "required": [
+          "accept"
+        ]
+      }
+    },
+    {
+      "name": "browser-evaluate",
+      "description": "Evaluate JavaScript expression on page or element",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "function": {
+            "type": "string",
+            "description": "() => { /* code */ } or (element) => { /* code */ } when element is provided"
+          },
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to interact with the element"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          }
+        },
+        "required": [
+          "function"
+        ]
+      }
+    },
+    {
+      "name": "browser-file-upload",
+      "description": "Upload one or multiple files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The absolute paths to the files to upload. Can be single file or multiple files. If omitted, file chooser is cancelled."
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-fill-form",
+      "description": "Fill multiple form fields",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable field name"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "textbox",
+                    "checkbox",
+                    "radio",
+                    "combobox",
+                    "slider"
+                  ],
+                  "description": "Type of the field"
+                },
+                "ref": {
+                  "type": "string",
+                  "description": "Exact target field reference from the page snapshot"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Value to fill in the field. If the field is a checkbox, the value should be `true` or `false`. If the field is a combobox, the value should be the text of the option."
+                }
+              },
+              "required": [
+                "name",
+                "type",
+                "ref",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Fields to fill in"
+          }
+        },
+        "required": [
+          "fields"
+        ]
+      }
+    },
+    {
+      "name": "browser-install",
+      "description": "Install the browser specified in the config. Call this if you get an error about the browser not being installed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "browser-press-key",
+      "description": "Press a key on the keyboard",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Name of the key to press or a character to generate, such as `ArrowLeft` or `a`"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      }
+    },
+    {
+      "name": "browser-type",
+      "description": "Type text into editable element",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to interact with the element"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          },
+          "text": {
+            "type": "string",
+            "description": "Text to type into the element"
+          },
+          "submit": {
+            "type": "boolean",
+            "description": "Whether to submit entered text (press Enter after)"
+          },
+          "slowly": {
+            "type": "boolean",
+            "description": "Whether to type one character at a time. Useful for triggering key handlers in the page. By default entire text is filled in at once."
+          }
+        },
+        "required": [
+          "element",
+          "ref",
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "browser-navigate",
+      "description": "Navigate to a URL",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to navigate to"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "browser-navigate-back",
+      "description": "Go back to the previous page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "browser-network-requests",
+      "description": "Returns all network requests since loading the page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeStatic": {
+            "type": "boolean",
+            "default": false,
+            "description": "Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false."
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-run-code",
+      "description": "Run Playwright code snippet",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "A JavaScript function containing Playwright code to execute. It will be invoked with a single argument, page, which you can use for any page interaction. For example: `async (page) => { await page.getByRole('button', { name: 'Submit' }).click(); return await page.title(); }`"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      }
+    },
+    {
+      "name": "browser-take-screenshot",
+      "description": "Take a screenshot of the current page. You can't perform actions based on the screenshot, use browser_snapshot for actions. Screenshots are saved to /workspace/ (shared volume).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpeg"
+            ],
+            "default": "png",
+            "description": "Image format for the screenshot. Default is png."
+          },
+          "filename": {
+            "type": "string",
+            "description": "File name for the screenshot (e.g., \"screenshot.png\"). Saved to /workspace/. Defaults to screenshot-{timestamp}.{png|jpeg}."
+          },
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to screenshot the element. If not provided, the screenshot will be taken of viewport. If element is provided, ref must be provided too."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot. If not provided, the screenshot will be taken of viewport. If ref is provided, element must be provided too."
+          },
+          "fullPage": {
+            "type": "boolean",
+            "description": "When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Cannot be used with element screenshots."
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-snapshot",
+      "description": "Capture accessibility snapshot of the current page, this is better than screenshot",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Save snapshot to markdown file in /workspace/ instead of returning it in the response (e.g., \"snapshot.md\")."
+          }
+        }
+      }
+    },
+    {
+      "name": "browser-click",
+      "description": "Perform click on a web page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to interact with the element"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          },
+          "doubleClick": {
+            "type": "boolean",
+            "description": "Whether to perform a double click instead of a single click"
+          },
+          "button": {
+            "type": "string",
+            "enum": [
+              "left",
+              "right",
+              "middle"
+            ],
+            "description": "Button to click, defaults to left"
+          },
+          "modifiers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "Alt",
+                "Control",
+                "ControlOrMeta",
+                "Meta",
+                "Shift"
+              ]
+            },
+            "description": "Modifier keys to press"
+          }
+        },
+        "required": [
+          "element",
+          "ref"
+        ]
+      }
+    },
+    {
+      "name": "browser-drag",
+      "description": "Perform drag and drop between two elements",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startElement": {
+            "type": "string",
+            "description": "Human-readable source element description used to obtain the permission to interact with the element"
+          },
+          "startRef": {
+            "type": "string",
+            "description": "Exact source element reference from the page snapshot"
+          },
+          "endElement": {
+            "type": "string",
+            "description": "Human-readable target element description used to obtain the permission to interact with the element"
+          },
+          "endRef": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          }
+        },
+        "required": [
+          "startElement",
+          "startRef",
+          "endElement",
+          "endRef"
+        ]
+      }
+    },
+    {
+      "name": "browser-hover",
+      "description": "Hover over element on page",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to interact with the element"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          }
+        },
+        "required": [
+          "element",
+          "ref"
+        ]
+      }
+    },
+    {
+      "name": "browser-select-option",
+      "description": "Select an option in a dropdown",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "element": {
+            "type": "string",
+            "description": "Human-readable element description used to obtain permission to interact with the element"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Exact target element reference from the page snapshot"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of values to select in the dropdown. This can be a single value or multiple values."
+          }
+        },
+        "required": [
+          "element",
+          "ref",
+          "values"
+        ]
+      }
+    },
+    {
+      "name": "browser-tabs",
+      "description": "List, create, close, or select a browser tab.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "new",
+              "close",
+              "select"
+            ],
+            "description": "Operation to perform"
+          },
+          "index": {
+            "type": "number",
+            "description": "Tab index, used for close/select. If omitted for close, current tab is closed."
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "browser-wait-for",
+      "description": "Wait for text to appear or disappear or a specified time to pass",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "number",
+            "description": "The time to wait in seconds"
+          },
+          "text": {
+            "type": "string",
+            "description": "The text to wait for"
+          },
+          "textGone": {
+            "type": "string",
+            "description": "The text to wait for to disappear"
+          }
+        }
+      }
+    }
+  ]
+}

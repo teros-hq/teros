@@ -1,0 +1,182 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.messaging",
+  "tools": [
+    {
+      "name": "send-image",
+      "description": "Send an image to the user. The image will be displayed in the chat. Supports public URLs or local file paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Public URL of the image (use this OR filePath)"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "File path in /workspace/ (e.g., '/workspace/image.png'). This is the shared volume accessible to all MCAs. Use this OR url."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the image"
+          },
+          "width": {
+            "type": "number",
+            "description": "Optional width in pixels"
+          },
+          "height": {
+            "type": "number",
+            "description": "Optional height in pixels"
+          }
+        }
+      }
+    },
+    {
+      "name": "send-audio",
+      "description": "Send an audio file to the user. The audio will be playable in the chat. Supports public URLs or local file paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Public URL of the audio file (use this OR filePath)"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "File path in /workspace/ (e.g., '/workspace/audio.mp3'). This is the shared volume accessible to all MCAs. Use this OR url."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the audio"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Optional duration in seconds"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "Optional MIME type (e.g., 'audio/mp3')"
+          }
+        }
+      }
+    },
+    {
+      "name": "send-video",
+      "description": "Send a video to the user. The video will be playable in the chat. Supports public URLs or local file paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Public URL of the video (use this OR filePath)"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "File path in /workspace/ (e.g., '/workspace/video.mp4'). This is the shared volume accessible to all MCAs. Use this OR url."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the video"
+          },
+          "duration": {
+            "type": "number",
+            "description": "Optional duration in seconds"
+          },
+          "width": {
+            "type": "number",
+            "description": "Optional width in pixels"
+          },
+          "height": {
+            "type": "number",
+            "description": "Optional height in pixels"
+          },
+          "thumbnailUrl": {
+            "type": "string",
+            "description": "Optional URL for video thumbnail/preview image"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "Optional MIME type (e.g., 'video/mp4')"
+          }
+        }
+      }
+    },
+    {
+      "name": "send-file",
+      "description": "Send a document or file to the user. The file will be downloadable from the chat. Supports public URLs or local file paths.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Public URL of the file (use this OR filePath)"
+          },
+          "filePath": {
+            "type": "string",
+            "description": "File path in /workspace/ (e.g., '/workspace/document.pdf'). This is the shared volume accessible to all MCAs. Use this OR url."
+          },
+          "filename": {
+            "type": "string",
+            "description": "Display name for the file (e.g., 'report.pdf'). Required if using url, optional for filePath."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the file"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "Optional MIME type (e.g., 'application/pdf')"
+          },
+          "size": {
+            "type": "number",
+            "description": "Optional file size in bytes"
+          }
+        }
+      }
+    },
+    {
+      "name": "send-html",
+      "description": "Send an HTML widget to the user. The HTML will be rendered directly in the chat. Use this to display UI mockups, interactive previews, styled tables, diagrams, or any visual content that can be represented with HTML/CSS. The HTML is sandboxed for security.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "html": {
+            "type": "string",
+            "description": "HTML content to render. Can include inline <style> tags for CSS."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the widget"
+          },
+          "height": {
+            "type": "number",
+            "description": "Optional fixed height in pixels. If not provided, height will be auto-calculated."
+          }
+        },
+        "required": [
+          "html"
+        ]
+      }
+    },
+    {
+      "name": "send-html-file",
+      "description": "Send an HTML file to the user. The file will be rendered inline in the chat AND can be opened in a dedicated FileViewer window that auto-refreshes in real time when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path to the HTML file (e.g., '/workspace/mockup.html'). The file must exist on the shared volume."
+          },
+          "caption": {
+            "type": "string",
+            "description": "Optional caption/description for the widget"
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      }
+    }
+  ]
+}

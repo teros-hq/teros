@@ -1,0 +1,67 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.homey",
+  "name": "Homey",
+  "version": "1.0.0",
+  "description": "Homey smart home controller - Control devices, manage flows, and monitor your home via Athom Cloud API",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "other",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "homey",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_TYPE", "EXPIRES_IN"],
+      "authorizeUrl": "https://api.athom.com/oauth2/authorise",
+      "tokenUrl": "https://api.athom.com/oauth2/token",
+      "scopes": [
+        "homey.app",
+        "homey.app.control",
+        "homey.dashboard",
+        "homey.device",
+        "homey.device.control",
+        "homey.energy",
+        "homey.flow",
+        "homey.flow.start",
+        "homey.geolocation",
+        "homey.insights",
+        "homey.logic",
+        "homey.mood",
+        "homey.mood.set",
+        "homey.notifications",
+        "homey.presence",
+        "homey.presence.self",
+        "homey.system",
+        "homey.user",
+        "homey.user.self",
+        "homey.zone"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["homey", "other", "home-automation", "iot", "devices", "flows", "athom"]
+}

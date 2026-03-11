@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Teros - Plataforma de asistentes IA personalizables con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad con IA." />
+    <meta name="keywords" content="IA, asistente virtual, automatización, productividad, agentes IA, Teros, AI assistant, workspace" />
+    <meta name="author" content="Teros AI" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Teros" />
+    <meta property="og:title" content="Teros" />
+    <meta property="og:description" content="Plataforma de asistentes IA con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad." />
+    <meta property="og:image" content="https://os.teros.ai/icon-512.png" />
+    <meta property="og:image:alt" content="Teros AI Platform Logo" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:url" content="https://os.teros.ai" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:locale:alternate" content="en_US" />
+    
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@TerosAI" />
+    <meta name="twitter:creator" content="@TerosAI" />
+    <meta name="twitter:title" content="Teros" />
+    <meta name="twitter:description" content="Plataforma de asistentes IA con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad." />
+    <meta name="twitter:image" content="https://os.teros.ai/icon-512.png" />
+    <meta name="twitter:image:alt" content="Teros AI Platform Logo" />
+    
+    <!-- PWA Meta Tags -->
+    <meta name="application-name" content="Teros" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Teros" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#000000" />
+    
+    <title>Teros</title>
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://os.teros.ai" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png" />
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+    
+    <!-- Expo/React Native Web styles -->
+    <style id="expo-reset">
+      html, body {
+        height: 100%;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Teros",
+      "applicationCategory": "ProductivityApplication",
+      "operatingSystem": "Web, iOS, Android",
+      "description": "Plataforma de asistentes IA personalizables con capacidades avanzadas para automatizar tareas y gestionar proyectos.",
+      "url": "https://os.teros.ai",
+      "image": "https://os.teros.ai/icon-512.png",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Organization",
+        "name": "Teros AI",
+        "url": "https://teros.ai"
+      },
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5.0",
+        "ratingCount": "1"
+      }
+    }
+    </script>
+
+  </head>
+  <body>
+    <noscript>Necesitas habilitar JavaScript para usar Teros.</noscript>
+    <div id="root"></div>
+    
+    <!-- Register Service Worker for PWA -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('Teros SW registered:', registration.scope);
+            })
+            .catch((error) => {
+              console.log('Teros SW registration failed:', error);
+            });
+        });
+      }
+    </script>
+  </body>
+</html>

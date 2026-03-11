@@ -1,0 +1,277 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.monday",
+  "tools": [
+    {
+      "name": "monday_list_boards",
+      "description": "List all Monday.com boards",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Number of boards to return",
+            "default": 100
+          }
+        }
+      }
+    },
+    {
+      "name": "monday_get_board",
+      "description": "Get detailed board information",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID to retrieve"
+          }
+        },
+        "required": ["boardId"]
+      }
+    },
+    {
+      "name": "monday_create_board",
+      "description": "Create a new board",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Board name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Board description"
+          },
+          "templateId": {
+            "type": "string",
+            "description": "Template ID to use"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "monday_list_items",
+      "description": "List items in a board or group",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          },
+          "groupId": {
+            "type": "string",
+            "description": "Group ID (optional)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of items to return",
+            "default": 100
+          }
+        },
+        "required": ["boardId"]
+      }
+    },
+    {
+      "name": "monday_get_item",
+      "description": "Get detailed item information",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID to retrieve"
+          },
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          }
+        },
+        "required": ["itemId", "boardId"]
+      }
+    },
+    {
+      "name": "monday_create_item",
+      "description": "Create a new item",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          },
+          "groupId": {
+            "type": "string",
+            "description": "Group ID"
+          },
+          "itemName": {
+            "type": "string",
+            "description": "Item name"
+          },
+          "values": {
+            "type": "object",
+            "description": "Column values (columnId: value)"
+          }
+        },
+        "required": ["boardId", "itemName"]
+      }
+    },
+    {
+      "name": "monday_update_item",
+      "description": "Update an existing item",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID to update"
+          },
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          },
+          "values": {
+            "type": "object",
+            "description": "Updated column values (columnId: value)"
+          }
+        },
+        "required": ["itemId", "boardId"]
+      }
+    },
+    {
+      "name": "monday_delete_item",
+      "description": "Delete an item",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID to delete"
+          },
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          }
+        },
+        "required": ["itemId", "boardId"]
+      }
+    },
+    {
+      "name": "monday_list_groups",
+      "description": "List groups in a board",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          }
+        },
+        "required": ["boardId"]
+      }
+    },
+    {
+      "name": "monday_create_group",
+      "description": "Create a new group",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Group name"
+          }
+        },
+        "required": ["boardId", "name"]
+      }
+    },
+    {
+      "name": "monday_list_columns",
+      "description": "List columns in a board",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          }
+        },
+        "required": ["boardId"]
+      }
+    },
+    {
+      "name": "monday_add_update",
+      "description": "Add update to an item",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID"
+          },
+          "updateValue": {
+            "type": "string",
+            "description": "Update text"
+          }
+        },
+        "required": ["itemId", "updateValue"]
+      }
+    },
+    {
+      "name": "monday_list_updates",
+      "description": "List updates for items",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "Item ID"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of updates to return",
+            "default": 50
+          }
+        },
+        "required": ["itemId"]
+      }
+    },
+    {
+      "name": "monday_search_items",
+      "description": "Search items across boards",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          },
+          "boardId": {
+            "type": "string",
+            "description": "Board ID to search in"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results",
+            "default": 100
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "monday_get_me",
+      "description": "Get current user information",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

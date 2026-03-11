@@ -1,0 +1,46 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.clickup",
+  "name": "ClickUp",
+  "version": "1.0.0",
+  "description": "ClickUp project management - manage tasks, lists, folders, spaces and workspaces via ClickUp API with OAuth2",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "clickup",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_TYPE", "USER_ID", "USER_EMAIL", "USER_USERNAME"],
+      "authorizeUrl": "https://app.clickup.com/api",
+      "tokenUrl": "https://api.clickup.com/api/v2/oauth/token",
+      "scopes": ["read", "write"],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["clickup", "tasks", "project", "management", "productivity", "kanban"]
+}

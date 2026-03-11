@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+logs
+backups
+workspace
+code-reference
+.DS_Store
+*.log

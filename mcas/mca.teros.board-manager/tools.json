@@ -1,0 +1,375 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.board-manager",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-project",
+      "description": "Get detailed information about a project, including its board columns with their IDs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project ID to retrieve"
+          }
+        },
+        "required": ["projectId"]
+      }
+    },
+    {
+      "name": "list-projects",
+      "description": "List all projects in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID (optional, defaults to current workspace)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-task",
+      "description": "Get detailed information about a specific task by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID to retrieve"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "list-tasks",
+      "description": "List tasks in a project with optional filters by column, status, assignee, or tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project ID to list tasks from"
+          },
+          "columnId": {
+            "type": "string",
+            "description": "Filter by column ID (optional)"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["idle", "assigned", "working", "blocked", "review", "done"],
+            "description": "Filter by task status (optional)"
+          },
+          "assignedAgentId": {
+            "type": "string",
+            "description": "Filter by assigned agent ID (optional)"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Filter by tags — returns tasks that have ALL specified tags (optional)"
+          }
+        },
+        "required": ["projectId"]
+      }
+    },
+    {
+      "name": "list-board-agents",
+      "description": "List all agents in the workspace that have access to board-manager or board-runner apps, including their role (manager, runner, or both).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID (optional, defaults to current workspace)"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-project",
+      "description": "Create a new project with an associated Kanban board in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to create the project in (optional, defaults to current workspace)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional project description"
+          }
+        },
+        "required": ["name"]
+      }
+    },
+    {
+      "name": "create-task",
+      "description": "Create a new task on a project board. Defaults to backlog column.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Task title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description (supports markdown)"
+          },
+          "priority": {
+            "type": "string",
+            "enum": ["urgent", "high", "medium", "low"],
+            "description": "Task priority (default: medium)"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Tags for categorization"
+          },
+          "assignedAgentId": {
+            "type": "string",
+            "description": "Agent ID to assign the task to"
+          },
+          "columnId": {
+            "type": "string",
+            "description": "Column ID to place the task in (default: backlog)"
+          },
+          "parentTaskId": {
+            "type": "string",
+            "description": "Parent task ID for sub-tasks"
+          }
+        },
+        "required": ["projectId", "title"]
+      }
+    },
+    {
+      "name": "batch-create-tasks",
+      "description": "Create multiple tasks at once on a project board. Atomic operation — all succeed or all fail. Max 100 tasks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project ID"
+          },
+          "tasks": {
+            "type": "array",
+            "description": "Array of task objects to create",
+            "items": {
+              "type": "object",
+              "properties": {
+                "title": { "type": "string", "description": "Task title" },
+                "description": { "type": "string", "description": "Task description" },
+                "priority": {
+                  "type": "string",
+                  "enum": ["urgent", "high", "medium", "low"],
+                  "description": "Task priority (default: medium)"
+                },
+                "tags": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Tags for categorization"
+                },
+                "assignedAgentId": { "type": "string", "description": "Agent ID to assign" },
+                "columnId": { "type": "string", "description": "Column ID (default: backlog)" },
+                "parentTaskId": { "type": "string", "description": "Parent task ID for sub-tasks" }
+              },
+              "required": ["title"]
+            }
+          }
+        },
+        "required": ["projectId", "tasks"]
+      }
+    },
+    {
+      "name": "update-task",
+      "description": "Update task properties (title, description, priority, tags).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to update" },
+          "title": { "type": "string", "description": "New task title" },
+          "description": { "type": "string", "description": "New task description" },
+          "priority": {
+            "type": "string",
+            "enum": ["urgent", "high", "medium", "low"],
+            "description": "New priority"
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "New tags (replaces existing)"
+          }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "update-task-status",
+      "description": "Update the semantic status of a task. Status is decoupled from column position. When set to \"review\" or \"done\", the task is automatically moved to the matching column.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to update" },
+          "status": {
+            "type": "string",
+            "description": "New status for the task",
+            "enum": ["idle", "assigned", "working", "blocked", "review", "done"]
+          }
+        },
+        "required": ["taskId", "status"]
+      }
+    },
+    {
+      "name": "move-task",
+      "description": "Move a task to a different column on the board.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to move" },
+          "columnId": { "type": "string", "description": "Target column ID" },
+          "position": { "type": "number", "description": "Position within the column (optional, defaults to end)" }
+        },
+        "required": ["taskId", "columnId"]
+      }
+    },
+    {
+      "name": "assign-task",
+      "description": "Assign or unassign an agent to a task. Pass null or omit agentId to unassign.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID" },
+          "agentId": { "type": "string", "description": "Agent ID to assign (omit or null to unassign)" }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "start-task",
+      "description": "Start a task: moves it to in_progress, creates a headless conversation with the assigned agent, sends the task description as the initial message, and links the conversation to the task. Optionally override the assigned agent or provide a custom prompt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to start" },
+          "agentId": { "type": "string", "description": "Optional agent ID override. If provided, the task will be reassigned to this agent before starting." },
+          "prompt": { "type": "string", "description": "Optional custom prompt to send to the agent instead of the default task description message." }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "link-conversation",
+      "description": "Link an existing conversation to a task. Replaces any previously linked conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID" },
+          "channelId": { "type": "string", "description": "The conversation channel ID to link" }
+        },
+        "required": ["taskId", "channelId"]
+      }
+    },
+    {
+      "name": "add-progress-note",
+      "description": "Add a progress note to a task. Use this to post updates about what you are doing on a task. Progress notes are visible in the task detail and on the board.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to add a note to" },
+          "text": { "type": "string", "description": "The progress note text" }
+        },
+        "required": ["taskId", "text"]
+      }
+    },
+    {
+      "name": "delete-task",
+      "description": "Delete a task from the board. Sub-tasks become top-level tasks. Linked conversations are NOT deleted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "description": "The task ID to delete" }
+        },
+        "required": ["taskId"]
+      }
+    },
+    {
+      "name": "add-task-dependency",
+      "description": "Add a dependency between two tasks. After this call, taskId depends on dependsOnTaskId (i.e. dependsOnTaskId must be completed before taskId can start). Cycle detection is performed automatically — if adding the dependency would create a cycle, an error is returned and the affected tasks are marked with status `circular_dependency`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task that gains the new dependency (the dependent task)"
+          },
+          "dependsOnTaskId": {
+            "type": "string",
+            "description": "The task that taskId will depend on (must be completed first)"
+          }
+        },
+        "required": [
+          "taskId",
+          "dependsOnTaskId"
+        ]
+      }
+    },
+    {
+      "name": "remove-task-dependency",
+      "description": "Remove a dependency between two tasks. After this call, taskId no longer depends on dependsOnTaskId. This operation is idempotent — if the dependency does not exist, the task is returned unchanged.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task that currently has the dependency"
+          },
+          "dependsOnTaskId": {
+            "type": "string",
+            "description": "The task to remove from taskId's dependencies"
+          }
+        },
+        "required": [
+          "taskId",
+          "dependsOnTaskId"
+        ]
+      }
+    },
+    {
+      "name": "get-task-dependencies",
+      "description": "Get the dependencies of a task — i.e. the list of task IDs that must be completed before the given task can start. Returns the dependency task IDs and their count.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "The task ID to get dependencies for"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      }
+    }
+  ]
+}

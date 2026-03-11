@@ -1,0 +1,56 @@
+# Example conversation script for ElevenLabs generate_conversation tool
+# 
+# This YAML file defines a multi-speaker dialogue that will be converted
+# to a single audio file with natural pauses between speakers.
+
+# Voice mapping: speaker name -> ElevenLabs voice ID
+# Use list_voices tool to find available voice IDs
+voices:
+  Host: "EXAVITQu4vr4xnSDxMaL"    # Sarah - Good for narration
+  Guest: "21m00Tcm4TlvDq8ikWAM"   # Rachel - Natural conversational
+
+# Optional configuration
+config:
+  # Pause duration between speakers in seconds
+  pause_between_speakers: 0.8
+  
+  # Model to use for all voices
+  model_id: eleven_flash_v2_5
+  
+  # Voice settings (optional, uses defaults if not specified)
+  stability: 0.5
+  similarity_boost: 0.75
+  style: 0
+  speaker_boost: true
+  
+  # Output format
+  output_format: mp3_44100_128
+  
+  # Output file path (optional, defaults to ~/Downloads/podcast-{timestamp}.mp3)
+  # output: /path/to/my-podcast.mp3
+
+# The dialogue - each entry has a speaker and their text
+dialogue:
+  - speaker: Host
+    text: "Welcome to today's episode! I'm thrilled to have a special guest joining us."
+  
+  - speaker: Guest
+    text: "Thanks for having me! I've been looking forward to this conversation."
+  
+  - speaker: Host
+    text: "Let's dive right in. Can you tell our listeners a bit about your background?"
+  
+  - speaker: Guest
+    text: "Of course! I've been working in technology for over a decade, focusing primarily on artificial intelligence and machine learning applications."
+  
+  - speaker: Host
+    text: "That's fascinating. The AI field has evolved so rapidly in recent years."
+  
+  - speaker: Guest
+    text: "Absolutely. The progress we've seen, especially in language models, has been remarkable. It's an exciting time to be in this space."
+  
+  - speaker: Host
+    text: "Well, thank you so much for sharing your insights with us today!"
+  
+  - speaker: Guest
+    text: "My pleasure! Thanks for having me."

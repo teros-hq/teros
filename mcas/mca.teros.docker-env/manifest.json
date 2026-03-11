@@ -1,0 +1,51 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.docker-env",
+  "name": "Docker Environments",
+  "version": "1.0.0",
+  "description": "Manage ephemeral Docker environments tied to a workspace. Spin up a full docker-compose stack from a git repo, execute commands inside it, stream logs, and tear it down — all scoped per user for isolation.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": true,
+    "role": "admin"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime-docker-env:latest",
+    "systemVolumes": [
+      {
+        "hostPath": "/var/run/docker.sock",
+        "containerPath": "/var/run/docker.sock",
+        "readOnly": false
+      }
+    ],
+    "systemEnvironment": {
+      "DOCKER_HOST": "unix:///var/run/docker.sock",
+      "DOCKER_ENV_BASE_DIR": "/tmp/teros-envs",
+      "DOCKER_ENV_DOMAIN": "${DOCKER_ENV_DOMAIN}",
+      "WORKSPACE_HOST_PATH": "/data/volumes/users"
+    }
+  },
+  "keywords": ["docker", "docker-compose", "environments", "ephemeral", "qa", "testing", "containers"]
+}

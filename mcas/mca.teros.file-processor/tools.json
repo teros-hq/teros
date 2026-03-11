@@ -1,0 +1,164 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.file-processor",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies API keys and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "file-to-markdown",
+      "description": "Convert files to Markdown using AI (synchronous). Supports PDF (with intelligent chunking for large files). Use file-to-markdown-async for long-running jobs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inputPath": {
+            "type": "string",
+            "description": "Path to the file to convert"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Optional output path (defaults to input path with .md extension)"
+          },
+          "chunkSize": {
+            "type": "number",
+            "description": "Pages per chunk for large PDFs (default: 10). Only used for PDFs >3MB"
+          },
+          "maxRetries": {
+            "type": "number",
+            "description": "Maximum retries per chunk if processing fails (default: 3)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in milliseconds per chunk (default: 120000 for chunks, 180000 for direct processing)"
+          }
+        },
+        "required": ["inputPath"]
+      }
+    },
+    {
+      "name": "file-to-markdown-async",
+      "description": "Convert files to Markdown asynchronously (non-blocking). Returns a job ID immediately. Use get-job-status to check progress.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inputPath": {
+            "type": "string",
+            "description": "Path to the file to convert"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Optional output path (defaults to input path with .md extension)"
+          },
+          "chunkSize": {
+            "type": "number",
+            "description": "Pages per chunk for large PDFs (default: 10)"
+          },
+          "maxRetries": {
+            "type": "number",
+            "description": "Maximum retries per chunk if processing fails (default: 3)"
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Timeout in milliseconds per chunk (default: 120000)"
+          }
+        },
+        "required": ["inputPath"]
+      }
+    },
+    {
+      "name": "get-job-status",
+      "description": "Get the status of an async job. Returns current progress, status, and results when completed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "The job ID returned by file-to-markdown-async"
+          }
+        },
+        "required": ["jobId"]
+      }
+    },
+    {
+      "name": "list-jobs",
+      "description": "List all jobs with optional filters. Useful for checking active jobs or recent completions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "Filter by status: queued, processing, completed, failed, cancelled",
+            "enum": ["queued", "processing", "completed", "failed", "cancelled"]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of jobs to return (default: 20)"
+          }
+        }
+      }
+    },
+    {
+      "name": "cancel-job",
+      "description": "Cancel a queued or processing job. Cannot cancel completed/failed jobs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "The job ID to cancel"
+          }
+        },
+        "required": ["jobId"]
+      }
+    },
+    {
+      "name": "audio-to-text",
+      "description": "Transcribe audio files to text using OpenAI Whisper API. Supports .m4a, .mp3, .wav, .ogg, .webm, .opus and other audio formats.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inputPath": {
+            "type": "string",
+            "description": "Path to the audio file to transcribe"
+          },
+          "language": {
+            "type": "string",
+            "description": "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Auto-detected if not provided."
+          }
+        },
+        "required": ["inputPath"]
+      }
+    },
+    {
+      "name": "svg-to-png",
+      "description": "Convert SVG files to PNG with optional width/height constraints",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inputPath": {
+            "type": "string",
+            "description": "Path to the SVG file to convert"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Optional output path (defaults to input path with .png extension)"
+          },
+          "width": {
+            "type": "number",
+            "description": "Optional: Target width in pixels"
+          },
+          "height": {
+            "type": "number",
+            "description": "Optional: Target height in pixels"
+          }
+        },
+        "required": ["inputPath"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.core",
+  "name": "Teros Core",
+  "version": "1.0.0",
+  "description": "Manage Teros platform resources: agents, workspaces, apps, and access control. Provides tools to create, update, and configure the platform.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": ["ADMIN_API_URL", "ADMIN_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["admin", "agents", "workspaces", "apps", "access", "management", "platform"]
+}

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.schema.json",
+  "id": "mca.minio",
+  "name": "MinIO",
+  "version": "0.9.0",
+  "type": "integration",
+  "description": "MinIO S3-compatible object storage - manage buckets, upload/download objects, generate presigned URLs",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "icon": "icon.png",
+  "category": "storage",
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["minio", "s3", "storage", "objects", "buckets", "files", "backup"],
+  "availability": {
+    "enabled": false,
+    "multi": false,
+    "system": false,
+    "hidden": true,
+    "role": "user"
+  },
+  "systemSecrets": ["ENDPOINT", "ACCESS_KEY", "SECRET_KEY"],
+  "entrypoint": "mcp/index.ts",
+  "tools": [
+    "minio_list_buckets",
+    "minio_create_bucket",
+    "minio_delete_bucket",
+    "minio_list_objects",
+    "minio_upload_object",
+    "minio_download_object",
+    "minio_delete_object",
+    "minio_copy_object",
+    "minio_get_presigned_url",
+    "minio_get_object_info",
+    "minio_bucket_exists"
+  ],
+  "permissions": {
+    "defaultLevel": "allow",
+    "supportedLevels": ["allow", "deny"]
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

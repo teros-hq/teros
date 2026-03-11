@@ -1,0 +1,46 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.github",
+  "name": "GitHub",
+  "version": "2.0.0",
+  "description": "GitHub repository management - repos, issues, pull requests, actions, commits, and branches",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "github",
+      "authorizeUrl": "https://github.com/login/oauth/authorize",
+      "tokenUrl": "https://github.com/login/oauth/access_token",
+      "scopes": ["repo", "read:user", "user:email", "workflow", "read:org"],
+      "pkce": false,
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["github", "git", "repositories", "issues", "pull-requests", "ci-cd", "actions"]
+}

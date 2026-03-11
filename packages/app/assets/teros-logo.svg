@@ -1,0 +1,44 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="blueToViolet" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1e40af;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7c3aed;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle (optional, remove if transparent) -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="url(#blueToViolet)" stroke-width="3" opacity="0.3"/>
+  
+  <!-- Central hexagon -->
+  <polygon points="256,196 286,216 286,256 256,276 226,256 226,216" 
+           fill="none" stroke="url(#blueToViolet)" stroke-width="4"/>
+  
+  <!-- Lines and nodes from hexagon vertices to outer circle -->
+  
+  <!-- Top vertex -->
+  <line x1="256" y1="196" x2="256" y2="80" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="256" cy="80" r="14" fill="url(#blueToViolet)"/>
+  
+  <!-- Top-right vertex -->
+  <line x1="286" y1="216" x2="380" y2="150" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="380" cy="150" r="10" fill="url(#blueToViolet)"/>
+  
+  <!-- Bottom-right vertex -->
+  <line x1="286" y1="256" x2="410" y2="320" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="410" cy="320" r="18" fill="url(#blueToViolet)"/>
+  
+  <!-- Bottom vertex -->
+  <line x1="256" y1="276" x2="256" y2="420" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="256" cy="420" r="12" fill="url(#blueToViolet)"/>
+  
+  <!-- Bottom-left vertex -->
+  <line x1="226" y1="256" x2="102" y2="320" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="102" cy="320" r="16" fill="url(#blueToViolet)"/>
+  
+  <!-- Top-left vertex -->
+  <line x1="226" y1="216" x2="132" y2="150" stroke="url(#blueToViolet)" stroke-width="2.5"/>
+  <circle cx="132" cy="150" r="11" fill="url(#blueToViolet)"/>
+  
+  <!-- Central node (hexagon center) -->
+  <circle cx="256" cy="236" r="8" fill="url(#blueToViolet)"/>
+</svg>

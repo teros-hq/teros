@@ -1,0 +1,37 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.feedback",
+  "name": "Feedback",
+  "version": "1.0.0",
+  "description": "Report bugs and suggestions to improve Teros. Track the status of your reports and receive updates from the team.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "hello@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["feedback", "bugs", "suggestions", "reports", "support"]
+}

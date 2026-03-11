@@ -1,0 +1,42 @@
+{
+  "name": "mca.kelify",
+  "version": "1.0.0",
+  "description": "AI-powered conversational property search API for real estate listings",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "real estate",
+    "property search",
+    "ai",
+    "conversational",
+    "kelify",
+    "mca"
+  ],
+  "author": "Kelify",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.0",
+    "eventsource": "^2.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "dist",
+    "manifest.json",
+    "tools.json",
+    "docs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kelify/kelify-mca"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "mca.teros.playwright",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser automation MCA using Playwright directly",
+  "main": "src/index.ts",
+  "dependencies": {
+    "playwright": "1.58.0"
+  }
+}

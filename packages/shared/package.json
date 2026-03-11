@@ -1,0 +1,57 @@
+{
+  "name": "@teros/shared",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "bun": "./dist/index.js",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./memory": {
+      "import": "./dist/memory/index.js",
+      "types": "./dist/memory/index.d.ts"
+    },
+    "./memory/*": {
+      "bun": "./dist/memory/*.js",
+      "import": "./dist/memory/*.js",
+      "types": "./dist/memory/*.d.ts"
+    },
+    "./memory/conversation": {
+      "import": "./dist/memory/conversation.js",
+      "types": "./dist/memory/conversation.d.ts"
+    },
+    "./memory/knowledge": {
+      "import": "./dist/memory/knowledge.js",
+      "types": "./dist/memory/knowledge.d.ts"
+    },
+    "./memory/importance": {
+      "import": "./dist/memory/importance.js",
+      "types": "./dist/memory/importance.d.ts"
+    },
+    "./memory/types": {
+      "import": "./dist/memory/types.js",
+      "types": "./dist/memory/types.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@qdrant/js-client-rest": "^1.12.0",
+    "openai": "^4.0.0",
+    "uuid": "^10.0.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/json-schema": "^7.0.15",
+    "@types/node": "^22.10.1",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.7.2"
+  }
+}

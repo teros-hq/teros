@@ -1,0 +1,11 @@
+{
+  "name": "@teros/mca-docker-env",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@teros/mca-sdk": "file:../../packages/mca-sdk",
+    "mongodb": "^6.13.0"
+  }
+}

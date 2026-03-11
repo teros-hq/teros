@@ -1,0 +1,9 @@
+{
+  "name": "mca-teros-board-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0"
+  }
+}

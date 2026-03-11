@@ -1,0 +1,46 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.sentry",
+  "name": "Sentry Error Monitoring",
+  "version": "0.9.0",
+  "description": "Monitor errors, issues, and performance in your applications using Sentry API. List projects, view issues, and manage error states.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": false,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": [
+    "APIKEY",
+    "ORGANIZATION"
+  ],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "sentry",
+    "errors",
+    "monitoring",
+    "issues",
+    "debugging",
+    "stack-trace"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

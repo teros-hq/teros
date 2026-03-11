@@ -1,0 +1,102 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.feedback",
+  "tools": [
+    {
+      "name": "report-bug",
+      "description": "Report a bug or technical issue with the platform",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Short summary of the bug"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description, steps to reproduce, expected vs actual behavior"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "description": "How severe is this bug? (optional)"
+          }
+        },
+        "required": [
+          "title",
+          "description"
+        ]
+      }
+    },
+    {
+      "name": "report-suggestion",
+      "description": "Submit a suggestion or feature request to improve the platform",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Your idea in one sentence"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description of your suggestion"
+          }
+        },
+        "required": [
+          "title",
+          "description"
+        ]
+      }
+    },
+    {
+      "name": "list-my-feedback",
+      "description": "List all bug reports and suggestions you have submitted",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "suggestion"
+            ],
+            "description": "Filter by type (optional)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_review",
+              "in_progress",
+              "resolved",
+              "dismissed"
+            ],
+            "description": "Filter by status (optional)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-feedback",
+      "description": "Get details of a specific feedback report including updates from the team",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "description": "The feedback ID (e.g., fb_xxx)"
+          }
+        },
+        "required": [
+          "feedbackId"
+        ]
+      }
+    }
+  ]
+}

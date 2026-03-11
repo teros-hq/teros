@@ -1,0 +1,13 @@
+{
+  "name": "mca.homey",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Homey smart home controller MCA - Control devices, manage flows, and monitor your home",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "@teros/mca-sdk": "0.1.0",
+    "@types/node": "^22.10.1",
+    "homey-api": "^3.5.0"
+  }
+}

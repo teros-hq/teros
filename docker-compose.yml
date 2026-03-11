@@ -1,0 +1,98 @@
+services:
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - teros-network
+
+  # MongoDB Database (no auth for development)
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: teros
+    volumes:
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
+    networks:
+      - teros-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Backend WebSocket Server
+  backend:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10001:3000"
+    volumes:
+      - ./data/volumes:/data/volumes
+      - ./.secrets:/app/.secrets:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "999"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      MCA_BASE_PATH: /app/mcas
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DATABASE: teros
+      STATIC_BASE_URL: http://localhost:10001/static
+    depends_on:
+      - mongodb
+      - qdrant
+    networks:
+      - teros-network
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Frontend Web App
+  frontend:
+    build:
+      context: .
+      dockerfile: packages/app/Dockerfile
+      args:
+        EXPO_PUBLIC_WS_URL: ${EXPO_PUBLIC_WS_URL:?EXPO_PUBLIC_WS_URL is required}
+        EXPO_PUBLIC_BACKEND_URL: ${EXPO_PUBLIC_BACKEND_URL:?EXPO_PUBLIC_BACKEND_URL is required}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:10002:80"
+    depends_on:
+      - backend
+    networks:
+      - teros-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+networks:
+  teros-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  qdrant_data:
+    driver: local
