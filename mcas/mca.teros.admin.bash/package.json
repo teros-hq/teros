@@ -1,0 +1,10 @@
+{
+  "name": "@teros/mca-admin-bash",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@teros/mca-sdk": "file:../../packages/mca-sdk"
+  }
+}

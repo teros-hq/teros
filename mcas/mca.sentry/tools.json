@@ -1,0 +1,145 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.sentry",
+  "tools": [
+    {
+      "name": "sentry-list-organizations",
+      "description": "List all organizations the authenticated user has access to",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "sentry-list-projects",
+      "description": "List all projects in an organization",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "description": "Organization slug (e.g., 'my-org'). Optional if configured in credentials."
+          }
+        }
+      }
+    },
+    {
+      "name": "sentry-list-issues",
+      "description": "List issues (errors/problems) for a project. Can filter by status and query.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "description": "Organization slug. Optional if configured in credentials."
+          },
+          "project": {
+            "type": "string",
+            "description": "Project slug (optional, lists all if not provided)"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query (e.g., 'is:unresolved', 'is:resolved', 'level:error')"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of issues to return (default: 25)"
+          }
+        }
+      }
+    },
+    {
+      "name": "sentry-get-issue",
+      "description": "Get detailed information about a specific issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "The issue ID"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "sentry-list-events",
+      "description": "List events (individual error occurrences) for an issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "The issue ID to get events for"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of events to return (default: 25)"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "sentry-get-event",
+      "description": "Get detailed information about a specific event including full stack trace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "type": "string",
+            "description": "Organization slug. Optional if configured in credentials."
+          },
+          "project": {
+            "type": "string",
+            "description": "Project slug"
+          },
+          "eventId": {
+            "type": "string",
+            "description": "The event ID"
+          }
+        },
+        "required": [
+          "project",
+          "eventId"
+        ]
+      }
+    },
+    {
+      "name": "sentry-resolve-issue",
+      "description": "Mark an issue as resolved",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "The issue ID to resolve"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "sentry-ignore-issue",
+      "description": "Ignore an issue (stop notifications)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "The issue ID to ignore"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    }
+  ]
+}

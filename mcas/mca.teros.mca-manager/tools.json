@@ -1,0 +1,75 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.mca-manager",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Admin API credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "mca-status",
+      "description": "Get status of all running MCA processes. Shows appId, status, tool count, idle time, and restart count for each MCA.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "mca-kill",
+      "description": "Kill a specific MCA process by appId. The process will be restarted on next use.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The appId of the MCA to kill (e.g., 'app:mca-teros-bash-system')"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      }
+    },
+    {
+      "name": "mca-cleanup",
+      "description": "Trigger cleanup of inactive MCA processes. Kills MCAs that have been idle for too long.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "apps-list",
+      "description": "List all installed apps (MCA instances) with their configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "agent-access-list",
+      "description": "List all agent app access grants. Shows which agents have access to which apps.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "catalog-list",
+      "description": "List all MCAs in the catalog (available MCAs that can be installed).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ]
+}

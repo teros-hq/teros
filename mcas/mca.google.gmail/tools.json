@@ -1,0 +1,532 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.google.gmail",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-messages",
+      "description": "List email messages from inbox or specific labels. Supports filtering by unread, starred, etc.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of messages to return (default: 10, max: 100)"
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label IDs to filter by"
+          },
+          "query": {
+            "type": "string",
+            "description": "Gmail search query"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-message",
+      "description": "Get full details of a specific email message by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to retrieve"
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Send an email message from the specified account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient email address"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body (plain text or HTML)"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC recipients (comma-separated)"
+          },
+          "bcc": {
+            "type": "string",
+            "description": "BCC recipients (comma-separated)"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          },
+          "attachments": {
+            "type": "array",
+            "description": "Array of attachments to include",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "File path"
+                },
+                "filename": {
+                  "type": "string",
+                  "description": "Optional custom filename"
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
+          }
+        },
+        "required": [
+          "to",
+          "subject"
+        ]
+      }
+    },
+    {
+      "name": "reply-message",
+      "description": "Reply to an existing email message.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to reply to"
+          },
+          "body": {
+            "type": "string",
+            "description": "Reply body"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          }
+        },
+        "required": [
+          "messageId",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "search-messages",
+      "description": "Search for email messages using Gmail's search syntax.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Gmail search query"
+          },
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of results (default: 10)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "modify-labels",
+      "description": "Add or remove labels from a message (e.g., mark as read/unread, archive, star).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message to modify"
+          },
+          "addLabelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Labels to add"
+          },
+          "removeLabelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Labels to remove"
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
+      "name": "list-drafts",
+      "description": "List all draft emails in the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxResults": {
+            "type": "number",
+            "description": "Maximum number of drafts to return (default: 10, max: 100)"
+          }
+        }
+      }
+    },
+    {
+      "name": "create-draft",
+      "description": "Create a draft email message.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient email address"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "filename": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
+          }
+        },
+        "required": [
+          "to",
+          "subject"
+        ]
+      }
+    },
+    {
+      "name": "delete-draft",
+      "description": "Delete a draft email by its draft ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "description": "The ID of the draft to delete"
+          }
+        },
+        "required": [
+          "draftId"
+        ]
+      }
+    },
+    {
+      "name": "update-draft",
+      "description": "Update an existing draft email by replacing its content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "draftId": {
+            "type": "string",
+            "description": "The ID of the draft to update"
+          },
+          "to": {
+            "type": "string",
+            "description": "Recipient email address"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body"
+          },
+          "isHtml": {
+            "type": "boolean",
+            "description": "Whether body is HTML (default: false)"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "filename": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ]
+            }
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
+          }
+        },
+        "required": [
+          "draftId",
+          "to",
+          "subject"
+        ]
+      }
+    },
+    {
+      "name": "get-attachment",
+      "description": "Get the content of an email attachment by its attachment ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message containing the attachment"
+          },
+          "attachmentId": {
+            "type": "string",
+            "description": "The ID of the attachment to retrieve"
+          },
+          "saveToFile": {
+            "type": "boolean",
+            "description": "If true, saves to ~/Downloads/email-attachments/"
+          }
+        },
+        "required": [
+          "messageId",
+          "attachmentId"
+        ]
+      }
+    },
+    {
+      "name": "store-attachment",
+      "description": "Download and store an email attachment to the local filesystem.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "description": "The ID of the message containing the attachment"
+          },
+          "attachmentId": {
+            "type": "string",
+            "description": "The ID of the attachment to store"
+          },
+          "outputPath": {
+            "type": "string",
+            "description": "Optional output directory path"
+          }
+        },
+        "required": [
+          "messageId",
+          "attachmentId"
+        ]
+      }
+    },
+    {
+      "name": "list-labels",
+      "description": "List all Gmail labels (both system and custom labels) for the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "create-label",
+      "description": "Create a new Gmail label.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the label"
+          },
+          "backgroundColor": {
+            "type": "string",
+            "description": "Background color in hex format"
+          },
+          "textColor": {
+            "type": "string",
+            "description": "Text color in hex format"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "update-label",
+      "description": "Update an existing Gmail label (name, colors, visibility).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "ID of the label to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the label"
+          },
+          "backgroundColor": {
+            "type": "string",
+            "description": "Background color in hex format"
+          },
+          "textColor": {
+            "type": "string",
+            "description": "Text color in hex format"
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      }
+    },
+    {
+      "name": "delete-label",
+      "description": "Delete a Gmail label. This does NOT delete the emails with this label.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "ID of the label to delete"
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      }
+    },
+    {
+      "name": "list-filters",
+      "description": "List all Gmail filters for the account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "create-filter",
+      "description": "Create a new Gmail filter to automatically organize emails.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "criteria": {
+            "type": "object",
+            "description": "Filter criteria",
+            "properties": {
+              "from": {
+                "type": "string"
+              },
+              "to": {
+                "type": "string"
+              },
+              "subject": {
+                "type": "string"
+              },
+              "query": {
+                "type": "string"
+              },
+              "hasAttachment": {
+                "type": "boolean"
+              },
+              "excludeChats": {
+                "type": "boolean"
+              }
+            }
+          },
+          "action": {
+            "type": "object",
+            "description": "Actions to perform when filter matches",
+            "properties": {
+              "addLabelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "removeLabelIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "forward": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "criteria",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "delete-filter",
+      "description": "Delete a Gmail filter by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filterId": {
+            "type": "string",
+            "description": "ID of the filter to delete"
+          }
+        },
+        "required": [
+          "filterId"
+        ]
+      }
+    }
+  ]
+}

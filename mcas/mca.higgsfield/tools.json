@@ -1,0 +1,283 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.higgsfield",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Higgsfield API credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "higgsfield-run",
+      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model/endpoint identifier (e.g., 'bytedance/seedream/v4/text-to-image')"
+          },
+          "input": {
+            "type": "object",
+            "description": "Input parameters for the model"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for completion (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "model",
+          "input"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-text-to-image",
+      "description": "Generate images from text prompts using Seedream v4.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Text description of the image to generate"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "2K",
+            "description": "Output resolution"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "1:1",
+              "16:9",
+              "9:16",
+              "4:3",
+              "3:4",
+              "21:9",
+              "9:21"
+            ],
+            "default": "16:9",
+            "description": "Aspect ratio of the generated image"
+          },
+          "style": {
+            "type": "string",
+            "description": "Optional style preset"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for completion (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-image-to-video",
+      "description": "Convert an image to video with motion. Supports various motion styles and camera movements.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "image_url": {
+            "type": "string",
+            "description": "URL of the input image"
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Description of the desired motion/video"
+          },
+          "duration": {
+            "type": "number",
+            "default": 5,
+            "description": "Video duration in seconds (default: 5)"
+          },
+          "motion_strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "default": 0.5,
+            "description": "Motion intensity (0.0-1.0)"
+          },
+          "camera_motion": {
+            "type": "string",
+            "enum": [
+              "none",
+              "zoom_in",
+              "zoom_out",
+              "pan_left",
+              "pan_right",
+              "tilt_up",
+              "tilt_down"
+            ],
+            "default": "none",
+            "description": "Camera movement type"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for completion (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "image_url",
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-text-to-video",
+      "description": "Generate video from text prompt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Text description of the video to generate"
+          },
+          "duration": {
+            "type": "number",
+            "default": 5,
+            "description": "Video duration in seconds (default: 5)"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "default": "1080p",
+            "description": "Output resolution"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1"
+            ],
+            "default": "16:9",
+            "description": "Aspect ratio"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for completion (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-soul-generate",
+      "description": "Generate images with consistent character appearance using Soul. Great for creating multiple images of the same character.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Text description of the scene/pose for the character"
+          },
+          "reference_image": {
+            "type": "string",
+            "description": "URL of the reference image for character consistency"
+          },
+          "style": {
+            "type": "string",
+            "description": "Optional style preset"
+          },
+          "resolution": {
+            "type": "string",
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ],
+            "default": "2K"
+          },
+          "wait": {
+            "type": "boolean",
+            "description": "Wait for completion (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "prompt",
+          "reference_image"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-get-prediction",
+      "description": "Get the status and result of a prediction by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prediction_id": {
+            "type": "string",
+            "description": "The prediction ID to check"
+          },
+          "wait": {
+            "type": "boolean",
+            "default": false,
+            "description": "Wait for completion if still processing (default: false)"
+          }
+        },
+        "required": [
+          "prediction_id"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-cancel-prediction",
+      "description": "Cancel a queued or processing prediction.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prediction_id": {
+            "type": "string",
+            "description": "The prediction ID to cancel"
+          }
+        },
+        "required": [
+          "prediction_id"
+        ]
+      }
+    },
+    {
+      "name": "higgsfield-list-models",
+      "description": "List available models and their capabilities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "all",
+              "text-to-image",
+              "image-to-video",
+              "text-to-video",
+              "image-to-image"
+            ],
+            "default": "all",
+            "description": "Filter models by type"
+          }
+        }
+      }
+    }
+  ]
+}

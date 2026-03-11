@@ -1,0 +1,38 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.intercom",
+  "name": "Intercom",
+  "version": "1.0.0",
+  "description": "Intercom customer support integration — manage conversations, tickets, contacts, and teams via the Intercom API.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "other",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["intercom", "customer-support", "tickets", "conversations", "helpdesk", "crm"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["ACCESS_TOKEN"]
+    },
+    "agent": false
+  }
+}

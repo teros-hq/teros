@@ -1,0 +1,40 @@
+{
+  "name": "@teros/e2e",
+  "version": "2.0.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run --timeout 30000",
+    "test:watch": "vitest --timeout 30000",
+    "test:verbose": "vitest run --timeout 30000 --reporter=verbose",
+    "test:run": "./scripts/run-e2e.sh",
+    "cucumber": "cucumber-js",
+    "cucumber:auth": "cucumber-js --tags @auth",
+    "cucumber:channels": "cucumber-js --tags @channels",
+    "cucumber:messaging": "cucumber-js --tags @messaging",
+    "docker:up": "docker compose -f docker-compose.e2e.yml up -d",
+    "docker:down": "docker compose -f docker-compose.e2e.yml down -v",
+    "docker:logs": "docker compose -f docker-compose.e2e.yml logs -f",
+    "seed": "tsx src/scripts/seed-test-data.ts"
+  },
+  "dependencies": {
+    "@cucumber/cucumber": "^12.4.0",
+    "@teros/core": "*",
+    "@teros/shared": "*",
+    "bcrypt": "^5.1.1",
+    "chai": "^6.2.2",
+    "mongodb": "^6.11.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/chai": "^5.2.3",
+    "@types/node": "^22.10.1",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

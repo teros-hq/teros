@@ -1,0 +1,30 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 6 hexagon points logo with 10% padding on each side -->
+  <!-- Original content scaled to 80% and centered -->
+  
+  <defs>
+    <!-- Gradient covering the scaled content area -->
+    <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#155E75;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Scale factor: 0.8, offset: 51.2 (10% of 512) -->
+  <!-- Original coordinates transformed: newX = x * 0.8 + 51.2, newY = y * 0.8 + 51.2 -->
+  <!-- Circle radius: 35.84 * 0.8 = 28.67 -->
+  
+  <!-- Hexagon points (circles with full-canvas gradient) -->
+  <!-- Top: 256 * 0.8 + 51.2 = 256, 76.8 * 0.8 + 51.2 = 112.64 -->
+  <circle cx="256" cy="112.64" r="28.67" fill="url(#cyanGradient)"/>
+  <!-- Top Right: 411.2 * 0.8 + 51.2 = 380.16, 166.4 * 0.8 + 51.2 = 184.32 -->
+  <circle cx="380.16" cy="184.32" r="28.67" fill="url(#cyanGradient)"/>
+  <!-- Top Left: 100.8 * 0.8 + 51.2 = 131.84, 166.4 * 0.8 + 51.2 = 184.32 -->
+  <circle cx="131.84" cy="184.32" r="28.67" fill="url(#cyanGradient)"/>
+  <!-- Bottom Right: 411.2 * 0.8 + 51.2 = 380.16, 345.6 * 0.8 + 51.2 = 327.68 -->
+  <circle cx="380.16" cy="327.68" r="28.67" fill="url(#cyanGradient)"/>
+  <!-- Bottom Left: 100.8 * 0.8 + 51.2 = 131.84, 345.6 * 0.8 + 51.2 = 327.68 -->
+  <circle cx="131.84" cy="327.68" r="28.67" fill="url(#cyanGradient)"/>
+  <!-- Bottom: 256 * 0.8 + 51.2 = 256, 435.2 * 0.8 + 51.2 = 399.36 -->
+  <circle cx="256" cy="399.36" r="28.67" fill="url(#cyanGradient)"/>
+</svg>

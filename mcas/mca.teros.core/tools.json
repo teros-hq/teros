@@ -1,0 +1,598 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.core",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies connectivity to backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-agents",
+      "description": "List agents owned by the user or in their workspaces.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Optional: Filter agents by workspace ID. If not provided, lists all accessible agents."
+          }
+        }
+      }
+    },
+    {
+      "name": "get-agent",
+      "description": "Get detailed information about a specific agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to retrieve"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "create-agent",
+      "description": "Create a new agent instance from an agent core.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "coreId": {
+            "type": "string",
+            "description": "The agent core ID to use (e.g., 'alice', 'iria')"
+          },
+          "name": {
+            "type": "string",
+            "description": "Short name for the agent (e.g., 'Alice')"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "Full name for the agent (e.g., 'Alice Evergreen')"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role description (e.g., 'Personal Assistant')"
+          },
+          "intro": {
+            "type": "string",
+            "description": "Introduction text for the agent"
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Optional: Workspace ID to create the agent in. If not provided, creates a global agent."
+          }
+        },
+        "required": [
+          "coreId",
+          "name",
+          "fullName",
+          "role",
+          "intro"
+        ]
+      }
+    },
+    {
+      "name": "update-agent",
+      "description": "Update an existing agent's properties.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New short name"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "New full name"
+          },
+          "role": {
+            "type": "string",
+            "description": "New role description"
+          },
+          "intro": {
+            "type": "string",
+            "description": "New introduction text"
+          },
+          "responseStyle": {
+            "type": "string",
+            "description": "Response style (e.g., 'friendly', 'professional', 'concise')"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "URL of the agent avatar image"
+          },
+          "context": {
+            "type": "string",
+            "description": "Agent-specific context that gets injected into the system prompt. Use this to provide agent-specific instructions, guidelines, or knowledge. Supports markdown."
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "delete-agent",
+      "description": "Delete an agent. This also removes all app access grants for the agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to delete"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "list-agent-cores",
+      "description": "List all available agent cores (base personalities/engines).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-agent-apps",
+      "description": "List all apps an agent has access to.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "get-agent-providers",
+      "description": "Get the LLM provider configuration for an agent. Returns the agent's available providers, preferred provider, and selected model.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to query"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "set-agent-providers",
+      "description": "Set the available LLM providers for an agent. This determines which providers the agent can use. Requires workspace access or agent ownership.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to configure"
+          },
+          "providerIds": {
+            "type": "array",
+            "description": "Array of provider IDs to make available to this agent",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "agentId",
+          "providerIds"
+        ]
+      }
+    },
+    {
+      "name": "set-agent-preferred-provider",
+      "description": "Set the preferred LLM provider for an agent. The provider must be in the agent's available providers list. Pass null to clear the preference.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to configure"
+          },
+          "providerId": {
+            "type": "string",
+            "description": "Provider ID to set as preferred (must be in availableProviders), or null to clear"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "list-workspaces",
+      "description": "List workspaces the user owns or is a member of.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-workspace",
+      "description": "Get detailed information about a specific workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to retrieve"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "create-workspace",
+      "description": "Create a new workspace with its own volume.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name for the workspace"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "update-workspace",
+      "description": "Update workspace properties including the context that gets injected into agent system prompts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "context": {
+            "type": "string",
+            "description": "Context text that gets injected into agent system prompts. Use this to provide project-specific information, guidelines, coding standards, or any other context that agents should know. Supports markdown and can be long (multiple paragraphs)."
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "archive-workspace",
+      "description": "Archive a workspace (soft delete). Only the owner can archive.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to archive"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "add-workspace-member",
+      "description": "Add a member to a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "The user ID to add"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "write",
+              "read"
+            ],
+            "description": "Role for the member"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId",
+          "role"
+        ]
+      }
+    },
+    {
+      "name": "remove-workspace-member",
+      "description": "Remove a member from a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "The user ID to remove"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId"
+        ]
+      }
+    },
+    {
+      "name": "update-workspace-member-role",
+      "description": "Update a member's role in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "The user ID"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "write",
+              "read"
+            ],
+            "description": "New role for the member"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId",
+          "role"
+        ]
+      }
+    },
+    {
+      "name": "list-apps",
+      "description": "List apps owned by the user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-app",
+      "description": "Get detailed information about a specific app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app ID to retrieve"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      }
+    },
+    {
+      "name": "install-app",
+      "description": "Install an MCA from the catalog as an app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mcaId": {
+            "type": "string",
+            "description": "The MCA ID to install (e.g., 'mca.teros.bash')"
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional: Custom name for the app. Auto-generated if not provided."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Optional: Install in a workspace. If not provided, installs as a user app."
+          }
+        },
+        "required": [
+          "mcaId"
+        ]
+      }
+    },
+    {
+      "name": "uninstall-app",
+      "description": "Uninstall an app. This also removes all agent access grants.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app ID to uninstall"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      }
+    },
+    {
+      "name": "rename-app",
+      "description": "Rename an installed app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app ID to rename"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the app (lower-kebab-case)"
+          }
+        },
+        "required": [
+          "appId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "list-app-access",
+      "description": "List all agents that have access to an app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app ID"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      }
+    },
+    {
+      "name": "workspace-app-list",
+      "description": "List apps in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to list apps for"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "workspace-agent-list",
+      "description": "List agents in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to list agents for"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "list-catalog",
+      "description": "List all MCAs available in the catalog.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "Optional: Filter by category"
+          },
+          "includeHidden": {
+            "type": "boolean",
+            "description": "Include hidden MCAs (default: false)"
+          }
+        }
+      }
+    },
+    {
+      "name": "list-providers",
+      "description": "List all LLM providers available to the user. Returns providers with their models, status, and configuration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "grant-app-access",
+      "description": "Grant an agent access to an app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent to grant access to"
+          },
+          "appId": {
+            "type": "string",
+            "description": "The app to grant access to"
+          }
+        },
+        "required": [
+          "agentId",
+          "appId"
+        ]
+      }
+    },
+    {
+      "name": "revoke-app-access",
+      "description": "Revoke an agent's access to an app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent to revoke access from"
+          },
+          "appId": {
+            "type": "string",
+            "description": "The app to revoke access to"
+          }
+        },
+        "required": [
+          "agentId",
+          "appId"
+        ]
+      }
+    }
+  ]
+}

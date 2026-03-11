@@ -1,0 +1,260 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.figma",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Personal Access Token and connectivity to Figma.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-file",
+      "description": "Get the full structure of a Figma file including pages, frames, and components.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          },
+          "depth": {
+            "type": "number",
+            "description": "How deep to traverse (default: 2)"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-file-styles",
+      "description": "Get all styles (colors, text, effects) defined in a Figma file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-file-variables",
+      "description": "Get all variables (design tokens) from a Figma file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-node",
+      "description": "Get detailed information about a specific node by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          },
+          "nodeId": {
+            "type": "string",
+            "description": "The node ID"
+          },
+          "depth": {
+            "type": "number",
+            "description": "How deep to traverse children (default: 3)"
+          }
+        },
+        "required": [
+          "fileKey",
+          "nodeId"
+        ]
+      }
+    },
+    {
+      "name": "get-components",
+      "description": "List all components in a Figma file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-component-sets",
+      "description": "List all component sets (variants) in a Figma file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "export-images",
+      "description": "Export nodes as images (PNG, JPG, SVG, or PDF).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          },
+          "nodeIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Node IDs to export"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "png",
+              "jpg",
+              "svg",
+              "pdf"
+            ],
+            "description": "Export format"
+          },
+          "scale": {
+            "type": "number",
+            "description": "Scale factor (0.01 to 4)"
+          }
+        },
+        "required": [
+          "fileKey",
+          "nodeIds"
+        ]
+      }
+    },
+    {
+      "name": "get-comments",
+      "description": "Get all comments on a Figma file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-team-projects",
+      "description": "List all projects in a team. If teamId is not provided, uses the configured TEAM_ID from user secrets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "The team ID (optional if TEAM_ID is configured in user secrets)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-project-files",
+      "description": "List all files in a project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "extract-colors",
+      "description": "Extract all colors used in a file or node, formatted for CSS/Tailwind.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          },
+          "nodeId": {
+            "type": "string",
+            "description": "Optional: specific node ID"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "css",
+              "tailwind",
+              "json"
+            ],
+            "description": "Output format"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "extract-typography",
+      "description": "Extract all typography styles from a file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from Figma URL"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "css",
+              "tailwind",
+              "json"
+            ],
+            "description": "Output format"
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    }
+  ]
+}

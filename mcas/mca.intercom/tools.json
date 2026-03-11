@@ -1,0 +1,136 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.intercom",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Intercom API token and connectivity.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "get-workspace",
+      "description": "Get information about the connected Intercom workspace: name, region, timezone, and the authenticated admin.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "search-conversations",
+      "description": "Search conversations in Intercom with filters by state, date range, tags, and assignee. Returns paginated results with conversation metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "state": { "type": "string", "enum": ["open", "closed", "snoozed"], "description": "Filter by conversation state" },
+          "createdAfter": { "type": "number", "description": "Unix timestamp — only conversations created after this time" },
+          "createdBefore": { "type": "number", "description": "Unix timestamp — only conversations created before this time" },
+          "assigneeId": { "type": "string", "description": "Filter by assigned admin ID" },
+          "teamId": { "type": "string", "description": "Filter by assigned team ID" },
+          "perPage": { "type": "number", "description": "Results per page (default: 20, max: 50)" },
+          "startingAfter": { "type": "string", "description": "Pagination cursor from previous response" }
+        }
+      }
+    },
+    {
+      "name": "get-conversation",
+      "description": "Get the full details of a specific Intercom conversation by ID, including all messages, notes, tags, and assignee.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": { "type": "string", "description": "The Intercom conversation ID" }
+        },
+        "required": ["conversationId"]
+      }
+    },
+    {
+      "name": "reply-conversation",
+      "description": "Reply to an Intercom conversation as an admin. Can send a public reply to the customer or add a private internal note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
+          "body": { "type": "string", "description": "The reply text (plain text or HTML)" },
+          "type": { "type": "string", "enum": ["comment", "note"], "description": "\"comment\" sends a public reply; \"note\" adds a private internal note (default: comment)" },
+          "adminId": { "type": "string", "description": "The admin ID to reply as. If omitted, uses the token owner." }
+        },
+        "required": ["conversationId", "body"]
+      }
+    },
+    {
+      "name": "assign-conversation",
+      "description": "Assign an Intercom conversation to a specific admin or team.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
+          "adminId": { "type": "string", "description": "Admin ID to assign the conversation to" },
+          "teamId": { "type": "string", "description": "Team ID to assign the conversation to" }
+        },
+        "required": ["conversationId"]
+      }
+    },
+    {
+      "name": "update-conversation",
+      "description": "Update a conversation state (open, close, snooze) or priority in Intercom.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
+          "state": { "type": "string", "enum": ["open", "closed", "snoozed"], "description": "New state for the conversation" },
+          "priority": { "type": "string", "enum": ["priority", "not_priority"], "description": "Set or unset priority flag" },
+          "snoozedUntil": { "type": "number", "description": "Unix timestamp — required when state is \"snoozed\"" }
+        },
+        "required": ["conversationId"]
+      }
+    },
+    {
+      "name": "tag-conversation",
+      "description": "Add or remove tags from an Intercom conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
+          "tagIds": { "type": "array", "items": { "type": "string" }, "description": "Tag IDs to add" },
+          "removeTagIds": { "type": "array", "items": { "type": "string" }, "description": "Tag IDs to remove" }
+        },
+        "required": ["conversationId"]
+      }
+    },
+    {
+      "name": "list-admins",
+      "description": "List all admins (agents) in the Intercom workspace with their IDs, names, emails, and seat status.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "list-teams",
+      "description": "List all teams in the Intercom workspace with their IDs, names, and member counts.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "list-tags",
+      "description": "List all tags defined in the Intercom workspace. Useful for finding tag IDs before tagging conversations.",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "get-contact",
+      "description": "Get details of an Intercom contact (user or lead) by their Intercom ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": { "type": "string", "description": "The Intercom contact ID" }
+        },
+        "required": ["contactId"]
+      }
+    },
+    {
+      "name": "search-contacts",
+      "description": "Search Intercom contacts by email, name, or phone number.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": { "type": "string", "description": "Filter by exact email address" },
+          "name": { "type": "string", "description": "Filter by name (partial match)" },
+          "phone": { "type": "string", "description": "Filter by phone number" },
+          "perPage": { "type": "number", "description": "Results per page (default: 20, max: 50)" }
+        }
+      }
+    }
+  ]
+}

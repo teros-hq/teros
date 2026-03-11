@@ -1,0 +1,17 @@
+{
+  "name": "@teros/mca-notion",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "@teros/mca-sdk": "0.1.0",
+    "@teros/shared": "2.0.0"
+  }
+}

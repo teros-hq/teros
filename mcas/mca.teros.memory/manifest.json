@@ -1,0 +1,48 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.memory",
+  "name": "Memory & Vector DB",
+  "version": "2.0.0",
+  "description": "Multi-agent memory system with vector search. Each agent has isolated memory collections.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "memory",
+    "vector",
+    "qdrant",
+    "knowledge",
+    "conversations",
+    "search"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": [
+        "QDRANT_URL",
+        "QDRANT_API_KEY"
+      ]
+    },
+    "agent": false
+  }
+}

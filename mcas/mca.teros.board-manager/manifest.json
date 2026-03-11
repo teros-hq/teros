@@ -1,0 +1,44 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.board-manager",
+  "name": "Board Manager",
+  "version": "2.0.0",
+  "description": "Full board management capabilities for coordinator and supervisor agents. Provides complete control over projects, boards, and tasks \u2014 including creating, assigning, updating, moving, and deleting tasks. Designed for agents that orchestrate work across multiple workers, manage priorities, and oversee the full lifecycle of a project board.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": [],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "boards",
+    "projects",
+    "tasks",
+    "kanban",
+    "manager",
+    "coordinator",
+    "orchestrator"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

@@ -1,0 +1,550 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.notion",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Notion API token and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search for pages and databases by title. Searches across all content shared with the integration.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query text"
+          },
+          "filter": {
+            "type": "string",
+            "description": "Filter results by type: 'page' or 'database' (optional)",
+            "enum": [
+              "page",
+              "database"
+            ]
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort results by: 'last_edited_time' (optional, descending)",
+            "enum": [
+              "last_edited_time"
+            ]
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "get-page",
+      "description": "Retrieve a page by its ID. Returns page properties and metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page to retrieve (can be with or without dashes)"
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      }
+    },
+    {
+      "name": "get-page-content",
+      "description": "Retrieve the full content/blocks of a page as formatted text. Set includeBlocks=true only when you need block IDs for editing operations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page"
+          },
+          "includeBlocks": {
+            "type": "boolean",
+            "description": "Include raw block data with IDs (default: false). Only set to true when you need to edit/insert blocks."
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      }
+    },
+    {
+      "name": "create-page",
+      "description": "Create a new page in a database or as a child of an existing page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "Parent page ID or database ID"
+          },
+          "parentType": {
+            "type": "string",
+            "description": "Type of parent: 'page' or 'database'",
+            "enum": [
+              "page",
+              "database"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Page title (optional when properties object is provided for database pages)"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Complete properties object for database pages (optional). When provided for database pages, this will be used as-is without modification."
+          }
+        },
+        "required": [
+          "parentId",
+          "parentType"
+        ]
+      }
+    },
+    {
+      "name": "update-page",
+      "description": "Update page properties (title, status, etc.) or archive/restore the page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page to update"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Properties to update (depends on database schema)"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Archive or restore the page (optional)"
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      }
+    },
+    {
+      "name": "set-page-icon",
+      "description": "Set or update a page's icon (emoji or external image URL).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page"
+          },
+          "iconType": {
+            "type": "string",
+            "description": "Type of icon: 'emoji' or 'external'",
+            "enum": [
+              "emoji",
+              "external"
+            ]
+          },
+          "icon": {
+            "type": "string",
+            "description": "Emoji character (if iconType is 'emoji') or URL (if iconType is 'external')"
+          }
+        },
+        "required": [
+          "pageId",
+          "iconType",
+          "icon"
+        ]
+      }
+    },
+    {
+      "name": "set-page-cover",
+      "description": "Set or update a page's cover image from an external URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page"
+          },
+          "coverUrl": {
+            "type": "string",
+            "description": "URL of the cover image"
+          }
+        },
+        "required": [
+          "pageId",
+          "coverUrl"
+        ]
+      }
+    },
+    {
+      "name": "duplicate-page",
+      "description": "Duplicate a page with all its content and properties.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page to duplicate"
+          },
+          "newTitle": {
+            "type": "string",
+            "description": "Title for the duplicated page (optional, defaults to 'Copy of [original title]')"
+          },
+          "targetParentId": {
+            "type": "string",
+            "description": "ID of the parent page/database where to place the duplicate (optional, defaults to same parent)"
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      }
+    },
+    {
+      "name": "get-database",
+      "description": "Retrieve a database by its ID. Returns database schema and properties.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "The ID of the database"
+          }
+        },
+        "required": [
+          "databaseId"
+        ]
+      }
+    },
+    {
+      "name": "query-database",
+      "description": "Query database entries with optional filters and sorts. Returns compact results by default (just titles). Use properties parameter to get specific fields.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "The ID of the database to query"
+          },
+          "filter": {
+            "type": "object",
+            "description": "Filter object (optional, see Notion API docs for syntax)"
+          },
+          "sorts": {
+            "type": "array",
+            "description": "Array of sort objects (optional)",
+            "items": {
+              "type": "object"
+            }
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Number of results per page (max 100, default 100)"
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Cursor for pagination. Use next_cursor from previous response to get next page."
+          },
+          "properties": {
+            "type": "array",
+            "description": "Array of property names to include in results. If not provided, returns only title/name. Use [\"*\"] to get all properties.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "databaseId"
+        ]
+      }
+    },
+    {
+      "name": "create-database",
+      "description": "Create a new database as a child of a page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parentPageId": {
+            "type": "string",
+            "description": "Parent page ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Database title"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Database schema properties (e.g., {Name: {title: {}}, Status: {select: {options: [...]}}})"
+          }
+        },
+        "required": [
+          "parentPageId",
+          "title",
+          "properties"
+        ]
+      }
+    },
+    {
+      "name": "update-database-schema",
+      "description": "Update database schema by adding, modifying, or removing properties (columns). To remove a property, set its value to null.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "The ID of the database to update"
+          },
+          "properties": {
+            "type": "object",
+            "description": "Properties to add or modify. To remove a property, set its value to null."
+          },
+          "title": {
+            "type": "string",
+            "description": "New database title (optional)"
+          },
+          "description": {
+            "type": "string",
+            "description": "New database description (optional)"
+          }
+        },
+        "required": [
+          "databaseId",
+          "properties"
+        ]
+      }
+    },
+    {
+      "name": "get-block",
+      "description": "Retrieve a specific block by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The ID of the block"
+          }
+        },
+        "required": [
+          "blockId"
+        ]
+      }
+    },
+    {
+      "name": "get-block-children",
+      "description": "Retrieve children blocks of a block or page. Returns formatted text by default. Set includeBlocks=true only when you need block IDs for editing operations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The ID of the block or page"
+          },
+          "includeBlocks": {
+            "type": "boolean",
+            "description": "Include raw block data with IDs (default: false). Only set to true when you need to edit/insert blocks."
+          }
+        },
+        "required": [
+          "blockId"
+        ]
+      }
+    },
+    {
+      "name": "append-blocks",
+      "description": "Append content blocks to a page or block.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The ID of the page or block to append to"
+          },
+          "blocks": {
+            "type": "array",
+            "description": "Array of block objects to append (see Notion API docs for block format)",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "blockId",
+          "blocks"
+        ]
+      }
+    },
+    {
+      "name": "update-block",
+      "description": "Update a block's content. The content structure depends on the block type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The ID of the block to update"
+          },
+          "content": {
+            "type": "object",
+            "description": "Block content object (depends on block type, see Notion API docs)"
+          }
+        },
+        "required": [
+          "blockId",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "delete-block",
+      "description": "Delete (archive) a block.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The ID of the block to delete"
+          }
+        },
+        "required": [
+          "blockId"
+        ]
+      }
+    },
+    {
+      "name": "create-column-layout",
+      "description": "Create a column layout with multiple columns containing blocks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page to add columns to"
+          },
+          "columns": {
+            "type": "array",
+            "description": "Array of column blocks. Each column contains an array of blocks.",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "pageId",
+          "columns"
+        ]
+      }
+    },
+    {
+      "name": "create-advanced-blocks",
+      "description": "Create advanced block types: callout with custom icon/color, toggle with children, synced blocks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The ID of the page"
+          },
+          "blockType": {
+            "type": "string",
+            "description": "Type of advanced block: 'callout', 'toggle', 'synced_block'",
+            "enum": [
+              "callout",
+              "toggle",
+              "synced_block"
+            ]
+          },
+          "content": {
+            "type": "object",
+            "description": "Block configuration (depends on blockType)"
+          }
+        },
+        "required": [
+          "pageId",
+          "blockType",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "list-users",
+      "description": "List all users in the workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Retrieve a user by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "The ID of the user"
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      }
+    },
+    {
+      "name": "get-me",
+      "description": "Retrieve the bot user information (your integration).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-comments",
+      "description": "List comments on a page or block.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "The block or page ID"
+          }
+        },
+        "required": [
+          "blockId"
+        ]
+      }
+    },
+    {
+      "name": "create-comment",
+      "description": "Create a comment on a page or discussion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "The page ID to comment on (optional if discussionId is provided)"
+          },
+          "discussionId": {
+            "type": "string",
+            "description": "The discussion ID to comment on (optional if pageId is provided)"
+          },
+          "text": {
+            "type": "string",
+            "description": "Comment text"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    }
+  ]
+}

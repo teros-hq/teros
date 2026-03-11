@@ -1,0 +1,485 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.railway",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Railway API token and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "railway-get-user",
+      "description": "Get current Railway user info including available workspaces.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "railway-list-workspaces",
+      "description": "List all Railway workspaces available to the current user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "railway-list-projects",
+      "description": "List all Railway projects in the connected account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "railway-get-project",
+      "description": "Get detailed information about a Railway project including services and environments.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "railway-create-project",
+      "description": "Create a new Railway project. Requires a workspaceId - use railway-list-workspaces to get available workspaces.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID to create the project in (use railway-list-workspaces to get IDs)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional project description"
+          }
+        },
+        "required": [
+          "name",
+          "workspaceId"
+        ]
+      }
+    },
+    {
+      "name": "railway-delete-project",
+      "description": "Delete a Railway project. This action is irreversible!",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID to delete"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "railway-list-environments",
+      "description": "List all environments in a Railway project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "railway-create-environment",
+      "description": "Create a new environment in a Railway project (e.g., staging, production).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Environment name (e.g., \"staging\", \"production\")"
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "railway-list-services",
+      "description": "List all services in a Railway project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "railway-create-service",
+      "description": "Create a new service in a Railway project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Service name (e.g., \"web\", \"api\", \"worker\")"
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ]
+      }
+    },
+    {
+      "name": "railway-delete-service",
+      "description": "Delete a service from a Railway project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID to delete"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      }
+    },
+    {
+      "name": "railway-list-variables",
+      "description": "List environment variables for a service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-set-variables",
+      "description": "Set environment variables for a service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          },
+          "variables": {
+            "type": "object",
+            "description": "Key-value pairs of environment variables to set",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId",
+          "variables"
+        ]
+      }
+    },
+    {
+      "name": "railway-list-deployments",
+      "description": "List recent deployments for a service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-get-deployment",
+      "description": "Get the status of a specific deployment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "description": "The Railway deployment ID"
+          }
+        },
+        "required": [
+          "deploymentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-redeploy",
+      "description": "Trigger a redeploy of an existing deployment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "description": "The Railway deployment ID to redeploy"
+          }
+        },
+        "required": [
+          "deploymentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-list-domains",
+      "description": "List domains for a service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-create-domain",
+      "description": "Create a Railway-generated domain for a service (e.g., myapp.up.railway.app).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          }
+        },
+        "required": [
+          "serviceId",
+          "environmentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-connect-repo",
+      "description": "Connect a GitHub repository to a Railway service. Works with both public and private repos (if GitHub is connected in your Railway account). Automatically triggers a deployment.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "repo": {
+            "type": "string",
+            "description": "GitHub repository in format \"owner/repo\" (e.g., \"myuser/myapp\")"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to deploy from (default: \"main\")"
+          }
+        },
+        "required": [
+          "serviceId",
+          "repo"
+        ]
+      }
+    },
+    {
+      "name": "railway-deploy-public-repo",
+      "description": "Deploy a public GitHub repository to Railway. Creates a new service from the repo. Only works with PUBLIC repositories. For private repos, use railway-connect-repo instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Public GitHub repository in format \"owner/repo\" (e.g., \"myuser/myapp\")"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to deploy from (default: \"main\")"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID (optional)"
+          }
+        },
+        "required": [
+          "projectId",
+          "repo"
+        ]
+      }
+    },
+    {
+      "name": "railway-create-volume",
+      "description": "Create a persistent volume for a service (useful for databases).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Railway project ID"
+          },
+          "serviceId": {
+            "type": "string",
+            "description": "The Railway service ID"
+          },
+          "environmentId": {
+            "type": "string",
+            "description": "The Railway environment ID"
+          },
+          "mountPath": {
+            "type": "string",
+            "description": "Path to mount the volume (e.g., \"/data/db\" for MongoDB)"
+          }
+        },
+        "required": [
+          "projectId",
+          "serviceId",
+          "environmentId",
+          "mountPath"
+        ]
+      }
+    },
+    {
+      "name": "railway-get-build-logs",
+      "description": "Get build logs for a deployment. Shows what happened during the build/compile phase.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "description": "The deployment ID to get build logs for"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of log lines to return (default: 100, max: 500)",
+            "default": 100
+          },
+          "filter": {
+            "type": "string",
+            "description": "Optional text filter to search within logs"
+          }
+        },
+        "required": [
+          "deploymentId"
+        ]
+      }
+    },
+    {
+      "name": "railway-get-deploy-logs",
+      "description": "Get runtime/deployment logs for a deployment. Shows application output, errors, and startup logs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "deploymentId": {
+            "type": "string",
+            "description": "The deployment ID to get runtime logs for"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of log lines to return (default: 100, max: 500)",
+            "default": 100
+          },
+          "filter": {
+            "type": "string",
+            "description": "Optional text filter to search within logs"
+          }
+        },
+        "required": [
+          "deploymentId"
+        ]
+      }
+    }
+  ]
+}

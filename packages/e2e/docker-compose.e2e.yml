@@ -1,0 +1,36 @@
+# Docker Compose for E2E Testing
+# 
+# Provides MongoDB for testing. Backend runs locally.
+#
+# Usage:
+#   docker compose -f docker-compose.e2e.yml up -d
+#   # Start backend separately: cd ../backend && E2E_MODE=true yarn dev
+#   yarn test
+#   docker compose -f docker-compose.e2e.yml down -v
+
+services:
+  # MongoDB for E2E tests (ephemeral)
+  mongodb-e2e:
+    image: mongo:7.0
+    container_name: teros-mongodb-e2e
+    ports:
+      - "127.0.0.1:27018:27017"
+    environment:
+      MONGO_INITDB_DATABASE: teros_e2e
+    # No volumes - data is ephemeral
+    tmpfs:
+      - /data/db
+      - /data/configdb
+    networks:
+      - teros-e2e-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+networks:
+  teros-e2e-network:
+    driver: bridge
+    name: teros-e2e-network

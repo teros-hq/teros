@@ -1,0 +1,452 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.canva",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Canva.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Get the current authenticated user's ID and team ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-user-profile",
+      "description": "Get the current user's profile including display name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-designs",
+      "description": "List all designs in the user's account. Supports search, filtering, and sorting.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search term to filter designs"
+          },
+          "ownership": {
+            "type": "string",
+            "enum": [
+              "any",
+              "owned",
+              "shared"
+            ],
+            "description": "Filter by ownership"
+          },
+          "sortBy": {
+            "type": "string",
+            "enum": [
+              "relevance",
+              "modified_descending",
+              "modified_ascending",
+              "title_descending",
+              "title_ascending"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default: 25, max: 100)"
+          },
+          "continuation": {
+            "type": "string",
+            "description": "Pagination token"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-design",
+      "description": "Get metadata for a specific design by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "The design ID"
+          }
+        },
+        "required": [
+          "designId"
+        ]
+      }
+    },
+    {
+      "name": "create-design",
+      "description": "Create a new Canva design.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Name for the new design"
+          },
+          "designType": {
+            "type": "string",
+            "enum": [
+              "doc",
+              "whiteboard",
+              "presentation",
+              "custom"
+            ]
+          },
+          "width": {
+            "type": "number",
+            "description": "Width in pixels (for custom type)"
+          },
+          "height": {
+            "type": "number",
+            "description": "Height in pixels (for custom type)"
+          },
+          "assetId": {
+            "type": "string",
+            "description": "Asset ID to add to design"
+          }
+        },
+        "required": [
+          "designType"
+        ]
+      }
+    },
+    {
+      "name": "export-design",
+      "description": "Start an export job for a design.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "The design ID"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "png",
+              "jpg",
+              "gif",
+              "pptx",
+              "mp4"
+            ]
+          },
+          "quality": {
+            "type": "number",
+            "description": "JPEG quality 1-100"
+          },
+          "width": {
+            "type": "number",
+            "description": "Export width"
+          },
+          "height": {
+            "type": "number",
+            "description": "Export height"
+          },
+          "pages": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Pages to export"
+          }
+        },
+        "required": [
+          "designId",
+          "format"
+        ]
+      }
+    },
+    {
+      "name": "get-export-job",
+      "description": "Get the status and result of an export job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "exportId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "exportId"
+        ]
+      }
+    },
+    {
+      "name": "list-folders",
+      "description": "List items in a folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Folder ID ('root' for top-level)"
+          },
+          "itemTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sortBy": {
+            "type": "string"
+          },
+          "continuation": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      }
+    },
+    {
+      "name": "get-folder",
+      "description": "Get metadata for a folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      }
+    },
+    {
+      "name": "create-folder",
+      "description": "Create a new folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "parentFolderId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "parentFolderId"
+        ]
+      }
+    },
+    {
+      "name": "move-item",
+      "description": "Move an item to another folder.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string"
+          },
+          "toFolderId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "itemId",
+          "toFolderId"
+        ]
+      }
+    },
+    {
+      "name": "upload-asset",
+      "description": "Upload an asset from a URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "get-asset-upload-job",
+      "description": "Get the status of an asset upload job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      }
+    },
+    {
+      "name": "get-asset",
+      "description": "Get metadata for an asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      }
+    },
+    {
+      "name": "delete-asset",
+      "description": "Delete an asset.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      }
+    },
+    {
+      "name": "list-brand-templates",
+      "description": "List brand templates (requires Canva Enterprise).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "ownership": {
+            "type": "string"
+          },
+          "continuation": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-brand-template",
+      "description": "Get metadata for a brand template.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "brandTemplateId"
+        ]
+      }
+    },
+    {
+      "name": "get-brand-template-dataset",
+      "description": "Get autofill fields for a brand template.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "brandTemplateId"
+        ]
+      }
+    },
+    {
+      "name": "autofill-design",
+      "description": "Create a design by autofilling a brand template.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "brandTemplateId",
+          "data"
+        ]
+      }
+    },
+    {
+      "name": "get-autofill-job",
+      "description": "Get the status of an autofill job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      }
+    },
+    {
+      "name": "import-design",
+      "description": "Import an external file as a Canva design.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "mimeType": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "get-import-job",
+      "description": "Get the status of a design import job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      }
+    }
+  ]
+}

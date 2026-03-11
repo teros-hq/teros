@@ -1,0 +1,39 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.webfetch",
+  "tools": [
+    {
+      "name": "webfetch",
+      "description": "Fetch content from a URL and convert to text, markdown, or HTML format. Supports intelligent content extraction and format conversion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to fetch content from (must start with http:// or https://)"
+          },
+          "format": {
+            "type": "string",
+            "description": "The format to return the content in",
+            "enum": [
+              "text",
+              "markdown",
+              "html"
+            ]
+          },
+          "timeout": {
+            "type": "number",
+            "description": "Optional timeout in seconds (default: 30, max: 120)",
+            "minimum": 1,
+            "maximum": 120,
+            "default": 30
+          }
+        },
+        "required": [
+          "url",
+          "format"
+        ]
+      }
+    }
+  ]
+}

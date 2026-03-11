@@ -1,0 +1,49 @@
+{
+  "name": "teros",
+  "version": "1.0.0-alpha",
+  "private": true,
+  "packageManager": "yarn@1.22.22",
+  "workspaces": [
+    "packages/*",
+    "mcas/*"
+  ],
+  "scripts": {
+    "sync": "yarn workspace @teros/backend sync",
+    "dev:backend": "yarn workspace @teros/backend dev",
+    "dev:app": "yarn workspace @teros/app start",
+    "start:backend": "yarn workspace @teros/backend start",
+    "start:app": "yarn workspace @teros/app start",
+    "build": "yarn build:shared && yarn build:core && yarn build:backend",
+    "build:shared": "yarn workspace @teros/shared build",
+    "build:core": "yarn workspace @teros/core build",
+    "build:backend": "yarn workspace @teros/backend build",
+    "build:ios:preview": "cd packages/app && ./scripts/build-ios.sh preview",
+    "build:ios:production": "cd packages/app && ./scripts/build-ios.sh production",
+    "test": "yarn test:core && yarn test:backend",
+    "test:core": "yarn workspace @teros/core test",
+    "test:backend": "yarn workspace @teros/backend test",
+    "test:watch": "yarn workspace @teros/backend test --watch",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "init:system-provider": "bun run packages/backend/src/scripts/init-system-provider.ts"
+  },
+  "resolutions": {
+    "@expo/vector-icons": "15.0.3",
+    "expo": "54.0.29",
+    "expo-constants": "18.0.12",
+    "expo-font": "14.0.10",
+    "expo-linking": "8.0.10",
+    "expo-router": "6.0.19",
+    "expo-secure-store": "15.0.8",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "**/send/mime": "1.6.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
+    "@types/node": "^22.10.1",
+    "typescript": "^5.7.2"
+  }
+}

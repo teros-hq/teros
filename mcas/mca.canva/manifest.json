@@ -1,0 +1,79 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.canva",
+  "name": "Canva",
+  "version": "0.9.0",
+  "description": "Canva design management - create, export, and manage designs via Canva Connect API",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "design",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+  "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "EXPIRY_DATE"],
+  "auth": {
+    "type": "oauth2",
+    "provider": "canva",
+    "authorizeUrl": "https://www.canva.com/api/oauth/authorize",
+    "tokenUrl": "https://api.canva.com/rest/v1/oauth/token",
+    "scopes": [
+      "design:content:read",
+      "design:content:write",
+      "design:meta:read",
+      "folder:read",
+      "folder:write",
+      "asset:read",
+      "asset:write",
+      "brandtemplate:meta:read",
+      "brandtemplate:content:read",
+      "profile:read"
+    ],
+    "pkce": true,
+    "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+    "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["canva", "design", "graphics", "templates", "export"],
+  "image": "https://www.canva.com/favicon.ico",
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "canva",
+      "authorizeUrl": "https://www.canva.com/api/oauth/authorize",
+      "tokenUrl": "https://api.canva.com/rest/v1/oauth/token",
+      "scopes": [
+        "design:content:read",
+        "design:content:write",
+        "design:meta:read",
+        "folder:read",
+        "folder:write",
+        "asset:read",
+        "asset:write",
+        "brandtemplate:meta:read",
+        "brandtemplate:content:read",
+        "profile:read"
+      ],
+      "pkce": true,
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+    },
+    "agent": false
+  }
+}

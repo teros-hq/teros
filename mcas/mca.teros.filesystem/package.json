@@ -1,0 +1,11 @@
+{
+  "name": "@teros/mca-filesystem",
+  "version": "2.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@teros/mca-sdk": "file:../../packages/mca-sdk",
+    "glob": "^11.0.0"
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.filesystem",
+  "tools": [
+    {
+      "name": "read",
+      "description": "Read file contents with optional offset and limit. Returns up to 2000 lines by default with line numbers (cat -n format).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file to read (relative to /workspace or absolute)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Line number to start reading from (0-based, optional)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of lines to read (default: 2000, optional)"
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      }
+    },
+    {
+      "name": "write",
+      "description": "Write content to a file (creates new file or overwrites existing). IMPORTANT: You must read the file first using filesystem_read before overwriting it. ALWAYS prefer filesystem_edit for modifying existing files to prevent data loss.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file to write"
+          },
+          "content": {
+            "type": "string",
+            "description": "Content to write to the file"
+          }
+        },
+        "required": [
+          "filePath",
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "edit",
+      "description": "Edit file by replacing exact string matches. SAFETY: If oldString appears multiple times, you MUST provide more context to make it unique, or use replaceAll. This prevents accidental changes. Preserves indentation exactly as in the original file.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file to edit"
+          },
+          "oldString": {
+            "type": "string",
+            "description": "Exact text to replace (must match exactly, including indentation). If this appears multiple times in the file, provide more surrounding context to make it unique."
+          },
+          "newString": {
+            "type": "string",
+            "description": "Text to replace it with (must preserve indentation to match surrounding code)"
+          },
+          "replaceAll": {
+            "type": "boolean",
+            "description": "Replace all occurrences in the file (useful for renaming variables). Default: false for safety.",
+            "default": false
+          }
+        },
+        "required": [
+          "filePath",
+          "oldString",
+          "newString"
+        ]
+      }
+    },
+    {
+      "name": "list",
+      "description": "List files and directories in a path with details (size, modified date, permissions).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to directory (optional, defaults to /workspace)"
+          },
+          "ignore": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of glob patterns to ignore (optional)"
+          }
+        }
+      }
+    },
+    {
+      "name": "search-files",
+      "description": "Search for files by glob pattern (e.g., '**/*.ts', 'src/**/*.json'). Fast file pattern matching.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Glob pattern to match files"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory to search in (optional, defaults to /workspace)"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "search-content",
+      "description": "Search file contents using regex. Returns files with matches sorted by modification time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "description": "Regex pattern to search for in file contents"
+          },
+          "path": {
+            "type": "string",
+            "description": "Directory to search in (optional, defaults to /workspace)"
+          },
+          "include": {
+            "type": "string",
+            "description": "File pattern to include (e.g., '*.js', '*.{ts,tsx}')"
+          }
+        },
+        "required": [
+          "pattern"
+        ]
+      }
+    },
+    {
+      "name": "delete",
+      "description": "Delete a file or directory (recursive). Use with caution.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Path to file or directory to delete"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Delete directory recursively (default: false)",
+            "default": false
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    },
+    {
+      "name": "copy",
+      "description": "Copy a file to another location",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Source file path"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination file path"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "move",
+      "description": "Move or rename a file/directory",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "description": "Source path"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination path"
+          }
+        },
+        "required": [
+          "source",
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "mkdir",
+      "description": "Create a directory (with parents if needed)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Directory path to create"
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Create parent directories if needed (default: true)",
+            "default": true
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  ]
+}

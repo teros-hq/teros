@@ -1,0 +1,12 @@
+{
+  "name": "mca-intercom",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts"
+  },
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0"
+  }
+}

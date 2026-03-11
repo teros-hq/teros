@@ -1,0 +1,472 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.linear",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Linear API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "linear-list-issues",
+      "description": "List issues with optional filtering",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status (e.g., 'Backlog', 'In Progress')"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Filter by assignee ID"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Filter by priority"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of issues to return",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "linear-get-issue",
+      "description": "Get detailed issue information",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID to retrieve"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "linear-create-issue",
+      "description": "Create a new issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Issue title"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Team ID (required)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Issue description"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Assignee ID"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Issue priority",
+            "default": "medium"
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label IDs to add"
+          }
+        },
+        "required": [
+          "title",
+          "teamId"
+        ]
+      }
+    },
+    {
+      "name": "linear-update-issue",
+      "description": "Update an existing issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID to update"
+          },
+          "title": {
+            "type": "string",
+            "description": "Updated issue title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Updated issue description"
+          },
+          "statusId": {
+            "type": "string",
+            "description": "Updated status ID"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Updated assignee ID"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Updated priority"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "linear-list-teams",
+      "description": "List all teams",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "linear-list-users",
+      "description": "List all users in workspace",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID"
+          }
+        }
+      }
+    },
+    {
+      "name": "linear-add-comment",
+      "description": "Add comment to an issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID to comment on"
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment content"
+          }
+        },
+        "required": [
+          "issueId",
+          "body"
+        ]
+      }
+    },
+    {
+      "name": "linear-delete-issue",
+      "description": "Permanently delete an issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID to delete"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "linear-archive-issue",
+      "description": "Archive an issue (soft delete)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID to archive"
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      }
+    },
+    {
+      "name": "linear-list-projects",
+      "description": "List all projects",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of projects to return",
+            "default": 50
+          }
+        }
+      }
+    },
+    {
+      "name": "linear-create-project",
+      "description": "Create a new project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "teamIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Team IDs that own this project"
+          },
+          "description": {
+            "type": "string",
+            "description": "Project description"
+          }
+        },
+        "required": [
+          "name",
+          "teamIds"
+        ]
+      }
+    },
+    {
+      "name": "linear-list-labels",
+      "description": "List all labels",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID"
+          }
+        }
+      }
+    },
+    {
+      "name": "linear-create-label",
+      "description": "Create a new label",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Label name"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Team ID (required for team-specific labels)"
+          },
+          "color": {
+            "type": "string",
+            "description": "Label color in hex format (e.g., '#FF5733')"
+          },
+          "description": {
+            "type": "string",
+            "description": "Label description"
+          }
+        },
+        "required": [
+          "name",
+          "teamId"
+        ]
+      }
+    },
+    {
+      "name": "linear-update-label",
+      "description": "Update an existing label",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "Label ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New label name"
+          },
+          "color": {
+            "type": "string",
+            "description": "New label color in hex format"
+          },
+          "description": {
+            "type": "string",
+            "description": "New label description"
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      }
+    },
+    {
+      "name": "linear-delete-label",
+      "description": "Delete a label",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "Label ID to delete"
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      }
+    },
+    {
+      "name": "linear-add-labels-to-issue",
+      "description": "Add labels to an issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID"
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label IDs to add"
+          }
+        },
+        "required": [
+          "issueId",
+          "labelIds"
+        ]
+      }
+    },
+    {
+      "name": "linear-remove-labels-from-issue",
+      "description": "Remove labels from an issue",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue ID"
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label IDs to remove"
+          }
+        },
+        "required": [
+          "issueId",
+          "labelIds"
+        ]
+      }
+    },
+    {
+      "name": "linear-list-workflow-states",
+      "description": "List workflow states for a team",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Team ID"
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      }
+    },
+    {
+      "name": "linear-add-issues-to-project",
+      "description": "Add one or multiple issues to a project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to add issues to"
+          },
+          "issueIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of issue IDs to add to the project"
+          }
+        },
+        "required": [
+          "projectId",
+          "issueIds"
+        ]
+      }
+    },
+    {
+      "name": "linear-remove-issues-from-project",
+      "description": "Remove one or multiple issues from their project",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of issue IDs to remove from their project"
+          }
+        },
+        "required": [
+          "issueIds"
+        ]
+      }
+    }
+  ]
+}

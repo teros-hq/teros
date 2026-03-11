@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.figma",
+  "name": "Figma",
+  "version": "0.9.0",
+  "description": "Access Figma design files, extract styles, components, design tokens, and export assets. Perfect for design-to-code workflows.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "design",
+  "entrypoint": "./mcp/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "userSecrets": ["PERSONAL_ACCESS_TOKEN", "TEAM_ID"],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["figma", "design", "ui", "ux", "styles", "components", "tokens", "css", "tailwind"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

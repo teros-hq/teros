@@ -1,0 +1,40 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.admin",
+  "tools": [
+    {
+      "name": "admin-backend-status",
+      "description": "Get current status of the Teros backend including uptime, memory usage, process info, and number of running MCAs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "admin-restart-backend",
+      "description": "Restart the Teros backend server. This will gracefully shutdown all MCA processes and restart the backend. Use with caution - this will temporarily interrupt service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Confirmation flag - must be true to proceed with restart"
+          }
+        },
+        "required": [
+          "confirm"
+        ]
+      }
+    },
+    {
+      "name": "admin-sync",
+      "description": "Sync MCAs, models, and tools from filesystem to database. Run this after adding or modifying MCAs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ]
+}

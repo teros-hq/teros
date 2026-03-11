@@ -1,0 +1,34 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.admin.bash",
+  "name": "Bash (Admin)",
+  "version": "0.9.0",
+  "description": "Execute bash commands directly on the host system. Admin-only access for system administration tasks.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "runtime": {
+    "transport": "stdio"
+  },
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "admin"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "keywords": ["bash", "shell", "command", "terminal", "system", "admin", "host"]
+}

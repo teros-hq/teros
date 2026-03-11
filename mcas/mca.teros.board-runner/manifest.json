@@ -1,0 +1,43 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.board-runner",
+  "name": "Board Runner",
+  "version": "2.0.0",
+  "description": "Task execution capabilities for worker agents. Provides access to assigned tasks only \u2014 view task details, update progress, move tasks through workflow stages, and add progress notes. To propose new tasks or escalate blockers, use the notes field with the 'PROPUESTA:' prefix so the supervisor can act on it.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": [],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "boards",
+    "projects",
+    "tasks",
+    "kanban",
+    "runner",
+    "worker"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

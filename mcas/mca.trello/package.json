@@ -1,0 +1,12 @@
+{
+  "name": "mca.trello",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "marked": "^15.0.6"
+  }
+}

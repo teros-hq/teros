@@ -1,0 +1,35 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.webfetch",
+  "name": "Web Fetch",
+  "version": "0.9.0",
+  "description": "Fetch and extract content from web pages. Supports HTML, text, and markdown formats with intelligent conversion.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "data",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["web", "fetch", "scraping", "html", "markdown", "content"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

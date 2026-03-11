@@ -1,0 +1,13 @@
+{
+  "name": "mca-teros-feedback",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "mongodb": "^6.12.0"
+  }
+}

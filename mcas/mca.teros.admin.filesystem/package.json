@@ -1,0 +1,10 @@
+{
+  "name": "@teros/mca-admin-filesystem",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "glob": "^11.0.0"
+  }
+}

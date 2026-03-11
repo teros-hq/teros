@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- 6 hexagon points logo - only balls, transparent background -->
+  <!-- Gradient: Cyan 500 (#06B6D4) top to Cyan 800 (#155E75) bottom -->
+  
+  <defs>
+    <!-- Gradient covering full canvas height -->
+    <linearGradient id="cyanGradient" x1="0%" y1="0%" x2="0%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#155E75;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Hexagon points (circles with full-canvas gradient) -->
+  <!-- Top - cyan-500 -->
+  <circle cx="256" cy="76.8" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Top Right - cyan-500/600 -->
+  <circle cx="411.2" cy="166.4" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Top Left - cyan-500/600 -->
+  <circle cx="100.8" cy="166.4" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom Right - cyan-700 -->
+  <circle cx="411.2" cy="345.6" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom Left - cyan-700 -->
+  <circle cx="100.8" cy="345.6" r="35.84" fill="url(#cyanGradient)"/>
+  <!-- Bottom - cyan-800 -->
+  <circle cx="256" cy="435.2" r="35.84" fill="url(#cyanGradient)"/>
+</svg>

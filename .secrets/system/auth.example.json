@@ -1,0 +1,3 @@
+{
+  "sessionTokenSecret": "CHANGE_THIS_TO_A_RANDOM_SECRET_KEY_AT_LEAST_32_CHARS"
+}

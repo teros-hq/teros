@@ -1,0 +1,36 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.playwright",
+  "name": "Playwright",
+  "version": "0.9.1",
+  "description": "Browser automation and web scraping via Playwright. Navigate, interact, take screenshots, and extract data from web pages.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime-playwright"
+  },
+  "keywords": ["browser", "playwright", "automation", "web", "scraping", "screenshot"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

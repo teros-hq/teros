@@ -1,0 +1,11 @@
+{
+  "name": "mca.teros.mca-manager",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun src/index.ts"
+  },
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0"
+  }
+}

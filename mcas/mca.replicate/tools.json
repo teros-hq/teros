@@ -1,0 +1,89 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.replicate",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Replicate API token and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "replicate-list-models",
+      "description": "Discover models available on Replicate and their exact input parameters. Three modes: (1) collection: list models in a category (e.g. \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\"). (2) query: search models by name or description. (3) model: get the full input/output schema for a specific model in \"owner/name\" format (e.g. \"google/veo-3.1\") — use this before replicate-run to know exactly what parameters to pass.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collection": {
+            "type": "string",
+            "description": "Collection slug to browse. Examples: \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\"."
+          },
+          "query": {
+            "type": "string",
+            "description": "Free-text search query to find models by name or description."
+          },
+          "model": {
+            "type": "string",
+            "description": "Get the full schema for a specific model in \"owner/name\" format (e.g. \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\"). Returns all input parameters with types, defaults and descriptions."
+          }
+        }
+      }
+    },
+    {
+      "name": "replicate-run",
+      "description": "Run any model on Replicate. ALWAYS asynchronous — returns immediately with a prediction ID and status \"starting\". Then use replicate-get-prediction to poll until done. Use replicate-list-models first to discover the model ID and its exact input parameters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Model in \"owner/name\" format (e.g. \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\", \"black-forest-labs/flux-kontext-pro\"). Use replicate-list-models to find available models."
+          },
+          "input": {
+            "type": "object",
+            "description": "Input parameters for the model. Use replicate-list-models with the model field to get the exact schema."
+          }
+        },
+        "required": ["model", "input"]
+      }
+    },
+    {
+      "name": "replicate-get-prediction",
+      "description": "Get the status and result of a prediction by ID. Poll this after replicate-run until status is \"succeeded\" or \"failed\". When succeeded, the output field contains the result (image URL, video URL, etc.).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "predictionId": {
+            "type": "string",
+            "description": "The prediction ID returned by replicate-run"
+          }
+        },
+        "required": ["predictionId"]
+      }
+    },
+    {
+      "name": "replicate-cancel-prediction",
+      "description": "Cancel a running or queued prediction by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "predictionId": {
+            "type": "string",
+            "description": "The prediction ID to cancel"
+          }
+        },
+        "required": ["predictionId"]
+      }
+    },
+    {
+      "name": "replicate-list-predictions",
+      "description": "List recent predictions with their status. Useful to track ongoing or past generations.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

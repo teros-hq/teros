@@ -1,0 +1,44 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.elevenlabs",
+  "name": "ElevenLabs",
+  "version": "1.0.0",
+  "description": "ElevenLabs Text-to-Speech - generate natural-sounding speech from text using AI voices",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "ai",
+  "entrypoint": "./src/index.ts",
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": ["API_KEY"],
+  "userSecrets": [],
+  "auth": {
+    "type": "api-key",
+    "provider": "elevenlabs"
+  },
+  "keywords": ["elevenlabs", "tts", "text-to-speech", "audio", "voice", "speech", "ai"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": ["API_KEY"]
+    },
+    "agent": false
+  }
+}

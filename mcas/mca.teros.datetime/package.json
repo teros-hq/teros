@@ -1,0 +1,11 @@
+{
+  "name": "mca.teros.datetime",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Date and time utilities MCA with timezone support",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "luxon": "^3.5.0"
+  }
+}

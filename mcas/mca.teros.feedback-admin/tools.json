@@ -1,0 +1,156 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.feedback-admin",
+  "tools": [
+    {
+      "name": "list-feedback",
+      "description": "List all feedback reports from users. Supports filtering by type, status, priority, and user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "suggestion"
+            ],
+            "description": "Filter by type (optional)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_review",
+              "in_progress",
+              "resolved",
+              "dismissed"
+            ],
+            "description": "Filter by status (optional)"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "description": "Filter by priority (optional)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "Filter by user ID (optional)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results (default: 50)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-feedback",
+      "description": "Get full details of a specific feedback report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "description": "The feedback ID (e.g., fb_xxx)"
+          }
+        },
+        "required": [
+          "feedbackId"
+        ]
+      }
+    },
+    {
+      "name": "update-status",
+      "description": "Update the status of a feedback report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "description": "The feedback ID"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_review",
+              "in_progress",
+              "resolved",
+              "dismissed"
+            ],
+            "description": "New status"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message to include with the status change (will be visible to user)"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "status"
+        ]
+      }
+    },
+    {
+      "name": "set-priority",
+      "description": "Set or update the priority of a feedback report",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "description": "The feedback ID"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "description": "Priority level"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "priority"
+        ]
+      }
+    },
+    {
+      "name": "add-update",
+      "description": "Add an update or comment to a feedback report. This will be visible to the user who submitted it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "description": "The feedback ID"
+          },
+          "message": {
+            "type": "string",
+            "description": "The update message for the user"
+          }
+        },
+        "required": [
+          "feedbackId",
+          "message"
+        ]
+      }
+    },
+    {
+      "name": "get-stats",
+      "description": "Get overall feedback statistics",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

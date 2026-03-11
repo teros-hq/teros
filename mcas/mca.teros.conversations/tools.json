@@ -1,0 +1,161 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.conversations",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "search-messages",
+      "description": "Search for text in messages across all past conversations. Returns matches grouped by channel with context snippets.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Text to search for (case-insensitive, minimum 2 characters)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 100)"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "list-channels",
+      "description": "List past conversations. Returns channel names, agents, and last message preview.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "closed"
+            ],
+            "description": "Filter by channel status"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of channels to return (default: 20)"
+          }
+        }
+      }
+    },
+    {
+      "name": "get-channel-messages",
+      "description": "Get messages from a specific past conversation. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "The ID of the channel to get messages from"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of messages to return (default: 50)"
+          },
+          "before": {
+            "type": "string",
+            "description": "Message ID for pagination - get messages before this one"
+          },
+          "textOnly": {
+            "type": "boolean",
+            "description": "Only return text messages, excluding tool executions (default: true)"
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      }
+    },
+    {
+      "name": "get-channel-summary",
+      "description": "Get a quick summary of a conversation without all messages. Useful to understand what a conversation was about.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "The ID of the channel to summarize"
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      }
+    },
+    {
+      "name": "create-conversation",
+      "description": "Create a new conversation with a specific agent. Returns the new channel ID that can be used to send messages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The ID of the agent to start a conversation with"
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional name for the conversation"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Send a message to an existing conversation. The agent will process and respond to the message.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "The ID of the channel to send the message to"
+          },
+          "message": {
+            "type": "string",
+            "description": "The message text to send"
+          }
+        },
+        "required": [
+          "channelId",
+          "message"
+        ]
+      }
+    },
+    {
+      "name": "rename-channel",
+      "description": "Rename a conversation. Changes the title/name of a channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "The ID of the channel to rename"
+          },
+          "name": {
+            "type": "string",
+            "description": "The new name/title for the conversation"
+          }
+        },
+        "required": [
+          "channelId",
+          "name"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,372 @@
+{
+  "tools": [
+    {
+      "name": "kelify_create_conversation",
+      "description": "Create a new conversation session for property search. Each conversation maintains context across multiple messages, allowing for natural follow-up questions.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "Unique identifier for the conversation"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the conversation was created"
+          }
+        }
+      }
+    },
+    {
+      "name": "kelify_send_message",
+      "description": "Send a user message to a conversation and receive an AI response with property search results. Can use streaming or non-streaming mode.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The conversation UUID to send the message to"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "The user's message to the AI assistant for property search"
+          },
+          "stream": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to stream the response via Server-Sent Events (SSE). When false, returns a complete JSON response"
+          }
+        },
+        "required": ["conversation_id", "message"]
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "description": "Unique identifier for the conversation"
+          },
+          "title": {
+            "type": "string",
+            "description": "AI-generated conversation title"
+          },
+          "message": {
+            "type": "object",
+            "properties": {
+              "role": {
+                "type": "string",
+                "enum": ["assistant"],
+                "description": "Message role"
+              },
+              "content": {
+                "type": "string",
+                "description": "The AI assistant's response"
+              }
+            }
+          },
+          "search_results": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "description": "Number of properties found"
+              },
+              "properties": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Property"
+                },
+                "description": "Array of property listings"
+              },
+              "search_params": {
+                "$ref": "#/components/schemas/SearchParams",
+                "description": "Search criteria applied by the AI"
+              }
+            }
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "Token usage statistics"
+          }
+        }
+      }
+    },
+    {
+      "name": "kelify_get_conversation",
+      "description": "Retrieve full conversation history including all messages, AI responses, search results, and usage statistics.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The conversation UUID to retrieve"
+          }
+        },
+        "required": ["conversation_id"]
+      },
+      "returns": {
+        "type": "object",
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Unique identifier for the conversation"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the conversation was created"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when the conversation was last updated"
+          },
+          "title": {
+            "type": "string",
+            "description": "AI-generated conversation title"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "enum": ["user", "assistant"],
+                  "description": "Who sent the message"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Message content"
+                },
+                "timestamp": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "When the message was sent"
+                }
+              }
+            },
+            "description": "List of messages in the conversation"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage",
+            "description": "Token usage statistics for the conversation"
+          }
+        }
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Property": {
+        "type": "object",
+        "description": "A real estate property listing",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Encoded property ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "Property title"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "description": "Property address"
+          },
+          "price": {
+            "type": "number",
+            "description": "Price in euros"
+          },
+          "operation": {
+            "type": "string",
+            "enum": ["rent", "sale"],
+            "description": "Property operation type"
+          },
+          "home_type": {
+            "type": "string",
+            "enum": [
+              "flat",
+              "house",
+              "studio",
+              "duplex",
+              "penthouse",
+              "chalet",
+              "country_house",
+              "loft"
+            ],
+            "description": "Type of property"
+          },
+          "rooms": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Number of bedrooms"
+          },
+          "bathrooms": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Number of bathrooms"
+          },
+          "size": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Size in square meters"
+          },
+          "latitude": {
+            "type": "number",
+            "nullable": true,
+            "description": "Property latitude"
+          },
+          "longitude": {
+            "type": "number",
+            "nullable": true,
+            "description": "Property longitude"
+          },
+          "photos": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uri"
+            },
+            "description": "Array of property photo URLs"
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Full URL to property page"
+          }
+        },
+        "required": ["id", "price", "operation"]
+      },
+      "SearchParams": {
+        "type": "object",
+        "description": "Search criteria applied by the AI",
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": ["rent", "sale"],
+            "nullable": true,
+            "description": "Rent or sale operation"
+          },
+          "rooms": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "description": "Number of rooms to search for"
+          },
+          "min_price": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Minimum price"
+          },
+          "max_price": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Maximum price"
+          },
+          "min_size": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Minimum size in square meters"
+          },
+          "max_size": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Maximum size in square meters"
+          },
+          "home_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Property types to search for"
+          },
+          "area": {
+            "type": "object",
+            "nullable": true,
+            "description": "GeoJSON Feature with search polygon"
+          },
+          "sort_by": {
+            "type": "string",
+            "enum": ["price", "size", "date", "rooms", "bathrooms"],
+            "nullable": true,
+            "description": "Sort field"
+          },
+          "sort_direction": {
+            "type": "string",
+            "enum": ["asc", "desc"],
+            "nullable": true,
+            "description": "Sort direction"
+          },
+          "days_ago": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Only show properties from last N days"
+          },
+          "features": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Property features to filter by"
+          },
+          "furnishing": {
+            "type": "string",
+            "enum": ["furnished", "unfurnished", "kitchen_equipped"],
+            "nullable": true,
+            "description": "Furnishing status"
+          },
+          "hide_professionals": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Hide professional listings"
+          },
+          "hide_seasonal_rentals": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Hide seasonal rentals"
+          },
+          "no_agency_commission": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Only show properties without agency commission"
+          }
+        }
+      },
+      "Usage": {
+        "type": "object",
+        "description": "Token usage statistics for the conversation",
+        "properties": {
+          "input_tokens": {
+            "type": "integer",
+            "description": "Tokens in input/prompts"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "description": "Tokens in AI responses"
+          },
+          "total_tokens": {
+            "type": "integer",
+            "description": "Total tokens used"
+          }
+        }
+      }
+    }
+  }
+}

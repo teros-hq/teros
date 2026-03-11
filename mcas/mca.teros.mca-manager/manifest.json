@@ -1,0 +1,35 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.mca-manager",
+  "name": "MCA Manager",
+  "version": "2.0.0",
+  "description": "Monitor and manage MCA processes. View running MCAs, kill processes, cleanup inactive, and manage app access.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "admin"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["admin", "monitoring", "mca", "manager", "system"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}
