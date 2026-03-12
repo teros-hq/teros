@@ -162,10 +162,11 @@ Teros ships with 43 MCAs across several categories:
 git clone https://github.com/teros-hq/teros.git
 cd teros
 cp .env.example .env
+bash scripts/setup-secrets.sh
 docker compose up
 ```
 
-Open [http://localhost:8080](http://localhost:8080).
+Open [http://localhost:10002](http://localhost:10002).
 
 ### Development setup
 
