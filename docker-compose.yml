@@ -4,7 +4,7 @@ services:
     image: qdrant/qdrant:latest
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:10004:6333"
     volumes:
       - qdrant_data:/qdrant/storage
     networks:
@@ -15,7 +15,7 @@ services:
     image: mongo:7.0
     restart: unless-stopped
     ports:
-      - "127.0.0.1:27017:27017"
+      - "127.0.0.1:10003:27017"
     environment:
       MONGO_INITDB_DATABASE: teros
     volumes:
