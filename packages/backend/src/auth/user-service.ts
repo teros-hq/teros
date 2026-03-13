@@ -54,7 +54,6 @@ export class UserService {
       },
       status: 'active', // No verification required for now
       role: params.role || 'user',
-      tier: 'standard',
       emailVerified: params.emailVerified ?? false,
       accessGranted: false, // Requires 3 invitations to get access
       availableInvitations: 0, // Admin assigns invitations
@@ -262,18 +261,6 @@ export class UserService {
     const result = await this.users.findOneAndUpdate(
       { userId, deletedAt: { $exists: false } },
       { $set: { accessGranted: true, updatedAt: new Date() } },
-      { returnDocument: 'after' },
-    );
-    return result;
-  }
-
-  /**
-   * Set user tier (admin)
-   */
-  async setTier(userId: string, tier: User['tier']): Promise<User | null> {
-    const result = await this.users.findOneAndUpdate(
-      { userId, deletedAt: { $exists: false } },
-      { $set: { tier, updatedAt: new Date() } },
       { returnDocument: 'after' },
     );
     return result;

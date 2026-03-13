@@ -15,7 +15,6 @@ const require = createRequire(import.meta.url)
 
 // Email types
 export type EmailTemplate =
-  | "welcome-founding-partner"
   | "welcome-registered"
   | "invitation-received"
   | "access-granted"
@@ -35,10 +34,6 @@ interface SendEmailResult {
 }
 
 // Template variable types
-export interface WelcomeFoundingPartnerVars {
-  USER_NAME: string
-}
-
 export interface WelcomeRegisteredVars {
   USER_NAME: string
 }
@@ -165,21 +160,6 @@ export class EmailService {
   // ============================================
   // Convenience methods for each email type
   // ============================================
-
-  /**
-   * Send welcome email to Founding Partner (VIP early access)
-   */
-  async sendWelcomeFoundingPartner(
-    to: string,
-    vars: WelcomeFoundingPartnerVars,
-  ): Promise<SendEmailResult> {
-    return this.send({
-      to,
-      subject: "You're in. Welcome to the beginning.",
-      template: "welcome-founding-partner",
-      variables: vars as unknown as Record<string, string>,
-    })
-  }
 
   /**
    * Send welcome email to new registered user (0/3 invitations)

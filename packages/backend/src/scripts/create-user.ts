@@ -2,15 +2,16 @@
  * Create User Script
  *
  * Creates a new user with password authentication.
- * Can optionally migrate existing data from another userId.
+ * Can optionally set a role and migrate existing data from another userId.
  *
  * Usage:
- *   npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--migrate-from <oldUserId>]
+ *   npx tsx src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]
  *
  * Examples:
- *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123
- *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice
- *   npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id
+ *   npx tsx src/scripts/create-user.ts user@example.com mypassword123
+ *   npx tsx src/scripts/create-user.ts user@example.com mypassword123 Alice
+ *   npx tsx src/scripts/create-user.ts admin@example.com password123 Admin --role admin
+ *   npx tsx src/scripts/create-user.ts user@example.com password123 Alice --migrate-from user:old-id
  */
 
 import { generateUserId } from "@teros/core"
@@ -24,6 +25,18 @@ dotenvConfig()
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017"
 const MONGODB_DATABASE = process.env.MONGODB_DATABASE || "teros"
 
+function getSafeMongoUri(uri: string): string {
+  try {
+    const url = new URL(uri)
+    if (url.username || url.password) {
+      return `${url.protocol}//${url.host}${url.pathname}`
+    }
+    return uri
+  } catch {
+    return '(invalid uri)'
+  }
+}
+
 /**
  * Parse command line arguments
  */
@@ -31,20 +44,22 @@ function parseArgs(): {
   email: string
   password: string
   displayName: string
+  role: string
   migrateFrom?: string
 } {
   const args = process.argv.slice(2)
 
   if (args.length < 2) {
     console.error(
-      "Usage: npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--migrate-from <oldUserId>]",
+      "Usage: npx tsx src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]",
     )
     console.error("")
     console.error("Examples:")
-    console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123")
-    console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice")
+    console.error("  npx tsx src/scripts/create-user.ts user@example.com mypassword123")
+    console.error("  npx tsx src/scripts/create-user.ts user@example.com mypassword123 Alice")
+    console.error("  npx tsx src/scripts/create-user.ts admin@example.com password123 Admin --role admin")
     console.error(
-      "  npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id",
+      "  npx tsx src/scripts/create-user.ts user@example.com password123 Alice --migrate-from user:old-id",
     )
     process.exit(1)
   }
@@ -52,19 +67,43 @@ function parseArgs(): {
   const email = args[0]
   const password = args[1]
   let displayName = email.split("@")[0] // Default: use email prefix
+  let role = "user"
   let migrateFrom: string | undefined
 
   // Parse remaining args
   for (let i = 2; i < args.length; i++) {
-    if (args[i] === "--migrate-from" && args[i + 1]) {
-      migrateFrom = args[i + 1]
-      i++ // Skip next arg
-    } else if (!args[i].startsWith("--")) {
-      displayName = args[i]
+    const arg = args[i]
+    if (arg === "--migrate-from") {
+      const value = args[i + 1]
+      if (!value || value.startsWith("--")) {
+        console.error('❌ Missing value for "--migrate-from"')
+        process.exit(1)
+      }
+      migrateFrom = value
+      i++
+    } else if (arg === "--role") {
+      const value = args[i + 1]
+      if (!value || value.startsWith("--")) {
+        console.error('❌ Missing value for "--role"')
+        process.exit(1)
+      }
+      role = value
+      i++
+    } else if (arg.startsWith("--")) {
+      console.error(`❌ Unknown option "${arg}"`)
+      process.exit(1)
+    } else {
+      displayName = arg
     }
   }
 
-  return { email, password, displayName, migrateFrom }
+  const validRoles = ["user", "admin", "super"]
+  if (!validRoles.includes(role)) {
+    console.error(`❌ Invalid role "${role}". Valid roles: ${validRoles.join(", ")}`)
+    process.exit(1)
+  }
+
+  return { email, password, displayName, role, migrateFrom }
 }
 
 /**
@@ -121,7 +160,7 @@ async function migrateUserData(db: Db, oldUserId: string, newUserId: string): Pr
 }
 
 async function main() {
-  const { email, password, displayName, migrateFrom } = parseArgs()
+  const { email, password, displayName, role, migrateFrom } = parseArgs()
 
   console.log("👤 Create User Script")
   console.log("=====================\n")
@@ -133,7 +172,7 @@ async function main() {
   }
 
   // Connect to MongoDB
-  console.log(`Connecting to MongoDB: ${MONGODB_URI}`)
+  console.log(`Connecting to MongoDB: ${getSafeMongoUri(MONGODB_URI)}`)
   const client = new MongoClient(MONGODB_URI)
   await client.connect()
   const db = client.db(MONGODB_DATABASE)
@@ -160,6 +199,7 @@ async function main() {
   console.log(`  userId: ${userId}`)
   console.log(`  email: ${email}`)
   console.log(`  displayName: ${displayName}`)
+  console.log(`  role: ${role}`)
   console.log(`  password: ${"*".repeat(password.length)}`)
   if (migrateFrom) {
     console.log(`  migrateFrom: ${migrateFrom}`)
@@ -175,7 +215,7 @@ async function main() {
       email: email.toLowerCase(),
     },
     status: "active",
-    role: "user",
+    role,
     emailVerified: true,
     accessGranted: true,
     availableInvitations: 3,

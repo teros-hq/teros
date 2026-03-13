@@ -46,13 +46,6 @@ export interface User {
   /** User role for access control */
   role: "user" | "admin" | "super"
 
-  /**
-   * User tier — determines feature limits and experience.
-   * - "standard": regular user (default)
-   * - "founding_partner": early access member, higher limits, special perks
-   */
-  tier?: "standard" | "founding_partner"
-
   /** Whether the primary email has been verified */
   emailVerified: boolean
 
