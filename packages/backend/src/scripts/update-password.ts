@@ -46,50 +46,51 @@ async function main() {
 
   console.log(`Connecting to MongoDB: ${MONGODB_URI}`)
   const client = new MongoClient(MONGODB_URI)
-  await client.connect()
-  const db = client.db(MONGODB_DATABASE)
-  console.log(`Connected to database: ${MONGODB_DATABASE}\n`)
 
-  // Find user
-  const user = await db.collection('users').findOne({
-    'profile.email': email.toLowerCase(),
-  })
+  try {
+    await client.connect()
+    const db = client.db(MONGODB_DATABASE)
+    console.log(`Connected to database: ${MONGODB_DATABASE}\n`)
 
-  if (!user) {
-    console.error(`❌ User not found: ${email}`)
-    await client.close()
-    process.exit(1)
-  }
+    // Find user
+    const user = await db.collection('users').findOne({
+      'profile.email': email.toLowerCase(),
+    })
 
-  console.log(`Found user: ${user.profile.displayName} (${user.userId})`)
+    if (!user) {
+      console.error(`❌ User not found: ${email}`)
+      process.exit(1)
+    }
 
-  // Update password hash
-  const passwordHash = await bcrypt.hash(password, 12)
-  const now = new Date()
+    console.log(`Found user: ${user.profile.displayName} (${user.userId})`)
 
-  const result = await db.collection('user_identities').updateOne(
-    { userId: user.userId, type: 'password', status: 'active' },
-    {
-      $set: {
-        'data.passwordHash': passwordHash,
-        'data.failedAttempts': 0,
-        'data.lastPasswordChangeAt': now,
-        'data.lockedUntil': null,
-        updatedAt: now,
+    // Update password hash
+    const passwordHash = await bcrypt.hash(password, 12)
+    const now = new Date()
+
+    const result = await db.collection('user_identities').updateOne(
+      { userId: user.userId, type: 'password', status: 'active' },
+      {
+        $set: {
+          'data.passwordHash': passwordHash,
+          'data.failedAttempts': 0,
+          'data.lastPasswordChangeAt': now,
+          'data.lockedUntil': null,
+          updatedAt: now,
+        },
       },
-    },
-  )
+    )
 
-  if (result.matchedCount === 0) {
-    console.error('❌ No password identity found for this user')
+    if (result.matchedCount === 0) {
+      console.error('❌ No password identity found for this user')
+      process.exit(1)
+    }
+
+    console.log('\n✅ Password updated successfully!')
+    console.log(`   Email: ${email}`)
+  } finally {
     await client.close()
-    process.exit(1)
   }
-
-  console.log('\n✅ Password updated successfully!')
-  console.log(`   Email: ${email}`)
-
-  await client.close()
 }
 
 main().catch((error) => {
