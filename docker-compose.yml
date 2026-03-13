@@ -3,10 +3,8 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:10004:6333"
     volumes:
-      - qdrant_data:/qdrant/storage
+      - ./data/qdrant:/qdrant/storage
     networks:
       - teros-network
 
@@ -14,13 +12,11 @@ services:
   mongodb:
     image: mongo:7.0
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:10003:27017"
     environment:
       MONGO_INITDB_DATABASE: teros
     volumes:
-      - mongodb_data:/data/db
-      - mongodb_config:/data/configdb
+      - ./data/mongodb:/data/db
+      - ./data/mongodb-config:/data/configdb
     networks:
       - teros-network
     healthcheck:
@@ -89,10 +85,4 @@ networks:
   teros-network:
     driver: bridge
 
-volumes:
-  mongodb_data:
-    driver: local
-  mongodb_config:
-    driver: local
-  qdrant_data:
-    driver: local
+
