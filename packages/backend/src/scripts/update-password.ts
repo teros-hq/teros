@@ -68,12 +68,13 @@ async function main() {
   const now = new Date()
 
   const result = await db.collection('user_identities').updateOne(
-    { userId: user.userId, type: 'password' },
+    { userId: user.userId, type: 'password', status: 'active' },
     {
       $set: {
         'data.passwordHash': passwordHash,
         'data.failedAttempts': 0,
         'data.lastPasswordChangeAt': now,
+        'data.lockedUntil': null,
         updatedAt: now,
       },
     },
