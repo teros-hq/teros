@@ -21,7 +21,7 @@ prompt() {
     read -r value </dev/tty
   fi
 
-  eval "$var_name='$value'"
+  printf -v "$var_name" '%s' "$value"
 }
 
 if [ "$#" -ge 2 ]; then

@@ -72,14 +72,28 @@ function parseArgs(): {
 
   // Parse remaining args
   for (let i = 2; i < args.length; i++) {
-    if (args[i] === "--migrate-from" && args[i + 1]) {
-      migrateFrom = args[i + 1]
-      i++ // Skip next arg
-    } else if (args[i] === "--role" && args[i + 1]) {
-      role = args[i + 1]
-      i++ // Skip next arg
-    } else if (!args[i].startsWith("--")) {
-      displayName = args[i]
+    const arg = args[i]
+    if (arg === "--migrate-from") {
+      const value = args[i + 1]
+      if (!value || value.startsWith("--")) {
+        console.error('❌ Missing value for "--migrate-from"')
+        process.exit(1)
+      }
+      migrateFrom = value
+      i++
+    } else if (arg === "--role") {
+      const value = args[i + 1]
+      if (!value || value.startsWith("--")) {
+        console.error('❌ Missing value for "--role"')
+        process.exit(1)
+      }
+      role = value
+      i++
+    } else if (arg.startsWith("--")) {
+      console.error(`❌ Unknown option "${arg}"`)
+      process.exit(1)
+    } else {
+      displayName = arg
     }
   }
 
