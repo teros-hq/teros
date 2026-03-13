@@ -8,6 +8,9 @@ dist/
 # Environment & secrets
 .env
 .env.deploy
+
+# Data directories (database storage)
+/data/
 .secrets/**/*.json
 !.secrets/**/*.example.json
 !.secrets/README.md

@@ -2,14 +2,15 @@
  * Create User Script
  *
  * Creates a new user with password authentication.
- * Can optionally migrate existing data from another userId.
+ * Can optionally set a role and migrate existing data from another userId.
  *
  * Usage:
- *   npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--migrate-from <oldUserId>]
+ *   npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]
  *
  * Examples:
  *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123
  *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice
+ *   npx ts-node src/scripts/create-user.ts admin@example.com pass123 Admin --role admin
  *   npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id
  */
 
@@ -31,18 +32,20 @@ function parseArgs(): {
   email: string
   password: string
   displayName: string
+  role: string
   migrateFrom?: string
 } {
   const args = process.argv.slice(2)
 
   if (args.length < 2) {
     console.error(
-      "Usage: npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--migrate-from <oldUserId>]",
+      "Usage: npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]",
     )
     console.error("")
     console.error("Examples:")
     console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123")
     console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice")
+    console.error("  npx ts-node src/scripts/create-user.ts admin@example.com pass123 Admin --role admin")
     console.error(
       "  npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id",
     )
@@ -52,6 +55,7 @@ function parseArgs(): {
   const email = args[0]
   const password = args[1]
   let displayName = email.split("@")[0] // Default: use email prefix
+  let role = "user"
   let migrateFrom: string | undefined
 
   // Parse remaining args
@@ -59,12 +63,21 @@ function parseArgs(): {
     if (args[i] === "--migrate-from" && args[i + 1]) {
       migrateFrom = args[i + 1]
       i++ // Skip next arg
+    } else if (args[i] === "--role" && args[i + 1]) {
+      role = args[i + 1]
+      i++ // Skip next arg
     } else if (!args[i].startsWith("--")) {
       displayName = args[i]
     }
   }
 
-  return { email, password, displayName, migrateFrom }
+  const validRoles = ["user", "admin", "super"]
+  if (!validRoles.includes(role)) {
+    console.error(`❌ Invalid role "${role}". Valid roles: ${validRoles.join(", ")}`)
+    process.exit(1)
+  }
+
+  return { email, password, displayName, role, migrateFrom }
 }
 
 /**
@@ -121,7 +134,7 @@ async function migrateUserData(db: Db, oldUserId: string, newUserId: string): Pr
 }
 
 async function main() {
-  const { email, password, displayName, migrateFrom } = parseArgs()
+  const { email, password, displayName, role, migrateFrom } = parseArgs()
 
   console.log("👤 Create User Script")
   console.log("=====================\n")
@@ -160,6 +173,7 @@ async function main() {
   console.log(`  userId: ${userId}`)
   console.log(`  email: ${email}`)
   console.log(`  displayName: ${displayName}`)
+  console.log(`  role: ${role}`)
   console.log(`  password: ${"*".repeat(password.length)}`)
   if (migrateFrom) {
     console.log(`  migrateFrom: ${migrateFrom}`)
@@ -175,7 +189,7 @@ async function main() {
       email: email.toLowerCase(),
     },
     status: "active",
-    role: "user",
+    role,
     emailVerified: true,
     accessGranted: true,
     availableInvitations: 3,
