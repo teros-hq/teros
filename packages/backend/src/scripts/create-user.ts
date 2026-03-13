@@ -25,6 +25,18 @@ dotenvConfig()
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017"
 const MONGODB_DATABASE = process.env.MONGODB_DATABASE || "teros"
 
+function getSafeMongoUri(uri: string): string {
+  try {
+    const url = new URL(uri)
+    if (url.username || url.password) {
+      return `${url.protocol}//${url.host}${url.pathname}`
+    }
+    return uri
+  } catch {
+    return '(invalid uri)'
+  }
+}
+
 /**
  * Parse command line arguments
  */
@@ -146,7 +158,7 @@ async function main() {
   }
 
   // Connect to MongoDB
-  console.log(`Connecting to MongoDB: ${MONGODB_URI}`)
+  console.log(`Connecting to MongoDB: ${getSafeMongoUri(MONGODB_URI)}`)
   const client = new MongoClient(MONGODB_URI)
   await client.connect()
   const db = client.db(MONGODB_DATABASE)
