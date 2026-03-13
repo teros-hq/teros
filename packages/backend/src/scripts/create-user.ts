@@ -5,13 +5,13 @@
  * Can optionally set a role and migrate existing data from another userId.
  *
  * Usage:
- *   npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]
+ *   npx tsx src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]
  *
  * Examples:
- *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123
- *   npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice
- *   npx ts-node src/scripts/create-user.ts admin@example.com pass123 Admin --role admin
- *   npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id
+ *   npx tsx src/scripts/create-user.ts user@example.com mypassword123
+ *   npx tsx src/scripts/create-user.ts user@example.com mypassword123 Alice
+ *   npx tsx src/scripts/create-user.ts admin@example.com password123 Admin --role admin
+ *   npx tsx src/scripts/create-user.ts user@example.com password123 Alice --migrate-from user:old-id
  */
 
 import { generateUserId } from "@teros/core"
@@ -51,15 +51,15 @@ function parseArgs(): {
 
   if (args.length < 2) {
     console.error(
-      "Usage: npx ts-node src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]",
+      "Usage: npx tsx src/scripts/create-user.ts <email> <password> [displayName] [--role <role>] [--migrate-from <oldUserId>]",
     )
     console.error("")
     console.error("Examples:")
-    console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123")
-    console.error("  npx ts-node src/scripts/create-user.ts user@example.com mypassword123 Alice")
-    console.error("  npx ts-node src/scripts/create-user.ts admin@example.com pass123 Admin --role admin")
+    console.error("  npx tsx src/scripts/create-user.ts user@example.com mypassword123")
+    console.error("  npx tsx src/scripts/create-user.ts user@example.com mypassword123 Alice")
+    console.error("  npx tsx src/scripts/create-user.ts admin@example.com password123 Admin --role admin")
     console.error(
-      "  npx ts-node src/scripts/create-user.ts user@example.com pass123 Alice --migrate-from user:old-id",
+      "  npx tsx src/scripts/create-user.ts user@example.com password123 Alice --migrate-from user:old-id",
     )
     process.exit(1)
   }
