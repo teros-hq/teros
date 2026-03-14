@@ -32,4 +32,4 @@ Please be respectful and constructive in all interactions. We are committed to p
 
 ## Questions?
 
-Open an issue or start a discussion on GitHub.
+Open an issue or start a discussion on GitHub, or join us on [Discord](https://discord.gg/zHxZrbkUhb).

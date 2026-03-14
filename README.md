@@ -11,6 +11,7 @@ Build, run, and extend AI agents that actually get things done.
 [![GitHub Stars](https://img.shields.io/github/stars/teros-hq/teros?style=flat&logo=github&color=yellow)](https://github.com/teros-hq/teros/stargazers)
 [![License](https://img.shields.io/badge/license-FSL--1.1-blue.svg)](./LICENSE)
 [![GitHub Issues](https://img.shields.io/github/issues/teros-hq/teros?style=flat&logo=github)](https://github.com/teros-hq/teros/issues)
+[![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/zHxZrbkUhb)
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
@@ -18,7 +19,7 @@ Build, run, and extend AI agents that actually get things done.
 [![React Native](https://img.shields.io/badge/React%20Native-0.76-61dafb?logo=react&logoColor=white)](https://reactnative.dev/)
 [![Expo](https://img.shields.io/badge/Expo-52-000020?logo=expo&logoColor=white)](https://expo.dev/)
 
-[Website](https://teros.ai) · [Documentation](https://github.com/teros-hq/teros/tree/main/docs) · [Contributing](./CONTRIBUTING.md)
+[Website](https://teros.ai) · [Documentation](https://github.com/teros-hq/teros/tree/main/docs) · [Contributing](./CONTRIBUTING.md) · [Discord](https://discord.gg/zHxZrbkUhb)
 
 ```bash
 curl -fsSL https://get.teros.ai | bash
