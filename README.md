@@ -4,7 +4,7 @@
 
 # Teros
 
-**The open-source AI agent operating system.**
+**The source-available AI agent operating system.**
 
 Build, run, and extend AI agents that actually get things done.
 
@@ -40,7 +40,7 @@ curl -fsSL https://get.teros.ai | bash
 
 ## What is Teros?
 
-Teros is an open-source platform for building and running **AI agents with real tool capabilities**. Think of it as an operating system for AI — agents live inside it, have access to tools (MCAs), connect to your services, and work for you across tasks.
+Teros is a source-available platform for building and running **AI agents with real tool capabilities**. Think of it as an operating system for AI — agents live inside it, have access to tools (MCAs), connect to your services, and work for you across tasks.
 
 Unlike chat wrappers, Teros agents are **persistent, multi-tool, and autonomous**. They can browse the web, write and run code, manage your calendar, send emails, interact with GitHub, deploy to Railway, and much more — all through a clean, extensible architecture.
 
@@ -261,7 +261,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full MCA development guide.
 
 ## Contributing
 
-Teros is open source and contributions are welcome.
+Teros is source-available (FSL-1.1) and contributions are welcome.
 
 ```bash
 # Fork, clone, create a branch

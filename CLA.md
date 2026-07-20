@@ -2,7 +2,7 @@
 
 **Teros — Teros AI, S.L.**
 
-Thank you for your interest in contributing to Teros, developed and maintained by Teros AI, S.L. (CIF: pendiente), with registered address in Spain ("Teros AI", "we", or "us").
+Thank you for your interest in contributing to Teros, developed and maintained by Teros AI, S.L. (CIF ESB88787445), with registered address in Spain ("Teros AI", "we", or "us").
 
 This Contributor License Agreement ("CLA" or "Agreement") clarifies the intellectual property rights granted with contributions from any person or entity. This agreement is for your protection as a contributor as well as for the protection of Teros AI, the open-source community, and its users. It does not change your rights to use your own contributions for any other purpose.
 
@@ -35,7 +35,7 @@ You retain full copyright ownership of your Contributions. This CLA does not tra
 
 Subject to the terms and conditions of this Agreement, you hereby grant to Teros AI and its successors and assigns a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable, sublicensable (through multiple tiers), and transferable copyright license to reproduce, prepare derivative works of, publicly display, publicly perform, sublicense, and distribute your Contributions and such derivative works, including but not limited to use in:
 
-- The Teros open-source project and any future versions thereof.
+- The Teros project and any future versions thereof.
 - The Teros hosted cloud service (available at teros.ai and any successor domains).
 - Any proprietary, commercial, or Enterprise versions of the Work (Dual Licensing strategy).
 - Any other product or service developed by Teros AI that incorporates your Contribution.
@@ -75,7 +75,7 @@ Given the nature of the Teros project as an AI operating system, this CLA explic
 To ensure the long-term viability, financial sustainability, and adaptability of the Project, you expressly and irrevocably grant Teros AI the right to relicense your Contributions. This includes, without limitation, the right of Teros AI to:
 
 - Distribute the Project and your Contributions under commercial, proprietary, or Enterprise licenses (Dual Licensing strategy).
-- Change the open-source license applicable to the Project in the future.
+- Change the license applicable to the Project in the future (including to an open-source license).
 - Monetize, commercially exploit, and transfer the Project and the licenses granted herein in scenarios involving investment, financing, mergers, acquisitions (M&A), or asset sales.
 
 ## 11. Data Protection (GDPR)
@@ -141,6 +141,6 @@ To ensure maximum transparency with our developer community, we clarify our gove
 **Why Teros requires a CLA:**
 
 - **Legal Security and Audits:** It provides an undeniable chain of title for intellectual property, essential for passing technical and legal Due Diligence.
-- **Dual Licensing Enablement:** It allows Teros AI to offer Teros under an Open Source license for the community, and simultaneously under commercial (Enterprise) licenses for large corporations, ensuring the project's financial sustainability.
+- **Dual Licensing Enablement:** It allows Teros AI to offer Teros under a source-available or open-source license for the community, and simultaneously under commercial (Enterprise) licenses for large corporations, ensuring the project's financial sustainability.
 - **Investment and M&A:** It protects the project's value in potential investment or acquisition scenarios.
 - **Patent Defense:** The retaliation clause protects all Teros users against malicious patent litigation.
