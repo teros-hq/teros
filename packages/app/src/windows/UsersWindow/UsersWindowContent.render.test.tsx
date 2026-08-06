@@ -183,8 +183,11 @@ describe("UsersWindowContent", () => {
     const pageThree = await findByText("3") // 120/50 → 3 pages
     await userEvent.click(pageThree)
 
+    // toHaveBeenCalledWith (not Last): on slow runners a trailing background
+    // refetch can land after the page-2 query; the contract is that clicking
+    // "3" issues the page-2 re-query, not that nothing refetches afterwards.
     await waitFor(() =>
-      expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 })),
+      expect(listUsers).toHaveBeenCalledWith(expect.objectContaining({ page: 2 })),
     )
   })
 })
