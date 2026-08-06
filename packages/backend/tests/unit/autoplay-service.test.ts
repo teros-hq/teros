@@ -320,6 +320,10 @@ function makeG3Service(opts: { workspaceOwnerId?: string }) {
       createChannelCalls.push({ userId, agentId })
       return { channelId: 'ch_new' }
     },
+    // _startNewTask persists the initial message before waking the agent.
+    createMessageId: () => 'msg_test_1',
+    getUserSender: async () => null,
+    saveMessage: async () => {},
   } as any
   const pubSub = { broadcastToTopic: () => {} } as any
   const svc = new AutoplayService(db, pubSub, channelManager)

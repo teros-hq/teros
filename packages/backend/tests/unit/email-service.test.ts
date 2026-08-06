@@ -8,26 +8,31 @@
  */
 
 import { join } from "node:path"
-import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
-// Capture the REAL config before mocking it. `mock.module` is process-global and
-// does NOT reset between test files, so an incomplete mock here leaks into every
-// other suite: any module that resolves this mock and reads a field we omitted
-// (e.g. message-handler reading `config.uploads.basePath`) throws. Spreading the
-// real config keeps the mock complete; we only override what EmailService needs.
-import { config as realConfig } from "../../src/config"
+import { afterAll, beforeEach, describe, expect, it, mock, spyOn } from "bun:test"
+// Do NOT `mock.module('../../src/config')` here: module mocks are process-global
+// and do not reset between test files, so the mocked config leaks into every
+// other suite (it caused TDZ ReferenceErrors — "Cannot access 'config' before
+// initialization" — in unrelated handlers like file-share). Instead we mutate
+// the real config object in place and restore it after this file's tests.
+import { config } from "../../src/config"
+
+const savedStaticBaseUrl = config.static.baseUrl
+const savedFromEmail = config.email.fromEmail
+const savedFromName = config.email.fromName
+;(config.static as any).baseUrl = "https://static.teros.ai"
+;(config.email as any).fromEmail = "hello@teros.ai"
+;(config.email as any).fromName = "Teros"
+
+afterAll(() => {
+  ;(config.static as any).baseUrl = savedStaticBaseUrl
+  ;(config.email as any).fromEmail = savedFromEmail
+  ;(config.email as any).fromName = savedFromName
+})
 
 const defaultResendResponse = () =>
   Promise.resolve({ data: { id: "mock-id" }, error: null })
 
 const mockResendSend = mock(defaultResendResponse)
-
-mock.module("../../src/config", () => ({
-  config: {
-    ...realConfig,
-    static: { baseUrl: "https://static.teros.ai" },
-    email: { fromEmail: "hello@teros.ai", fromName: "Teros" },
-  },
-}))
 
 mock.module("resend", () => ({
   Resend: class {

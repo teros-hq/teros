@@ -144,8 +144,7 @@ export class McaManager {
       throw new Error(
         'CONTAINER_PROVIDER=docker was removed: the container agent is the only ' +
           'Docker path now. Unset CONTAINER_PROVIDER (defaults to remote), run the ' +
-          'teros-container-agent pm2 app, and set CONTAINER_AGENT_TOKEN/URL. ' +
-          '
+          'teros-container-agent pm2 app, and set CONTAINER_AGENT_TOKEN/URL.',
       );
     } else {
       // Default: container agent (separate daemon, possibly another machine).

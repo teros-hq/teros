@@ -429,6 +429,8 @@ export const WsQueryConversationsActionSchema = z.enum([
   "subscribe_to_events", // queries-board-runner.ts
   "unsubscribe_from_events", // queries-board-runner.ts
   "list_event_subscriptions", // queries-board-runner.ts
+  "delete_project", // queries-board-write.ts
+  "update_board_config", // queries-board-write.ts
 ])
 export type WsQueryConversationsAction = z.infer<typeof WsQueryConversationsActionSchema>
 

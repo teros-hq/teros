@@ -47,17 +47,31 @@ function makeSession(overrides: Partial<AgentUsageSession> = {}): AgentUsageSess
 const ctx = { userId: "admin_1" } as never
 
 function fakeDb(session: AgentUsageSession | null) {
-  const empty = { find: () => ({ toArray: async () => [] }) }
+  // Cursor fake: the handler chains `.maxTimeMS(…)` before `.toArray()` on its
+  // finds (admin reads are time-bounded), so the cursor must support both.
+  const emptyCursor = () => {
+    const cursor = {
+      toArray: async () => [],
+      maxTimeMS: () => cursor,
+    }
+    return cursor
+  }
+  const empty = { find: emptyCursor }
   const collections: Record<string, unknown> = {
     users: { findOne: async () => ({ role: "super" }) },
     agent_usage_sessions: {
       findOne: async () => session,
-      find: () => ({ toArray: async () => [] }),
+      find: emptyCursor,
     },
     tool_executions: empty,
     llm_usage: empty,
     channel_messages: empty,
     message_feedback: empty,
+    // Display-name resolution (P6) — best-effort lookups, empty/miss is fine.
+    agents: empty,
+    workspaces: { findOne: async () => null },
+    // Ledger-first audit write (TER-671/A6.3) — must succeed for the trace read.
+    agent_usage_access_log: { insertOne: async () => ({ insertedId: "log_1" }) },
   }
   return { collection: (name: string) => collections[name] } as never
 }

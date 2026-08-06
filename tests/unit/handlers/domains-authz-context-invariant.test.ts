@@ -49,6 +49,12 @@ const PUBLIC_ALLOWLIST = new Set<string>([
   // REALITY and the entry was removed (anti-stale check forced this).
   'provider/list-models.ts::listModels', // global catalogue of active models
   'scheduler/handlers.ts::createParseTimeHandler', // pure time parsing, no DB
+  'billing/list-plans.ts::listPlans', // public plan catalogue (isPublic rows only, read-only)
+  // capability-token authz, not identity: formRequestId is a server-generated
+  // crypto.randomUUID() delivered only to the form's channel; possession is the
+  // authorization (same pattern as app/tool-permission-response). Server-side
+  // validation + idempotent resolution live in FormManager.handleResponse.
+  'app/form-response.ts::formResponse',
 ]);
 
 /**

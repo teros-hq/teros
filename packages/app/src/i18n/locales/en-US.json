@@ -462,7 +462,18 @@
     "generatingTranscription": "Generating transcription",
     "download": "Download",
     "retrySending": "Retry sending",
-    "retryTranscription": "Retry transcription"
+    "retryTranscription": "Retry transcription",
+    "retry": "Retry",
+    "error": {
+      "auth": "Authentication failed — please log in again",
+      "badRequest": "Invalid request — check your parameters",
+      "elevenlabs": "Voice service unavailable (ElevenLabs connection failed)",
+      "flagDisabled": "Voice mode is not enabled for your account",
+      "serverError": "Server error — please try again",
+      "timeout": "Connection timed out — please try again",
+      "unknown": "Connection failed",
+      "workspace": "Could not resolve workspace for voice session"
+    }
   },
   "billing": {
     "warning": {
@@ -1367,7 +1378,12 @@
     "errorRevokingAccess": "Could not revoke access",
     "app": "App",
     "authentication": "Authentication",
-    "permissions": "Permissions"
+    "permissions": "Permissions",
+    "connection": "Connection",
+    "configuration": "Configuration",
+    "instructions": "Instructions",
+    "addInstructions": "Add instructions",
+    "editInstructions": "Edit"
   },
   "usage": {
     "loadingData": "Loading usage data...",

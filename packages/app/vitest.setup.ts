@@ -55,6 +55,12 @@ vi.mock('expo-secure-store', () => ({
   deleteItemAsync: vi.fn(async () => {}),
   isAvailableAsync: vi.fn(async () => false),
 }))
+// expo-keep-awake reaches expo-modules-core's EventEmitter the same way.
+// Reached via hooks/useWakeLock (VoiceSessionContext).
+vi.mock('expo-keep-awake', () => ({
+  activateKeepAwakeAsync: vi.fn(async () => {}),
+  deactivateKeepAwake: vi.fn(async () => {}),
+}))
 vi.mock('expo-localization', () => ({
   getLocales: () => [{ languageCode: 'en', languageTag: 'en-US', regionCode: 'US', textDirection: 'ltr' }],
   getCalendars: () => [{ timeZone: 'UTC' }],

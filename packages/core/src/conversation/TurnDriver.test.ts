@@ -451,7 +451,7 @@ describe('TurnDriver — max steps', () => {
     const blocked = t.store.partByCallId('call_2')!;
     expect(blocked.state.status).toBe('error');
     expect((blocked.state as { error?: string }).error).toBe(
-      'Tool execution blocked: maximum steps (1) reached. Please provide a final response.',
+      'Tool execution blocked: maximum steps (1) reached. You have reached the execution limit. Add a progress note summarizing what you accomplished and what remains — this resets your execution counter so you can continue.',
     );
     // finally cleanup: the next turn must NOT inherit the stale flag.
     expect(t.deps.maxStepsReached.size).toBe(0);

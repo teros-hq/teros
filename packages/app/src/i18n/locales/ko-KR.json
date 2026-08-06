@@ -33,6 +33,55 @@
       "verifiedAt": "정책 검증일: {{date}}"
     }
   },
+  "formWidget": {
+    "title": "몇 가지 정보가 필요합니다",
+    "notesLabel": "메모",
+    "notesPlaceholder": "추가하거나 명확히 할 내용이 있나요? (선택)",
+    "submit": "보내기",
+    "submitting": "보내는 중…",
+    "back": "이전",
+    "next": "다음",
+    "dismiss": "채팅으로 답할게요",
+    "required": "필수",
+    "submittedTitle": "양식 제출됨",
+    "dismissedTitle": "양식을 닫고 채팅으로 답변함",
+    "invalidSpec": "이 양식을 표시할 수 없습니다.",
+    "validationIntro": "다음을 확인해 주세요:",
+    "progress": "{{current}} / {{total}}",
+    "yes": "예",
+    "no": "아니요",
+    "review": "답변을 확인하세요",
+    "reviewEmpty": "—"
+  },
+  "chatView": {
+    "typing": {
+      "label": "{{name}}",
+      "thinking": "생각 중…"
+    },
+    "queue": {
+      "countOne": "{{count}}개 메시지 대기 중",
+      "countOther": "{{count}}개 메시지 대기 중",
+      "moreSuffix": "…그리고 {{count}}개 더",
+      "ariaLabel": "대기 중인 메시지 큐"
+    }
+  },
+  "chat": {
+    "queued": "대기 중",
+    "fallbackAgentName": "에이전트",
+    "fallbackTitle": "대화",
+    "stop": {
+      "ariaLabel": "생성 중지",
+      "hardHint": "⌘⇧K를 눌러 강제 중지",
+      "hardConfirm": {
+        "title": "강제 중지하시겠습니까?",
+        "bodyWithIrreversible": "{{toolName}}이(가) 아직 실행 중이며 불완전한 변경 사항이 남을 수 있습니다. 중지하시겠습니까?",
+        "bodyNoIrreversible": "에이전트가 아직 작업 중입니다. 중지하시겠습니까?",
+        "confirm": "지금 중지",
+        "confirmWait": "도구 대기 중…",
+        "deny": "계속 실행"
+      }
+    }
+  },
   "common": {
     "cancel": "취소",
     "save": "저장",
@@ -130,6 +179,8 @@
     "users": "사용자",
     "usageAndCosts": "사용량 및 비용",
     "featureFlags": "기능 플래그",
+    "billingRequests": "결제 요청",
+    "billingTeams": "결제 팀",
     "workspace": "워크스페이스",
     "chat": "채팅",
     "newConversation": "새 대화",
@@ -411,7 +462,133 @@
     "generatingTranscription": "음성 변환 중",
     "download": "다운로드",
     "retrySending": "다시 보내기",
-    "retryTranscription": "음성 변환 재시도"
+    "retryTranscription": "음성 변환 재시도",
+    "retry": "다시 시도",
+    "error": {
+      "auth": "인증에 실패했습니다 — 다시 로그인해 주세요",
+      "badRequest": "잘못된 요청입니다 — 매개변수를 확인해 주세요",
+      "elevenlabs": "음성 서비스를 사용할 수 없습니다 (ElevenLabs 연결 실패)",
+      "flagDisabled": "계정에서 음성 모드가 활성화되어 있지 않습니다",
+      "serverError": "서버 오류 — 다시 시도해 주세요",
+      "timeout": "연결 시간이 초과되었습니다 — 다시 시도해 주세요",
+      "unknown": "연결에 실패했습니다",
+      "workspace": "음성 세션의 워크스페이스를 확인할 수 없습니다"
+    }
+  },
+  "billing": {
+    "warning": {
+      "title": "에이전트 시간의 {{pct}}%를 사용했습니다",
+      "titlePlan": "{{plan}} 플랜 시간의 {{pct}}%를 사용했습니다",
+      "renews": "{{date}}에 갱신",
+      "getMore": "시간 더 얻기"
+    },
+    "exhausted": {
+      "title": "에이전트 시간을 모두 사용했습니다",
+      "body": "{{plan}} 플랜 시간은 {{date}}에 초기화됩니다. 계속하려면 플랜을 업그레이드하거나 부스트를 받으세요.",
+      "bodyNoPlan": "시간은 {{date}}에 초기화됩니다. 계속하려면 플랜을 업그레이드하거나 부스트를 받으세요.",
+      "bodyGeneric": "계속하려면 플랜을 업그레이드하거나 부스트를 받으세요.",
+      "ctaUpgrade": "플랜 업그레이드",
+      "ctaBoost": "시간 더 얻기"
+    },
+    "paymentDue": {
+      "title": "결제 필요",
+      "hint": "계정에 유예 기간이 지난 미납 청구서가 있습니다. Teros를 계속 사용하려면 결제를 완료하세요 — 플랜은 유지되며 결제가 완료되는 즉시 이용이 재개됩니다.",
+      "regularize": "결제 완료하기",
+      "contact": "결제를 완료하려면 지원팀에 문의하세요."
+    },
+    "boost": {
+      "buyTitle": "추가 시간 얻기",
+      "requestTitle": "관리자에게 시간 요청",
+      "unavailableTitle": "추가 시간 사용 불가",
+      "hoursLabel": "추가 시간",
+      "total": "합계",
+      "buyCta": "{{hours}}시간 구매",
+      "requestCta": "{{hours}}시간 요청",
+      "buying": "처리 중…",
+      "requesting": "전송 중…",
+      "reasonPlaceholder": "시간이 더 필요한 이유는 무엇인가요? (선택)",
+      "unavailableBody": "지금은 추가 시간을 구매할 수 없습니다. 지원팀에 문의하거나 다음 갱신을 기다려 주세요.",
+      "needCardBody": "구매를 완료하려면 결제 수단을 추가하세요.",
+      "boughtBody": "{{hours}}시간 추가됨 · {{amount}}.",
+      "requestedBody": "요청이 전송되었습니다. 관리자가 검토할 예정입니다.",
+      "pendingBody": "이미 대기 중인 요청이 있습니다. 관리자가 처리할 때까지 기다려 주세요.",
+      "errorGeneric": "문제가 발생했습니다. 다시 시도해 주세요.",
+      "loading": "불러오는 중…",
+      "loadError": "플랜을 불러오지 못했습니다. 다시 시도해 주세요.",
+      "close": "닫기"
+    },
+    "toast": {
+      "grantedTitle": "요청 승인됨",
+      "grantedBoost": "추가 시간 {{hours}}시간이 지급되었습니다.",
+      "grantedUpgrade": "플랜이 업그레이드되었습니다.",
+      "deniedTitle": "요청 거부됨",
+      "deniedBody": "관리자가 요청을 거부했습니다.",
+      "boughtTitle": "부스트 추가됨",
+      "requestedTitle": "요청 전송됨"
+    },
+    "admin": {
+      "title": "결제 요청",
+      "pending": "대기 중",
+      "approved": "승인됨",
+      "denied": "거부됨",
+      "empty": "{{status}} 요청이 없습니다.",
+      "loadError": "요청을 불러오지 못했습니다.",
+      "upgrade": "업그레이드",
+      "requestedHours": "추가 {{hours}}시간",
+      "grantHours": "지급할 시간",
+      "note": "메모 (선택)",
+      "approve": "승인",
+      "deny": "거부"
+    },
+    "audit": {
+      "loadError": "결제 감사 정보를 불러오지 못했습니다.",
+      "hours": "사용한 시간",
+      "usage": "사용량",
+      "boost": "부스트",
+      "period": "기간",
+      "consumption": "소비 검증",
+      "expected": "예상",
+      "actual": "실제",
+      "drift": "청구된 카운터와 롤업 실시간 재계산의 비교.",
+      "driftOk": "일치",
+      "driftWarn": "불일치",
+      "boosts": "활성 부스트",
+      "origin": {
+        "purchase": "구매됨",
+        "grant": "지급됨"
+      },
+      "ledger": "원장 (이번 기간)",
+      "ledgerEmpty": "이번 기간의 원장 항목이 없습니다.",
+      "ledgerTruncated": "{{total}}개 중 {{shown}}개 항목 표시.",
+      "snapshots": "스냅샷",
+      "invoices": "청구서"
+    },
+    "teams": {
+      "loadError": "팀을 불러오지 못했습니다.",
+      "empty": "아직 결제 팀이 없습니다.",
+      "searchPlaceholder": "멤버 검색…",
+      "members": "멤버",
+      "owner": "소유자",
+      "noMembers": "일치하는 멤버가 없습니다.",
+      "planPricing": "플랜 및 가격",
+      "plan": "플랜",
+      "seatPriceOverride": "좌석당 가격 재정의 (€)",
+      "seatPricePlaceholder": "플랜 가격",
+      "maxSeats": "최대 좌석 수",
+      "status": "상태",
+      "save": "변경 사항 저장",
+      "saved": "팀이 업데이트되었습니다",
+      "saveError": "팀을 업데이트하지 못했습니다.",
+      "noChanges": "저장할 변경 사항이 없습니다.",
+      "addMember": "추가",
+      "addPlaceholder": "추가할 userId…",
+      "memberAdded": "멤버 추가됨",
+      "memberRemoved": "멤버 제거됨",
+      "addError": "멤버를 추가하지 못했습니다.",
+      "removeError": "멤버를 제거하지 못했습니다.",
+      "companySettings": "회사 설정",
+      "companySettingsSoon": "팀 소유자를 위한 셀프서비스 회사 설정이 곧 제공됩니다."
+    }
   },
   "windows": {
     "agentCores": "에이전트 코어",
@@ -695,6 +872,9 @@
     "fileBrowser": "파일 브라우저",
     "chat": "채팅",
     "pendingApprovals": "대기 중인 승인",
+    "billingRequests": "결제 요청",
+    "billingAudit": "결제 감사",
+    "billingTeams": "결제 팀",
     "splitLeft": "왼쪽 분할",
     "splitRight": "오른쪽 분할",
     "splitBottom": "아래 분할",
@@ -850,7 +1030,90 @@
     "statChats": "채팅",
     "statAgents": "에이전트",
     "statDays": "일",
-    "madeWith": "Teros · ♥으로 만들어졌습니다"
+    "madeWith": "Teros · ♥으로 만들어졌습니다",
+    "plan": {
+      "entryTitle": "플랜 및 결제",
+      "entrySub": "구독, 사용량, 청구서",
+      "title": "플랜 및 결제",
+      "priceFree": "무료",
+      "priceMonthly": "{{price}} / 월",
+      "priceContact": "맞춤",
+      "perMonth": "/월",
+      "hoursLeft": "{{hours}}시간 남음",
+      "usedOfLimit": "{{limit}}시간 중 {{used}}시간 사용",
+      "renewsInDays": "{{date}} 갱신 · {{days}}일 남음",
+      "ctaUpgrade": "업그레이드",
+      "ctaDowngrade": "다운그레이드",
+      "ctaCurrent": "현재 플랜",
+      "checkingPreview": "확인 중…",
+      "previewUpgradeCharge": "지금 적용됩니다. 오늘 {{amount}}(일할 계산)가 청구됩니다.",
+      "previewUpgradeFree": "지금 적용됩니다 — 오늘 청구되는 금액은 없습니다.",
+      "addCardForUpgrade": "업그레이드하려면 카드를 추가하세요 — 지금 {{amount}}(일할 계산)가 청구됩니다.",
+      "cardOnFile": "{{brand}} ···· {{last4}}",
+      "cardExpires": "만료 {{month}}/{{year}}",
+      "noCard": "등록된 카드 없음",
+      "changeCard": "변경",
+      "addCard": "카드 추가",
+      "status": {
+        "active": "활성",
+        "cancelled": "취소됨",
+        "past_due": "연체",
+        "incomplete": "미완료"
+      },
+      "hoursUsage": "{{limit}}시간 중 {{used}}시간 사용",
+      "boostIncluded": "+{{hours}}시간 부스트",
+      "hoursUnmetered": "무제한 에이전트 시간",
+      "hoursByok": "내 API 키로 모델 사용",
+      "renewsOn": "{{date}}에 갱신",
+      "endsOn": "{{date}}에 종료",
+      "scheduledChange": "{{date}}에 {{plan}}(으)로 전환",
+      "cancelScheduled": "취소 예약됨",
+      "changePlanHeading": "플랜 변경",
+      "popular": "인기",
+      "current": "현재",
+      "unmeteredShort": "무제한",
+      "hoursPerMonth": "{{hours}}시간 / 월",
+      "contactSales": "영업팀 문의",
+      "switchTo": "전환",
+      "confirmTitle": "{{plan}}(으)로 전환할까요?",
+      "previewUpgrade": "즉시 적용됩니다. {{plan}}의 시간으로 새 주기를 시작하며, 차액은 자동으로 일할 계산됩니다.",
+      "previewDowngrade": "{{date}}에 예약되었습니다. 그때까지 {{current}}을(를) 유지하고 기간이 갱신되면 {{plan}}(으)로 전환됩니다.",
+      "cancel": "취소",
+      "confirm": "확인",
+      "applying": "적용 중…",
+      "paymentHeading": "결제 수단",
+      "paymentDescription": "구독에 사용되는 카드를 관리하세요.",
+      "managePayment": "카드 추가 / 변경",
+      "invoicesHeading": "청구서",
+      "noInvoices": "아직 청구서가 없습니다.",
+      "invoiceStatus": {
+        "paid": "결제 완료",
+        "waived": "면제됨",
+        "pending": "대기 중",
+        "invoiced": "청구됨",
+        "overdue": "연체",
+        "uncollectible": "회수 불가"
+      },
+      "invoiceView": "보기",
+      "invoicePdf": "PDF",
+      "noSubscription": "아직 활성 플랜이 없습니다.",
+      "loadError": "결제 정보를 불러오지 못했습니다.",
+      "retry": "다시 시도",
+      "toastUpgraded": "플랜이 {{plan}}(으)로 변경되었습니다",
+      "toastDowngrade": "{{plan}}(으)로 다운그레이드 예약됨",
+      "toastDowngradeDetail": "{{date}}까지 현재 플랜이 유지됩니다.",
+      "toastChangeError": "플랜을 변경하지 못했습니다",
+      "toastPaymentSaved": "결제 수단이 저장되었습니다",
+      "payment": {
+        "error": "카드를 저장하지 못했습니다. 다시 시도해 주세요.",
+        "cancel": "취소",
+        "saving": "저장 중…",
+        "save": "카드 저장",
+        "unavailable": "카드 결제는 웹 앱에서만 가능합니다.",
+        "initError": "결제 양식을 시작하지 못했습니다. 다시 시도해 주세요.",
+        "loading": "결제 양식 불러오는 중…"
+      }
+    }
   },
   "board": {
     "autoplay": "자동 재생",
@@ -1115,7 +1378,12 @@
     "errorRevokingAccess": "접근 권한을 취소할 수 없습니다",
     "app": "앱",
     "authentication": "인증",
-    "permissions": "권한"
+    "permissions": "권한",
+    "connection": "연결",
+    "configuration": "구성",
+    "instructions": "지침",
+    "addInstructions": "지침 추가",
+    "editInstructions": "편집"
   },
   "usage": {
     "loadingData": "사용량 데이터를 불러오는 중...",
@@ -1239,16 +1507,51 @@
     "stepAboutYou": "나에 대해",
     "stepApps": "앱",
     "stepAccess": "접근",
+    "stepPlan": "플랜",
+    "stepPayment": "결제",
     "stepDone": "완료",
     "quoteWelcome": "\"만나서 반가워요 — 저는 Iria입니다!\"",
     "quoteProvider": "\"뇌가 필요해요 — 하나 연결해 봐요!\"",
     "quoteAboutYou": "\"당신에 대해 알려주세요\"",
     "quoteApps": "\"초능력을 주세요 — 앱을 설치해 봐요!\"",
     "quoteAccess": "\"이 중에서 어떤 것을 사용할 수 있을까요?\"",
+    "quotePlan": "\"나에게 맞는 플랜을 선택하세요\"",
+    "quotePayment": "\"마지막 단계 — 결제를 설정해 볼까요\"",
     "quoteDone": "\"준비됐어요 — 함께 멋진 일을 해봐요!\"",
     "backButton": "← 뒤로",
     "skipButton": "건너뛰기",
     "continueButton": "계속 →",
+    "choosePlan": "플랜 선택",
+    "choosePlanDescription": "Teros 사용 방식에 맞는 플랜을 선택하세요. 언제든지 변경할 수 있습니다.",
+    "planLoading": "플랜 불러오는 중…",
+    "planLoadError": "플랜을 불러오지 못했습니다. 다시 시도해 주세요.",
+    "planCurrent": "현재 플랜",
+    "planPopular": "인기",
+    "planFree": "무료",
+    "planFreeDuringBeta": "베타 기간 무료",
+    "planPriceAfterBeta": "베타 종료 후 €{{price}}/월",
+    "planPriceMonthly": "€{{price}}/월",
+    "planContactSales": "영업팀 문의",
+    "planHoursPerMonth_one": "월 {{count}} 에이전트 시간",
+    "planHoursPerMonth_other": "월 {{count}} 에이전트 시간",
+    "planUnmetered": "무제한 에이전트 시간",
+    "planEnterpriseNote": "Enterprise 플랜은 저희 팀이 설정해 드립니다.",
+    "planContactSalesCta": "영업팀과 상담",
+    "planSelectToContinue": "계속하려면 플랜을 선택하세요",
+    "planActivating": "활성화 중…",
+    "planChangeError": "해당 플랜을 활성화하지 못했습니다. 다시 시도해 주세요.",
+    "planSelected": "{{plan}} 플랜 선택됨",
+    "paymentTitle": "결제 설정",
+    "paymentDescription": "{{plan}}을(를) 활성화하려면 카드를 추가하세요. 베타 기간에는 요금이 청구되지 않습니다.",
+    "paymentLoading": "보안 결제 준비 중…",
+    "paymentInitError": "결제를 시작하지 못했습니다. 뒤로 돌아가 다시 시도해 주세요.",
+    "paymentUnavailable": "지금은 카드 결제를 사용할 수 없습니다. 뒤로 돌아가 Starter를 선택하거나 나중에 다시 시도해 주세요.",
+    "paymentConfirm": "확인 및 활성화",
+    "paymentProcessing": "처리 중…",
+    "paymentError": "결제를 확인하지 못했습니다. 카드를 확인하고 다시 시도해 주세요.",
+    "paymentBetaNote": "Stripe로 보호됩니다. 베타 기간에는 청구되지 않습니다.",
+    "planActivatedToast": "플랜 활성화됨",
+    "planActivatedToastMessage": "이제 {{plan}} 플랜을 사용 중입니다.",
     "connectProvider": "AI 제공자 연결",
     "connectProviderDescription": "에이전트가 생각할 수 있도록 최소 하나의 제공자를 선택하세요.",
     "terosRecommended": "추천",
@@ -1427,55 +1730,6 @@
     "showAllActions": "전체 {{count}}개 액션 보기",
     "groupOther": "기타",
     "instancesInstalled": "설치된 인스턴스"
-  },
-  "chat": {
-    "queued": "대기 중",
-    "fallbackAgentName": "에이전트",
-    "fallbackTitle": "대화",
-    "stop": {
-      "ariaLabel": "생성 중지",
-      "hardHint": "⌘⇧K를 눌러 강제 중지",
-      "hardConfirm": {
-        "title": "강제 중지하시겠습니까?",
-        "bodyWithIrreversible": "{{toolName}}이(가) 아직 실행 중이며 불완전한 변경 사항이 남을 수 있습니다. 중지하시겠습니까?",
-        "bodyNoIrreversible": "에이전트가 아직 작업 중입니다. 중지하시겠습니까?",
-        "confirm": "지금 중지",
-        "confirmWait": "도구 대기 중…",
-        "deny": "계속 실행"
-      }
-    }
-  },
-  "formWidget": {
-    "title": "몇 가지 정보가 필요합니다",
-    "notesLabel": "메모",
-    "notesPlaceholder": "추가하거나 명확히 할 내용이 있나요? (선택)",
-    "submit": "보내기",
-    "submitting": "보내는 중…",
-    "back": "이전",
-    "next": "다음",
-    "dismiss": "채팅으로 답할게요",
-    "required": "필수",
-    "submittedTitle": "양식 제출됨",
-    "dismissedTitle": "양식을 닫고 채팅으로 답변함",
-    "invalidSpec": "이 양식을 표시할 수 없습니다.",
-    "validationIntro": "다음을 확인해 주세요:",
-    "progress": "{{current}} / {{total}}",
-    "yes": "예",
-    "no": "아니요",
-    "review": "답변을 확인하세요",
-    "reviewEmpty": "—"
-  },
-  "chatView": {
-    "typing": {
-      "label": "{{name}}",
-      "thinking": "생각 중…"
-    },
-    "queue": {
-      "countOne": "{{count}}개 메시지 대기 중",
-      "countOther": "{{count}}개 메시지 대기 중",
-      "moreSuffix": "…그리고 {{count}}개 더",
-      "ariaLabel": "대기 중인 메시지 큐"
-    }
   },
   "browserbase": {
     "reloadLiveView": "라이브 뷰 새로고침",
@@ -1790,6 +2044,7 @@
   "agentUsage": {
     "title": "에이전트 활동",
     "subtitle": "세션, 도구, 시간 단위 집계 · 관리자 전용",
+    "lastRefreshed": "마지막 새로고침 {{when}}",
     "refresh": "새로고침",
     "clearFilters": "지우기",
     "loading": "에이전트 사용량 로드 중…",
@@ -1801,7 +2056,9 @@
       "workspace": "워크스페이스",
       "provider": "제공자",
       "triggerKind": "트리거",
-      "all": "전체"
+      "all": "전체",
+      "showHidden": "숨긴 ID 표시",
+      "hideHidden": "ID 숨기기"
     },
     "periods": {
       "last1h": "지난 1시간",
@@ -1811,30 +2068,177 @@
     },
     "kpis": {
       "sessions": "세션",
+      "sessionsSub_one": "{{count}}개 시간 구간 기준",
+      "sessionsSub_other": "{{count}}개 시간 구간 기준",
       "tokens": "토큰",
+      "tokensSub": "입력 + 출력",
       "cost": "비용",
+      "costSub": "추정치",
       "agentActive": "에이전트 활성",
+      "agentActiveSub": "청구 단위 · 쿼터 모델 기준",
+      "subInfo": {
+        "buckets": {
+          "title": "시간 구간",
+          "body": "각 KPI는 선택한 기간을 1시간 구간으로 나누어 계산합니다. 자정을 넘는 턴은 두 구간에 비례해 반영됩니다."
+        },
+        "tokens": {
+          "title": "집계되는 토큰",
+          "body": "기간 내 모든 턴의 입력 + 출력 토큰 합계입니다. 캐시된 토큰은 이중 집계되지 않으며 캐시 및 절감 섹션에 별도로 표시됩니다."
+        },
+        "agentActive": {
+          "title": "에이전트 활성 vs 사용자 활성",
+          "body": "에이전트 활성은 에이전트별 지속 시간을 합산합니다(병렬 에이전트는 누적). 사용자 활성은 사용자별로 겹치는 구간을 병합합니다(동시 에이전트는 이중 집계되지 않음). 필터에서 시간 지표를 전환하세요."
+        }
+      },
       "costInfo": {
-        "title": "비용 계산 방식"
+        "title": "비용 계산 방식",
+        "body1": "비용은 토큰 수(프로바이더가 보고한 실제 값)에 ai-tokenizer에 내장된 가격표를 곱해 로컬에서 추정합니다. 프로바이더가 실제로 청구하는 금액이 아닙니다.",
+        "body2": "프로바이더별 정확도: Anthropic / OpenAI / Google — 청구 금액에 근접(가격표 드리프트 범위 내). 자동 캐시 프로바이더(OpenAI gpt-4o+, Codex OAuth, Cloudflare, Fireworks, OpenRouter, OpenAI 호환) — 캐시 할인이 어댑터에 보이지 않아 과대 추정. 가격표에 없는 모델 — $0으로 집계(거짓 음성; 가격 정보 없음).",
+        "body3": "이 대시보드의 핵심 지표는 에이전트 시간입니다. Teros가 청구하는 단위(쿼터 모델 기준 시간/사용자/월)이기 때문입니다. 비용은 보조 지표로 유지됩니다."
       }
     },
     "quotaBurn": {
-      "title": "할당량 소모"
+      "title": "할당량 소모",
+      "subtitle": "사용자별 투입 에이전트 시간 vs 할당량",
+      "emptyState": "이번 청구 기간에 아직 에이전트 활동이 없습니다. 사용자별 청구 스키마가 도입되기 전까지 쿼터 기본값은 {{quota}}시간/사용자/월입니다.",
+      "selectUserHint": "위에서 사용자를 선택하면 소비 궤적, 예측, 소진 전망이 포함된 번다운을 볼 수 있습니다.",
+      "daysIntoPeriod": "기간 {{total}}일 중 {{days}}일 경과",
+      "daysLeft_one": "기간이 {{count}}일 남았습니다.",
+      "daysLeft_other": "기간이 {{count}}일 남았습니다.",
+      "overBudget_one": "⚠ 쿼터 초과 예상 사용자 {{count}}명 ({{names}}).",
+      "overBudget_other": "⚠ 쿼터 초과 예상 사용자 {{count}}명 ({{names}}).",
+      "nearingLimit_one": "⚡ 쿼터의 80%를 넘은 사용자 {{count}}명.",
+      "nearingLimit_other": "⚡ 쿼터의 80%를 넘은 사용자 {{count}}명.",
+      "onTrack_one": "✓ 사용자 {{count}}명 정상 범위.",
+      "onTrack_other": "✓ 사용자 {{count}}명 모두 정상 범위.",
+      "infoTitle": "쿼터 및 청구",
+      "infoParagraph1": "프리뷰 단계에서는 쿼터가 {{quota}}시간/사용자/월로 고정되어 있습니다.",
+      "infoParagraph2": "사용자별 재정의는 실제 청구 스키마가 도입되면 `users.billing.agentHoursQuota` 또는 Stripe 메타데이터에 저장될 예정입니다. 지금 표시함으로써 관리자는 청구를 기다리지 않고 추세를 예측할 수 있습니다.",
+      "consumed": "소비됨",
+      "projected": "예상",
+      "quotaLine": "쿼터"
     },
     "cacheSavings": {
-      "title": "캐시 및 절감"
+      "title": "캐시 및 절감",
+      "subtitle": "프로바이더별 프롬프트 캐싱 효율",
+      "cacheHitRatio": "캐시 적중률 (보고됨)",
+      "cacheHitRatioSub": "입력 토큰 {{total}}개 중 {{cached}}개",
+      "totalCost": "총 비용 (기간)",
+      "totalCostSub": "캐시 가격 할인이 이미 반영됨",
+      "cacheWrites": "캐시 쓰기 (일회성)",
+      "cacheWritesSub": "지금은 프리미엄, 나중에 회수",
+      "activeProvidersOnly": "Teros 활성 캐싱 프로바이더만 기준: 적중률 {{ratio}}% (토큰 {{total}}개 중 {{cached}}개).",
+      "perProviderTitle": "프로바이더별 상세",
+      "col": {
+        "provider": "프로바이더",
+        "caching": "캐싱",
+        "input": "입력",
+        "cached": "캐시됨",
+        "ratio": "비율",
+        "cost": "비용"
+      },
+      "autoCacheNoteShort": "일부 프로바이더는 조용히 캐시합니다.",
+      "status": {
+        "active": "활성",
+        "auto": "자동",
+        "off": "꺼짐"
+      },
+      "autoCacheInfo": {
+        "title": "일부 프로바이더가 0%인데 비용이 있는 이유",
+        "body": "`auto`로 표시된 프로바이더는 내부적으로 캐시하지만 `LLMResponse.usage`로 캐시된 토큰을 노출하지 않습니다. 비용에는 프로바이더가 적용한 할인이 이미 반영되어 있지만 비율은 로컬 지표에서 보이지 않습니다."
+      },
+      "mechanismInfo": {
+        "title": "Teros의 캐싱 동작 방식",
+        "intro": "프로바이더마다 고유한 업스트림 캐싱 메커니즘이 있습니다. Teros는 어댑터에 따라 캐시 힌트를 다르게 적용합니다.",
+        "activeTitle": "● 활성",
+        "activeBody": "Teros가 명시적 `cache_control`(system + tools + 이전 메시지에 mod-N=20)을 전송합니다. 캐시된 토큰이 표시됩니다. 해당: Anthropic, Anthropic OAuth, MiniMax.",
+        "autoTitle": "● 자동",
+        "autoBody": "프로바이더가 자체적으로 캐시합니다(Teros가 요청하지 않아도). 청구 비용에는 할인이 반영되지만 현재 어댑터는 응답에서 캐시된 토큰을 추출하지 않습니다. 해당: OpenAI (gpt-4o+), Codex OAuth (gpt-5), Cloudflare Workers AI (프리픽스 캐싱을 지원하는 Kimi K2.5/K2.6 포함), Fireworks AI (Kimi K2.6 등), OpenRouter 패스스루, OpenAI 호환 엔드포인트.",
+        "offTitle": "● 꺼짐",
+        "offBody": "활성 캐싱이 없습니다. 매 턴 전체 입력 비용을 지불합니다. 해당: Gemini (Context Caching API는 있으나 Teros가 아직 통합하지 않음 — gap), Ollama 로컬, Ollama Cloud, Zhipu, Zhipu Coding, Groq, Teros 내부.",
+        "kimiTitle": "Kimi에 대해",
+        "kimiBody": "Kimi K2.5 / K2.6은 Fireworks 또는 Cloudflare를 통해 Teros에서 사용할 수 있는 Moonshot AI 모델입니다. 두 프로바이더 모두 실제 할인과 함께 업스트림에서 Kimi를 캐시하지만, Teros는 아직 응답에서 `cached_tokens`를 추출하지 않는 OpenAICompatibleLLMAdapter를 사용합니다. 실효 상태: 자동.",
+        "otherOptimizationsTitle": "기타 비용 최적화",
+        "otherOptimizationsBody": "모든 프로바이더에 적용: compaction(CompactionService가 히스토리 축약), prune(PRUNE이 오래된 도구 출력 제거), 최근 메시지 윈도우(기본 20개), 토큰 예산 강제(컨텍스트 윈도우의 90% 초과 입력 거부), reasoning 토큰 별도 집계(o-시리즈 모델).",
+        "costAccuracyTitle": "비용 정확도",
+        "costAccuracyBody": "위의 총 비용(기간)은 실제 값입니다 — `estimateCostUsd`가 모델별 적절한 cache_read / cache_write 비율과 함께 ai-tokenizer 가격표(정확도 97%+)를 사용합니다. '절감 %' 단일 값은 프로바이더마다 달라(Anthropic ~90%, OpenAI 자동 ~50%, Gemini 컨텍스트 캐시 ~25%, 기타 0%) 표시하지 않습니다."
+      },
+      "totalCostInfo": {
+        "title": "총 비용 (기간)",
+        "body": "각 프로바이더의 캐시 가격이 이미 할인 반영된 실제 비용입니다. '절감 %'는 프로바이더별로 달라(Anthropic ~90%, OpenAI 자동 ~50%, Gemini ~25%, 기타 0%) 표시하지 않습니다. 아래 숫자는 계정에 실제로 청구될 금액을 반영합니다."
+      },
+      "cacheWritesInfo": {
+        "title": "캐시 쓰기 (일회성 프리미엄)",
+        "body": "캐시 쓰기 토큰은 일반 입력 토큰보다 비쌉니다(Anthropic 기준 통상 1.25×). 이후 턴이 큰 할인으로 캐시를 적중하게 하는 선투자입니다. 이 지표는 지불한 프리미엄을 보여주며, cache_read 절감액은 위의 총 비용에 반영되어 있습니다."
+      }
     },
     "tokenBreakdown": {
-      "title": "토큰 분류"
+      "title": "토큰 분류",
+      "sessionsCount_one": "세션 {{count}}개",
+      "sessionsCount_other": "세션 {{count}}개",
+      "perSessionHint": "최근 세션에서 행을 클릭하면 개별 상세 내역이 펼쳐집니다.",
+      "categories": {
+        "system": "시스템",
+        "tools": "도구",
+        "examples": "예시",
+        "memory": "메모리",
+        "summary": "요약",
+        "conversation": "대화",
+        "toolCalls": "도구 호출",
+        "toolResults": "도구 결과",
+        "output": "출력"
+      },
+      "methodologyInfo": {
+        "title": "토큰 상세 내역 방법론",
+        "body": "`ai-tokenizer`(프로바이더별 인코딩, 정확도 97%+)를 통한 카테고리별 휴리스틱을 프로바이더가 보고한 실제 `usage.inputTokens`에 맞게 스케일(보정 계수) — 합계는 실제 입력 토큰과 정확히 일치하며 비율은 근사치입니다.",
+        "footer": "최근 세션에서 행을 클릭하면 개별 상세 내역을 볼 수 있습니다."
+      },
+      "legacyNoTokenBreakdown": "이 세션은 세션별 토큰 상세 내역이 활성화되기 전에 기록되었습니다."
     },
     "recentSessions": {
-      "title": "최근 세션"
+      "title": "최근 세션",
+      "col": {
+        "when": "시각",
+        "agent": "에이전트",
+        "user": "사용자",
+        "status": "상태",
+        "tokens": "토큰",
+        "tools": "도구",
+        "cost": "비용",
+        "duration": "소요 시간"
+      },
+      "status": {
+        "completed": "완료",
+        "errored": "오류",
+        "aborted": "중단됨",
+        "timedOut": "시간 초과",
+        "running": "실행 중"
+      }
     },
     "toolExecutions": {
-      "title": "도구 실행"
+      "title": "도구 실행",
+      "col": {
+        "when": "시각",
+        "tool": "도구",
+        "step": "단계",
+        "status": "상태",
+        "duration": "소요 시간",
+        "inputSize": "입력",
+        "outputSize": "출력"
+      }
     },
     "health": {
-      "title": "서브시스템 상태"
+      "title": "서브시스템 상태",
+      "chips": {
+        "buffer": "버퍼",
+        "reconciler": "리컨실러",
+        "rollup": "롤업"
+      },
+      "level": {
+        "ok": "정상",
+        "warn": "경고",
+        "error": "오류"
+      }
     }
   },
   "whatsNew": {

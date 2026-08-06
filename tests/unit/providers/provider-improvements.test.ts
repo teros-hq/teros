@@ -287,9 +287,17 @@ describe('discoverModels — OpenRouter customModel', () => {
 // ===========================================================================
 
 describe('MiniMax model definitions', () => {
-  it('should return 7 active models for minimax provider', () => {
+  it('should return 8 active models for minimax provider', () => {
     const models = getActiveModelsByProvider('minimax');
-    expect(models.length).toBe(7);
+    expect(models.length).toBe(8);
+  });
+
+  it('should include M3 flagship multimodal model', () => {
+    const models = getActiveModelsByProvider('minimax');
+    const m3 = models.find((m) => m.modelId === 'minimax-m3');
+    expect(m3).toBeDefined();
+    expect(m3?.modelString).toBe('MiniMax-M3');
+    expect(m3?.capabilities.thinking).toBe(true);
   });
 
   it('should include M2.7 flagship model', () => {
@@ -318,17 +326,17 @@ describe('MiniMax model definitions', () => {
     expect(m25?.capabilities.thinking).toBe(false);
   });
 
-  it('all MiniMax models should have vision: false', () => {
+  it('only M3 has vision; all other MiniMax models have vision: false', () => {
     const models = getActiveModelsByProvider('minimax');
     for (const m of models) {
-      expect(m.capabilities.vision).toBe(false);
+      expect(m.capabilities.vision).toBe(m.modelId === 'minimax-m3');
     }
   });
 
-  it('all MiniMax models should have 204800 context tokens', () => {
+  it('M3 has 1M context; all other MiniMax models have 204800 context tokens', () => {
     const models = getActiveModelsByProvider('minimax');
     for (const m of models) {
-      expect(m.context.maxTokens).toBe(204800);
+      expect(m.context.maxTokens).toBe(m.modelId === 'minimax-m3' ? 1000000 : 204800);
     }
   });
 });
@@ -560,10 +568,18 @@ describe('OpenAICompatibleLLMAdapter reasoning budget overflow', () => {
       model: 'qwopus-test',
     });
     // Monkey-patch the inner OpenAI SDK client to avoid any network I/O.
+    // The adapter chains `.withResponse()` on the APIPromise returned by
+    // `create()` (to read provider perf headers off the raw HTTP Response),
+    // so the mock must return that shape synchronously — not a bare stream.
     (adapter as any).client = {
       chat: {
         completions: {
-          create: mock(async () => asyncStream(chunks)),
+          create: mock(() => ({
+            withResponse: async () => ({
+              data: asyncStream(chunks),
+              response: new Response(null, { status: 200 }),
+            }),
+          })),
         },
       },
     };

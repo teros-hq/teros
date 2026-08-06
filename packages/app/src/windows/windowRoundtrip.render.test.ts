@@ -34,7 +34,7 @@ registerAllWindowTypes()
 const NO_SERIALIZE_ALLOWLIST = new Set(['pending-approvals', 'billing-requests', 'billing-teams'])
 
 /** Types registered by registerAllWindowTypes() — bites if the registry shrinks. */
-const EXPECTED_TYPE_COUNT = 36
+const EXPECTED_TYPE_COUNT = 37
 
 const sentinel = (key: string) => `__rt:${key}__`
 

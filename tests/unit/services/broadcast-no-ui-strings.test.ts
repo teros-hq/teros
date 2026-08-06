@@ -21,7 +21,10 @@ import { describe, expect, it } from 'bun:test';
 const BACKEND_SRC = resolve(__dirname, '../../../packages/backend/src');
 const BROADCAST = /broadcastTo(?:User|Workspace|Channel|Topic)\s*\(/g;
 // A presentation key assigned a capitalised string literal inside the payload.
-const UI_STRING = /\b(?:message|text|toast|notification)\s*:\s*["'`][A-Z]/;
+// `(?<!\.)` and `(?<!\?\s)` exclude non-key matches that can fall inside the
+// scan window: a property access in a ternary (`err.message : 'Failed …'`) is
+// not a payload key — the string never leaves the backend via the broadcast.
+const UI_STRING = /(?<![.?]\s{0,4})\b(?:message|text|toast|notification)\s*:\s*["'`][A-Z]/;
 const WINDOW = 500; // chars after the call opener — payloads are small objects
 
 function walk(dir: string, acc: string[] = []): string[] {

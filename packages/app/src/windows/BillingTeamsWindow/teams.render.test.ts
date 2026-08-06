@@ -76,13 +76,13 @@ describe("filterMembers", () => {
 
 describe("usageColor", () => {
   it("maps the threshold bands", () => {
-    expect(usageColor(null)).toBe("#71717A")
-    expect(usageColor(0)).toBe("#06B6D4")
-    expect(usageColor(79)).toBe("#06B6D4")
-    expect(usageColor(80)).toBe("#FBBF24") // MUST BITE: an off-by-one band shows cyan
-    expect(usageColor(99)).toBe("#FBBF24")
-    expect(usageColor(100)).toBe("#F87171")
-    expect(usageColor(140)).toBe("#F87171")
+    expect(usageColor(null)).toBe("#52525B")
+    expect(usageColor(0)).toBe("#5E6AD2")
+    expect(usageColor(79)).toBe("#5E6AD2")
+    expect(usageColor(80)).toBe("#F59E0B") // MUST BITE: an off-by-one band shows indigo
+    expect(usageColor(99)).toBe("#F59E0B")
+    expect(usageColor(100)).toBe("#EF4444")
+    expect(usageColor(140)).toBe("#EF4444")
   })
 })
 

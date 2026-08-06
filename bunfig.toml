@@ -1,0 +1,3 @@
+# bun test setup — see packages/backend/tests/preload.ts for why this exists.
+[test]
+preload = ["./packages/backend/tests/preload.ts"]

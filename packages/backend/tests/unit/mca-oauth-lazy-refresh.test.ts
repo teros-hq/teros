@@ -7,7 +7,14 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { parseExpiryToMs, shouldRefreshOAuthToken } from '../../src/routes/mca-callback-routes'
+
+// mca-callback-routes importa config.ts, que exige MCA_BASE_PATH al cargar el
+// módulo. En dev el `.env` lo provee; en CI/checkouts limpios no existe, así
+// que lo fijamos ANTES del import (dinámico, para que el set corra primero).
+process.env.MCA_BASE_PATH ??= '/tmp/mcas'
+const { parseExpiryToMs, shouldRefreshOAuthToken } = await import(
+  '../../src/routes/mca-callback-routes'
+)
 
 const NOW = Date.now()
 const ONE_HOUR = 60 * 60 * 1000

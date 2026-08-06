@@ -23,9 +23,17 @@ const ADMIN_API_DIR = resolve(
   '../../../packages/backend/src/handlers/domains/admin-api',
 );
 
-/** The recognised admin gates. `requireSuper` is stricter (super-only); all three
- * reject a plain user with FORBIDDEN. */
-const GATE = /\b(?:requireAdmin|requireSuper|requireSystemAdmin)\s*\(/;
+/** The recognised admin gates. `requireSuper`/`requireSuperAdmin` are stricter
+ * (super-only); all of them reject a plain user with FORBIDDEN. */
+const GATE =
+  /\b(?:requireAdmin|requireSuperAdmin|requireSuper|requireSystemAdmin)\s*\(/;
+
+/** Role-based gate variant (TER-671): `getSystemRole` returns null for
+ * non-admins and the handler throws FORBIDDEN itself. Only counts as a gate
+ * when BOTH the role lookup and the FORBIDDEN throw are present in the same
+ * handler body — `getSystemRole` alone (result ignored) is not a gate. */
+const ROLE_GATE_LOOKUP = /\bgetSystemRole\s*\(/;
+const ROLE_GATE_THROW = /HandlerError\s*\(\s*["']FORBIDDEN["']/;
 
 function adminApiFiles(): string[] {
   return readdirSync(ADMIN_API_DIR).filter(
@@ -47,7 +55,10 @@ describe('admin-api authorization gate invariant (TER-447)', () => {
       for (const chunk of handlerChunks) {
         const name = chunk.match(/^(\w+)/)?.[1] ?? '<anonymous>';
         handlerCount++;
-        if (!GATE.test(chunk)) {
+        const gated =
+          GATE.test(chunk) ||
+          (ROLE_GATE_LOOKUP.test(chunk) && ROLE_GATE_THROW.test(chunk));
+        if (!gated) {
           ungated.push(`${file}:${name}`);
         }
       }

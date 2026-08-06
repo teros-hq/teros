@@ -343,6 +343,7 @@ describe('inyección de app_instructions', () => {
         'You are Iria Devon, a AI Assistant.' +
         '\n\n<app_instructions app="Mi Notion" mca="mca.notion">\nUsa la base de datos de proyectos.\n</app_instructions>' +
         '\n\n<context>' +
+        `\nAgent id: ${AGENT_ID}` +
         '\nCurrent time: <NOW>' +
         '\n</context>',
     )

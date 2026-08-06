@@ -32,7 +32,9 @@ function setup() {
   const state = createStreamingState();
   const helpers = createStreamingHelpers(state, { channelManager, channelId: CH, agentId: 'a_1', broadcastToChannel: broadcast });
   const ctx = { broadcastToChannel: broadcast, channelManager, maybeAutonameChannel: mock(async () => undefined) } as any;
-  const toolExecutor = { getMcaIdForTool: () => 'mca.test' } as any;
+  // resolveProxyExecution returns null for anything that is not a proxied
+  // execute-tool call → these tests exercise the direct (non-tunneled) path.
+  const toolExecutor = { getMcaIdForTool: () => 'mca.test', resolveProxyExecution: () => null } as any;
   return { broadcast, state, helpers, ctx, toolExecutor };
 }
 

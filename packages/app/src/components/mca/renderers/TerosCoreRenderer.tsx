@@ -190,6 +190,8 @@ const TOOL_LABELS: Record<string, string> = {
   // Access control (apps)
   'grant-app-access': 'Grant app access',
   'revoke-app-access': 'Revoke app access',
+  'get-app-permissions': 'App permissions',
+  'set-app-permissions': 'Set app permissions',
   // Skills
   'skill-list': 'Skills',
   'skill-create': 'Create skill',
@@ -1341,6 +1343,68 @@ function RevokeAppAccessRenderer(props: ToolCallRendererProps) {
   );
 }
 
+interface AppPermissionsResult {
+  appId?: string;
+  appName?: string;
+  defaultPermission?: string;
+  tools?: Array<{ name: string; permission: string; readOnly?: boolean; alwaysAsk?: boolean }>;
+  summary?: { allow: number; ask: number; forbid: number };
+}
+
+/** Shared body for get/set-app-permissions: default + summary + per-tool rows. */
+function appPermissionRows(data: AppPermissionsResult): KeyValueRow[] {
+  const s = data.summary;
+  return [
+    { key: 'default', value: data.defaultPermission ?? 'ask' },
+    ...(s ? [{ key: 'summary', value: `${s.allow} allow · ${s.ask} ask · ${s.forbid} forbid` }] : []),
+    ...(data.tools ?? []).slice(0, MAX_ITEMS).map((t) => ({
+      key: t.name,
+      value: [t.permission, t.readOnly ? 'read-only' : null, t.alwaysAsk ? 'always-ask' : null]
+        .filter(Boolean)
+        .join(' · '),
+    })),
+  ];
+}
+
+function GetAppPermissionsRenderer(props: ToolCallRendererProps) {
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppPermissionsResult;
+  const name = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
+
+  return (
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+      <ResourceCard
+        leading={<IconTile label={name.slice(0, 2)} size={28} radius={5} />}
+        title={name}
+        subtitle={shortId(data.appId ?? (input?.appId as string | undefined))}
+      >
+        <KeyValueGrid rows={appPermissionRows(data)} />
+      </ResourceCard>
+    </ToolShell>
+  );
+}
+
+function SetAppPermissionsRenderer(props: ToolCallRendererProps) {
+  const { toolName, status, output, error, input } = props;
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const data = (parsed && typeof parsed === 'object' ? parsed : {}) as AppPermissionsResult;
+  const name = data.appName ?? shortId(data.appId ?? (input?.appId as string | undefined));
+
+  return (
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+      <ResourceCard
+        leading={<IconTile label={name.slice(0, 2)} size={28} radius={5} />}
+        title={name}
+        subtitle={shortId(data.appId ?? (input?.appId as string | undefined))}
+        verb="updated"
+      >
+        <KeyValueGrid rows={appPermissionRows(data)} />
+      </ResourceCard>
+    </ToolShell>
+  );
+}
+
 interface AppAccessEntry {
   agentId: string;
   agentName?: string;
@@ -2031,6 +2095,8 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'list-app-access': AppAccessListRenderer,
   'grant-app-access': GrantAppAccessRenderer,
   'revoke-app-access': RevokeAppAccessRenderer,
+  'get-app-permissions': GetAppPermissionsRenderer,
+  'set-app-permissions': SetAppPermissionsRenderer,
   // Catalog / Providers
   'list-catalog': ListCatalogRenderer,
   'list-providers': ListProvidersRenderer,
