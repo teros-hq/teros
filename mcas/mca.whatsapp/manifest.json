@@ -1,0 +1,65 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.whatsapp",
+  "name": "WhatsApp",
+  "version": "1.0.0",
+  "description": "Send and receive WhatsApp messages via WAHA (WhatsApp HTTP API). Manage sessions, send text/media, and handle incoming messages. Account linking is always done with a numeric pairing code (request-pairing-code) — QR authentication is not supported.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime-whatsapp:latest",
+    "appDataMount": true,
+    "resources": {
+      "cpus": 2,
+      "memoryMb": 2048
+    },
+    "systemEnvironment": {
+      "WAHA_API_KEY": "${SECRET_MCA_WAHA_API_KEY}",
+      "WHATSAPP_DEFAULT_ENGINE": "GOWS",
+      "WAHA_LOCAL_STORE_BASE_DIR": "/app-data",
+      "WHATSAPP_PROXY_SERVER": "${SECRET_MCA_WHATSAPP_PROXY_SERVER}",
+      "WHATSAPP_PROXY_SERVER_USERNAME": "${SECRET_MCA_WHATSAPP_PROXY_SERVER_USERNAME}-session-${MCA_APP_ID}",
+      "WHATSAPP_PROXY_SERVER_PASSWORD": "${SECRET_MCA_WHATSAPP_PROXY_SERVER_PASSWORD}"
+    }
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "agent",
+      "instructions": "Esta app se conecta a través del agente. Pídele en el chat que vincule tu sesión de WhatsApp: te dará un código de emparejamiento para introducir en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono. También puedes pedirle que compruebe el estado de la sesión o que la desconecte."
+    },
+    "agent": false
+  },
+  "keywords": [
+    "whatsapp",
+    "messaging",
+    "waha",
+    "chat",
+    "automation"
+  ],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-25",
+      "notes": "Initial release — send and read messages, share images and files, manage chats and contacts, and react with emoji"
+    }
+  ]
+}

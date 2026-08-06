@@ -1,0 +1,119 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. ActiveCampaign API URL, 토큰 및 연결성을 확인합니다."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "연락처 목록. { items[{id,email,firstName,lastName,phone}], total, nextOffset }를 반환합니다. 이메일, 자유 텍스트 검색 또는 listId로 필터링합니다.",
+      "params": {
+        "email": "정확한 이메일 일치",
+        "search": "자유 텍스트 검색 (이름/이메일)",
+        "listId": "이 목록에 구독된 연락처만",
+        "limit": "최대 결과 (기본 20, 최대 100)",
+        "offset": "페이지 매김 오프셋 (기본 0)",
+        "includeRaw": "원시 API 응답 포함"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "ID로 연락처를 가져옵니다. { contact: {id,email,firstName,lastName,phone,cdate,udate} }를 반환합니다.",
+      "params": {
+        "id": "연락처 ID"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "연락처를 생성합니다. 이메일은 필수입니다. 생성된 레코드와 함께 { contact }를 반환합니다. ActiveCampaign은 이메일로 업서트하며, 존재하는 경우 기존 연락처를 가져옵니다.",
+      "params": {
+        "email": "연락처 이메일 (필수)"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "ID로 연락처를 업데이트합니다. 제공된 필드만 업데이트됩니다. { contact }를 반환합니다.",
+      "params": {
+        "id": "연락처 ID"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "ID로 연락처를 삭제합니다. 영구적입니다 — ActiveCampaign에서는 소프트 삭제가 없습니다. { id, deleted: true }를 반환합니다.",
+      "params": {
+        "id": "연락처 ID"
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "구독자 목록을 나열합니다. { items[{id,name,stringid,subscriberCount}], total, nextOffset }를 반환합니다.",
+      "params": {
+        "limit": "최대 결과 (기본 20, 최대 100)"
+      }
+    },
+    "subscribe-contact-to-list": {
+      "name": "subscribe-contact-to-list",
+      "description": "연락처를 목록에 구독(또는 구독 취소)합니다. { contactList: {id, contact, list, status} }를 반환합니다.",
+      "params": {
+        "contactId": "연락처 ID",
+        "listId": "목록 ID",
+        "status": "기본 구독됨"
+      }
+    },
+    "list-campaigns": {
+      "name": "list-campaigns",
+      "description": "이메일 캠페인을 나열합니다. { items[{id,name,type,status,subject,sendDate,totalRecipients,totalOpens,uniqueOpens}], total, nextOffset }를 반환합니다.",
+      "params": {
+        "limit": "최대 결과 (기본 20, 최대 100)"
+      }
+    },
+    "get-campaign": {
+      "name": "get-campaign",
+      "description": "ID로 캠페인을 가져옵니다. { campaign: {id,name,subject,status,sendDate,fromName,fromEmail,totalRecipients,opens,clicks} }를 반환합니다.",
+      "params": {
+        "id": "캠페인 ID"
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "거래(CRM 파이프라인 기록)를 나열합니다. { items[{id,title,value,currency,status,contact,pipeline,stage}], total, nextOffset }를 반환합니다.",
+      "params": {
+        "search": "제목/설명 검색",
+        "pipelineId": "파이프라인 ID로 필터링",
+        "stageId": "단계 ID로 필터링",
+        "limit": "최대 결과 (기본 20, 최대 100)"
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "ID로 거래를 가져옵니다. { deal: {id,title,description,value,currency,status,contact,pipeline,stage,owner} }를 반환합니다.",
+      "params": {
+        "id": "거래 ID"
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "거래를 생성합니다. 필수: 제목, 값(주 단위), pipelineId, stageId, ownerId. 값은 내부적으로 센트로 변환됩니다. { deal }를 반환합니다.",
+      "params": {
+        "value": "주 단위의 거래 값 (예: $1,500의 경우 1500)",
+        "currency": "ISO 통화 코드, 소문자 (기본 usd)",
+        "pipelineId": "파이프라인(그룹) ID",
+        "ownerId": "거래 소유자 사용자 ID"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "태그 목록을 나열합니다. { items[{id,name,description,tagType}], total, nextOffset }를 반환합니다.",
+      "params": {
+        "search": "태그 이름의 부분 일치",
+        "limit": "최대 결과 (기본 20, 최대 100)"
+      }
+    },
+    "add-tag-to-contact": {
+      "name": "add-tag-to-contact",
+      "description": "연락처에 태그를 할당합니다. { contactTag: {id, contact, tag} }를 반환합니다."
+    }
+  },
+  "name": "ActiveCampaign",
+  "description": "ActiveCampaign CRM 및 이메일 마케팅 — v3 API를 통해 연락처, 목록, 캠페인, 거래 및 태그를 관리합니다."
+}

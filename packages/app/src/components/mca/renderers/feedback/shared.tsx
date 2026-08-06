@@ -3,81 +3,59 @@
  */
 
 import {
-  AlertCircle,
   Bell,
   Bug,
   CheckCircle,
-  ChevronRight,
   Clock,
   Lightbulb,
   MessageSquare,
-  XCircle,
-} from '@tamagui/lucide-icons';
+  colors,
+  useColors,
+  useMcaTheme,
+} from '../../primitives';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
 
 // ============================================================================
 // Colors
 // ============================================================================
 
-export const colors = {
-  // Feedback brand
-  feedbackPurple: '#8b5cf6',
-  feedbackBlue: '#3b82f6',
+// Renderer UX Guide v2 §5 — theme-adaptive palette.
+// Feedback domain enum tints (status/severity) are semantic theme-agnostic;
+// surface/text/badges come from useColors(). Brand purple uses the shared
+// `colors.violet` semantic token so it stays in sync with the global palette.
+export function useFeedbackColors() {
+  const c = useColors();
+  const theme = useMcaTheme();
+  const isDark = theme === 'dark';
 
-  // Status
-  success: '#22c55e',
-  running: '#8b5cf6',
-  failed: '#ef4444',
+  return {
+    // Brand (semantic, theme-agnostic)
+    feedbackPurple: colors.violet,
+    success: colors.success,
 
-  // Status glow
-  glowSuccess: 'rgba(34, 197, 94, 0.5)',
-  glowRunning: 'rgba(139, 92, 246, 0.5)',
-  glowFailed: 'rgba(239, 68, 68, 0.5)',
+    // Badges (theme-adaptive)
+    badgeSuccess: c.badges.ok,
+    badgeError: c.badges.err,
+    badgeWarning: c.badges.warn,
 
-  // Badges
-  badgeSuccess: { text: '#86efac', bg: 'rgba(34,197,94,0.1)' },
-  badgeError: { text: '#fca5a5', bg: 'rgba(239,68,68,0.1)' },
-  badgeInfo: { text: '#c4b5fd', bg: 'rgba(139,92,246,0.1)' },
-  badgeWarning: { text: '#fcd34d', bg: 'rgba(251,191,36,0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255,255,255,0.06)' },
+    // Text (theme-adaptive)
+    primary: c.text,
+    secondary: c.text2,
+    muted: c.text3,
 
-  // Feedback status colors
-  statusOpen: '#3b82f6',
-  statusInReview: '#f59e0b',
-  statusInProgress: '#8b5cf6',
-  statusResolved: '#22c55e',
-  statusDismissed: '#6b7280',
+    // Backgrounds (theme-adaptive)
+    successBg: c.badges.ok.bg,
 
-  // Priority
-  priorityCritical: '#ef4444',
-  priorityHigh: '#f97316',
-  priorityMedium: '#eab308',
-  priorityLow: '#22c55e',
+    // Tinted backgrounds — alpha shifts for light-mode readability
+    unreadBg: isDark ? 'rgba(139,92,246,0.20)' : 'rgba(139,92,246,0.08)',
+    updateBg: isDark ? 'rgba(139,92,246,0.05)' : 'rgba(139,92,246,0.03)',
 
-  // Severity (user-reported)
-  severityCritical: '#ef4444',
-  severityHigh: '#f97316',
-  severityMedium: '#eab308',
-  severityLow: '#22c55e',
-
-  // Text
-  primary: '#d4d4d8',
-  secondary: '#9ca3af',
-  muted: '#52525b',
-  bright: '#e4e4e7',
-
-  // Backgrounds
-  bgInner: 'rgba(0,0,0,0.2)',
-  bgDark: 'rgba(0,0,0,0.3)',
-  border: 'rgba(255,255,255,0.04)',
-
-  // Chevron
-  chevron: '#3f3f46',
-};
+    // Fallback for unknown enum values (theme-adaptive text3)
+    mutedFallback: c.text3,
+    ...c,
+  };
+}
 
 // ============================================================================
 // Types
@@ -151,21 +129,24 @@ export function formatDate(dateString: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-export function getStatusColor(status: string): string {
-  switch (status) {
-    case 'open':
-      return colors.statusOpen;
-    case 'in_review':
-      return colors.statusInReview;
-    case 'in_progress':
-      return colors.statusInProgress;
-    case 'resolved':
-      return colors.statusResolved;
-    case 'dismissed':
-      return colors.statusDismissed;
-    default:
-      return colors.muted;
-  }
+// Theme-agnostic enum color tables (status/severity tints are domain
+// semantic — same hue across themes).
+const STATUS_COLORS: Record<string, string> = {
+  open: colors.indigo,
+  in_review: colors.amber,
+  in_progress: colors.violet,
+  resolved: colors.success,
+  dismissed: '#6b7280',
+};
+const SEVERITY_COLORS: Record<string, string> = {
+  critical: colors.red,
+  high: colors.orange,
+  medium: '#eab308',
+  low: colors.success,
+};
+
+export function getStatusColor(status: string, fallback?: string): string {
+  return STATUS_COLORS[status] ?? (fallback ?? '#6b7280');
 }
 
 export function getStatusLabel(status: string): string {
@@ -185,19 +166,9 @@ export function getStatusLabel(status: string): string {
   }
 }
 
-export function getSeverityColor(severity?: string): string {
-  switch (severity) {
-    case 'critical':
-      return colors.severityCritical;
-    case 'high':
-      return colors.severityHigh;
-    case 'medium':
-      return colors.severityMedium;
-    case 'low':
-      return colors.severityLow;
-    default:
-      return colors.muted;
-  }
+export function getSeverityColor(severity?: string, fallback?: string): string {
+  const fb = fallback ?? '#6b7280';
+  return severity ? (SEVERITY_COLORS[severity] ?? fb) : fb;
 }
 
 // ============================================================================
@@ -205,77 +176,21 @@ export function getSeverityColor(severity?: string): string {
 // ============================================================================
 
 export function FeedbackIcon({ size = 14 }: { size?: number }) {
-  return <MessageSquare size={size} color={colors.feedbackPurple} />;
+  // Feedback brand color (semantic, theme-agnostic).
+  return <MessageSquare size={size} color={colors.violet} />;
 }
 
-export type ToolStatusType = 'running' | 'completed' | 'failed' | 'pending_permission';
+// StatusDot lives in `../../primitives/StatusDot` — global theme-adaptive
+// version is mounted by `ToolCallCard` automatically. Local re-export
+// removed; sub-renderers compose directly via ToolCallCard.
 
-interface StatusDotProps {
-  status: ToolStatusType;
-}
-
-export function StatusDot({ status }: StatusDotProps) {
-  const color =
-    status === 'running' || status === 'pending_permission'
-      ? colors.running
-      : status === 'completed'
-        ? colors.success
-        : colors.failed;
-
-  const glow =
-    status === 'running' || status === 'pending_permission'
-      ? colors.glowRunning
-      : status === 'completed'
-        ? colors.glowSuccess
-        : colors.glowFailed;
-
-  const pulseAnim = usePulseAnimation(status === 'running' || status === 'pending_permission');
-
-  return (
-    <Animated.View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: color,
-        flexShrink: 0,
-        opacity: status === 'running' || status === 'pending_permission' ? pulseAnim : 1,
-        shadowColor: glow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 3,
-        elevation: 3,
-      }}
-    />
-  );
-}
-
-interface BadgeProps {
-  text: string;
-  variant: 'success' | 'error' | 'info' | 'warning' | 'gray';
-}
-
-export function Badge({ text, variant }: BadgeProps) {
-  const styles = {
-    success: colors.badgeSuccess,
-    error: colors.badgeError,
-    info: colors.badgeInfo,
-    warning: colors.badgeWarning,
-    gray: colors.badgeGray,
-  };
-  const { text: textColor, bg } = styles[variant];
-
-  return (
-    <XStack backgroundColor={bg} paddingHorizontal={4} paddingVertical={1} borderRadius={3}>
-      <Text color={textColor} fontSize={9} fontFamily="$mono">
-        {text}
-      </Text>
-    </XStack>
-  );
-}
+// Badge re-export — variants match global primitive.
+export { Badge } from '../../primitives';
 
 export function StatusBadge({ status }: { status: string }) {
-  const color = getStatusColor(status);
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
+  const color = getStatusColor(status, c.text3);
   const label = getStatusLabel(status);
 
   return (
@@ -296,10 +211,12 @@ export function StatusBadge({ status }: { status: string }) {
 }
 
 export function TypeBadge({ type }: { type: 'bug' | 'suggestion' }) {
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
   const isBug = type === 'bug';
   const Icon = isBug ? Bug : Lightbulb;
-  const color = isBug ? colors.badgeError.text : colors.badgeWarning.text;
-  const bg = isBug ? colors.badgeError.bg : colors.badgeWarning.bg;
+  const color = isBug ? c.badges.err.text : c.badges.warn.text;
+  const bg = isBug ? c.badges.err.bg : c.badges.warn.bg;
 
   return (
     <XStack
@@ -319,7 +236,9 @@ export function TypeBadge({ type }: { type: 'bug' | 'suggestion' }) {
 }
 
 export function SeverityBadge({ severity }: { severity: string }) {
-  const color = getSeverityColor(severity);
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
+  const color = getSeverityColor(severity, c.text3);
 
   return (
     <XStack
@@ -336,9 +255,10 @@ export function SeverityBadge({ severity }: { severity: string }) {
 }
 
 export function UnreadBadge() {
+  const colors = useFeedbackColors();
   return (
     <XStack
-      backgroundColor="rgba(139,92,246,0.2)"
+      backgroundColor={colors.unreadBg}
       paddingHorizontal={5}
       paddingVertical={2}
       borderRadius={4}
@@ -353,134 +273,16 @@ export function UnreadBadge() {
   );
 }
 
-export interface HeaderRowProps {
-  status: ToolStatusType;
-  description: string;
-  duration?: number;
-  badge?: React.ReactNode;
-  expanded: boolean;
-  onToggle: () => void;
-  isInContainer?: boolean;
-}
-
-export function HeaderRow({
-  status,
-  description,
-  duration,
-  badge,
-  expanded,
-  onToggle,
-  isInContainer,
-}: HeaderRowProps) {
-  const rotateAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(rotateAnim, {
-      toValue: expanded ? 1 : 0,
-      duration: 150,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, rotateAnim]);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg'],
-  });
-
-  return (
-    <XStack
-      alignItems="center"
-      gap={8}
-      paddingVertical={6}
-      paddingHorizontal={10}
-      backgroundColor={isInContainer ? 'transparent' : 'rgba(39,39,42,0.6)'}
-      borderRadius={isInContainer ? 0 : 8}
-      borderWidth={isInContainer ? 0 : 1}
-      borderColor={isInContainer ? 'transparent' : colors.border}
-      borderBottomWidth={isInContainer ? 1 : 1}
-      borderBottomColor={colors.border}
-      width={isInContainer ? undefined : '100%'}
-      pressStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-      }}
-      hoverStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-        borderColor: isInContainer ? 'transparent' : 'rgba(255,255,255,0.08)',
-      }}
-      onPress={onToggle}
-      cursor="pointer"
-    >
-      <StatusDot status={status} />
-      <FeedbackIcon size={14} />
-
-      <Text flex={1} color={colors.primary} fontSize={11} fontWeight="500" numberOfLines={1}>
-        {description}
-      </Text>
-
-      {status === 'running' || status === 'pending_permission' ? (
-        <Text color={colors.running} fontSize={9} fontFamily="$mono">
-          {status === 'pending_permission' ? 'awaiting' : 'running'}
-        </Text>
-      ) : (
-        duration !== undefined && (
-          <Text color={colors.muted} fontSize={9} fontFamily="$mono">
-            {formatDuration(duration)}
-          </Text>
-        )
-      )}
-
-      {badge}
-
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <ChevronRight size={10} color={colors.chevron} />
-      </Animated.View>
-    </XStack>
-  );
-}
-
-export function ExpandedContainer({ children }: { children: React.ReactNode }) {
+/**
+ * FeedbackSuccessBlock — variant of `SuccessBlock` that additionally
+ * shows the generated feedback ID. Specific to this MCA's submit flows.
+ */
+export function FeedbackSuccessBlock({ message, feedbackId }: { message: string; feedbackId?: string }) {
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
   return (
     <YStack
-      backgroundColor="rgba(39,39,42,0.6)"
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={colors.border}
-      overflow="hidden"
-      width="100%"
-    >
-      {children}
-    </YStack>
-  );
-}
-
-export function ExpandedBody({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack padding={10} gap={8}>
-      {children}
-    </YStack>
-  );
-}
-
-export function ErrorBlock({ error }: { error: string }) {
-  return (
-    <YStack
-      backgroundColor="rgba(239,68,68,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-    >
-      <Text color={colors.badgeError.text} fontSize={10} fontFamily="$mono">
-        {error}
-      </Text>
-    </YStack>
-  );
-}
-
-export function SuccessBlock({ message, feedbackId }: { message: string; feedbackId?: string }) {
-  return (
-    <YStack
-      backgroundColor="rgba(34,197,94,0.1)"
+      backgroundColor={colors.successBg}
       borderRadius={6}
       paddingVertical={8}
       paddingHorizontal={10}
@@ -488,12 +290,12 @@ export function SuccessBlock({ message, feedbackId }: { message: string; feedbac
     >
       <XStack alignItems="center" gap={6}>
         <CheckCircle size={14} color={colors.success} />
-        <Text color={colors.badgeSuccess.text} fontSize={11} fontWeight="500">
+        <Text color={c.badges.ok.text} fontSize={11} fontWeight="500">
           {message}
         </Text>
       </XStack>
       {feedbackId && (
-        <Text color={colors.secondary} fontSize={10} fontFamily="$mono">
+        <Text color={c.text2} fontSize={10} fontFamily="$mono">
           ID: {feedbackId}
         </Text>
       )}
@@ -507,9 +309,11 @@ interface FeedbackRowProps {
 }
 
 export function FeedbackRow({ feedback, compact = false }: FeedbackRowProps) {
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
   return (
     <YStack
-      backgroundColor={colors.bgInner}
+      backgroundColor={c.bgInner}
       borderRadius={6}
       paddingVertical={8}
       paddingHorizontal={10}
@@ -517,7 +321,7 @@ export function FeedbackRow({ feedback, compact = false }: FeedbackRowProps) {
     >
       <XStack alignItems="center" gap={8}>
         <TypeBadge type={feedback.type} />
-        <Text flex={1} color={colors.primary} fontSize={11} fontWeight="500" numberOfLines={1}>
+        <Text flex={1} color={c.text} fontSize={11} fontWeight="500" numberOfLines={1} ellipsizeMode="tail">
           {feedback.title}
         </Text>
         {feedback.hasUnreadUpdates && <UnreadBadge />}
@@ -527,16 +331,16 @@ export function FeedbackRow({ feedback, compact = false }: FeedbackRowProps) {
         <StatusBadge status={feedback.status} />
         {feedback.severity && <SeverityBadge severity={feedback.severity} />}
         <XStack alignItems="center" gap={4}>
-          <Clock size={10} color={colors.muted} />
-          <Text color={colors.secondary} fontSize={9}>
+          <Clock size={10} color={c.text3} />
+          <Text color={c.text2} fontSize={9}>
             {formatDate(feedback.createdAt)}
           </Text>
         </XStack>
         {feedback.updatesCount !== undefined && feedback.updatesCount > 0 && (
-          <Text color={colors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             {feedback.updatesCount} update{feedback.updatesCount !== 1 ? 's' : ''}
-          </Text>
-        )}
+        </Text>
+      )}
       </XStack>
     </YStack>
   );
@@ -547,9 +351,11 @@ interface UpdateRowProps {
 }
 
 export function UpdateRow({ update }: UpdateRowProps) {
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
   return (
     <YStack
-      backgroundColor="rgba(139,92,246,0.05)"
+      backgroundColor={colors.updateBg}
       borderLeftWidth={2}
       borderLeftColor={colors.feedbackPurple}
       paddingVertical={6}
@@ -558,11 +364,11 @@ export function UpdateRow({ update }: UpdateRowProps) {
     >
       <XStack alignItems="center" gap={6}>
         {update.newStatus && <StatusBadge status={update.newStatus} />}
-        <Text color={colors.secondary} fontSize={9}>
+        <Text color={c.text2} fontSize={9}>
           {formatDate(update.createdAt)}
         </Text>
       </XStack>
-      <Text color={colors.primary} fontSize={11}>
+      <Text color={c.text} fontSize={11}>
         {update.message}
       </Text>
     </YStack>

@@ -1,0 +1,58 @@
+{
+  "tools": {
+    "list-feedback": {
+      "name": "list-feedback",
+      "description": "Lista todos los informes de feedback de los usuarios. Permite filtrar por tipo, estado, prioridad y usuario.",
+      "params": {
+        "type": "Filtrar por tipo (opcional)",
+        "status": "Filtrar por estado (opcional)",
+        "priority": "Filtrar por prioridad (opcional)",
+        "userId": "Filtrar por ID de usuario (opcional)",
+        "limit": "Número máximo de resultados (por defecto: 50)"
+      }
+    },
+    "get-feedback": {
+      "name": "get-feedback",
+      "description": "Obtiene los detalles completos de un informe de feedback específico",
+      "params": {
+        "feedbackId": "El ID del feedback (ej., fb_xxx)"
+      }
+    },
+    "update-status": {
+      "name": "update-status",
+      "description": "Actualiza el estado de un informe de feedback",
+      "params": {
+        "feedbackId": "El ID del feedback",
+        "status": "Nuevo estado",
+        "message": "Mensaje opcional para incluir con el cambio de estado (será visible para el usuario)"
+      }
+    },
+    "set-priority": {
+      "name": "set-priority",
+      "description": "Establece o actualiza la prioridad de un informe de feedback",
+      "params": {
+        "feedbackId": "El ID del feedback",
+        "priority": "Nivel de prioridad"
+      }
+    },
+    "add-update": {
+      "name": "add-update",
+      "description": "Añade una actualización o comentario a un informe de feedback. Esto será visible para el usuario que lo envió.",
+      "params": {
+        "feedbackId": "El ID del feedback",
+        "message": "El mensaje de actualización para el usuario"
+      }
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "Obtiene estadísticas generales del feedback"
+    }
+  },
+  "name": "Administración de Feedback",
+  "description": "Gestiona el feedback de los usuarios: revisa informes de errores y sugerencias, actualiza el estado, establece prioridades y comunica actualizaciones a los usuarios.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — revisa informes de errores y sugerencias de los usuarios, establece estado y prioridad, y responde con actualizaciones"
+    }
+  ]
+}

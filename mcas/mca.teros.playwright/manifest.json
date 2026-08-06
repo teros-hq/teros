@@ -22,7 +22,11 @@
   "runtime": {
     "transport": "http",
     "containerMode": "per-app",
-    "dockerImage": "teros/mca-runtime-playwright"
+    "dockerImage": "teros/mca-runtime-playwright",
+    "resources": {
+      "cpus": 2,
+      "memoryMb": 2048
+    }
   },
   "keywords": ["browser", "playwright", "automation", "web", "scraping", "screenshot"],
   "layers": {
@@ -32,5 +36,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.1",
+      "date": "2026-01-28",
+      "notes": "Initial release — browse pages, click and fill forms, capture screenshots, run scripts, and read console and network activity"
+    }
+  ]
 }

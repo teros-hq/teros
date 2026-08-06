@@ -5,11 +5,27 @@ echo "╔═══════════════════════�
 echo "║       MCA Runtime Container            ║"
 echo "╚════════════════════════════════════════╝"
 
+# ─────────────────────────────────────────────────────────────────
+# Read-only source model (Option A).
+#
+# /app/mca is mounted READ-ONLY: no container may ever mutate it, so a
+# write from one user's session can never leak to another user running
+# the same MCA. Everything the runtime needs is BAKED INTO THE IMAGE:
+#
+#   /opt/teros-sdk/{shared,mca-sdk}   → @teros packages (dist + deps)
+#   /opt/mca-deps/node_modules        → union of all MCA external deps,
+#                                        built on Alpine (correct libc),
+#                                        includes @teros/* symlinks
+#
+# So the boot does NO `npm install` and NO `cp -r` of node_modules — just
+# a handful of symlinks into a per-container run dir. This is what removes
+# the CPU/IO spikes caused by mass container startup.
+# ─────────────────────────────────────────────────────────────────
+
 # Check if MCA is mounted
 if [ ! -d "/app/mca/src" ] && [ ! -d "/app/mca/mcp" ] && [ ! -d "/app/mca/dist" ]; then
   echo "❌ Error: No MCA mounted at /app/mca"
-  echo ""
-  echo "Usage: docker run -v /path/to/mca:/app/mca teros/mca-runtime"
+  echo "Usage: docker run -v /path/to/mca:/app/mca:ro teros/mca-runtime"
   exit 1
 fi
 
@@ -28,93 +44,57 @@ fi
 echo "📦 MCA ID: $MCA_ID"
 echo "🔌 Transport: $MCA_TRANSPORT"
 echo "🌐 Port: $MCA_HTTP_PORT"
-echo ""
 
 # ─────────────────────────────────────────────────────────────────
-# Build writable shadows for @teros/shared and @teros/mca-sdk.
+# Assemble a writable per-container run dir.
 #
-# /sdk-deps has the pre-installed node_modules (baked into the image).
-# We copy fresh dist+src from the host mount (/app/packages:ro) on top,
-# so containers always run the latest code without a rebuild.
+# The MCA source is COPIED (not symlinked): Node resolves a symlinked
+# entry back to its real path (/app/mca) and would then pick up the
+# read-only, incomplete /app/mca/node_modules instead of our baked deps.
+# Copying makes /run/mca the real path, so module resolution uses the
+# baked node_modules below. Only source is copied (small); node_modules
+# is never copied — that's the whole point of baking it into the image.
+# Nothing under /app/mca is ever written.
 # ─────────────────────────────────────────────────────────────────
+RUN_DIR="/run/mca"
+rm -rf "$RUN_DIR"
+mkdir -p "$RUN_DIR"
 
-echo "📁 Setting up @teros package shadows..."
+# Copy the MCA's own files/dirs (src, dist, static, manifest.json, ...).
+# node_modules is intentionally skipped — we provide the baked one below.
+shopt -s dotglob
+for item in /app/mca/*; do
+  base="$(basename "$item")"
+  [ "$base" = "node_modules" ] && continue
+  cp -a "$item" "$RUN_DIR/"
+done
+shopt -u dotglob
 
-# --- @teros/shared shadow ---
-mkdir -p /tmp/teros-shared
-cp -r /sdk-deps/shared/node_modules /tmp/teros-shared/node_modules 2>/dev/null || true
-cp -r /app/packages/shared/dist     /tmp/teros-shared/dist 2>/dev/null || true
-cp -r /app/packages/shared/src      /tmp/teros-shared/src  2>/dev/null || true
-cp    /app/packages/shared/package.json /tmp/teros-shared/package.json 2>/dev/null || true
-
-# --- @teros/mca-sdk shadow ---
-mkdir -p /tmp/teros-mca-sdk
-cp -r /sdk-deps/mca-sdk/node_modules /tmp/teros-mca-sdk/node_modules 2>/dev/null || true
-cp -r /app/packages/mca-sdk/dist     /tmp/teros-mca-sdk/dist 2>/dev/null || true
-cp -r /app/packages/mca-sdk/src      /tmp/teros-mca-sdk/src  2>/dev/null || true
-cp    /app/packages/mca-sdk/package.json /tmp/teros-mca-sdk/package.json 2>/dev/null || true
-# Point mca-sdk's @teros/shared dep to the shared shadow
-mkdir -p /tmp/teros-mca-sdk/node_modules/@teros
-ln -sfn /tmp/teros-shared /tmp/teros-mca-sdk/node_modules/@teros/shared
-
-# ─────────────────────────────────────────────────────────────────
-# Create a writable workspace for the MCA
-# ─────────────────────────────────────────────────────────────────
-WORK_DIR="/tmp/mca-workspace"
-mkdir -p "$WORK_DIR"
-
-echo "📁 Copying MCA source to workspace..."
-cp -r /app/mca/* "$WORK_DIR/" 2>/dev/null || true
-
-# Set up node_modules pointing to the shadows
-mkdir -p "$WORK_DIR/node_modules/@teros"
-ln -sfn /tmp/teros-shared   "$WORK_DIR/node_modules/@teros/shared"
-ln -sfn /tmp/teros-mca-sdk  "$WORK_DIR/node_modules/@teros/mca-sdk"
-
-# Install MCA-specific dependencies if package.json exists
-if [ -f "$WORK_DIR/package.json" ]; then
-  echo "📥 Installing MCA dependencies..."
-  cd "$WORK_DIR"
-  # Remove @teros/* from dependencies to avoid npm trying to fetch them
-  node -e "
-    const p=require('./package.json');
-    if(p.dependencies) {
-      Object.keys(p.dependencies).forEach(k => {
-        if(k.startsWith('@teros/')) delete p.dependencies[k];
-      });
-    }
-    require('fs').writeFileSync('package.json', JSON.stringify(p,null,2));
-  "
-  npm install --omit=dev 2>/dev/null || true
-  # Restore @teros symlinks (npm install may have clobbered them)
-  mkdir -p node_modules/@teros
-  ln -sfn /tmp/teros-shared  node_modules/@teros/shared
-  ln -sfn /tmp/teros-mca-sdk node_modules/@teros/mca-sdk
+# node_modules = baked union (already contains @teros/shared + @teros/mca-sdk).
+if [ ! -d /opt/mca-deps/node_modules ]; then
+  echo "❌ Error: baked deps missing at /opt/mca-deps/node_modules (rebuild the image)"
+  exit 1
 fi
+ln -sfn /opt/mca-deps/node_modules "$RUN_DIR/node_modules"
 
-cd "$WORK_DIR"
+cd "$RUN_DIR"
 
-# Find entry point
-ENTRY_POINT=""
-if [ -f "src/index.ts" ]; then
-  ENTRY_POINT="src/index.ts"
-elif [ -f "dist/index.js" ]; then
-  ENTRY_POINT="dist/index.js"
-elif [ -f "mcp/index.ts" ]; then
-  ENTRY_POINT="mcp/index.ts"
-elif [ -f "mcp/index.js" ]; then
-  ENTRY_POINT="mcp/index.js"
+# ─────────────────────────────────────────────────────────────────
+# Resolve entry point. Prefer running TypeScript source via tsx: the
+# dist/ bundles some MCAs ship on disk are stale/broken (e.g. esbuild
+# CJS-in-ESM output that throws "__require is not a function"), so src
+# is the reliable path. A future build phase can produce trustworthy
+# dist and flip this preference.
+# ─────────────────────────────────────────────────────────────────
+if   [ -f "src/index.ts"  ]; then ENTRY="src/index.ts";  RUNNER="tsx"
+elif [ -f "mcp/index.ts"  ]; then ENTRY="mcp/index.ts";  RUNNER="tsx"
+elif [ -f "dist/index.js" ]; then ENTRY="dist/index.js"; RUNNER="node"
+elif [ -f "mcp/index.js"  ]; then ENTRY="mcp/index.js";  RUNNER="node"
 else
-  echo "❌ Error: No entry point found (src/index.ts, dist/index.js, mcp/index.ts)"
+  echo "❌ Error: No entry point found (src/index.ts, mcp/index.*, dist/index.js)"
   exit 1
 fi
 
-echo "🚀 Starting MCA with entry point: $ENTRY_POINT"
+echo "🚀 Starting MCA: $RUNNER $ENTRY"
 echo "────────────────────────────────────────"
-
-# Run the MCA
-if [[ "$ENTRY_POINT" == *.ts ]]; then
-  exec tsx "$ENTRY_POINT"
-else
-  exec node "$ENTRY_POINT"
-fi
+exec "$RUNNER" "$ENTRY"

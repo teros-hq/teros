@@ -5,10 +5,13 @@
  */
 
 import { Store } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { CatalogWindowContent } from './CatalogWindowContent';
 
 export interface CatalogWindowProps {
+  /** Workspace context */
+  workspaceId?: string;
   /** Initial category filter */
   category?: string;
   /** Initial search query */
@@ -25,16 +28,17 @@ export const catalogWindowDefinition: WindowTypeDefinition<CatalogWindowProps> =
   defaultSize: { width: 900, height: 600 },
   minSize: { width: 600, height: 400 },
 
-  singleton: true,
   isLauncher: true,
 
-  getTitle: () => 'Catalog',
+  getTitle: () => i18n.t("windows.catalog"),
 
   serialize: (props) => ({
+    workspaceId: props.workspaceId,
     category: props.category,
     search: props.search,
   }),
   deserialize: (data) => ({
+    workspaceId: data.workspaceId,
     category: data.category,
     search: data.search,
   }),

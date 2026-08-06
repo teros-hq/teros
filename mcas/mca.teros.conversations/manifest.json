@@ -32,5 +32,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — search and read past conversations, start chats, send messages, delegate tasks to agents, and import files"
+    }
+  ]
 }

@@ -9,12 +9,17 @@
 
 import { ArchiveRestore, Search, User, X } from '@tamagui/lucide-icons';
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 import { Avatar, Circle, Input, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { getDateLocale } from '../../i18n';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { useTilingStore } from '../../store/tilingStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import type { ArchivedConversationsWindowProps } from './definition';
 import { AppSpinner } from '../../components/ui';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors as semanticColors } from '../../components/mca/primitives/colors';
 
 interface ArchivedConversation {
   channelId: string;
@@ -26,19 +31,13 @@ interface ArchivedConversation {
   lastMessageContent?: string;
 }
 
-interface Agent {
-  agentId: string;
-  name: string;
-  fullName: string;
-  avatarUrl: string;
-}
-
 export function ArchivedConversationsWindowContent({
   windowId,
+  workspaceId,
   searchQuery: initialSearchQuery = '',
 }: ArchivedConversationsWindowProps & { windowId: string }) {
+  const { t } = useTranslation();
   const [conversations, setConversations] = useState<ArchivedConversation[]>([]);
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -48,6 +47,9 @@ export function ArchivedConversationsWindowContent({
 
   const client = getTerosClient();
   const { openWindow, findWindow, focusWindow } = useTilingStore();
+  // Always use the active workspace from the store — no prop, no fallback.
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const c = useColors();
 
   // Connection status
   useEffect(() => {
@@ -74,7 +76,7 @@ export function ArchivedConversationsWindowContent({
     const agent = agentList.find((a: any) => a.agentId === ch.agentId);
     return {
       channelId: ch.channelId,
-      title: ch.metadata?.name || 'Chat',
+      title: ch.metadata?.name || t('chat.fallbackTitle'),
       agentId: ch.agentId,
       agentName: ch.agentName || agent?.name || agent?.fullName,
       agentAvatarUrl: ch.agentAvatarUrl || agent?.avatarUrl,
@@ -88,18 +90,9 @@ export function ArchivedConversationsWindowContent({
     try {
       const [{ channels, nextCursor: cursor, hasMore: more }, { agents: agentList }] =
         await Promise.all([
-          client.channel.list(undefined, 'closed'),
-          client.agent.listAgents(),
+          client.channel.list(activeWorkspaceId ?? undefined, 'closed'),
+          client.agent.listAgents(activeWorkspaceId ?? undefined),
         ]);
-
-      setAgents(
-        agentList.map((a: any) => ({
-          agentId: a.agentId,
-          name: a.name,
-          fullName: a.fullName,
-          avatarUrl: a.avatarUrl,
-        })),
-      );
 
       const archived: ArchivedConversation[] = channels.map((ch: any) =>
         mapChannelToArchived(ch, agentList),
@@ -121,8 +114,8 @@ export function ArchivedConversationsWindowContent({
     try {
       const [{ channels, nextCursor: cursor, hasMore: more }, { agents: agentList }] =
         await Promise.all([
-          client.channel.list(undefined, 'closed', 30, nextCursor),
-          client.agent.listAgents(),
+          client.channel.list(activeWorkspaceId ?? undefined, 'closed', 30, nextCursor),
+          client.agent.listAgents(activeWorkspaceId ?? undefined),
         ]);
 
       const newArchived: ArchivedConversation[] = channels.map((ch: any) =>
@@ -153,6 +146,7 @@ export function ArchivedConversationsWindowContent({
         channelId: conv.channelId,
         agentId: conv.agentId,
         agentName: conv.agentName,
+        workspaceId: activeWorkspaceId,
       }, false, windowId);
     }
   };
@@ -173,11 +167,11 @@ export function ArchivedConversationsWindowContent({
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffDays < 1) return 'Hoy';
-    if (diffDays < 2) return 'Ayer';
-    if (diffDays < 7) return `Hace ${diffDays}d`;
-    if (diffDays < 30) return `Hace ${Math.floor(diffDays / 7)}sem`;
-    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    if (diffDays < 1) return t('archivedConversations.today');
+    if (diffDays < 2) return t('archivedConversations.yesterday');
+    if (diffDays < 7) return t('archivedConversations.daysAgo', { count: diffDays });
+    if (diffDays < 30) return t('archivedConversations.weeksAgo', { count: Math.floor(diffDays / 7) });
+    return date.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short' });
   };
 
   // Filter by search
@@ -198,22 +192,22 @@ export function ArchivedConversationsWindowContent({
         paddingHorizontal={8}
         paddingVertical={6}
         borderBottomWidth={1}
-        borderBottomColor="#1a1a1a"
+        borderBottomColor={c.border}
         alignItems="center"
         gap={6}
       >
-        <Search size={14} color="#555" />
+        <Search size={14} color={c.text3} />
         <Input
           flex={1}
           size="$2"
-          placeholder="Buscar en archivadas..."
-          placeholderTextColor="#444"
+          placeholder={t('archivedConversations.searchPlaceholder')}
+          placeholderTextColor={c.text3}
           backgroundColor="transparent"
           borderWidth={0}
           borderColor="transparent"
           outlineWidth={0}
           outlineColor="transparent"
-          color="#ccc"
+          color={c.text}
           fontSize={12}
           paddingHorizontal={0}
           paddingVertical={0}
@@ -230,10 +224,10 @@ export function ArchivedConversationsWindowContent({
             alignItems="center"
             borderRadius={10}
             cursor="pointer"
-            hoverStyle={{ backgroundColor: '#222' }}
+            hoverStyle={{ backgroundColor: c.bgCardHover }}
             onPress={() => setSearchQuery('')}
           >
-            <X size={12} color="#666" />
+            <X size={12} color={c.text3} />
           </XStack>
         )}
       </XStack>
@@ -245,10 +239,10 @@ export function ArchivedConversationsWindowContent({
         </YStack>
       ) : filteredConvs.length === 0 ? (
         <YStack flex={1} justifyContent="center" alignItems="center" padding={16}>
-          <Text fontSize={12} color="#555" textAlign="center">
+          <Text fontSize={12} color={c.text3} textAlign="center">
             {searchQuery.length >= 2
-              ? `No se encontraron conversaciones archivadas para "${searchQuery}"`
-              : 'No hay conversaciones archivadas'}
+              ? t('archivedConversations.noResults', { query: searchQuery })
+              : t('archivedConversations.empty')}
           </Text>
         </YStack>
       ) : (
@@ -256,8 +250,8 @@ export function ArchivedConversationsWindowContent({
           <YStack padding={4} gap={1}>
             {/* Count */}
             <XStack padding={8}>
-              <Text fontSize={10} color="#555">
-                {filteredConvs.length} archived conversation{filteredConvs.length !== 1 ? 's' : ''}
+              <Text fontSize={10} color={c.text3}>
+                {t('archivedConversations.count', { count: filteredConvs.length })}
               </Text>
             </XStack>
 
@@ -272,30 +266,30 @@ export function ArchivedConversationsWindowContent({
                 cursor="pointer"
                 backgroundColor="transparent"
                 opacity={0.8}
-                hoverStyle={{ backgroundColor: '#151515', opacity: 1 }}
-                pressStyle={{ backgroundColor: '#1a1a1a' }}
+                hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
+                pressStyle={{ backgroundColor: c.bgCardHover }}
                 onPress={() => handleSelectConversation(conv)}
               >
                 {/* Avatar */}
-                <Circle size={32} backgroundColor="#1a1a1a" overflow="hidden">
+                <Circle size={32} backgroundColor={c.bgCard} overflow="hidden">
                   {conv.agentAvatarUrl ? (
                     <Avatar circular size={32}>
                       <Avatar.Image src={conv.agentAvatarUrl} />
                     </Avatar>
                   ) : (
-                    <User size={16} color="#555" />
+                    <User size={16} color={c.text3} />
                   )}
                 </Circle>
 
                 {/* Content */}
                 <YStack flex={1} gap={2}>
-                  <Text fontSize={11} fontWeight="600" color="#666" numberOfLines={1}>
-                    {conv.agentName || 'Agente'}
+                  <Text fontSize={11} fontWeight="600" color={c.text2} numberOfLines={1}>
+                    {conv.agentName || t('chat.fallbackAgentName')}
                   </Text>
-                  <Text fontSize={12} fontWeight="500" color="#888" numberOfLines={1}>
+                  <Text fontSize={12} fontWeight="500" color={c.text} numberOfLines={1}>
                     {conv.title}
                   </Text>
-                  <Text fontSize={9} color="#444">
+                  <Text fontSize={9} color={c.text3}>
                     {formatDate(conv.lastMessageAt)}
                   </Text>
                 </YStack>
@@ -314,7 +308,7 @@ export function ArchivedConversationsWindowContent({
                     handleRestoreConversation(conv.channelId);
                   }}
                 >
-                  <ArchiveRestore size={16} color="#10B981" />
+                  <ArchiveRestore size={16} color={semanticColors.green} />
                 </XStack>
               </XStack>
             ))}
@@ -330,14 +324,14 @@ export function ArchivedConversationsWindowContent({
                 borderRadius={6}
                 cursor={isLoadingMore ? 'default' : 'pointer'}
                 opacity={isLoadingMore ? 0.5 : 1}
-                hoverStyle={isLoadingMore ? {} : { backgroundColor: '#151515' }}
+                hoverStyle={isLoadingMore ? {} : { backgroundColor: c.bgCardHover }}
                 onPress={loadMore}
               >
                 {isLoadingMore ? (
                   <AppSpinner size="sm" variant="brand" />
                 ) : (
-                  <Text fontSize={11} color="#06B6D4">
-                    Cargar más archivadas...
+                  <Text fontSize={11} color={semanticColors.indigo}>
+                    {t('archivedConversations.loadMore')}
                   </Text>
                 )}
               </XStack>

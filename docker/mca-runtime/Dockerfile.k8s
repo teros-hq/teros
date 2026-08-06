@@ -1,0 +1,87 @@
+# MCA Runtime Container — Kubernetes variant
+#
+# Bakes all MCAs and packages into the image.
+# Used in GKE where host mounts are not available.
+#
+# Build:
+#   docker build -t mca-runtime:dev-latest -f docker/mca-runtime/Dockerfile.k8s .
+#
+# The MCA to run is selected at runtime via MCA_ID env var:
+#   kubectl run mca-bash --image=mca-runtime:dev-latest \
+#     --env MCA_ID=mca.teros.bash \
+#     --env MCA_TRANSPORT=http
+
+FROM node:20-alpine
+
+RUN apk add --no-cache bash curl git openssh-client && rm -rf /var/cache/apk/*
+RUN npm install -g tsx typescript
+
+WORKDIR /app
+
+# ── Pre-install @teros/shared deps ───────────────────────────────────────────
+COPY packages/shared/package.json /sdk-deps/shared/package.json
+RUN cd /sdk-deps/shared && npm install --omit=dev 2>/dev/null || true
+
+# ── Pre-install @teros/mca-sdk deps ──────────────────────────────────────────
+COPY packages/mca-sdk/package.json /sdk-deps/mca-sdk/package.json
+RUN cd /sdk-deps/mca-sdk && \
+    node -e " \
+      const p=require('./package.json'); \
+      if(p.dependencies) delete p.dependencies['@teros/shared']; \
+      require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)) \
+    " && \
+    npm install --omit=dev 2>/dev/null || true && \
+    mkdir -p node_modules/@teros && \
+    ln -sf /sdk-deps/shared node_modules/@teros/shared
+
+# ── Bake in packages source (dist + src) ─────────────────────────────────────
+COPY packages/shared/dist  /app/packages/shared/dist
+COPY packages/shared/src   /app/packages/shared/src
+COPY packages/shared/package.json /app/packages/shared/package.json
+
+COPY packages/mca-sdk/dist /app/packages/mca-sdk/dist
+COPY packages/mca-sdk/src  /app/packages/mca-sdk/src
+COPY packages/mca-sdk/package.json /app/packages/mca-sdk/package.json
+
+# ── Bake in all MCAs ─────────────────────────────────────────────────────────
+# Each MCA is copied into /app/mcas/<mcaId>/
+# The entrypoint selects the right one via MCA_ID env var
+COPY mcas/ /app/mcas/
+
+# Pre-install deps for each MCA that has a package.json
+# (excluding @teros/* which are resolved from /sdk-deps)
+RUN for mca_dir in /app/mcas/*/; do \
+      if [ -f "$mca_dir/package.json" ]; then \
+        echo "Installing deps for $mca_dir..."; \
+        cd "$mca_dir"; \
+        node -e " \
+          const p=require('./package.json'); \
+          if(p.dependencies) { \
+            Object.keys(p.dependencies).forEach(k => { \
+              if(k.startsWith('@teros/')) delete p.dependencies[k]; \
+            }); \
+          } \
+          require('fs').writeFileSync('package.json', JSON.stringify(p,null,2)); \
+        " 2>/dev/null || true; \
+        npm install --omit=dev 2>/dev/null || true; \
+        mkdir -p node_modules/@teros; \
+        ln -sfn /sdk-deps/shared  node_modules/@teros/shared  2>/dev/null || true; \
+        ln -sfn /sdk-deps/mca-sdk node_modules/@teros/mca-sdk 2>/dev/null || true; \
+      fi \
+    done
+
+# ── Entrypoint ────────────────────────────────────────────────────────────────
+COPY docker/mca-runtime/entrypoint.k8s.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENV MCA_TRANSPORT=http
+ENV MCA_HTTP_PORT=3000
+ENV MCA_HTTP_HOST=0.0.0.0
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=5 \
+  CMD curl -f -4 http://localhost:3000/health || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

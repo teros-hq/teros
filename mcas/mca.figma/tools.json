@@ -4,57 +4,59 @@
   "tools": [
     {
       "name": "-health-check",
-      "description": "Internal health check tool. Verifies Personal Access Token and connectivity to Figma.",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Figma.",
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "summary": "Check Figma connection status",
+        "group": "Status"
       }
     },
     {
       "name": "get-file",
-      "description": "Get the full structure of a Figma file including pages, frames, and components.",
+      "description": "Get the structure of a Figma file (pages, frames, top-level components). Returns curated { name, lastModified, version, thumbnailUrl, document, componentCount, styleCount }. Params: fileKey, depth (1-10, def 2), geometry?, branchData?, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Open a file's pages and frames",
+        "group": "Files"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
           },
           "depth": {
             "type": "number",
-            "description": "How deep to traverse (default: 2)"
-          }
-        },
-        "required": [
-          "fileKey"
-        ]
-      }
-    },
-    {
-      "name": "get-file-styles",
-      "description": "Get all styles (colors, text, effects) defined in a Figma file.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileKey": {
+            "description": "How deep to traverse the document tree. Min 1, max 10, default 2."
+          },
+          "geometry": {
             "type": "string",
-            "description": "The file key from Figma URL"
-          }
-        },
-        "required": [
-          "fileKey"
-        ]
-      }
-    },
-    {
-      "name": "get-file-variables",
-      "description": "Get all variables (design tokens) from a Figma file.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileKey": {
-            "type": "string",
-            "description": "The file key from Figma URL"
+            "enum": [
+              "paths"
+            ],
+            "description": "Set to 'paths' to include vector path data (heavier payload)."
+          },
+          "branchData": {
+            "type": "boolean",
+            "description": "Include branch metadata when the file is part of a branched workflow."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw upstream payload. Default false."
           }
         },
         "required": [
@@ -64,21 +66,40 @@
     },
     {
       "name": "get-node",
-      "description": "Get detailed information about a specific node by its ID.",
+      "description": "Get a single node from a Figma file as a curated tree. Returns the node directly (not wrapped). Use this to drill into a frame/component beyond the depth returned by get-file. Params: fileKey, nodeId (accepts \"1-2\" or \"1:2\"), depth (1-10, def 3), fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Inspect a single frame or component",
+        "group": "Files"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
           },
           "nodeId": {
             "type": "string",
-            "description": "The node ID"
+            "description": "Node ID. Accepts the URL format \"1-2\" or REST format \"1:2\"."
           },
           "depth": {
             "type": "number",
-            "description": "How deep to traverse children (default: 3)"
+            "description": "How deep to traverse children. Min 1, max 10, default 3."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default node whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream node. Default false."
           }
         },
         "required": [
@@ -88,14 +109,103 @@
       }
     },
     {
-      "name": "get-components",
-      "description": "List all components in a Figma file.",
+      "name": "get-file-styles",
+      "description": "List styles defined in a Figma file. Returns { styles: [{id, key, name, type, description}], count }. type ∈ FILL/TEXT/EFFECT/GRID. Params: fileKey, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "List a file's color and text styles",
+        "group": "Styles"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-file-variables",
+      "description": "Get design tokens (variables) from a Figma file, grouped by collection. Returns { collections: [{id, name, modes, variables, defaultModeId}] }. Each variable has { id, name, type, values: { [modeId]: value } }. type ∈ COLOR/FLOAT/STRING/BOOLEAN. Params: fileKey, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "List a file's design tokens",
+        "group": "Styles"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from a Figma URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default collection whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "get-components",
+      "description": "List components defined in a Figma file. Returns { components: [{id, key, name, description, componentSetId?}], count }. Params: fileKey, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "List components in a file",
+        "group": "Components"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from a Figma URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
           }
         },
         "required": [
@@ -105,13 +215,32 @@
     },
     {
       "name": "get-component-sets",
-      "description": "List all component sets (variants) in a Figma file.",
+      "description": "List component sets (variant groups) defined in a Figma file. Returns { componentSets: [{id, key, name, description}], count }. Params: fileKey, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "List variant groups in a file",
+        "group": "Components"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
           }
         },
         "required": [
@@ -121,20 +250,28 @@
     },
     {
       "name": "export-images",
-      "description": "Export nodes as images (PNG, JPG, SVG, or PDF).",
+      "description": "Export Figma nodes as images. Returns { images: [{nodeId, url, format, scale}] }. URLs are pre-signed S3 links and expire in ~30 minutes. Formats: png|jpg|svg|pdf. Scale 0.01-4 (default 1). Params: fileKey, nodeIds, format?, scale?, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Export frames as images",
+        "group": "Exports"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
           },
           "nodeIds": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Node IDs to export"
+            "description": "Node IDs to export. Accepts \"1-2\" or \"1:2\"."
           },
           "format": {
             "type": "string",
@@ -144,11 +281,22 @@
               "svg",
               "pdf"
             ],
-            "description": "Export format"
+            "description": "Export format. Default png."
           },
           "scale": {
             "type": "number",
-            "description": "Scale factor (0.01 to 4)"
+            "description": "Scale factor (0.01–4). Default 1."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
           }
         },
         "required": [
@@ -159,13 +307,32 @@
     },
     {
       "name": "get-comments",
-      "description": "Get all comments on a Figma file.",
+      "description": "List comments on a Figma file. Returns { comments: [{id, message, createdAt, user, resolved, parentId?, clientMeta?}], count }. parentId !== undefined indicates a reply. Params: fileKey, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "List comments on a file",
+        "group": "Comments"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
           }
         },
         "required": [
@@ -174,47 +341,160 @@
       }
     },
     {
-      "name": "get-team-projects",
-      "description": "List all projects in a team. If teamId is not provided, uses the configured TEAM_ID from user secrets.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string",
-            "description": "The team ID (optional if TEAM_ID is configured in user secrets)"
-          }
-        }
-      }
-    },
-    {
-      "name": "get-project-files",
-      "description": "List all files in a project.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "projectId": {
-            "type": "string",
-            "description": "The project ID"
-          }
-        },
-        "required": [
-          "projectId"
-        ]
-      }
-    },
-    {
-      "name": "extract-colors",
-      "description": "Extract all colors used in a file or node, formatted for CSS/Tailwind.",
+      "name": "create-comment",
+      "description": "Create a new comment on a Figma file, or reply to an existing one. Returns the created comment { id, message, createdAt, user, resolved, parentId? }. To reply, set parentCommentId. To anchor on a canvas position, set clientMeta { x, y } or { node_id }. Params: fileKey, message, parentCommentId?, clientMeta?, fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "summary": "Post a comment or reply",
+        "group": "Comments"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
+          },
+          "message": {
+            "type": "string",
+            "description": "Comment body. Markdown not rendered by Figma — keep plain text or use mentions like @user."
+          },
+          "parentCommentId": {
+            "type": "string",
+            "description": "When provided, the new comment is a reply to this comment ID."
+          },
+          "clientMeta": {
+            "type": "object",
+            "description": "Optional canvas anchor. Either { x, y } for a free position or { node_id } to attach to a node.",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "node_id": {
+                "type": "string"
+              }
+            }
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
+          }
+        },
+        "required": [
+          "fileKey",
+          "message"
+        ]
+      }
+    },
+    {
+      "name": "delete-comment",
+      "description": "Delete a comment from a Figma file. Returns { ok: true, fileKey, commentId } on success. Not reversible — confirm with the user before invoking. Params: fileKey, commentId.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "irreversible": true,
+        "summary": "Delete a comment",
+        "group": "Comments"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from a Figma URL."
+          },
+          "commentId": {
+            "type": "string",
+            "description": "ID of the comment to delete."
+          }
+        },
+        "required": [
+          "fileKey",
+          "commentId"
+        ]
+      }
+    },
+    {
+      "name": "list-file-versions",
+      "description": "List the version history of a Figma file. Returns { versions: [{id, createdAt, label, description, user, thumbnailUrl?}], count, nextPage? }. Use to audit changes, compare versions, or find when a design broke. Params: fileKey, pageSize (1-50, def 30), before? (cursor from previous nextPage), fields?, includeRaw.",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Browse a file's version history",
+        "group": "Versions"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from a Figma URL."
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Versions per page. Min 1, max 50, default 30."
+          },
+          "before": {
+            "type": "string",
+            "description": "Opaque cursor from a previous response.nextPage."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw upstream payload. Default false."
+          }
+        },
+        "required": [
+          "fileKey"
+        ]
+      }
+    },
+    {
+      "name": "extract-colors",
+      "description": "Extract solid colors from a file or node, formatted for CSS variables, Tailwind config, or JSON. Returns { count, output: string, format }. Params: fileKey, nodeId? (scope to one node), format? (default css).",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Extract colors as CSS or Tailwind",
+        "group": "Exports"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileKey": {
+            "type": "string",
+            "description": "The file key from a Figma URL."
           },
           "nodeId": {
             "type": "string",
-            "description": "Optional: specific node ID"
+            "description": "Optional: scope extraction to a single node."
           },
           "format": {
             "type": "string",
@@ -223,7 +503,7 @@
               "tailwind",
               "json"
             ],
-            "description": "Output format"
+            "description": "Output format. Default css."
           }
         },
         "required": [
@@ -233,13 +513,21 @@
     },
     {
       "name": "extract-typography",
-      "description": "Extract all typography styles from a file.",
+      "description": "Extract typography styles (font family, size, weight, line height, letter spacing) used in TEXT nodes of a Figma file. Returns { count, output: string, format }. Params: fileKey, format? (default css).",
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "summary": "Extract fonts as CSS or Tailwind",
+        "group": "Exports"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "fileKey": {
             "type": "string",
-            "description": "The file key from Figma URL"
+            "description": "The file key from a Figma URL."
           },
           "format": {
             "type": "string",
@@ -248,7 +536,7 @@
               "tailwind",
               "json"
             ],
-            "description": "Output format"
+            "description": "Output format. Default css."
           }
         },
         "required": [

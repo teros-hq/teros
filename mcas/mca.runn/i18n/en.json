@@ -1,0 +1,251 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies the Runn API key and connectivity."
+    },
+    "runn-list-projects": {
+      "name": "runn-list-projects",
+      "description": "List Runn projects. Returns { items: [{ id, name, clientId, isArchived, isConfirmed, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: clientId?, isArchived?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "clientId": "Filter by client id.",
+        "isArchived": "Filter by archived state.",
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn project objects. Default false."
+      }
+    },
+    "runn-get-project": {
+      "name": "runn-get-project",
+      "description": "Get a single Runn project by id. Returns curated detail { id, name, clientId, teamId, isArchived, isConfirmed, pricingModel, rateType, budget, expensesBudget, tags, references, ... }. Params: projectId (required), fields?, includeRaw.",
+      "params": {
+        "projectId": "Runn project id.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return the raw Runn project object. Default false."
+      }
+    },
+    "runn-create-project": {
+      "name": "runn-create-project",
+      "description": "Create a Runn project from scratch. Returns the curated created project. Not retryable (no idempotency key). Params: name, clientId (both required), isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel? (fp|tm|nb), rateType? (hours|days), rateCardId?, fields?, includeRaw.",
+      "params": {
+        "name": "Project name.",
+        "clientId": "Client id (required). Use runn-list-clients to find it.",
+        "isConfirmed": "Confirmed (vs tentative) project. Default false.",
+        "teamId": "Team id.",
+        "budget": "Project budget (in the account currency).",
+        "expensesBudget": "Expenses budget.",
+        "pricingModel": "fp = fixed price, tm = time & materials, nb = non-billable.",
+        "rateType": "Rate unit.",
+        "rateCardId": "Rate card id.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn project object. Default false."
+      }
+    },
+    "runn-update-project": {
+      "name": "runn-update-project",
+      "description": "Update a Runn project. Only the fields you pass are changed (PATCH semantics). Idempotent — safe to retry. Returns the curated updated project. Params: projectId (required), name?, clientId?, isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel?, rateType?, rateCardId?, fields?, includeRaw.",
+      "params": {
+        "projectId": "Runn project id to update.",
+        "name": "New project name.",
+        "clientId": "New client id.",
+        "isConfirmed": "Confirmed (vs tentative) project.",
+        "teamId": "New team id.",
+        "budget": "Project budget.",
+        "expensesBudget": "Expenses budget.",
+        "pricingModel": "fp | tm | nb.",
+        "rateType": "hours | days.",
+        "rateCardId": "Rate card id.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn project object. Default false."
+      }
+    },
+    "runn-list-people": {
+      "name": "runn-list-people",
+      "description": "List Runn people. Returns { items: [{ id, firstName, lastName, email, isArchived, teamId, createdAt, updatedAt }], total, hasMore, nextCursor }. Note: a person's role lives in their contract, not on the person. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn person objects. Default false."
+      }
+    },
+    "runn-get-person": {
+      "name": "runn-get-person",
+      "description": "Get a single Runn person by id. Returns curated detail { id, firstName, lastName, email, isArchived, teamId, tags, references, holidaysGroupId, managers, ... }. Params: personId (required), fields?, includeRaw.",
+      "params": {
+        "personId": "Runn person id.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return the raw Runn person object. Default false."
+      }
+    },
+    "runn-create-person": {
+      "name": "runn-create-person",
+      "description": "Create a Runn person. A first contract (role) is created with them. Returns the curated created person. Not retryable (no idempotency key). Params: firstName, lastName, roleId (all required), email?, teamId?, startDate? (YYYY-MM-DD), employmentType? (employee|contractor), costPerHour?, fields?, includeRaw.",
+      "params": {
+        "firstName": "First name.",
+        "lastName": "Last name.",
+        "roleId": "Role id for the initial contract (required).",
+        "email": "Email address.",
+        "teamId": "Team id.",
+        "startDate": "Contract start date, YYYY-MM-DD. Defaults to today.",
+        "employmentType": "Employment type. Default employee.",
+        "costPerHour": "Cost per hour. Defaults to the role cost.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn person object. Default false."
+      }
+    },
+    "runn-list-placeholders": {
+      "name": "runn-list-placeholders",
+      "description": "List Runn placeholders (unnamed role slots used for planning before a real person is assigned). Returns { items: [{ id, firstName, lastName, isArchived, tags, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn placeholder objects. Default false."
+      }
+    },
+    "runn-create-placeholder": {
+      "name": "runn-create-placeholder",
+      "description": "Create a Runn placeholder (an unnamed role slot for planning before a real person is hired/assigned). Returns the curated created placeholder. Not retryable (no idempotency key). Params: roleId (required), teamId?, costPerHour?, fields?, includeRaw.",
+      "params": {
+        "roleId": "Role id the placeholder stands in for (required).",
+        "teamId": "Team id.",
+        "costPerHour": "Cost per hour. Defaults to the role cost.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn placeholder object. Default false."
+      }
+    },
+    "runn-list-assignments": {
+      "name": "runn-list-assignments",
+      "description": "List Runn assignments (a person/placeholder allocated to a project at a role over a date range). Returns { items: [{ id, personId, projectId, roleId, startDate, endDate, minutesPerDay, isBillable, isPlaceholder, ... }], total, hasMore, nextCursor }. Filter by personId OR projectId (not both). Params: personId?, projectId?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "Scope to one person's assignments.",
+        "projectId": "Scope to one project's assignments.",
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn assignment objects. Default false."
+      }
+    },
+    "runn-create-assignment": {
+      "name": "runn-create-assignment",
+      "description": "Allocate a person (or placeholder) to a project at a role over a date range. Returns the curated created assignment. Not retryable (no idempotency key). Params: personId, projectId, roleId, startDate, endDate (YYYY-MM-DD), minutesPerDay (all required), isBillable?, note?, phaseId?, workstreamId?, isNonWorkingDay?, fields?, includeRaw.",
+      "params": {
+        "personId": "Person OR placeholder id to assign.",
+        "projectId": "Project id.",
+        "roleId": "Role id the person works as on this assignment.",
+        "startDate": "Start date, YYYY-MM-DD.",
+        "endDate": "End date, YYYY-MM-DD (on or after startDate).",
+        "minutesPerDay": "Allocated minutes per day (>= 0).",
+        "isBillable": "Whether the assignment is billable. Default true.",
+        "note": "Optional note.",
+        "phaseId": "Optional project phase id.",
+        "workstreamId": "Optional workstream id.",
+        "isNonWorkingDay": "Whether it falls on a non-working day.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn assignment object. Default false."
+      }
+    },
+    "runn-delete-assignment": {
+      "name": "runn-delete-assignment",
+      "description": "Delete a Runn assignment by id. Irreversible. Returns { success, assignmentId }. Params: assignmentId (required).",
+      "params": {
+        "assignmentId": "Runn assignment id to delete."
+      }
+    },
+    "runn-list-actuals": {
+      "name": "runn-list-actuals",
+      "description": "List Runn actuals (logged timesheet hours by day). Returns { items: [{ id, date, personId, projectId, roleId, billableMinutes, nonbillableMinutes, ... }], total, hasMore, nextCursor }. Filter by personId OR projectId (not both). Params: personId?, projectId?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "Scope to one person's actuals.",
+        "projectId": "Scope to one project's actuals.",
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn actual objects. Default false."
+      }
+    },
+    "runn-create-actual": {
+      "name": "runn-create-actual",
+      "description": "Log a Runn actual (real hours worked on a day). The minutes overwrite any existing actual for the same day/person/project/role/workstream. Returns the curated actual. Params: date (YYYY-MM-DD), billableMinutes, nonbillableMinutes, personId, projectId, roleId (all required), billableNote?, nonbillableNote?, phaseId?, workstreamId?, fields?, includeRaw.",
+      "params": {
+        "date": "Day the work was done, YYYY-MM-DD.",
+        "billableMinutes": "Billable minutes (>= 0).",
+        "nonbillableMinutes": "Non-billable minutes (>= 0).",
+        "personId": "Person id.",
+        "projectId": "Project id.",
+        "roleId": "Role id.",
+        "billableNote": "Optional note for the billable time.",
+        "nonbillableNote": "Optional note for the non-billable time.",
+        "phaseId": "Optional project phase id.",
+        "workstreamId": "Optional workstream id.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn actual object. Default false."
+      }
+    },
+    "runn-list-clients": {
+      "name": "runn-list-clients",
+      "description": "List Runn clients. Returns { items: [{ id, name, website, isArchived, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn client objects. Default false."
+      }
+    },
+    "runn-create-client": {
+      "name": "runn-create-client",
+      "description": "Create a Runn client. Returns the curated created client. Not retryable (no idempotency key). Params: name (required), website?, fields?, includeRaw.",
+      "params": {
+        "name": "Client name.",
+        "website": "Client website URL.",
+        "fields": "Override default whitelist on the result.",
+        "includeRaw": "Return the raw Runn client object. Default false."
+      }
+    },
+    "runn-list-roles": {
+      "name": "runn-list-roles",
+      "description": "List Runn roles (job roles people and placeholders are assigned as). Returns { items: [{ id, name, isArchived, defaultHourCost, standardRate, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn role objects. Default false."
+      }
+    },
+    "runn-list-teams": {
+      "name": "runn-list-teams",
+      "description": "List Runn teams. Returns { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn team objects. Default false."
+      }
+    },
+    "runn-list-skills": {
+      "name": "runn-list-skills",
+      "description": "List Runn skills. Returns { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 200, default 50.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn skill objects. Default false."
+      }
+    },
+    "runn-project-totals": {
+      "name": "runn-project-totals",
+      "description": "Get aggregated minute totals per project (billable, non-billable, total — from actuals when available, falling back to assignments). Returns { items: [{ id, billableMinutes, nonBillableMinutes, totalMinutes, assignments, actuals }], total, hasMore, nextCursor }. Params: includeArchived (default false), limit (1-10, def 10), cursor?, fields?, includeRaw.",
+      "params": {
+        "includeArchived": "Include archived projects in the totals. Default false.",
+        "limit": "Results per page. Min 1, max 10, default 10.",
+        "cursor": "Pagination cursor from a previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Runn aggregate objects. Default false."
+      }
+    }
+  },
+  "name": "Runn",
+  "description": "Runn resource management - projects, people, assignments, timesheets and capacity planning"
+}

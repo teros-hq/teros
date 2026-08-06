@@ -1,46 +1,49 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected } from '../lib';
+import type { ToolConfig } from '@teros/mca-sdk';
+import { getWsClient } from '../lib';
+import { TASK_FIELDS } from './_fields';
+import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 
 export const addTaskDependency: ToolConfig = {
   description:
-    'Add a dependency between two tasks. After this call, taskId depends on dependsOnTaskId ' +
-    '(i.e. dependsOnTaskId must be completed before taskId can start). ' +
-    'Cycle detection is performed automatically — if adding the dependency would create a cycle, ' +
-    'an error is returned and the affected tasks are marked with status `circular_dependency`.',
+    'Add a dependency: after this call, taskId depends on dependsOnTaskId (dependsOnTaskId must complete first). Cycle detection runs automatically; if adding the edge would create a cycle, the call errors and affected tasks are marked circular_dependency. Returns: { task: { ...TASK_FIELDS, dependencies } }.',
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
       taskId: {
         type: 'string',
-        description: 'The task that gains the new dependency (the dependent task)',
+        description: 'Task that gains the new dependency (the dependent task)',
       },
       dependsOnTaskId: {
         type: 'string',
-        description: 'The task that taskId will depend on (must be completed first)',
+        description: 'Task that taskId will depend on (must complete first)',
       },
+      includeRaw: { type: 'boolean', description: 'Return full task document' },
     },
     required: ['taskId', 'dependsOnTaskId'],
   },
   handler: async (args) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const taskId = args?.taskId as string;
     const dependsOnTaskId = args?.dependsOnTaskId as string;
     if (!taskId || !dependsOnTaskId) {
       throw new Error('taskId and dependsOnTaskId are required');
     }
 
-    const result = await wsClient.queryConversations<any>('add_dependency', {
-      taskId,
-      dependsOnTaskId,
-    });
+    const result = await withTimeout(
+      wsClient.queryConversations<any>('add_dependency', {
+        taskId,
+        dependsOnTaskId,
+      }),
+      15_000,
+      'add_dependency',
+    );
 
-    return {
-      success: true,
-      task: result.task,
-    };
+    const task = resolveFields(result.task ?? {}, {
+      includeRaw: args?.includeRaw === true,
+      defaultFields: TASK_FIELDS,
+    });
+    return { task };
   },
 };

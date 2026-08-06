@@ -1,0 +1,141 @@
+{
+  "name": "Google Analytics",
+  "description": "Google Analytics 4 (GA4) — ejecuta informes, consulta datos en tiempo real y gestiona propiedades y flujos de datos",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de GA4."
+    },
+    "analytics-list-accounts": {
+      "name": "analytics-list-accounts",
+      "description": "Lista las cuentas de GA4 accesibles para el usuario. Devuelve { accounts: [{ accountId, name, displayName, regionCode, createTime }], count }.",
+      "params": {
+        "pageSize": "Máximo de resultados por página (por defecto 50, máximo 200)",
+        "pageToken": "Token de paginación de la respuesta anterior"
+      }
+    },
+    "analytics-list-properties": {
+      "name": "analytics-list-properties",
+      "description": "Lista las propiedades de GA4 bajo una cuenta. Devuelve { properties: [{ propertyId, displayName, propertyType, currencyCode, timeZone, industryCategory }], count }.",
+      "params": {
+        "accountId": "ID de cuenta de GA4 (numérico o \"accounts/{id}\")",
+        "pageSize": "Máximo de resultados por página (por defecto 50, máximo 200)",
+        "pageToken": "Token de paginación de la respuesta anterior",
+        "showDeleted": "Incluir propiedades eliminadas (por defecto false)"
+      }
+    },
+    "analytics-get-property": {
+      "name": "analytics-get-property",
+      "description": "Obtiene los detalles de una propiedad de GA4. Devuelve { property: { propertyId, displayName, propertyType, parent, timeZone, currencyCode, industryCategory, serviceLevel, createTime, updateTime } }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")"
+      }
+    },
+    "analytics-list-data-streams": {
+      "name": "analytics-list-data-streams",
+      "description": "Lista los flujos de datos (web/iOS/Android) de una propiedad. Devuelve { streams: [{ streamId, displayName, type, webStreamData, androidAppStreamData, iosAppStreamData }], count }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "pageSize": "Máximo de resultados por página (por defecto 50)",
+        "pageToken": "Token de paginación de la respuesta anterior"
+      }
+    },
+    "analytics-get-data-stream": {
+      "name": "analytics-get-data-stream",
+      "description": "Obtiene los detalles de un flujo de datos concreto. Devuelve { stream: { streamId, displayName, type, webStreamData?, androidAppStreamData?, iosAppStreamData? } }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "streamId": "ID del flujo de datos (numérico)"
+      }
+    },
+    "analytics-run-report": {
+      "name": "analytics-run-report",
+      "description": "Ejecuta un informe de GA4. Devuelve { dimensionHeaders, metricHeaders, rows, rowCount, totals?, metadata, propertyQuota? }. Las fechas aceptan ISO (\"2024-01-01\") o relativas (\"7daysAgo\", \"yesterday\", \"today\").",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "dimensions": "Nombres de API de dimensiones, ej. [\"country\", \"deviceCategory\"]",
+        "metrics": "Nombres de API de métricas, ej. [\"activeUsers\", \"sessions\"]",
+        "dateRanges": "Rangos de fechas, ej. [{ \"startDate\": \"7daysAgo\", \"endDate\": \"yesterday\" }]",
+        "dimensionFilter": "FilterExpression de GA4 para dimensiones (ver documentación de la Data API de GA4)",
+        "metricFilter": "FilterExpression de GA4 para métricas (aplicado tras la agregación)",
+        "orderBys": "Configuración de ordenación, ej. [{ \"metric\": { \"metricName\": \"sessions\" }, \"desc\": true }]",
+        "limit": "Máximo de filas (por defecto 10000, máximo 250000)",
+        "offset": "Desplazamiento de filas (por defecto 0)",
+        "keepEmptyRows": "Incluir filas donde todas las métricas son cero",
+        "returnPropertyQuota": "Incluir información de cuota en la respuesta",
+        "currencyCode": "Moneda ISO 4217 (ej. \"USD\")",
+        "metricAggregations": "Agregaciones: TOTAL, MINIMUM, MAXIMUM"
+      }
+    },
+    "analytics-batch-run-reports": {
+      "name": "analytics-batch-run-reports",
+      "description": "Ejecuta hasta 5 informes de GA4 sobre la misma propiedad en una sola llamada. Devuelve { reports: [<RunReportResponse>...] }. Útil para dashboards.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "requests": "Array de peticiones de informe (misma estructura que los parámetros de analytics-run-report sin propertyId)"
+      }
+    },
+    "analytics-run-realtime-report": {
+      "name": "analytics-run-realtime-report",
+      "description": "Ejecuta un informe en tiempo real de GA4 (últimos 30 minutos de actividad). Devuelve { dimensionHeaders, metricHeaders, rows, rowCount, propertyQuota? }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "dimensions": "Nombres de API de dimensiones en tiempo real, ej. [\"country\", \"unifiedScreenName\"]",
+        "metrics": "Nombres de API de métricas en tiempo real, ej. [\"activeUsers\"]",
+        "dimensionFilter": "FilterExpression para dimensiones",
+        "metricFilter": "FilterExpression para métricas",
+        "orderBys": "Configuración de ordenación",
+        "limit": "Máximo de filas (por defecto 10000)",
+        "returnPropertyQuota": "Incluir información de cuota en la respuesta"
+      }
+    },
+    "analytics-get-metadata": {
+      "name": "analytics-get-metadata",
+      "description": "Obtiene todas las dimensiones y métricas disponibles para una propiedad, incluidas las personalizadas. Devuelve { dimensions: [{ apiName, uiName, description, customDefinition }], metrics: [{ apiName, uiName, description, type, customDefinition }] }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")"
+      }
+    },
+    "analytics-create-property": {
+      "name": "analytics-create-property",
+      "description": "Crea una nueva propiedad de GA4 bajo una cuenta. Devuelve { property: { propertyId, displayName, parent, timeZone, currencyCode, ... } }.",
+      "params": {
+        "accountId": "ID de cuenta de GA4 (numérico o \"accounts/{id}\")",
+        "displayName": "Nombre legible de la propiedad",
+        "timeZone": "Zona horaria IANA, ej. \"America/Los_Angeles\"",
+        "currencyCode": "Moneda ISO 4217, ej. \"USD\"",
+        "industryCategory": "Categoría de industria de GA4, ej. \"TECHNOLOGY\", \"RETAIL\", \"FINANCE\""
+      }
+    },
+    "analytics-update-property": {
+      "name": "analytics-update-property",
+      "description": "Actualiza los campos modificables de una propiedad de GA4 (displayName, timeZone, currencyCode, industryCategory). Devuelve { property: <actualizada> }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "displayName": "Nuevo nombre para mostrar",
+        "timeZone": "Nueva zona horaria IANA",
+        "currencyCode": "Nuevo código de moneda ISO 4217",
+        "industryCategory": "Nueva categoría de industria"
+      }
+    },
+    "analytics-delete-property": {
+      "name": "analytics-delete-property",
+      "description": "Elimina (soft-delete) una propiedad de GA4 (recuperable durante ~7 días desde la interfaz de Google Analytics). Devuelve { property: { propertyId, deleteTime, ... } }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")"
+      }
+    },
+    "analytics-create-data-stream": {
+      "name": "analytics-create-data-stream",
+      "description": "Crea un flujo de datos web/iOS/Android bajo una propiedad. Devuelve { stream: { streamId, displayName, type, webStreamData? } }.",
+      "params": {
+        "propertyId": "ID de propiedad de GA4 (numérico o \"properties/{id}\")",
+        "displayName": "Nombre legible del flujo",
+        "type": "Tipo de flujo: WEB_DATA_STREAM | ANDROID_APP_DATA_STREAM | IOS_APP_DATA_STREAM",
+        "webStreamData": "Requerido para WEB_DATA_STREAM: { defaultUri }",
+        "androidAppStreamData": "Requerido para ANDROID_APP_DATA_STREAM: { packageName }",
+        "iosAppStreamData": "Requerido para IOS_APP_DATA_STREAM: { bundleId }"
+      }
+    }
+  }
+}

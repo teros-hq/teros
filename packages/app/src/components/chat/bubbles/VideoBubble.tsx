@@ -1,6 +1,10 @@
 import { Play, Video } from '@tamagui/lucide-icons';
 import { Image, Linking, Platform } from 'react-native';
-import { Button, Text, XStack, YStack } from 'tamagui';
+import { getDateLocale } from '../../../i18n';
+import { Button, Text, XStack, YStack } from 'tamagui'
+import { useColors } from '../../mca/primitives/useColors'
+import { colors as semanticColors } from '../../mca/primitives/colors';
+import { QueuedIndicator, QueuedShimmer } from '../queuedDecorations';
 import { SelectableText } from './shared';
 import { formatDuration } from './VoiceBubble';
 
@@ -15,6 +19,7 @@ export function VideoBubble({
   timestamp,
   isUser = false,
   showTimestamp = true,
+  status,
 }: {
   url: string;
   caption?: string;
@@ -23,7 +28,9 @@ export function VideoBubble({
   timestamp: Date;
   isUser?: boolean;
   showTimestamp?: boolean;
+  status?: 'sending' | 'sent' | 'failed' | 'queued';
 }) {
+  const c = useColors()
   const handleOpenExternal = () => {
     if (Platform.OS === 'web') {
       window.open(url, '_blank');
@@ -32,9 +39,22 @@ export function VideoBubble({
     }
   };
 
+  const isQueued = status === 'queued';
+
   return (
-    <YStack maxWidth="85%" gap="$2" alignSelf={isUser ? 'flex-end' : 'flex-start'}>
-      <YStack borderRadius="$4" overflow="hidden" backgroundColor="rgba(255, 255, 255, 0.05)">
+    <YStack
+      maxWidth="85%"
+      gap="$2"
+      alignSelf={isUser ? 'flex-end' : 'flex-start'}
+      alignItems={isUser ? 'flex-end' : 'flex-start'}
+    >
+      <YStack
+        borderRadius="$4"
+        overflow="hidden"
+        backgroundColor={c.bgInner}
+        position={isQueued ? 'relative' : undefined}
+      >
+        {isQueued && <QueuedShimmer />}
         {/* Inline video player */}
         {Platform.OS === 'web' ? (
           <video
@@ -45,14 +65,14 @@ export function VideoBubble({
               width: '100%',
               maxWidth: 400,
               borderRadius: 8,
-              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              backgroundColor: c.bgInner,
             }}
           />
         ) : (
           // Fallback for native - show thumbnail with play button
           <XStack
             height={200}
-            backgroundColor="rgba(0, 0, 0, 0.3)"
+            backgroundColor={c.bgInner}
             alignItems="center"
             justifyContent="center"
             position="relative"
@@ -68,7 +88,7 @@ export function VideoBubble({
                 resizeMode="cover"
               />
             ) : (
-              <Video size={48} color="rgba(255, 255, 255, 0.3)" />
+              <Video size={48} color={c.text3} />
             )}
 
             <Button
@@ -76,7 +96,7 @@ export function VideoBubble({
               height={56}
               padding={0}
               borderRadius={12}
-              backgroundColor="rgba(6, 182, 212, 0.9)"
+              backgroundColor={semanticColors.indigo}
               onPress={handleOpenExternal}
               icon={<Play size={24} color="#FFFFFF" />}
               zIndex={1}
@@ -87,7 +107,7 @@ export function VideoBubble({
                 position="absolute"
                 bottom={8}
                 right={8}
-                backgroundColor="rgba(0, 0, 0, 0.7)"
+                backgroundColor={c.bgInner}
                 paddingHorizontal="$2"
                 paddingVertical="$1"
                 borderRadius="$2"
@@ -102,17 +122,22 @@ export function VideoBubble({
 
         {caption && (
           <YStack padding="$2">
-            <SelectableText color="rgba(255, 255, 255, 0.8)" fontSize="$3" selectable>
+            <SelectableText color={c.text} fontSize="$3" selectable>
               {caption}
             </SelectableText>
           </YStack>
         )}
       </YStack>
 
-      {showTimestamp && (
-        <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-          {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-        </SelectableText>
+      {(showTimestamp || isQueued) && (
+        <XStack alignItems="center" gap="$2">
+          {isQueued && <QueuedIndicator />}
+          {showTimestamp && (
+            <SelectableText fontSize="$2" color={c.text3} selectable>
+              {timestamp.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })}
+            </SelectableText>
+          )}
+        </XStack>
       )}
     </YStack>
   );

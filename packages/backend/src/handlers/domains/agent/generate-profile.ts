@@ -7,6 +7,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Collection, Db } from 'mongodb'
 import type { ProviderService } from '../../../services/provider-service'
+import { resolveCoreType } from '../../../services/agent-provisioning-service'
 
 interface Agent {
   ownerId: string
@@ -15,16 +16,19 @@ interface Agent {
 
 interface AgentCore {
   coreId: string
+  coreType: 'agent' | 'super-agent'
   name: string
   fullName: string
   systemPrompt: string
   personality: string[]
   capabilities: string[]
   avatarUrl: string
+  status: string
 }
 
 interface GenerateProfileData {
-  coreId: string
+  /** Optional scope hint. No workspace → super-agent core; otherwise → agent core. */
+  workspaceId?: string
   excludeNames?: string[]
 }
 
@@ -113,11 +117,13 @@ export function createGenerateProfileHandler(db: Db, providerService: ProviderSe
     const data = rawData as GenerateProfileData
     console.log(`[agent.generate-profile] Generating agent profile for user: ${ctx.userId}`, data)
 
-    const { coreId, excludeNames = [] } = data
+    const { workspaceId, excludeNames = [] } = data
 
-    const core = await agentCores.findOne({ coreId })
+    // Core is internal: derive it from scope (no workspace → super-agent).
+    const coreType = resolveCoreType(workspaceId)
+    const core = await agentCores.findOne({ coreType, status: 'active' })
     if (!core) {
-      throw new HandlerError('CORE_NOT_FOUND', `Agent core '${coreId}' not found`)
+      throw new HandlerError('CORE_NOT_FOUND', `No active agent core for type '${coreType}'`)
     }
 
     const existingAgents = await agents.find({ ownerId: ctx.userId }).toArray()

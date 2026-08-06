@@ -5,6 +5,7 @@ import { ensureQdrantInitialized } from '../qdrant-init';
 
 export const memorySaveKnowledge: HttpToolConfig = {
   description: 'Save a piece of knowledge to the knowledge base',
+  annotations: { readOnlyHint: false, version: '2.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {

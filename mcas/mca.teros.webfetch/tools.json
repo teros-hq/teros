@@ -33,6 +33,9 @@
           "url",
           "format"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

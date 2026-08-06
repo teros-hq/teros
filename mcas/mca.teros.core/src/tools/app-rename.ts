@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const appRename: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Rename an installed app.',
   parameters: {
     type: 'object',

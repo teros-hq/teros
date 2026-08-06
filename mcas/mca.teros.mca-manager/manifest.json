@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "description": "Monitor and manage MCA processes. View running MCAs, kill processes, cleanup inactive, and manage app access.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "system",
   "entrypoint": "src/index.ts",
   "author": {
@@ -31,5 +31,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-02-23",
+      "notes": "Monitor running apps, stop or clean up idle processes, list installed apps, browse the catalog, and review agent access"
+    }
+  ]
 }

@@ -16,6 +16,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -37,6 +40,9 @@
           "width",
           "height"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -85,6 +91,9 @@
             "description": "Preset filters: all, since last navigation, since last action (click/type/etc)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -117,6 +126,9 @@
             "description": "Preset filters"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -125,6 +137,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -145,6 +160,9 @@
         "required": [
           "accept"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -169,6 +187,9 @@
         "required": [
           "function"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -185,6 +206,9 @@
             "description": "The absolute paths to the files to upload. Can be single file or multiple files. If omitted, file chooser is cancelled."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -236,6 +260,9 @@
         "required": [
           "fields"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -244,6 +271,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -260,6 +290,9 @@
         "required": [
           "key"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -294,6 +327,9 @@
           "ref",
           "text"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -305,11 +341,24 @@
           "url": {
             "type": "string",
             "description": "The URL to navigate to"
+          },
+          "waitUntil": {
+            "type": "string",
+            "enum": [
+              "load",
+              "domcontentloaded",
+              "networkidle"
+            ],
+            "default": "domcontentloaded",
+            "description": "When to consider navigation complete: \"load\" (full page load), \"domcontentloaded\" (DOM ready, default), \"networkidle\" (no network activity for 500ms). Use \"networkidle\" for pages that load content dynamically."
           }
         },
         "required": [
           "url"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -318,6 +367,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -332,6 +384,9 @@
             "description": "Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -342,12 +397,15 @@
         "properties": {
           "code": {
             "type": "string",
-            "description": "A JavaScript function containing Playwright code to execute. It will be invoked with a single argument, page, which you can use for any page interaction. For example: `async (page) => { await page.getByRole('button', { name: 'Submit' }).click(); return await page.title(); }`"
+            "description": "A JavaScript function containing Playwright code to execute. It will be invoked with a single argument containing { page, context, browser }. For example: `async ({ page, context, browser }) => { await page.getByRole(\"button\", { name: \"Submit\" }).click(); return await page.title(); }`"
           }
         },
         "required": [
           "code"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -382,6 +440,9 @@
             "description": "When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Cannot be used with element screenshots."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -395,6 +456,9 @@
             "description": "Save snapshot to markdown file in /workspace/ instead of returning it in the response (e.g., \"snapshot.md\")."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -443,6 +507,9 @@
           "element",
           "ref"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -474,6 +541,9 @@
           "endElement",
           "endRef"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -495,6 +565,9 @@
           "element",
           "ref"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -524,6 +597,9 @@
           "ref",
           "values"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -550,11 +626,14 @@
         "required": [
           "action"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "browser-wait-for",
-      "description": "Wait for text to appear or disappear or a specified time to pass",
+      "description": "Wait for text to appear or disappear, a URL to load, network idle, or a specified time to pass",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -569,8 +648,107 @@
           "textGone": {
             "type": "string",
             "description": "The text to wait for to disappear"
+          },
+          "url": {
+            "type": "string",
+            "description": "Wait for the page URL to contain or match this string (partial match). Useful for OAuth redirects."
+          },
+          "networkIdle": {
+            "type": "boolean",
+            "description": "Wait until there are no network connections for at least 500ms. Useful for SPA content loading."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "browser-start-recording",
+      "description": "Start recording a video of the browser. Creates a new browser context with video recording enabled. Use browser-stop-recording to finalize and save the video file. All navigation and interaction tools will be captured in the recording.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "number",
+            "default": 1280,
+            "description": "Video width in pixels (default: 1280)"
+          },
+          "height": {
+            "type": "number",
+            "default": 720,
+            "description": "Video height in pixels (default: 720)"
+          },
+          "outputDir": {
+            "type": "string",
+            "default": "/workspace/videos",
+            "description": "Directory to save the video file (default: /workspace/videos)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "browser-stop-recording",
+      "description": "Stop recording and save the video file. Closes the current browser context (which finalizes the video) and returns the path to the saved .webm file. A new non-recording context is created automatically so the browser remains usable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Optional custom filename for the video (e.g., \"gmail-tutorial.webm\"). If not provided, Playwright auto-generates a name. Saved to /workspace/."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "browser-emulate-device",
+      "description": "Emulate a specific device or custom viewport. Recreates the browser context with the specified device settings. Useful for recording tutorials on mobile vs desktop views.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "device": {
+            "type": "string",
+            "enum": [
+              "iphone-13",
+              "iphone-15-pro",
+              "ipad-pro-11",
+              "pixel-7",
+              "galaxy-s23",
+              "desktop-1080p",
+              "desktop-720p"
+            ],
+            "description": "Preset device to emulate. Selecting a preset sets viewport, user agent, and touch settings automatically."
+          },
+          "width": {
+            "type": "number",
+            "description": "Custom viewport width (used when device is not specified)"
+          },
+          "height": {
+            "type": "number",
+            "description": "Custom viewport height (used when device is not specified)"
+          },
+          "userAgent": {
+            "type": "string",
+            "description": "Custom user agent string (used when device is not specified)"
+          },
+          "isMobile": {
+            "type": "boolean",
+            "description": "Whether to emulate a mobile device (used when device is not specified)"
+          },
+          "hasTouch": {
+            "type": "boolean",
+            "description": "Whether to enable touch events (used when device is not specified)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

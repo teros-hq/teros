@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Context7 API 키 존재 및 연결성을 확인합니다."
+    },
+    "resolve-library": {
+      "name": "resolve-library",
+      "description": "자유 텍스트 이름에서 Context7 라이브러리 식별자를 해결합니다 (예: \"react\" → \"/reactjs/react.dev\"). 평판 및 스니펫 수에 따라 순위가 매겨진 후보를 반환합니다. 캐시: 7일. 선택한 `id`를 `get-docs`의 `libraryId`로 사용하세요.",
+      "params": {
+        "libraryName": "해결할 라이브러리 이름 (예: \"react\", \"tamagui\")",
+        "query": "선택적 세부 조정 쿼리 (예: \"hooks\", \"router\")"
+      }
+    },
+    "get-docs": {
+      "name": "get-docs",
+      "description": "Context7에서 해결된 libraryId에 대한 최신 문서 스니펫을 가져옵니다. {title, source, description, code, language} 배열을 반환합니다. 먼저 `resolve-library`를 사용하여 libraryId를 가져오세요.",
+      "params": {
+        "libraryId": "Context7 호환 라이브러리 id (예: \"/reactjs/react.dev\"). `resolve-library`에서 가져옵니다.",
+        "query": "주제 또는 질문 (예: \"useEffect cleanup\", \"router hooks\")",
+        "format": "Context7의 응답 형식 (기본값: json)",
+        "limit": "반환할 최대 스니펫 수 (기본값 10, 최대 30)"
+      }
+    }
+  },
+  "name": "Context7",
+  "description": "Context7 (Upstash)를 통한 최신 라이브러리 및 프레임워크 문서. 라이브러리 식별자를 해결하고 코드 예제가 포함된 구조화된 문서 스니펫을 가져옵니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 이름으로 소프트웨어 라이브러리를 찾고 실제 코드 예제와 함께 최신 문서 스니펫을 가져옵니다."
+    }
+  ]
+}

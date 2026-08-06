@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const catalogList: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all MCAs available in the catalog.',
   parameters: {
     type: 'object',

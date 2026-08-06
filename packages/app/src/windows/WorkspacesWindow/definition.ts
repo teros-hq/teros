@@ -6,6 +6,7 @@
  */
 
 import { Folder } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { WorkspaceWindowContent } from './WorkspaceWindowContent';
 
@@ -26,7 +27,7 @@ export const workspaceWindowDefinition: WindowTypeDefinition<WorkspaceWindowProp
 
   getKey: (props) => props.workspaceId,
 
-  getTitle: (props) => 'Workspace',
+  getTitle: () => i18n.t("windows.workspace"),
 
   serialize: (props) => ({
     workspaceId: props.workspaceId,

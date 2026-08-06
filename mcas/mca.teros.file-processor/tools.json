@@ -12,7 +12,7 @@
     },
     {
       "name": "file-to-markdown",
-      "description": "Convert files to Markdown using AI (synchronous). Supports PDF (with intelligent chunking for large files). Use file-to-markdown-async for long-running jobs.",
+      "description": "Convert a file to text/Markdown (synchronous). PDF and Word .docx are extracted locally; scanned PDFs fall back to LLM OCR if a system key is set. Use file-to-markdown-async for long-running jobs.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -37,12 +37,17 @@
             "description": "Timeout in milliseconds per chunk (default: 120000 for chunks, 180000 for direct processing)"
           }
         },
-        "required": ["inputPath"]
+        "required": [
+          "inputPath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "file-to-markdown-async",
-      "description": "Convert files to Markdown asynchronously (non-blocking). Returns a job ID immediately. Use get-job-status to check progress.",
+      "description": "Convert a file to Markdown asynchronously (non-blocking). Supports PDF and Word .docx. Returns a job ID immediately. Use get-job-status to check progress.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -67,7 +72,12 @@
             "description": "Timeout in milliseconds per chunk (default: 120000)"
           }
         },
-        "required": ["inputPath"]
+        "required": [
+          "inputPath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -81,7 +91,12 @@
             "description": "The job ID returned by file-to-markdown-async"
           }
         },
-        "required": ["jobId"]
+        "required": [
+          "jobId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -93,13 +108,22 @@
           "status": {
             "type": "string",
             "description": "Filter by status: queued, processing, completed, failed, cancelled",
-            "enum": ["queued", "processing", "completed", "failed", "cancelled"]
+            "enum": [
+              "queued",
+              "processing",
+              "completed",
+              "failed",
+              "cancelled"
+            ]
           },
           "limit": {
             "type": "number",
             "description": "Maximum number of jobs to return (default: 20)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -113,7 +137,13 @@
             "description": "The job ID to cancel"
           }
         },
-        "required": ["jobId"]
+        "required": [
+          "jobId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -131,7 +161,12 @@
             "description": "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Auto-detected if not provided."
           }
         },
-        "required": ["inputPath"]
+        "required": [
+          "inputPath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -157,7 +192,12 @@
             "description": "Optional: Target height in pixels"
           }
         },
-        "required": ["inputPath"]
+        "required": [
+          "inputPath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

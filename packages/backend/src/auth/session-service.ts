@@ -10,6 +10,7 @@ import { type Collection, type Db, ObjectId } from 'mongodb';
 import type { UserSession } from './types';
 
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+const IMPERSONATION_DURATION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const TOKEN_BYTES = 32; // 256 bits
 
 /**
@@ -32,6 +33,26 @@ export interface CreateSessionParams {
   identityId: ObjectId;
   userAgent?: string;
   ipAddress?: string;
+}
+
+export interface CreateImpersonationSessionParams {
+  /** The target user being impersonated */
+  targetUserId: string;
+  /** The admin's userId (e.g. "user:abc123") */
+  adminUserId: string;
+  /** The admin's display name */
+  adminDisplayName: string;
+  /** SHA-256 hash of the admin's current token */
+  originalTokenHash: string;
+  /** Identity to associate with the new session (use admin's identityId) */
+  identityId: ObjectId;
+  userAgent?: string;
+  ipAddress?: string;
+}
+
+/** Hash a token for storage (exported so handlers can hash tokens too) */
+export function hashSessionToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex');
 }
 
 export interface SessionWithToken {
@@ -114,7 +135,7 @@ export class SessionService {
     // Update last activity (fire and forget)
     this.sessions
       .updateOne({ _id: session._id }, { $set: { lastActivityAt: new Date() } })
-      .catch(() => {}); // Ignore errors
+      .catch(() => {}); // intentional: fire-and-forget activity update — must not block auth flow
 
     return session;
   }
@@ -136,6 +157,44 @@ export class SessionService {
     }
 
     // Generate new token
+    const newToken = generateToken();
+    const newTokenHash = hashToken(newToken);
+    const now = new Date();
+    const newExpiresAt = new Date(now.getTime() + SESSION_DURATION_MS);
+
+    await this.sessions.updateOne(
+      { _id: session._id },
+      {
+        $set: {
+          tokenHash: newTokenHash,
+          expiresAt: newExpiresAt,
+          lastActivityAt: now,
+        },
+      },
+    );
+
+    const updatedSession = await this.sessions.findOne({ _id: session._id });
+
+    return {
+      session: updatedSession!,
+      token: newToken,
+    };
+  }
+
+  /**
+   * Refresh a session by its token hash (used when the plaintext token is unavailable).
+   * Generates a new token and updates the session. Returns the new token.
+   */
+  async refreshSessionByHash(tokenHash: string): Promise<SessionWithToken | null> {
+    const session = await this.sessions.findOne({
+      tokenHash,
+      status: 'active',
+    });
+
+    if (!session) {
+      return null;
+    }
+
     const newToken = generateToken();
     const newTokenHash = hashToken(newToken);
     const now = new Date();
@@ -231,6 +290,55 @@ export class SessionService {
    */
   async getById(sessionId: ObjectId): Promise<UserSession | null> {
     return this.sessions.findOne({ _id: sessionId });
+  }
+
+  /**
+   * Get an active session by its token hash.
+   * Used by impersonation handlers to look up the admin's original session.
+   */
+  async getByTokenHash(tokenHash: string): Promise<UserSession | null> {
+    return this.sessions.findOne({
+      tokenHash,
+      status: 'active',
+      expiresAt: { $gt: new Date() },
+    });
+  }
+
+  /**
+   * Create an impersonation session for a target user.
+   * The session has a 2-hour TTL and carries metadata linking it back to the
+   * admin's original session (via originalTokenHash).
+   */
+  async createImpersonationSession(
+    params: CreateImpersonationSessionParams,
+  ): Promise<SessionWithToken> {
+    const token = generateToken();
+    const tokenHash = hashToken(token);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + IMPERSONATION_DURATION_MS);
+
+    const session: UserSession = {
+      _id: new ObjectId(),
+      userId: params.targetUserId,
+      identityId: params.identityId,
+      tokenHash,
+      metadata: {
+        userAgent: params.userAgent,
+        ipAddress: params.ipAddress,
+        isImpersonating: true,
+        impersonatedBy: params.adminUserId,
+        impersonatedByName: params.adminDisplayName,
+        originalTokenHash: params.originalTokenHash,
+      },
+      expiresAt,
+      status: 'active',
+      createdAt: now,
+      lastActivityAt: now,
+    };
+
+    await this.sessions.insertOne(session);
+
+    return { session, token };
   }
 
   /**

@@ -1,0 +1,3427 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.slack",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Probes Slack OAuth credentials and API reachability via auth.test.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-channels",
+      "description": "List channels. Returns curated rows { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created } + nextCursor. Params: types? (CSV public_channel|private_channel|mpim|im), limit (1-1000, def 100), cursor, excludeArchived (def true), fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "types": {
+            "type": "string",
+            "description": "Comma-separated channel types from public_channel, private_channel, mpim, im. Default: public_channel,private_channel."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 1000, default 100."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Slack cursor from previous response.nextCursor."
+          },
+          "excludeArchived": {
+            "type": "boolean",
+            "description": "Exclude archived channels. Default true."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack channel objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-channel",
+      "description": "Get a single channel. Returns { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created, creator, isGeneral, isShared } + extras. Params: channelId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C... / G... / D... / M...)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack channel object. Default false."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-channel",
+      "description": "Create a channel. Slack normalizes the name (lowercase, no spaces, only [a-z0-9_-], ≤80). Returns the curated channel + ActionBadge('created'). Not retryable. Params: name, isPrivate? (def false), topic?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Channel name (lowercase, ≤80 chars, only letters/digits/underscore/hyphen)."
+          },
+          "isPrivate": {
+            "type": "boolean",
+            "description": "Create as private. Default false."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Optional channel topic, set after creation."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned channel."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack channel object. Default false."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "archive-channel",
+      "description": "Archive a channel (read-only afterwards). Returns { id, name } from a follow-up info call. Not retryable. Params: channelId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C... / G...)."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "join-channel",
+      "description": "Join a public channel. Returns the curated channel. Idempotent (already_in_channel raises BUSINESS_RULE). Params: channelId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C...)."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "invite-to-channel",
+      "description": "Invite users to a channel. Returns { channel, invitedUserIds, alreadyInChannel? }. Not retryable. Params: channelId, userIds[].",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C... / G...)."
+          },
+          "userIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slack user ids (U... / W...) to invite."
+          }
+        },
+        "required": [
+          "channelId",
+          "userIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Post a message to a channel, DM, or as a top-level message. Returns { ts, channel, message, permalink }. Not retryable (no idempotency key — duplicate messages on retry). Params: channel, text, blocks? (JSON), threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id (C... / G... / D... / M...) or user id (U... for DM)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain text body. Required even when blocks are provided (used as fallback)."
+          },
+          "blocks": {
+            "type": "string",
+            "description": "Optional Slack Block Kit JSON string (will be parsed)."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Parent message ts to post as a thread reply. Use send-thread-reply for the canonical thread API."
+          },
+          "unfurlLinks": {
+            "type": "boolean",
+            "description": "Unfurl links in the message. Default true."
+          },
+          "unfurlMedia": {
+            "type": "boolean",
+            "description": "Unfurl media in the message. Default true."
+          }
+        },
+        "required": [
+          "channel",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "send-thread-reply",
+      "description": "Reply inside a Slack thread. Returns { ts, channel, threadTs, broadcast, message }. Not retryable (no idempotency key). Params: channel, threadTs, text, blocks? (JSON), broadcast (def false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the parent message lives."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Parent message ts (1234567890.123456)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain text reply body."
+          },
+          "blocks": {
+            "type": "string",
+            "description": "Optional Slack Block Kit JSON string."
+          },
+          "broadcast": {
+            "type": "boolean",
+            "description": "Also broadcast the reply to the channel. Default false."
+          }
+        },
+        "required": [
+          "channel",
+          "threadTs",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-messages",
+      "description": "List messages from a channel or thread (passes threadTs to fetch replies). Returns curated rows { ts, channel, user, text, threadTs, replyCount, reactions, permalink, createdAt } + nextCursor + isThread. Params: channel, threadTs?, limit (1-200, def 50), cursor, oldest, latest, inclusive, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Slack channel id (C... / G... / D... / M...)."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Parent message ts to fetch thread replies. Format 1234567890.123456."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Slack cursor from previous response.nextCursor."
+          },
+          "oldest": {
+            "type": "string",
+            "description": "Start of time range (Unix seconds)."
+          },
+          "latest": {
+            "type": "string",
+            "description": "End of time range (Unix seconds)."
+          },
+          "inclusive": {
+            "type": "boolean",
+            "description": "Include boundary timestamps. Default false."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack message objects. Default false."
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-reaction",
+      "description": "Add an emoji reaction to a message. Returns { channel, timestamp, name }. Idempotent (already_reacted raises BUSINESS_RULE). Params: channel, timestamp, name (no colons).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the message is."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message ts (1234567890.123456)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Emoji name without colons (e.g. 'thumbsup', 'fire')."
+          }
+        },
+        "required": [
+          "channel",
+          "timestamp",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-reaction",
+      "description": "Remove an emoji reaction from a message. Returns { channel, timestamp, name }. Idempotent (no_reaction raises BUSINESS_RULE). Params: channel, timestamp, name (no colons).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the message is."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message ts (1234567890.123456)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Emoji name without colons (e.g. 'thumbsup')."
+          }
+        },
+        "required": [
+          "channel",
+          "timestamp",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-users",
+      "description": "List workspace users. Returns curated rows { id, name, realName, displayName, email, imageUrl, isBot, isAdmin, isOwner, deleted, tz } + nextCursor. Params: limit (1-200, def 100), cursor, includeDeleted (def false), includeBots (def true), fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 100."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Slack cursor from previous response.nextCursor."
+          },
+          "includeDeleted": {
+            "type": "boolean",
+            "description": "Include deactivated users. Default false."
+          },
+          "includeBots": {
+            "type": "boolean",
+            "description": "Include bot users. Default true."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack user objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Get a single user by id or email. Returns the curated user (id, name, realName, displayName, email, imageUrl, profile, tz). Provide exactly one of userId/email. Params: userId?, email?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Slack user id (U... / W...). Mutex with email."
+          },
+          "email": {
+            "type": "string",
+            "description": "User email. Mutex with userId."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack user object. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-user-presence",
+      "description": "Get presence for a Slack user. Returns { user, presence, online, autoAway, manualAway, connectionCount, lastActivity }. Params: userId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Slack user id (U... or W...)."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "upload-file",
+      "description": "Upload a local file to Slack and optionally share it. Returns the curated file (id, name, mimetype, size, permalink, thumbUrl). Path must resolve to an absolute path. Not retryable. Params: filePath, channels?[], title?, initialComment?, threadTs?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path to the local file (≤100 MB)."
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Slack channel ids to share to. Single id is fine."
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional file title (defaults to basename)."
+          },
+          "initialComment": {
+            "type": "string",
+            "description": "Optional comment posted alongside the file."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Optional parent message ts to share inside a thread."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned file."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack file object. Default false."
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-files",
+      "description": "List uploaded files. Returns curated rows { id, name, title, mimetype, prettyType, size, user, urlPrivate, permalink, thumbUrl, createdAt } + paging. Params: channel?, user?, limit (1-100, def 20), page (def 1), tsFrom, tsTo, types? (CSV all|spaces|snippets|images|gdocs|zips|pdfs), fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Filter by channel id."
+          },
+          "user": {
+            "type": "string",
+            "description": "Filter by uploader user id."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 20."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number (1-indexed). Default 1."
+          },
+          "tsFrom": {
+            "type": "string",
+            "description": "Filter files created after this Unix timestamp."
+          },
+          "tsTo": {
+            "type": "string",
+            "description": "Filter files created before this Unix timestamp."
+          },
+          "types": {
+            "type": "string",
+            "description": "Comma-separated types from all, spaces, snippets, images, gdocs, zips, pdfs. Default all."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack file objects. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search-messages",
+      "description": "Search messages workspace-wide. Supports Slack search syntax (in:#channel, from:@user, before/after). Returns curated hits { ts, channel, channelName, user, userName, text, permalink, score } + total + page. Params: query, sort? (score|timestamp), sortDirection? (asc|desc), count (1-100, def 20), page, highlight, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Slack search query (supports operators like in:#channel, from:@user)."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "score",
+              "timestamp"
+            ],
+            "description": "Sort by relevance or time. Default score."
+          },
+          "sortDirection": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "Sort direction. Default desc."
+          },
+          "count": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 20."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number (1-indexed). Default 1."
+          },
+          "highlight": {
+            "type": "boolean",
+            "description": "Highlight matching terms in returned text. Default false."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per hit."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack search.matches[]. Default false."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "search-files",
+      "description": "Search files workspace-wide. Supports Slack search syntax (in:#channel, from:@user, type:pdf). Returns curated hits { id, name, title, mimetype, permalink, thumbUrl, score, createdAt } + total + page. Params: query, sort? (score|timestamp), sortDirection?, count (1-100, def 20), page, highlight, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Slack search query (supports operators like type:pdf, in:#channel)."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "score",
+              "timestamp"
+            ],
+            "description": "Sort by relevance or time. Default score."
+          },
+          "sortDirection": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "Sort direction. Default desc."
+          },
+          "count": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 20."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number (1-indexed). Default 1."
+          },
+          "highlight": {
+            "type": "boolean",
+            "description": "Highlight matching terms. Default false."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per hit."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack search.files.matches[]. Default false."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-team-info",
+      "description": "Get the connected Slack workspace info. Returns { id, name, domain, emailDomain, iconUrl, enterpriseId, enterpriseName }. Params: fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned team."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack team object. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-message",
+      "description": "Edit an existing message. The token user must be the author. Returns { ts, channel, text, message }. Not retryable. Params: channel, ts, text? or blocks? (at least one required), attachments? (JSON).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the message lives (C... / G... / D... / M...)."
+          },
+          "ts": {
+            "type": "string",
+            "description": "Timestamp of the message to edit (\"1234567890.123456\")."
+          },
+          "text": {
+            "type": "string",
+            "description": "New plain text body. At least one of text/blocks must be provided."
+          },
+          "blocks": {
+            "type": "string",
+            "description": "New Slack Block Kit JSON string (will be parsed). Replaces existing blocks."
+          },
+          "attachments": {
+            "type": "string",
+            "description": "New attachments JSON string (legacy). Pass [] to clear."
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-message",
+      "description": "Delete a message. The token user must be author or workspace admin. Returns { channel, ts, deleted: true }. Not retryable. Params: channel, ts, asUser? (default true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the message lives."
+          },
+          "ts": {
+            "type": "string",
+            "description": "Timestamp of the message to delete."
+          },
+          "asUser": {
+            "type": "boolean",
+            "description": "Delete as the authenticated user (default true). Set false only if the token has admin scope."
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-permalink",
+      "description": "Get a permanent URL for a message. Returns { channel, ts, permalink }. Idempotent, retryable. Params: channel, ts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "ts": {
+            "type": "string",
+            "description": "Message timestamp."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "channel",
+          "ts"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "schedule-message",
+      "description": "Schedule a message to be posted at a future unix-seconds timestamp. Returns { channel, scheduledMessageId, postAt }. Slack rejects postAt > 120 days ahead. Not retryable. Params: channel, text, postAt (unix seconds), blocks?, threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id or user id (DM)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain text body (fallback for blocks)."
+          },
+          "postAt": {
+            "type": "number",
+            "description": "Unix seconds when the message should post. Must be future and ≤120 days ahead."
+          },
+          "blocks": {
+            "type": "string",
+            "description": "Optional Slack Block Kit JSON string."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Parent message ts for thread reply."
+          },
+          "unfurlLinks": {
+            "type": "boolean",
+            "description": "Unfurl links. Default true."
+          },
+          "unfurlMedia": {
+            "type": "boolean",
+            "description": "Unfurl media. Default true."
+          }
+        },
+        "required": [
+          "channel",
+          "text",
+          "postAt"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-scheduled-messages",
+      "description": "List pending scheduled messages for the authenticated user. Returns { messages: [{ id, channelId, postAt, postAtIso, text }], nextCursor, hasMore }. Retryable. Params: channel?, latest?, oldest? (unix-seconds bounds), limit (1-100, def 100), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Filter to a single channel id."
+          },
+          "latest": {
+            "type": "string",
+            "description": "Upper bound (unix-seconds string)."
+          },
+          "oldest": {
+            "type": "string",
+            "description": "Lower bound (unix-seconds string)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max items (1-100, default 100)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous call."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-scheduled-message",
+      "description": "Cancel a scheduled message. Returns { channel, scheduledMessageId, deleted: true }. Not retryable. Params: channel, scheduledMessageId, asUser? (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id where the message was scheduled."
+          },
+          "scheduledMessageId": {
+            "type": "string",
+            "description": "Id returned by chat.scheduleMessage / list-scheduled-messages."
+          },
+          "asUser": {
+            "type": "boolean",
+            "description": "Delete as the authenticated user (default true)."
+          }
+        },
+        "required": [
+          "channel",
+          "scheduledMessageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "send-ephemeral",
+      "description": "Post an ephemeral message visible only to one user in a channel. Returns { channel, user, messageTs }. Not retryable. Params: channel, user (recipient), text, blocks?, threadTs?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "user": {
+            "type": "string",
+            "description": "User id of the recipient (U... / W...). Only they will see it."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain text body (fallback for blocks)."
+          },
+          "blocks": {
+            "type": "string",
+            "description": "Optional Block Kit JSON string."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Parent message ts for ephemeral thread reply."
+          }
+        },
+        "required": [
+          "channel",
+          "user",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "pin-message",
+      "description": "Pin a message to a channel. Returns { channel, timestamp, pinned: true }. Idempotent (already_pinned not treated as error). Params: channel, timestamp.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id (C... / G... / D... / M...)."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message timestamp (\"1234567890.123456\")."
+          }
+        },
+        "required": [
+          "channel",
+          "timestamp"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "unpin-message",
+      "description": "Unpin a message. Returns { channel, timestamp, unpinned: true }. Idempotent (no_pin not treated as error). Params: channel, timestamp.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message timestamp."
+          }
+        },
+        "required": [
+          "channel",
+          "timestamp"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-pins",
+      "description": "List items pinned to a channel (messages and files). Returns { pins: [{ type, createdAt, createdBy, message? | file? }], count }. Retryable. Params: channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id whose pins to list."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-bookmark",
+      "description": "Add a bookmark to a channel (links shown in the channel header). Returns the curated bookmark. Not retryable. Params: channel, title, link (URL), emoji? (e.g. ':notebook:').",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "title": {
+            "type": "string",
+            "description": "Display title."
+          },
+          "link": {
+            "type": "string",
+            "description": "URL the bookmark points to (http/https only)."
+          },
+          "emoji": {
+            "type": "string",
+            "description": "Optional emoji shortcode for the bookmark icon."
+          }
+        },
+        "required": [
+          "channel",
+          "title",
+          "link"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-bookmark",
+      "description": "Remove a channel bookmark by id. Returns { channel, bookmarkId, removed: true }. Not retryable. Params: channel, bookmarkId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "bookmarkId": {
+            "type": "string",
+            "description": "Bookmark id from add-bookmark / list-bookmarks."
+          }
+        },
+        "required": [
+          "channel",
+          "bookmarkId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-bookmarks",
+      "description": "List bookmarks attached to a channel. Returns { bookmarks: [{ id, channelId, title, link, emoji, type, dateCreated, dateUpdated, rank }], count }. Retryable. Params: channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-file",
+      "description": "Get full info for a file (channels shared, permalinks, optional comments). Returns curated file + comments?[]. Retryable. Params: fileId (F...), includeComments (def false), includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "Slack file id (F...)."
+          },
+          "includeComments": {
+            "type": "boolean",
+            "description": "Include comment list (legacy API). Default false."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack file object. Default false."
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-file",
+      "description": "Delete a file. The token user must be owner or workspace admin. Returns { fileId, deleted: true }. Not retryable. Params: fileId (F...).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "Slack file id (F...)."
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "leave-channel",
+      "description": "Leave a public or private channel. Returns { channelId, notInChannel }. Not retryable. Params: channelId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Slack channel id (C... / G...)."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-channel-members",
+      "description": "List user ids that are members of a channel. Returns { channelId, members: string[], nextCursor, hasMore }. Retryable. Use list-users + lookup if you need profile info. Params: channelId, limit (1-1000, def 200), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id (C... / G... / D... / M...)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max members per page (1-1000, default 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "open-dm",
+      "description": "Open or fetch a direct conversation. Single user → IM (D...); multiple → MPIM (M...). Idempotent (re-opens existing channel). Returns curated channel. Params: users[] (1+ U.../W... ids), returnIm (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of Slack user ids. 1 user → IM. 2-8 users → MPIM."
+          },
+          "returnIm": {
+            "type": "boolean",
+            "description": "Return full channel object (def true)."
+          }
+        },
+        "required": [
+          "users"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-user-profile",
+      "description": "Get the full Slack profile for a user (status, custom_fields, image, phone, title, timezone). Returns curated profile. Retryable. Params: userId? (default: authed user), includeLabels (def false), includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User id (U... / W...). Omit to get the authenticated user's own profile."
+          },
+          "includeLabels": {
+            "type": "boolean",
+            "description": "Include custom field labels in the response. Default false."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Slack profile object. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-user-profile",
+      "description": "Update the authenticated user's Slack profile (status, name fields, phone, title, custom fields). Returns the updated profile object. Not retryable. Params: statusText?, statusEmoji?, statusExpiration? (unix seconds), realName?, displayName?, phone?, title?, customFields? (JSON map of field_id → {value, alt?}), userId? (admin-only).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "statusText": {
+            "type": "string",
+            "description": "Short status (≤100 chars). Pass empty string to clear."
+          },
+          "statusEmoji": {
+            "type": "string",
+            "description": "Emoji shortcode for status. Pass empty to clear."
+          },
+          "statusExpiration": {
+            "type": "number",
+            "description": "Unix seconds when the status auto-clears. 0 = never expire."
+          },
+          "realName": {
+            "type": "string",
+            "description": "Real name."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Display name (shown in messages)."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "title": {
+            "type": "string",
+            "description": "Job title."
+          },
+          "customFields": {
+            "type": "string",
+            "description": "JSON string mapping custom field ids to {value, alt?}."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Admin-only: target another user's profile (requires admin scope)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "set-dnd",
+      "description": "Turn on Do Not Disturb for the authenticated user for N minutes. Returns { snoozeEnabled, snoozeEndtime, snoozeRemaining }. Not retryable. Params: numMinutes (1-1440).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "numMinutes": {
+            "type": "number",
+            "description": "How long to snooze (in minutes). Min 1, max 1440 (24h)."
+          }
+        },
+        "required": [
+          "numMinutes"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "end-dnd",
+      "description": "End the current snooze. Returns { snoozeEnabled: false }. Idempotent. No params.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-dnd",
+      "description": "Get DND status for a user. Returns { snoozeEnabled, snoozeEndtime, snoozeRemaining, nextDndStart, nextDndEnd }. Retryable. Params: userId? (default: authed user).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User id (U... / W...). Omit for the authenticated user."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-reactions",
+      "description": "Get reactions on a message or file. Provide EITHER (channel+timestamp) for a message OR (file) for a file. Returns { reactions: [{ name, count, users }], type, target }. Retryable. Params: channel?+timestamp? | file?, full (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id (paired with timestamp for a message)."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message timestamp."
+          },
+          "file": {
+            "type": "string",
+            "description": "File id (F...) — alternative to channel+timestamp."
+          },
+          "full": {
+            "type": "boolean",
+            "description": "If true, all reactors are returned. Default true."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-team-preferences",
+      "description": "Get workspace policy preferences (locale, default channels, who can create/archive channels, message edit window, calls/huddles enabled). Returns curated preferences. Retryable. No params.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-list",
+      "description": "Create a Slack List (collaborative table). Returns curated list with schema. EXPERIMENTAL. Params: name, description?, schema? (JSON array of {name, type}), todoMode (def false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description."
+          },
+          "schema": {
+            "type": "string",
+            "description": "JSON array of columns: [{\"name\":\"Title\",\"type\":\"text\"}, ...]. Types: text|number|date|user|checkbox|select|multi_select."
+          },
+          "todoMode": {
+            "type": "boolean",
+            "description": "Enable todo mode. Default false."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-list",
+      "description": "Update list metadata or schema. Partial. Returns curated list. EXPERIMENTAL. Params: listId, name?, description?, schema?, todoMode?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "schema": {
+            "type": "string",
+            "description": "New schema JSON array."
+          },
+          "todoMode": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-list",
+      "description": "Delete a Slack List (and all its items). Returns { listId, deleted: true }. Not retryable. EXPERIMENTAL. Params: listId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-list",
+      "description": "Get list details + schema. Returns curated list. Retryable. EXPERIMENTAL. Params: listId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-list-items",
+      "description": "List items in a Slack List with cursor pagination. Returns { listId, items, nextCursor, hasMore }. Retryable. EXPERIMENTAL. Params: listId, limit (1-100, def 50), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Items per page (1-100, default 50)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-list-item",
+      "description": "Add a row to a Slack List. fields is a JSON object mapping column-id → value. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, fields (JSON).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "fields": {
+            "type": "string",
+            "description": "JSON object mapping column id to value."
+          }
+        },
+        "required": [
+          "listId",
+          "fields"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-list-item",
+      "description": "Update fields of a list item. Partial update. Returns curated item. Not retryable. EXPERIMENTAL. Params: listId, itemId, fields (JSON).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "itemId": {
+            "type": "string",
+            "description": "Item id."
+          },
+          "fields": {
+            "type": "string",
+            "description": "JSON object — partial update."
+          }
+        },
+        "required": [
+          "listId",
+          "itemId",
+          "fields"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-list-item",
+      "description": "Delete a list item. Returns { listId, itemId, deleted: true }. Not retryable. EXPERIMENTAL. Params: listId, itemId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "List id."
+          },
+          "itemId": {
+            "type": "string",
+            "description": "Item id."
+          }
+        },
+        "required": [
+          "listId",
+          "itemId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-canvas",
+      "description": "Create a standalone Slack Canvas (rich-text doc). Returns curated canvas. EXPERIMENTAL. Params: title, contentMarkdown? (initial content).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Canvas title."
+          },
+          "contentMarkdown": {
+            "type": "string",
+            "description": "Initial markdown content."
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "edit-canvas",
+      "description": "Edit a canvas with a list of changes. changes is a JSON array of operations: [{operation:insert|replace|delete, sectionId?, document_content?:{type:markdown,markdown}}]. Returns curated canvas. Not retryable. EXPERIMENTAL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "canvasId": {
+            "type": "string",
+            "description": "Canvas id."
+          },
+          "changes": {
+            "type": "string",
+            "description": "JSON array of operations."
+          }
+        },
+        "required": [
+          "canvasId",
+          "changes"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-canvas",
+      "description": "Delete a canvas. Returns { canvasId, deleted: true }. Not retryable. EXPERIMENTAL. Params: canvasId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "canvasId": {
+            "type": "string",
+            "description": "Canvas id."
+          }
+        },
+        "required": [
+          "canvasId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-channel-canvas",
+      "description": "Create a canvas attached to a channel (visible to all members). Returns curated canvas. EXPERIMENTAL. Params: channelId, title?, contentMarkdown?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional title (def channel name)."
+          },
+          "contentMarkdown": {
+            "type": "string",
+            "description": "Initial markdown content."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "start-stream",
+      "description": "Start a streaming message (AI responses delivered chunk-by-chunk live). Returns { streamId, channel }. Use append-stream + stop-stream to complete. EXPERIMENTAL. Params: channel, threadTs?, recipientTeamId?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Optional parent thread ts."
+          },
+          "recipientTeamId": {
+            "type": "string",
+            "description": "Slack Connect cross-team target id."
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "append-stream",
+      "description": "Append a chunk of content to an active streaming message. Returns { streamId, appended: true, length }. Not retryable. EXPERIMENTAL. Params: streamId, content.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "description": "Stream id from start-stream."
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown chunk to append."
+          }
+        },
+        "required": [
+          "streamId",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "stop-stream",
+      "description": "Stop a streaming message (flushes final state). Returns { streamId, stopped: true }. Idempotent. EXPERIMENTAL. Params: streamId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "streamId": {
+            "type": "string",
+            "description": "Stream id from start-stream."
+          }
+        },
+        "required": [
+          "streamId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-call",
+      "description": "Register a call (external provider) with Slack. Returns curated call. EXPERIMENTAL. Params: externalUniqueId, joinUrl, desktopAppJoinUrl?, externalDisplayId?, title?, users? (JSON array), dateStart? (unix seconds).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalUniqueId": {
+            "type": "string",
+            "description": "Unique id for the call in the external provider."
+          },
+          "joinUrl": {
+            "type": "string",
+            "description": "URL to join the call."
+          },
+          "desktopAppJoinUrl": {
+            "type": "string",
+            "description": "Deep link for desktop app."
+          },
+          "externalDisplayId": {
+            "type": "string",
+            "description": "Display id shown to users."
+          },
+          "title": {
+            "type": "string",
+            "description": "Call title."
+          },
+          "users": {
+            "type": "string",
+            "description": "JSON array of participants."
+          },
+          "dateStart": {
+            "type": "number",
+            "description": "Unix seconds when the call started."
+          }
+        },
+        "required": [
+          "externalUniqueId",
+          "joinUrl"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "end-call",
+      "description": "Mark a call as ended. Returns { callId, ended: true }. Not retryable. EXPERIMENTAL. Params: callId, duration? (seconds).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "Slack call id."
+          },
+          "duration": {
+            "type": "number",
+            "description": "Call duration in seconds."
+          }
+        },
+        "required": [
+          "callId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-call",
+      "description": "Update call metadata (title or join URLs). Returns curated call. Not retryable. EXPERIMENTAL. Params: callId, title?, joinUrl?, desktopAppJoinUrl?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "Slack call id."
+          },
+          "title": {
+            "type": "string"
+          },
+          "joinUrl": {
+            "type": "string"
+          },
+          "desktopAppJoinUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "callId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-call",
+      "description": "Get call details (participants, duration, status). Returns curated call. Retryable. EXPERIMENTAL. Params: callId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "Slack call id."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "callId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-call-participants",
+      "description": "Add participants to an active call. users is a JSON array of {slackId|externalId, displayName?, avatarUrl?}. Returns { callId, added: count }. Not retryable. EXPERIMENTAL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "Slack call id."
+          },
+          "users": {
+            "type": "string",
+            "description": "JSON array of participants."
+          }
+        },
+        "required": [
+          "callId",
+          "users"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-call-participants",
+      "description": "Remove participants from a call. users is a JSON array of {slackId|externalId}. Returns { callId, removed: count }. Not retryable. EXPERIMENTAL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "callId": {
+            "type": "string",
+            "description": "Slack call id."
+          },
+          "users": {
+            "type": "string",
+            "description": "JSON array of participants to remove."
+          }
+        },
+        "required": [
+          "callId",
+          "users"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "rename-channel",
+      "description": "Rename a channel. Name ≤80 chars, lowercase, no spaces/periods (Slack normalizes). Returns curated channel. Not retryable. Params: channelId, name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id (C... / G...)."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name."
+          }
+        },
+        "required": [
+          "channelId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "set-channel-purpose",
+      "description": "Set the purpose of a channel (long-form description). Max 250 chars. Returns { channelId, purpose }. Not retryable. Params: channelId, purpose.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "purpose": {
+            "type": "string",
+            "description": "Channel purpose (≤250 chars)."
+          }
+        },
+        "required": [
+          "channelId",
+          "purpose"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "set-channel-topic",
+      "description": "Set the topic of a channel (short description in header). Max 250 chars. Returns { channelId, topic }. Not retryable. Params: channelId, topic.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "topic": {
+            "type": "string",
+            "description": "Channel topic (≤250 chars)."
+          }
+        },
+        "required": [
+          "channelId",
+          "topic"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "kick-from-channel",
+      "description": "Remove a user from a channel. Requires admin or channel owner permissions. Returns { channelId, userId, kicked: true }. Not retryable. Params: channelId, userId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "userId": {
+            "type": "string",
+            "description": "User id to remove."
+          }
+        },
+        "required": [
+          "channelId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "unarchive-channel",
+      "description": "Unarchive a previously archived channel. Returns curated channel. Not retryable. Params: channelId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "mark-channel-read",
+      "description": "Mark all messages in a channel up to and including timestamp as read. Returns { channelId, timestamp, marked: true }. Idempotent. Params: channelId, timestamp.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Message ts as the read cursor."
+          }
+        },
+        "required": [
+          "channelId",
+          "timestamp"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-upload-url",
+      "description": "Step 1 of modern multi-step upload: get pre-signed external URL. PUT bytes then call complete-upload. Returns { uploadUrl, fileId, filename, length }. Params: filename, length (bytes), altTxt?, snippetType?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Local filename."
+          },
+          "length": {
+            "type": "number",
+            "description": "File size in bytes."
+          },
+          "altTxt": {
+            "type": "string",
+            "description": "Alt text for images."
+          },
+          "snippetType": {
+            "type": "string",
+            "description": "Language for code snippets."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "filename",
+          "length"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "complete-upload",
+      "description": "Step 2 of modern upload: finalize after PUT-ing bytes. files=[{id, title?}]. Optionally share to channel/thread. Returns curated file(s). Not retryable. Params: files (JSON array), channelId?, initialComment?, threadTs?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "string",
+            "description": "JSON array of {id, title?}."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Optional channel to share to."
+          },
+          "initialComment": {
+            "type": "string",
+            "description": "Optional message."
+          },
+          "threadTs": {
+            "type": "string",
+            "description": "Optional parent thread ts."
+          }
+        },
+        "required": [
+          "files"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "share-file-public",
+      "description": "Make a file publicly accessible via URL. Returns { fileId, permalinkPublic }. Not retryable. Params: fileId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "Slack file id."
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "revoke-file-public",
+      "description": "Revoke a file's public URL. Returns { fileId, revoked: true }. Not retryable. Params: fileId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "Slack file id."
+          }
+        },
+        "required": [
+          "fileId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-remote-files",
+      "description": "List remote files (external storage like Google Drive). Returns { files, nextCursor, hasMore }. Retryable. Params: channel?, tsFrom?, tsTo?, limit (1-200, def 100), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "tsFrom": {
+            "type": "string"
+          },
+          "tsTo": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-remote-file",
+      "description": "Register an external file (Google Drive, Dropbox) with Slack. Returns curated remote file. Not retryable. Params: externalId, externalUrl, title, fileType?, previewImage?, indexableFileContents?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "externalUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "fileType": {
+            "type": "string"
+          },
+          "previewImage": {
+            "type": "string"
+          },
+          "indexableFileContents": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "externalId",
+          "externalUrl",
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-remote-file",
+      "description": "Update metadata of a remote file. Provide externalId XOR fileId. Returns curated remote file. Not retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "externalUrl": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "fileType": {
+            "type": "string"
+          },
+          "previewImage": {
+            "type": "string"
+          },
+          "indexableFileContents": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-remote-file",
+      "description": "Remove a remote file reference (does not delete in external provider). Provide externalId XOR fileId. Returns { removed: true }. Not retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "share-remote-file",
+      "description": "Share a remote file to channels. Provide externalId XOR fileId. Returns curated remote file. Not retryable. Params: channels (csv), externalId? | fileId?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "type": "string",
+            "description": "Comma-separated channel ids."
+          },
+          "externalId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channels"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-remote-file",
+      "description": "Get details of a remote file. Provide externalId XOR fileId. Returns curated remote file. Retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string"
+          },
+          "fileId": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "send-me-message",
+      "description": "Send a /me action message (third-person italic). Returns { ts, channel }. Not retryable. Params: channel, text.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "description": "Channel id."
+          },
+          "text": {
+            "type": "string",
+            "description": "Action text."
+          }
+        },
+        "required": [
+          "channel",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "unfurl-link",
+      "description": "Custom unfurl for links in a message. unfurls is JSON map url→{blocks, text}. Returns { channel, ts, unfurled: true, links }. Not retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "ts": {
+            "type": "string"
+          },
+          "unfurls": {
+            "type": "string",
+            "description": "JSON map url → {blocks, text}."
+          },
+          "userAuthRequired": {
+            "type": "boolean"
+          },
+          "userAuthUrl": {
+            "type": "string"
+          },
+          "userAuthMessage": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "ts",
+          "unfurls"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-user-channels",
+      "description": "List channels a user is a member of. Returns { channels, nextCursor, hasMore }. Retryable. Params: userId? (def authed), types? (csv), excludeArchived (def true), limit (1-1000, def 200), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "types": {
+            "type": "string"
+          },
+          "excludeArchived": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-user-photo",
+      "description": "Delete the authenticated user's profile photo. Returns { deleted: true }. Not retryable. No params.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-user-identity",
+      "description": "Get authenticated user's identity from OAuth (scope identity.basic). Returns curated identity. Retryable. No params.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-my-reactions",
+      "description": "List all items the user has reacted to. Returns { items, paging }. Retryable. Params: userId? (def authed), count (1-1000, def 100), page, full (def true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "full": {
+            "type": "boolean"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-team-dnd",
+      "description": "Get DND status for multiple users at once. Returns { users: [{ userId, snoozeEnabled, snoozeEndtime, nextDndStart, nextDndEnd }] }. Retryable. Params: users (csv of user ids).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "string",
+            "description": "Comma-separated user ids."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        },
+        "required": [
+          "users"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "star-item",
+      "description": "Save (star) a message / file / file comment. Provide exactly one of (channel+timestamp), file, fileComment. Returns { type, target, starred: true }. Idempotent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "fileComment": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "unstar-item",
+      "description": "Remove saved item. Same exclusive-choice contract as star-item. Returns { type, target, unstarred: true }. Idempotent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "fileComment": {
+            "type": "string"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-stars",
+      "description": "List the user's saved items. Returns { items, nextCursor, hasMore }. Retryable. Params: count (1-1000, def 100), cursor?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-emoji",
+      "description": "List custom workspace emojis. Returns { emojis: [{ name, url, isAlias, aliasFor }], count }. Retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "add-emoji",
+      "description": "Add a custom workspace emoji. Provide EITHER url OR aliasFor. Returns { name, isAlias, aliasFor?, ok: true }. Workspace admin only. Not retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Emoji name (no colons)."
+          },
+          "url": {
+            "type": "string",
+            "description": "Image URL (PNG/JPG/GIF, ≤128KB)."
+          },
+          "aliasFor": {
+            "type": "string",
+            "description": "Existing emoji name to alias."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "remove-emoji",
+      "description": "Remove a custom workspace emoji. Workspace admin only. Returns { name, removed: true }. Not retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Emoji name."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-access-logs",
+      "description": "Workspace login audit trail (paid plans). Returns { logs, paging }. Retryable. Params: before? (unix), count (1-1000, def 100), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "before": {
+            "type": "number"
+          },
+          "count": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-integration-logs",
+      "description": "Integration audit trail (apps installed/scope changes). Paid plans. Returns { logs, paging }. Retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string"
+          },
+          "changeType": {
+            "type": "string"
+          },
+          "serviceId": {
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          },
+          "count": {
+            "type": "number"
+          },
+          "page": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-team-profile",
+      "description": "Schema of custom user profile fields for the workspace. Returns { fields }. Retryable. Params: visibility (all|visible|hidden).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "all",
+              "visible",
+              "hidden"
+            ]
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "edit-bookmark",
+      "description": "Edit a channel bookmark (partial). Returns the updated bookmark. Not retryable. Params: channel, bookmarkId, title?, link?, emoji?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "bookmarkId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "link": {
+            "type": "string"
+          },
+          "emoji": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "bookmarkId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-list-fields",
+      "description": "Schema of a Slack List as individual fields. Returns { fields, count }. Retryable. EXPERIMENTAL. Params: listId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-list-field",
+      "description": "Add a column to a Slack List. EXPERIMENTAL. Params: listId, name, type, required (def false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "number",
+              "date",
+              "user",
+              "checkbox",
+              "select",
+              "multi_select",
+              "url",
+              "email"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "listId",
+          "name",
+          "type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-list-field",
+      "description": "Rename a list column or toggle required. type immutable. EXPERIMENTAL. Params: listId, fieldId, name?, required?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string"
+          },
+          "fieldId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "required": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "listId",
+          "fieldId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-list-field",
+      "description": "Delete a column from a Slack List (drops all values). EXPERIMENTAL. Params: listId, fieldId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string"
+          },
+          "fieldId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "listId",
+          "fieldId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-connect-invites",
+      "description": "Pending Slack Connect channel invites. Returns { invites, nextCursor, hasMore }. Retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "teamId": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results per page."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "invite-shared",
+      "description": "Send Slack Connect invite. emails (csv) OR userIds (csv). Returns { channel, inviteId, link }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string"
+          },
+          "emails": {
+            "type": "string"
+          },
+          "userIds": {
+            "type": "string"
+          },
+          "externalLimited": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channel"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "accept-shared-invite",
+      "description": "Accept a Slack Connect invite. Provide inviteId XOR channelId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelName": {
+            "type": "string"
+          },
+          "inviteId": {
+            "type": "string"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "freeTrial": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "channelName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "decline-shared-invite",
+      "description": "Decline a Slack Connect invite.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string"
+          },
+          "targetTeam": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inviteId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "approve-shared-invite",
+      "description": "Approve a Slack Connect invite as workspace admin.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string"
+          },
+          "targetTeam": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "inviteId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "revoke-auth",
+      "description": "Revoke the current OAuth token. Destructive. Params: test (def false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "test": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-auth-teams",
+      "description": "Slack workspaces the current token can access (Enterprise Grid). Retryable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeIcon": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "read-presentation": {
+      "name": "read-presentation",
+      "description": "Google Slides 프레젠테이션에서 슬라이드 내용을 읽습니다.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID"
+      }
+    },
+    "read-slide": {
+      "name": "read-slide",
+      "description": "Google Slides 프레젠테이션에서 특정 슬라이드를 읽습니다.",
+      "params": {
+        "fileId": "Google Slides 파일의 ID",
+        "slideIndex": "읽을 슬라이드의 0 기반 인덱스 (0 = 첫 번째 슬라이드)"
+      }
+    },
+    "create-presentation": {
+      "name": "create-presentation",
+      "description": "제목으로 새로운 Google Slides 프레젠테이션을 생성합니다. 프레젠테이션 ID와 URL을 반환합니다.",
+      "params": {
+        "title": "새 프레젠테이션의 제목"
+      }
+    },
+    "add-slide": {
+      "name": "add-slide",
+      "description": "Google Slides 프레젠테이션에 새 슬라이드를 추가합니다. 새 슬라이드의 slideObjectId를 반환합니다.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID",
+        "layout": "새 슬라이드의 선택적 레이아웃. 레이아웃 이름(빈, 제목 슬라이드, 제목 및 본문, 제목 및 두 열, 제목만, 섹션 헤더, 두 섹션) 또는 원시 레이아웃 objectId일 수 있습니다. 기본값은 \"빈\"입니다.",
+        "insertionIndex": "슬라이드를 삽입할 선택적 0 기반 인덱스. 생략하면 슬라이드가 끝에 추가됩니다."
+      }
+    },
+    "update-slide": {
+      "name": "update-slide",
+      "description": "Google Slides 프레젠테이션의 슬라이드 텍스트 내용을 업데이트합니다. objectId 또는 0 기반 슬라이드 인덱스로 슬라이드를 지정할 수 있습니다. insertText를 사용하여 슬라이드에서 발견된 첫 번째 텍스트 요소에 텍스트를 추가하거나 replaceAllText를 사용하여 전체 프레젠테이션에서 텍스트를 교체합니다.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID",
+        "slideObjectId": "업데이트할 슬라이드의 objectId. 제공된 경우 slideIndex보다 우선합니다.",
+        "slideIndex": "업데이트할 슬라이드의 0 기반 인덱스 (slideObjectId가 제공되지 않은 경우 사용됨).",
+        "text": "슬라이드에 삽입할 텍스트. 줄 바꿈을 위해 \\n을 지원합니다.",
+        "mode": "insert (기본값): 슬라이드의 첫 번째 텍스트 모양에 텍스트를 삽입합니다. replace: 전체 프레젠테이션에서 findText의 모든 항목을 텍스트로 교체합니다.",
+        "findText": "찾을 텍스트 (mode=replace일 때 필수).",
+        "matchCase": "교체할 때 대소문자를 일치시킬지 여부 (기본값: true). mode=replace와 함께 사용됩니다."
+      }
+    },
+    "delete-slide": {
+      "name": "delete-slide",
+      "description": "objectId 또는 0 기반 인덱스를 사용하여 Google Slides 프레젠테이션에서 슬라이드를 삭제합니다.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID",
+        "slideObjectId": "삭제할 슬라이드의 objectId. 제공된 경우 slideIndex보다 우선합니다.",
+        "slideIndex": "삭제할 슬라이드의 0 기반 인덱스 (slideObjectId가 제공되지 않은 경우 사용됨)."
+      }
+    },
+    "batch-update": {
+      "name": "batch-update",
+      "description": "Slides API batchUpdate 엔드포인트를 사용하여 Google Slides 프레젠테이션에서 고급 작업을 실행합니다. 기본 Slides API 요청 객체 배열을 전달합니다. 지원: createSlide, deleteObject, insertText, replaceAllText, createShape, updateShapeProperties, createImage, createTable, updatePageProperties, updateTextStyle 등. 전체 스키마는 https://developers.google.com/slides/api/reference/rest/v1/presentations/batchUpdate를 참조하십시오.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID",
+        "requests": "Slides API batchUpdate 요청 객체 배열. 각 객체는 요청 유형에 매핑된 키입니다. 일반 유형: createSlide, deleteObject, insertText, replaceAllText, createShape, createImage, createTable, createLine, updateShapeProperties, updateTextStyle, updatePageProperties, updatePageElementsZOrder, updateSlidesPosition. 전체 스키마는 https://developers.google.com/slides/api/reference/rest/v1/presentations/request를 참조하십시오."
+      }
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "전체 Google Slides 프레젠테이션에서 텍스트 문자열의 모든 항목을 교체합니다. Slides API replaceAllText 요청을 사용하여 모든 슬라이드에서 텍스트를 한 번에 찾아서 교체합니다.",
+      "params": {
+        "presentationId": "프레젠테이션의 ID",
+        "findText": "찾아 교체할 텍스트",
+        "replaceText": "교체할 텍스트. 줄 바꿈을 위해 \\n을 지원합니다.",
+        "matchCase": "대소문자를 일치시킬지 여부 (기본값: true)"
+      }
+    }
+  },
+  "name": "Google Slides",
+  "description": "Google Slides 프레젠테이션을 생성, 읽기, 업데이트 및 삭제합니다 — 슬라이드, 텍스트 및 배치 작업에 대한 전체 읽기/쓰기 지원"
+}

@@ -19,7 +19,6 @@
     "hidden": false,
     "role": "user"
   },
-  "userSecrets": ["API_KEY"],
   "runtime": {
     "transport": "http",
     "containerMode": "per-app",
@@ -32,7 +31,17 @@
     "events": false,
     "ui": false,
     "permissions": false,
-    "auth": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["API_KEY"]
+    },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-15",
+      "notes": "Initial release — create, update, and comment on issues, manage projects and labels, and browse teams"
+    }
+  ]
 }

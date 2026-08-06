@@ -9,7 +9,6 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { ChatView } from '../../components/chat/ChatView';
-import { VoiceTranscriptView } from '../../components/voice/VoiceTranscriptView';
 import { useChatStore } from '../../store/chatStore';
 import type { LayoutNode } from '../../store/tilingStore';
 import { useTilingStore } from '../../store/tilingStore';
@@ -17,7 +16,6 @@ import type { ChatWindowProps } from './definition';
 
 interface Props extends ChatWindowProps {
   windowId: string;
-  transport?: string;
 }
 
 // Helper para encontrar container que contiene una ventana
@@ -35,7 +33,7 @@ function findContainerWithWindow(node: LayoutNode | null, windowId: string): any
   return null;
 }
 
-export function ChatWindowContent({ windowId, channelId, agentId, agentName, workspaceId, transport }: Props) {
+export function ChatWindowContent({ windowId, channelId, agentId, agentName, workspaceId }: Props) {
   // Use specific selectors to avoid unnecessary re-renders
   const updateWindowProps = useTilingStore((state) => state.updateWindowProps);
   const setWindowNotification = useTilingStore((state) => state.setWindowNotification);
@@ -50,7 +48,7 @@ export function ChatWindowContent({ windowId, channelId, agentId, agentName, wor
   const isActive = useTilingStore(
     useCallback(
       (state) => {
-        const layout = state.layout;
+        const layout = (state as any).layout;
         if (!layout) return false;
         const container = findContainerWithWindow(layout, windowId);
         return container?.activeWindowId === windowId;
@@ -72,7 +70,7 @@ export function ChatWindowContent({ windowId, channelId, agentId, agentName, wor
 
     // Force immediate save since channel creation is critical
     // (auto-save has a 1s delay that could be lost if the page reloads)
-    useTilingStore.getState().saveState();
+    useTilingStore.getState().persistToStorage();
   };
 
   // When the title changes, the tab updates automatically
@@ -98,7 +96,7 @@ export function ChatWindowContent({ windowId, channelId, agentId, agentName, wor
         if (!currentWindow) return;
 
         // Check if the window is active
-        const container = findContainerWithWindow(tilingState.layout, windowId);
+        const container = findContainerWithWindow((tilingState as any).layout, windowId);
         const currentIsActive = container?.activeWindowId === windowId;
 
         // If the window is not active, show notification
@@ -125,17 +123,6 @@ export function ChatWindowContent({ windowId, channelId, agentId, agentName, wor
     }
   }, [isActive, hasNotification, windowId, clearWindowNotification]);
 
-  // Voice channels get a dedicated transcript view
-  if (transport === 'voice' && channelId) {
-    return (
-      <VoiceTranscriptView
-        channelId={channelId}
-        agentId={agentId}
-        agentName={agentName}
-      />
-    );
-  }
-
   return (
     <ChatView
       channelId={channelId}
@@ -145,6 +132,7 @@ export function ChatWindowContent({ windowId, channelId, agentId, agentName, wor
       onTitleChange={handleTitleChange}
       showHeader={true}
       bottomInset={0}
+      windowId={windowId}
     />
   );
 }

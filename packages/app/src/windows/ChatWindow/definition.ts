@@ -1,10 +1,11 @@
 /**
  * Chat Window Type Definition
  *
- * Define el tipo de ventana para chats con agentes.
+ * Chat window type definition for agent conversations.
  */
 
 import { MessageCircle } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { useChatStore } from '../../store/chatStore';
 import { ChatWindowContent } from './ChatWindowContent';
@@ -14,7 +15,7 @@ import { ChatWindowContent } from './ChatWindowContent';
 // ============================================
 
 export interface ChatWindowProps {
-  /** Channel ID - undefined para nuevo chat (draft) */
+  /** Channel ID — undefined for new chat (draft) */
   channelId?: string;
   /** Agent ID - to create a new chat with a specific agent */
   agentId?: string;
@@ -22,8 +23,6 @@ export interface ChatWindowProps {
   agentName?: string;
   /** Workspace ID - if chat belongs to a workspace */
   workspaceId?: string;
-  /** Transport type: 'web' | 'voice'. When 'voice', shows VoiceTranscriptView */
-  transport?: string;
 }
 
 // ============================================
@@ -34,7 +33,7 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
   type: 'chat',
   displayName: 'Chat',
   icon: MessageCircle,
-  color: '#4A9BA8',
+  color: '#5E6AD2',
   component: ChatWindowContent,
 
   defaultSize: { width: 500, height: 650 },
@@ -54,10 +53,10 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
 
     // If it's a new chat with an agent, show the agent's name
     if (props.agentName) {
-      return `Chat con ${props.agentName}`;
+      return i18n.t("conversation.chatWith", { name: props.agentName });
     }
 
-    return 'Nuevo Chat';
+    return i18n.t("conversation.newChat");
   },
 
   getSubtitle: (props) => {
@@ -79,7 +78,6 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
     agentId: props.agentId,
     agentName: props.agentName,
     workspaceId: props.workspaceId,
-    transport: props.transport,
   }),
 
   deserialize: (data) => ({
@@ -87,10 +85,9 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
     agentId: data.agentId as string | undefined,
     agentName: data.agentName as string | undefined,
     workspaceId: data.workspaceId as string | undefined,
-    transport: data.transport as string | undefined,
   }),
 
-  onFocus: (windowId, props) => {
+  onFocus: (_windowId, _props) => {
     // Clear unread message notifications when focused
     // This is handled in the component
   },

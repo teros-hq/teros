@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.render",
+  "name": "Render",
+  "version": "1.0.0",
+  "description": "Deploy and manage services on Render directly from Teros workspaces. Supports web services, static sites, deployments, environment variables, custom domains, and more.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Atlas Mercer",
+    "email": "atlas@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["RENDER_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["render", "deploy", "paas", "hosting", "web service", "static site", "deployment", "production"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-03-24",
+      "notes": "Initial release — deploy services from GitHub, trigger and roll back deploys, manage env vars, custom domains, disks and logs"
+    }
+  ]
+}

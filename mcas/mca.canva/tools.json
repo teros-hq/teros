@@ -12,29 +12,88 @@
     },
     {
       "name": "get-user",
-      "description": "Get the current authenticated user's ID and team ID.",
+      "description": "Get the authenticated Canva user. Returns curated { userId, teamId }. Params: fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva /users/me response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "get-user-profile",
-      "description": "Get the current user's profile including display name.",
+      "description": "Get the authenticated user's profile. Returns curated { displayName }. Params: fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva profile response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-user-capabilities",
+      "description": "Get the authenticated user capabilities (Canva plan + role gating). Returns curated { capabilities: string[] }. Use to decide whether features like brand templates or autofill are available before calling them. Params: fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva capabilities response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "list-designs",
-      "description": "List all designs in the user's account. Supports search, filtering, and sorting.",
+      "description": "List designs in the user's account with search/sort/pagination. Returns curated rows with thumbnail URL for inline preview. Params: query?, ownership? (any|owned|shared), sortBy?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
-            "description": "Search term to filter designs"
+            "description": "Search term to filter designs."
           },
           "ownership": {
             "type": "string",
@@ -43,7 +102,7 @@
               "owned",
               "shared"
             ],
-            "description": "Filter by ownership"
+            "description": "Filter by ownership."
           },
           "sortBy": {
             "type": "string",
@@ -57,77 +116,191 @@
           },
           "limit": {
             "type": "number",
-            "description": "Max results (default: 25, max: 100)"
+            "description": "Max results. Min 1, max 100, default 25."
           },
           "continuation": {
             "type": "string",
-            "description": "Pagination token"
+            "description": "Pagination token from previous response."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "get-design",
-      "description": "Get metadata for a specific design by ID.",
+      "description": "Get a Canva design by ID. Returns curated detail (id, title, ownerUserId/teamId, thumbnail*, edit/view URLs, pageCount, dates). Params: designId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "designId": {
             "type": "string",
-            "description": "The design ID"
+            "description": "Canva design ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva design response. Default false."
           }
         },
         "required": [
           "designId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "create-design",
-      "description": "Create a new Canva design.",
+      "description": "Create a new Canva design. Use designType=custom with width+height for a custom canvas, or one of the preset names (doc, whiteboard, presentation, email). Returns curated design. Not retryable. Params: designType, title?, width?, height?, assetId?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "title": {
-            "type": "string",
-            "description": "Name for the new design"
-          },
           "designType": {
             "type": "string",
             "enum": [
               "doc",
               "whiteboard",
               "presentation",
+              "email",
               "custom"
-            ]
+            ],
+            "description": "Preset name or \"custom\" with width+height."
+          },
+          "title": {
+            "type": "string",
+            "description": "Optional name for the new design."
           },
           "width": {
             "type": "number",
-            "description": "Width in pixels (for custom type)"
+            "description": "Canvas width in pixels (custom only)."
           },
           "height": {
             "type": "number",
-            "description": "Height in pixels (for custom type)"
+            "description": "Canvas height in pixels (custom only)."
           },
           "assetId": {
             "type": "string",
-            "description": "Asset ID to add to design"
+            "description": "Optional asset ID to insert into the new design."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
           }
         },
         "required": [
           "designType"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
-      "name": "export-design",
-      "description": "Start an export job for a design.",
+      "name": "get-design-pages",
+      "description": "Get pages of a Canva design with thumbnails (returns dimensions for bounded designs). Returns curated { pages: [{ index, thumbnailUrl, width, height }] }. Params: designId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "designId": {
             "type": "string",
-            "description": "The design ID"
+            "description": "Canva design ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva pages response. Default false."
+          }
+        },
+        "required": [
+          "designId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-design-export-formats",
+      "description": "List the export formats supported by a specific design. Use this before export-design to avoid 400 errors on unsupported formats. Returns curated { formats: string[] }. Params: designId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva formats response. Default false."
+          }
+        },
+        "required": [
+          "designId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "export-design",
+      "description": "Start an export job for a design. Returns curated job (poll get-export-job by id). Formats: pdf, png, jpg, gif, pptx, mp4, html_bundle, html_standalone. transparentBackground only for png. Not retryable. Params: designId, format, quality?, width?, height?, pages?, transparentBackground?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID."
           },
           "format": {
             "type": "string",
@@ -137,315 +310,997 @@
               "jpg",
               "gif",
               "pptx",
-              "mp4"
+              "mp4",
+              "html_bundle",
+              "html_standalone"
             ]
           },
           "quality": {
             "type": "number",
-            "description": "JPEG quality 1-100"
+            "description": "JPEG quality 1-100 (jpg only)."
           },
           "width": {
             "type": "number",
-            "description": "Export width"
+            "description": "Export width in pixels (png/jpg)."
           },
           "height": {
             "type": "number",
-            "description": "Export height"
+            "description": "Export height in pixels (png/jpg)."
           },
           "pages": {
             "type": "array",
             "items": {
               "type": "number"
             },
-            "description": "Pages to export"
+            "description": "Pages to export (1-indexed)."
+          },
+          "transparentBackground": {
+            "type": "boolean",
+            "description": "PNG only — keep canvas transparent. Default false."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
           "designId",
           "format"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "get-export-job",
-      "description": "Get the status and result of an export job.",
+      "description": "Get an export job status/result. Returns curated job { id, status, error, result.urls? }. Params: exportId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "exportId": {
-            "type": "string"
+            "type": "string",
+            "description": "Export job ID returned by export-design."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
           "exportId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
-      "name": "list-folders",
-      "description": "List items in a folder.",
+      "name": "create-resize-job",
+      "description": "Resize a design to a new size (preset or custom). Async — returns curated job (poll get-resize-job). Use designType=\"custom\" with width+height OR a preset name. Output is a NEW design at top level. Not retryable. Params: designId, designType, width?, height?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "folderId": {
+          "designId": {
             "type": "string",
-            "description": "Folder ID ('root' for top-level)"
+            "description": "Source Canva design ID."
           },
-          "itemTypes": {
+          "designType": {
+            "type": "string",
+            "enum": [
+              "doc",
+              "whiteboard",
+              "presentation",
+              "email",
+              "custom"
+            ],
+            "description": "Preset name or \"custom\" with width+height."
+          },
+          "width": {
+            "type": "number",
+            "description": "New width in pixels (custom only)."
+          },
+          "height": {
+            "type": "number",
+            "description": "New height in pixels (custom only)."
+          },
+          "fields": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Override default whitelist."
           },
-          "sortBy": {
-            "type": "string"
-          },
-          "continuation": {
-            "type": "string"
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
-          "folderId"
+          "designId",
+          "designType"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     },
     {
-      "name": "get-folder",
-      "description": "Get metadata for a folder.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "folderId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "folderId"
-        ]
-      }
-    },
-    {
-      "name": "create-folder",
-      "description": "Create a new folder.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "parentFolderId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "parentFolderId"
-        ]
-      }
-    },
-    {
-      "name": "move-item",
-      "description": "Move an item to another folder.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "itemId": {
-            "type": "string"
-          },
-          "toFolderId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "itemId",
-          "toFolderId"
-        ]
-      }
-    },
-    {
-      "name": "upload-asset",
-      "description": "Upload an asset from a URL.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "url": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "name",
-          "url"
-        ]
-      }
-    },
-    {
-      "name": "get-asset-upload-job",
-      "description": "Get the status of an asset upload job.",
+      "name": "get-resize-job",
+      "description": "Get a resize job status/result. Returns curated job { id, status, error, result: design? }. Params: jobId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "jobId": {
-            "type": "string"
+            "type": "string",
+            "description": "Job ID returned by create-resize-job."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
           "jobId"
         ]
-      }
-    },
-    {
-      "name": "get-asset",
-      "description": "Get metadata for an asset.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId"
-        ]
-      }
-    },
-    {
-      "name": "delete-asset",
-      "description": "Delete an asset.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "assetId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "assetId"
-        ]
-      }
-    },
-    {
-      "name": "list-brand-templates",
-      "description": "List brand templates (requires Canva Enterprise).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "query": {
-            "type": "string"
-          },
-          "ownership": {
-            "type": "string"
-          },
-          "continuation": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "name": "get-brand-template",
-      "description": "Get metadata for a brand template.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "brandTemplateId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "brandTemplateId"
-        ]
-      }
-    },
-    {
-      "name": "get-brand-template-dataset",
-      "description": "Get autofill fields for a brand template.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "brandTemplateId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "brandTemplateId"
-        ]
-      }
-    },
-    {
-      "name": "autofill-design",
-      "description": "Create a design by autofilling a brand template.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "brandTemplateId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          },
-          "data": {
-            "type": "object"
-          }
-        },
-        "required": [
-          "brandTemplateId",
-          "data"
-        ]
-      }
-    },
-    {
-      "name": "get-autofill-job",
-      "description": "Get the status of an autofill job.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "jobId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "jobId"
-        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     },
     {
       "name": "import-design",
-      "description": "Import an external file as a Canva design.",
+      "description": "Import an external file (e.g. PDF, PPTX, DOCX) as a new Canva design. Async — returns curated job (poll get-import-job by id). url must be http/https. Not retryable. Params: title, url, mimeType?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Title for the imported design."
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "Publicly accessible http/https URL of the source file."
           },
           "mimeType": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional MIME type override."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
           "title",
           "url"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "get-import-job",
-      "description": "Get the status of a design import job.",
+      "description": "Get a URL design import job status/result. Returns curated job { id, status, error, result.designId? }. Params: jobId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "jobId": {
-            "type": "string"
+            "type": "string",
+            "description": "Job ID returned by import-design."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
           }
         },
         "required": [
           "jobId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-folders",
+      "description": "List items in a folder (designs, sub-folders, images, videos). Use folderId=\"root\" for top level. Returns curated rows with thumbnail URL. Params: folderId, itemTypes?, sortBy?, pinStatus? (pinned|unpinned), limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Folder ID ('root' for top-level)."
+          },
+          "itemTypes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by type (e.g. [\"design\", \"image\", \"video\", \"folder\"])."
+          },
+          "sortBy": {
+            "type": "string",
+            "description": "e.g. modified_descending, title_ascending."
+          },
+          "pinStatus": {
+            "type": "string",
+            "enum": [
+              "pinned",
+              "unpinned"
+            ],
+            "description": "Filter pinned items."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results. Min 1, max 100, default 50."
+          },
+          "continuation": {
+            "type": "string",
+            "description": "Pagination token."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-folder",
+      "description": "Get folder metadata. Returns curated { id, name, thumbnailUrl, dates }. Params: folderId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Canva folder ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva folder response. Default false."
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "create-folder",
+      "description": "Create a new folder under a parent. Use parentFolderId=\"root\" for top level. Returns curated folder. Not retryable. Params: name, parentFolderId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Folder name."
+          },
+          "parentFolderId": {
+            "type": "string",
+            "description": "Parent folder ID (\"root\" for top level)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva folder response. Default false."
+          }
+        },
+        "required": [
+          "name",
+          "parentFolderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "update-folder",
+      "description": "Rename a folder. Idempotent. Returns curated folder. Params: folderId, name, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Canva folder ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "New folder name."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva folder response. Default false."
+          }
+        },
+        "required": [
+          "folderId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "delete-folder",
+      "description": "Delete a folder. Items in the folder are moved to the parent. Idempotent — repeated deletes return 404. Returns { folderId, deleted: true }. Params: folderId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "type": "string",
+            "description": "Canva folder ID."
+          }
+        },
+        "required": [
+          "folderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental",
+        "irreversible": true
+      }
+    },
+    {
+      "name": "move-item",
+      "description": "Move an item (design / folder / asset) to another folder. Idempotent if target unchanged. Returns { itemId, toFolderId, moved: true }. Params: itemId, toFolderId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "description": "ID of the item to move."
+          },
+          "toFolderId": {
+            "type": "string",
+            "description": "Destination folder ID (use \"root\" for top level)."
+          }
+        },
+        "required": [
+          "itemId",
+          "toFolderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "upload-asset",
+      "description": "Upload an asset (image, video, audio) to the user library from a public URL. Async — returns curated job (poll get-asset-upload-job by id). url must be http/https. Not retryable. Params: name, url, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the new asset."
+          },
+          "url": {
+            "type": "string",
+            "description": "Publicly accessible http/https URL of the file."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-asset-upload-job",
+      "description": "Get an asset URL upload job status/result. Returns curated job { id, status, error, result: {asset shape with thumbnailUrl}? }. Params: jobId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "Job ID returned by upload-asset."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-asset",
+      "description": "Get asset metadata. Returns curated { id, name, type, thumbnail*, tags, metadata, dates }. Params: assetId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Canva asset ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva asset response. Default false."
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "update-asset",
+      "description": "Update asset metadata (rename, retag). Idempotent — same payload yields same final state. Returns curated asset. Params: assetId, name?, tags?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Canva asset ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "New display name."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Replace tags wholesale (Canva PATCH semantics)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva asset response. Default false."
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "delete-asset",
+      "description": "Delete an asset (moved to trash). Idempotent — repeated deletes return 404 (already deleted). Returns { assetId, deleted: true }. Params: assetId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assetId": {
+            "type": "string",
+            "description": "Canva asset ID."
+          }
+        },
+        "required": [
+          "assetId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true
+      }
+    },
+    {
+      "name": "list-brand-templates",
+      "description": "List brand templates the user can access (requires Canva Enterprise). Returns curated rows with thumbnail URL. Params: query?, ownership?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search term to filter templates."
+          },
+          "ownership": {
+            "type": "string",
+            "description": "Filter by ownership."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results. Min 1, max 100, default 25."
+          },
+          "continuation": {
+            "type": "string",
+            "description": "Pagination token."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-brand-template",
+      "description": "Get brand template metadata. Returns curated detail (id, title, thumbnailUrl, viewUrl, createUrl, dates). Params: brandTemplateId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string",
+            "description": "Canva brand template ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
+          }
+        },
+        "required": [
+          "brandTemplateId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-brand-template-dataset",
+      "description": "Get the autofill dataset (named fields like {title}, {body}, {image}) for a brand template. Returned shape mirrors Canva — useful before calling autofill-design. Params: brandTemplateId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string",
+            "description": "Canva brand template ID."
+          }
+        },
+        "required": [
+          "brandTemplateId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "autofill-design",
+      "description": "Create a design by autofilling a brand template with named fields. data keys must match the template dataset (call get-brand-template-dataset first). columnConfigs: optional chart-data field definitions. Async — returns curated job (poll get-autofill-job). Not retryable. Params: brandTemplateId, data, title?, columnConfigs?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "brandTemplateId": {
+            "type": "string",
+            "description": "Canva brand template ID."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title for the new design."
+          },
+          "data": {
+            "type": "object",
+            "description": "Field name → value object matching the template dataset."
+          },
+          "columnConfigs": {
+            "type": "object",
+            "description": "Optional column configurations for chart fields (added 2026-03). Map field name → { type, ... }."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
+          }
+        },
+        "required": [
+          "brandTemplateId",
+          "data"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-autofill-job",
+      "description": "Get an autofill job status/result. Returns curated job { id, status, error, result: design? }. Params: jobId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "description": "Job ID returned by autofill-design."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva job response. Default false."
+          }
+        },
+        "required": [
+          "jobId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "create-thread",
+      "description": "Create a comment thread on a design. message ≤ 2048 chars. Returns curated thread. Not retryable. Params: designId, message, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID."
+          },
+          "message": {
+            "type": "string",
+            "description": "Comment body (plain text, max 2048 characters)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva thread response. Default false."
+          }
+        },
+        "required": [
+          "designId",
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "get-thread",
+      "description": "Get a comment thread by ID. Returns curated thread. Params: designId, threadId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID the thread belongs to."
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Comment thread ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva thread response. Default false."
+          }
+        },
+        "required": [
+          "designId",
+          "threadId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "list-replies",
+      "description": "List replies to a comment thread. Returns curated rows. Params: designId, threadId, limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID the thread belongs to."
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Comment thread ID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results. Min 1, max 100, default 50."
+          },
+          "continuation": {
+            "type": "string",
+            "description": "Pagination token."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva response. Default false."
+          }
+        },
+        "required": [
+          "designId",
+          "threadId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "create-reply",
+      "description": "Reply to a comment thread. message ≤ 2048 chars. Returns curated reply. Not retryable. Params: designId, threadId, message, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID the thread belongs to."
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Comment thread ID."
+          },
+          "message": {
+            "type": "string",
+            "description": "Reply body (plain text, max 2048 characters)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva reply response. Default false."
+          }
+        },
+        "required": [
+          "designId",
+          "threadId",
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "get-reply",
+      "description": "Get a single reply within a comment thread. Returns curated reply. Params: designId, threadId, replyId, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "designId": {
+            "type": "string",
+            "description": "Canva design ID."
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Comment thread ID."
+          },
+          "replyId": {
+            "type": "string",
+            "description": "Reply ID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Canva reply response. Default false."
+          }
+        },
+        "required": [
+          "designId",
+          "threadId",
+          "replyId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     }
   ]

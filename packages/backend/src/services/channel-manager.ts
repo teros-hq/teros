@@ -3,7 +3,7 @@
  * Manages channels (conversations) in MongoDB
  */
 
-import { generateChannelId, generateMessageId } from '@teros/core';
+import { RandomIdGenerator, type IdGenerator } from '@teros/core';
 import type {
   AgentConfig,
   AgentId,
@@ -15,28 +15,18 @@ import type {
   UserId,
 } from '@teros/shared';
 import type { Collection, Db } from 'mongodb';
-import { config } from '../config';
-
-/**
- * Build full avatar URL from filename
- * DB stores only filename (e.g., "alice-avatar.jpg")
- */
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined;
-  // If already a full URL, return as-is
-  if (avatarFilename.startsWith('http://') || avatarFilename.startsWith('https://')) {
-    return avatarFilename;
-  }
-  return `${config.static.baseUrl}/${avatarFilename}`;
-}
+import { buildAvatarUrl } from '../lib/avatar-url';
+import { isOwnSyntheticTestChannel } from '../lib/mca-test-context';
 
 interface Agent {
   agentId: string;
   name: string;
   fullName: string;
   avatarUrl?: string;
-  selectedModelId?: string;
-  selectedProviderId?: string;
+  ownerId?: string;
+  selectedModelId?: string | null;
+  selectedProviderId?: string | null;
+  availableProviders?: string[];
 }
 
 interface Workspace {
@@ -49,6 +39,10 @@ interface Workspace {
 import { InternalLLMService } from './internal-llm-service';
 import type { ProviderService } from './provider-service';
 import type { ListChannelsResult } from './interfaces/IChannelManager';
+
+import { createLogger } from '../lib/logger';
+
+const log = createLogger('ChannelManager');
 
 // ─── Pagination helpers ───────────────────────────────────────────────────────
 
@@ -77,22 +71,26 @@ export class ChannelManager {
   private userApps: Collection<UserApp>;
   private messages: Collection<Message>;
   private agents: Collection<Agent>;
-  private agentCores: Collection<any>;
   private models: Collection<any>;
   private workspaces: Collection<Workspace>;
   private users: Collection<any>;
   private internalLLM: InternalLLMService;
+  /** Generadores de IDs forkeados por dominio — deterministas en modo test (TER-563). */
+  private readonly channelIds: IdGenerator;
+  private readonly messageIds: IdGenerator;
 
   constructor(
     private db: Db,
     private providerService: ProviderService,
+    idGenerator: IdGenerator = new RandomIdGenerator(),
   ) {
+    this.channelIds = idGenerator.fork('ch');
+    this.messageIds = idGenerator.fork('msg');
     this.channels = db.collection<Channel>('channels');
     this.agentConfigs = db.collection<AgentConfig>('agent_configs');
     this.userApps = db.collection<UserApp>('user_apps');
     this.messages = db.collection<Message>('channel_messages');
     this.agents = db.collection<Agent>('agents');
-    this.agentCores = db.collection('agent_cores');
     this.models = db.collection('models');
     this.workspaces = db.collection<Workspace>('workspaces');
     this.users = db.collection('users');
@@ -121,7 +119,7 @@ export class ChannelManager {
       { name: 'channelId_1', unique: true, background: true },
     );
 
-    console.log('✅ ChannelManager indexes ensured');
+    log.debug('ChannelManager indexes ensured');
   }
 
   /**
@@ -142,13 +140,36 @@ export class ChannelManager {
     const defaultName = `Chat con ${agentName}`;
 
     // Determine workspaceId: explicit option > agent's workspace > none
-    const workspaceId = options?.workspaceId || (agent as any)?.workspaceId || undefined;
+    // Note: || is intentional (not ??): null workspaceId (Superagent) is treated as falsy → undefined
+    let workspaceId: string | undefined;
+    let workspaceIdSource: 'explicit' | 'agent' | 'none';
+    if (options?.workspaceId) {
+      workspaceId = options.workspaceId;
+      workspaceIdSource = 'explicit';
+    } else if ((agent as any)?.workspaceId) {
+      workspaceId = (agent as any).workspaceId;
+      workspaceIdSource = 'agent';
+    } else {
+      workspaceId = undefined;
+      workspaceIdSource = 'none';
+    }
+    log.debug({ workspaceIdSource, workspaceId }, 'Channel workspaceId resolved');
+
+    // INVARIANT: every channel must have a workspaceId (ENGINEERING-PRINCIPLES.md)
+    if (!workspaceId) {
+      throw new Error(
+        `[ChannelManager.createChannel] FATAL: Cannot create channel without workspaceId. ` +
+        `agentId=${agentId}, userId=${userId}. ` +
+        `All channels must belong to a workspace.`
+      );
+    }
 
     const channel: Channel = {
       channelId,
       userId,
       agentId,
       status: 'active',
+      workspaceId,
       metadata: {
         transport: metadata.transport || 'websocket',
         name: metadata.name || defaultName,
@@ -156,15 +177,12 @@ export class ChannelManager {
       },
       createdAt: now,
       updatedAt: now,
-      ...(workspaceId && { workspaceId }),
       ...(options?.headless && { headless: true }),
       ...(options?.originChannelId && { originChannelId: options.originChannelId }),
     };
 
     await this.channels.insertOne(channel as any);
-    console.log(
-      `✅ Channel created: ${channelId} - "${channel.metadata.name}"${workspaceId ? ` (workspace: ${workspaceId})` : ''}`,
-    );
+    log.info({ channelId, name: channel.metadata.name, workspaceId }, 'Channel created');
 
     // Create default agent config for this channel
     await this.createDefaultAgentConfig(channelId, agentId);
@@ -186,12 +204,31 @@ export class ChannelManager {
    * - User is the channel owner (userId matches)
    * - Channel belongs to a workspace where user is owner or member
    */
-  async canAccessChannel(channelId: ChannelId, userId: UserId): Promise<boolean> {
+  async canAccessChannel(channelId: ChannelId, userId: UserId, agentId?: string): Promise<boolean> {
+    // The admin MCA test path scopes context-requiring tools to a synthetic per-user channel that
+    // has no real record. Grant the caller access to their OWN test channel so channel-authorizing
+    // tools (e.g. board-manager list-event-subscriptions) run against an isolated namespace instead
+    // of a FORBIDDEN. Scoped to the matching userId — never another user's fabricated channel.
+    //
+    // This shared primitive is called by ~12 handlers (subscribe-to-events, channel/get, …) with a
+    // CLIENT-SUPPLIED channelId, so the grant is re-gated to system admins here. Without it any
+    // authenticated user could forge channelId="test-channel:<own userId>" and be authorized against
+    // a channel that never existed — the feature is admin-only (app.test-mca-tool → requireSystemAdmin),
+    // so the same gate must hold in the primitive. The DB lookup only runs for the synthetic id shape,
+    // which real channels never use, so the normal authz path is untouched.
+    if (isOwnSyntheticTestChannel(channelId, userId)) {
+      const user = await this.users.findOne({ userId });
+      return user?.role === 'admin' || user?.role === 'super';
+    }
+
     const channel = await this.getChannel(channelId);
     if (!channel) return false;
 
     // User is the channel owner
     if (channel.userId === userId) return true;
+
+    // Agent is the assigned agent for this channel
+    if (agentId && channel.agentId === agentId) return true;
 
     // Channel belongs to a workspace - check workspace access
     if (channel.workspaceId) {
@@ -214,8 +251,7 @@ export class ChannelManager {
    * @param userId - User ID
    * @param status - Filter by status (active/closed)
    * @param options.workspaceId - Filter by workspace ID:
-   *   - undefined: global channels only (no workspace)
-   *   - null: all channels (global + all accessible workspaces)
+   *   - null/undefined: all channels in accessible workspaces
    *   - string: specific workspace only
    * @param options.limit - Max channels per page (default: 30)
    * @param options.cursor - Opaque pagination cursor from previous response
@@ -229,8 +265,8 @@ export class ChannelManager {
 
     let baseFilter: any;
 
-    if (options?.workspaceId === null) {
-      // Return ALL channels: global + all accessible workspaces
+    if (options?.workspaceId === null || options?.workspaceId === undefined) {
+      // Return ALL channels in accessible workspaces
       const accessibleWorkspaces = await this.workspaces
         .find({
           status: 'active',
@@ -241,17 +277,11 @@ export class ChannelManager {
       const workspaceIds = accessibleWorkspaces.map((w) => w.workspaceId);
 
       baseFilter = {
-        $or: [
-          { userId, workspaceId: { $exists: false } }, // User's global channels
-          { workspaceId: { $in: workspaceIds } },       // Channels in accessible workspaces
-        ],
+        workspaceId: { $in: workspaceIds },
       };
-    } else if (options?.workspaceId) {
+    } else {
       // Specific workspace only
       baseFilter = { workspaceId: options.workspaceId };
-    } else {
-      // Global channels only (no workspace) - default behavior
-      baseFilter = { userId, workspaceId: { $exists: false } };
     }
 
     // Add status filter if provided
@@ -328,9 +358,7 @@ export class ChannelManager {
       }),
     );
 
-    console.log(
-      `[channel.list] Page: ${enrichedChannels.length} channels, hasMore: ${hasMore}`,
-    );
+    log.debug({ count: enrichedChannels.length, hasMore }, 'channel.list page');
 
     return {
       channels: enrichedChannels as Channel[],
@@ -419,7 +447,7 @@ export class ChannelManager {
   ): Promise<{ agentName: string; avatarUrl?: string; modelString?: string; modelName?: string; providerName?: string } | null> {
     const agent = await this.agents.findOne({ agentId } as any);
     if (!agent) {
-      console.log(`[getAgentInfo] Agent not found: ${agentId}`);
+      log.warn({ agentId }, 'Agent not found');
       return null;
     }
 
@@ -429,26 +457,54 @@ export class ChannelManager {
     let providerName: string | undefined;
     
     if (agent.selectedModelId) {
-      // First try to find in global models collection
+      // Explicit model selected — resolve from global models collection
       const model = await this.models.findOne({ modelId: agent.selectedModelId } as any);
       if (model) {
         modelString = model.modelString;
         // Strip provider suffix from model name (e.g., "Claude Sonnet 4.5 (OpenRouter)" → "Claude Sonnet 4.5")
         modelName = (model.name || '').replace(/\s*\([^)]+\)\s*$/, '').trim() || model.name;
       } else {
-        // If not found in global models, it might be a provider-specific model
-        // In this case, we'll use the modelId as modelString
+        // Not found in global models — use modelId as fallback
         modelString = agent.selectedModelId;
       }
-    }
 
-    // Get provider display name
-    if (agent.selectedProviderId) {
-      const userProvider = await this.db.collection('user_providers').findOne({ 
-        providerId: agent.selectedProviderId 
-      } as any);
-      if (userProvider) {
-        providerName = userProvider.displayName; // e.g., "OpenRouter", "Claude Max"
+      // Get provider display name from explicit selectedProviderId
+      if (agent.selectedProviderId) {
+        const userProvider = await this.db.collection('user_providers').findOne({ 
+          providerId: agent.selectedProviderId 
+        } as any);
+        if (userProvider) {
+          providerName = userProvider.displayName;
+        }
+      }
+    } else {
+      // No explicit model — agent uses system default provider
+      // Resolve the user's default provider to show what model will actually be used
+      const userId = agent.ownerId;
+      if (userId) {
+        // Try isDefault first, then fall back to first by priority
+        const defaultProvider = await this.db.collection('user_providers').findOne(
+          { userId, isDefault: true, status: 'active' },
+        ) ?? await this.db.collection('user_providers').findOne(
+          { userId, status: 'active' },
+          { sort: { priority: 1 } },
+        );
+
+        if (defaultProvider) {
+          providerName = defaultProvider.displayName;
+
+          // Resolve the model: defaultModelId or first model
+          const resolvedModelId = defaultProvider.defaultModelId || defaultProvider.models?.[0]?.modelId;
+          if (resolvedModelId) {
+            const model = await this.models.findOne({ modelId: resolvedModelId } as any);
+            if (model) {
+              modelString = model.modelString;
+              modelName = (model.name || '').replace(/\s*\([^)]+\)\s*$/, '').trim() || model.name;
+            } else {
+              modelString = resolvedModelId;
+            }
+          }
+        }
       }
     }
     
@@ -479,6 +535,26 @@ export class ChannelManager {
   }
 
   /**
+   * Set the running state of a channel.
+   * Called at the start of every agent turn (running=true) and in the finally block (running=false).
+   * When running=true, also records runningAt = now (ISO timestamp).
+   * When running=false, clears runningAt.
+   */
+  async setRunning(channelId: ChannelId, running: boolean): Promise<void> {
+    const now = new Date().toISOString();
+    if (running) {
+      await this.channels.updateOne({ channelId } as any, {
+        $set: { running: true, runningAt: now },
+      });
+    } else {
+      await this.channels.updateOne({ channelId } as any, {
+        $set: { running: false },
+        $unset: { runningAt: '' },
+      });
+    }
+  }
+
+  /**
    * Mark channel as read (update lastReadAt)
    */
   async markChannelAsRead(channelId: ChannelId, userId: UserId): Promise<void> {
@@ -492,7 +568,7 @@ export class ChannelManager {
 
     await this.channels.updateOne({ channelId } as any, { $set: { lastReadAt: now } });
 
-    console.log(`✓ Channel marked as read: ${channelId}`);
+    log.debug({ channelId }, 'Channel marked as read');
   }
 
   /**
@@ -517,7 +593,7 @@ export class ChannelManager {
         updatedAt: now,
       },
     });
-    console.log(`🔒 Channel closed: ${channelId}`);
+    log.info({ channelId }, 'Channel closed');
     return { deleted: false };
   }
 
@@ -532,11 +608,27 @@ export class ChannelManager {
     // 2. Delete agent config
     await this.agentConfigs.deleteMany({ channelId } as any);
 
-    // 3. Delete channel
+    // 3. Delete scheduler tasks bound to this channel (TER-650/G7). A recurring
+    //    task / reminder must not outlive its channel: otherwise the scheduler
+    //    keeps firing it every cron slot (failing ownership) until the failure
+    //    cap disables it — wasted dispatches and a stray heartbeat. Root cause:
+    //    the task's lifetime is bounded by its channel's.
+    const [recurringDeleted, remindersDeleted] = await Promise.all([
+      this.db.collection('scheduler_recurring_tasks').deleteMany({ channel_id: channelId }),
+      this.db.collection('scheduler_reminders').deleteMany({ channel_id: channelId }),
+    ]);
+
+    // 4. Delete channel
     await this.channels.deleteOne({ channelId } as any);
 
-    console.log(
-      `🗑️ Private channel completely deleted: ${channelId} (${messagesResult.deletedCount} messages)`,
+    log.info(
+      {
+        channelId,
+        messagesDeleted: messagesResult.deletedCount,
+        recurringTasksDeleted: recurringDeleted.deletedCount,
+        remindersDeleted: remindersDeleted.deletedCount,
+      },
+      'Private channel completely deleted',
     );
   }
 
@@ -552,7 +644,7 @@ export class ChannelManager {
         updatedAt: now,
       },
     });
-    console.log(`🔒 Channel ${channelId} set to ${isPrivate ? 'private' : 'public'}`);
+    log.info({ channelId, isPrivate }, 'Channel privacy updated');
   }
 
   /**
@@ -576,7 +668,7 @@ export class ChannelManager {
     }
 
     if (deletedCount > 0) {
-      console.log(`🧹 Cleaned up ${deletedCount} expired private channels`);
+      log.info({ deletedCount }, 'Cleaned up expired private channels');
     }
 
     return deletedCount;
@@ -596,7 +688,7 @@ export class ChannelManager {
         closedAt: '',
       },
     });
-    console.log(`🔓 Channel reopened: ${channelId}`);
+    log.info({ channelId }, 'Channel reopened');
   }
 
   /**
@@ -610,7 +702,7 @@ export class ChannelManager {
         updatedAt: now,
       },
     });
-    console.log(`✏️ Channel renamed: ${channelId} -> "${name}"`);
+    log.info({ channelId, name }, 'Channel renamed');
   }
 
   /**
@@ -634,7 +726,7 @@ export class ChannelManager {
       const agentName = agent?.name || channel.agentId;
       const defaultName = `Chat con ${agentName}`;
       await this.renameChannel(channelId, defaultName);
-      console.log(`🔄 Channel reset to default name: ${channelId} -> "${defaultName}"`);
+      log.info({ channelId, defaultName }, 'Channel reset to default name');
       return defaultName;
     }
 
@@ -656,13 +748,34 @@ export class ChannelManager {
 
       // Save the name
       await this.renameChannel(channelId, generatedName);
-      console.log(`🤖 Channel auto-named: ${channelId} -> "${generatedName}"`);
+      log.info({ channelId, generatedName }, 'Channel auto-named');
 
       return generatedName;
     } catch (error) {
-      console.error('[ChannelManager] Error auto-naming channel:', error);
+      log.error({ err: error, channelId }, 'Error auto-naming channel');
       return null;
     }
+  }
+
+  /**
+   * Get a single channel enriched with agent info, in the same flat format
+   * returned by listUserChannels. Used by channel.get handler so the frontend
+   * can consume it identically to channel.list entries.
+   */
+  async getEnrichedChannel(channelId: ChannelId): Promise<Channel | null> {
+    const channel = await this.getChannel(channelId);
+    if (!channel) return null;
+
+    const agentInfo = channel.agentId ? await this.getAgentInfo(channel.agentId) : null;
+
+    return {
+      ...channel,
+      agentName: agentInfo?.agentName,
+      agentAvatarUrl: agentInfo?.avatarUrl,
+      modelString: agentInfo?.modelString,
+      modelName: agentInfo?.modelName,
+      providerName: agentInfo?.providerName,
+    } as Channel;
   }
 
   /**
@@ -720,6 +833,37 @@ export class ChannelManager {
    */
   async updateMessageContent(messageId: string, content: any): Promise<void> {
     await this.messages.updateOne({ messageId } as any, { $set: { content } });
+  }
+
+  /**
+   * Field-level $set on `content.*`. Unlike `updateMessageContent` this does
+   * not replace the whole content object, so callers that only know part of
+   * the record (e.g. a status transition) can write without clobbering the
+   * fields persisted by whoever created the message.
+   */
+  async updateMessageContentFields(
+    messageId: string,
+    fields: Record<string, any>,
+  ): Promise<void> {
+    const update: Record<string, any> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      update[`content.${key}`] = value;
+    }
+    await this.messages.updateOne({ messageId } as any, { $set: update });
+  }
+
+  /**
+   * Bump the message's `timestamp` to `Date.now()`. Used when a queued
+   * user message transitions to `running` — the chat is sorted by
+   * timestamp, so without this bump a reload would lay the bubbles in
+   * send-time order (all queued items share the same minute) instead of
+   * processing order.
+   */
+  async touchMessageTimestamp(messageId: string): Promise<void> {
+    await this.messages.updateOne(
+      { messageId } as any,
+      { $set: { timestamp: new Date().toISOString() } },
+    );
   }
 
   /**
@@ -829,14 +973,14 @@ export class ChannelManager {
    * Generate unique channel ID
    */
   private createChannelId(): ChannelId {
-    return generateChannelId();
+    return `ch_${this.channelIds.hex16()}` as ChannelId;
   }
 
   /**
    * Generate unique message ID
    */
   createMessageId(): string {
-    return generateMessageId();
+    return `msg_${this.messageIds.hex16()}`;
   }
 
   /**
@@ -907,13 +1051,10 @@ export class ChannelManager {
       .toArray();
     const workspaceIds = accessibleWorkspaces.map((w) => w.workspaceId);
 
-    // Get all user's channels (global + workspace channels, excluding private ones)
+    // Get all user's channels in accessible workspaces (excluding private ones)
     const userChannels = await this.channels
       .find({
-        $or: [
-          { userId, workspaceId: { $exists: false } }, // User's global channels
-          { workspaceId: { $in: workspaceIds } }, // Channels in accessible workspaces
-        ],
+        workspaceId: { $in: workspaceIds },
         isPrivate: { $ne: true }, // Exclude private channels from search
       } as any)
       .toArray();
@@ -1012,9 +1153,7 @@ export class ChannelManager {
     });
 
     const totalMatches = matchingMessages.length;
-    console.log(
-      `[ChannelManager] Search "${query}": ${totalMatches} matches in ${results.length} channels`,
-    );
+    log.debug({ query, totalMatches, channels: results.length }, 'Channel search results');
 
     return { results, totalMatches };
   }

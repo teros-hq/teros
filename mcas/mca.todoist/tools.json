@@ -22,6 +22,9 @@
             "default": 100
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -35,7 +38,12 @@
             "description": "Task ID to retrieve"
           }
         },
-        "required": ["taskId"]
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -58,7 +66,12 @@
           },
           "priority": {
             "type": "number",
-            "enum": [1, 2, 3, 4],
+            "enum": [
+              1,
+              2,
+              3,
+              4
+            ],
             "description": "Priority (1=urgent, 4=none)",
             "default": 4
           },
@@ -70,7 +83,12 @@
             "description": "Label IDs"
           }
         },
-        "required": ["content"]
+        "required": [
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -93,11 +111,21 @@
           },
           "priority": {
             "type": "number",
-            "enum": [1, 2, 3, 4],
+            "enum": [
+              1,
+              2,
+              3,
+              4
+            ],
             "description": "Updated priority"
           }
         },
-        "required": ["taskId"]
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -111,12 +139,21 @@
             "description": "Task ID to complete"
           }
         },
-        "required": ["taskId"]
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "todoist_delete_task",
       "description": "Delete a task",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -125,7 +162,9 @@
             "description": "Task ID to delete"
           }
         },
-        "required": ["taskId"]
+        "required": [
+          "taskId"
+        ]
       }
     },
     {
@@ -134,6 +173,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -147,7 +189,12 @@
             "description": "Project ID to retrieve"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -169,7 +216,12 @@
             "description": "Project color"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -191,12 +243,21 @@
             "description": "Updated project color"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "todoist_delete_project",
       "description": "Delete a project",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -205,7 +266,9 @@
             "description": "Project ID to delete"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
       }
     },
     {
@@ -214,6 +277,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -231,7 +297,12 @@
             "description": "Label color"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -249,7 +320,13 @@
             "description": "Comment content"
           }
         },
-        "required": ["taskId", "content"]
+        "required": [
+          "taskId",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -263,7 +340,12 @@
             "description": "Project ID"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

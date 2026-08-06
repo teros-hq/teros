@@ -1,0 +1,35 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Hunter API 키의 존재와 연결성을 확인합니다."
+    },
+    "domain-search": {
+      "name": "domain-search",
+      "description": "회사 도메인에 대한 전문 이메일 주소를 찾습니다. 도메인 패턴, 조직 및 신뢰도, 이름, 직위 및 부서가 포함된 이메일 목록을 반환합니다. { domain, organization, pattern, total, emails[] }를 반환합니다.",
+      "params": {
+        "domain": "검색할 회사 도메인 (예: \"stripe.com\"). 전체 URL도 허용됩니다.",
+        "limit": "반환할 최대 이메일 수 (1-100, 기본값 10).",
+        "offset": "페이지 매김을 위해 건너뛸 이메일 수 (>= 0, 기본값 0)."
+      }
+    },
+    "email-finder": {
+      "name": "email-finder",
+      "description": "특정 사람의 이름과 회사 도메인으로부터 전문 이메일을 추측합니다. 가장 가능성이 높은 이메일과 신뢰도 점수(0-100)를 반환합니다. { email, score, domain, firstName, lastName, position }를 반환합니다.",
+      "params": {
+        "domain": "회사 도메인 (예: \"stripe.com\"). 전체 URL도 허용됩니다.",
+        "first_name": "사람의 이름.",
+        "last_name": "사람의 성."
+      }
+    },
+    "email-verifier": {
+      "name": "email-verifier",
+      "description": "이메일 주소가 배달 가능한지 확인합니다. 상태(유효 / 무효 / 모든 수락 / 웹메일 / 일회용 / 알 수 없음), 결과(배달 가능 / 위험 / 배달 불가) 및 0-100 점수를 반환하며, 기본 검사를 포함합니다. { email, status, result, score }를 반환합니다.",
+      "params": {
+        "email": "확인할 이메일 주소 (예: \"patrick@stripe.com\")."
+      }
+    }
+  },
+  "name": "Hunter",
+  "description": "Hunter.io 이메일 찾기 - 도메인으로 전문 이메일 주소를 찾고, 이름으로부터 사람의 이메일을 추측하며, 이메일 배달 가능성을 확인합니다."
+}

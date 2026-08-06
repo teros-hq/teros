@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.scheduler",
   "name": "Scheduler & Reminders",
-  "version": "0.9.0",
-  "description": "Schedule reminders and recurring tasks with natural language time expressions",
+  "version": "1.0.0",
+  "description": "Schedule reminders and recurring tasks. Natural language times (chrono-node, en+es) and cron expressions (croner). Timezone-aware.",
   "type": "utility",
   "icon": "icon.png",
   "category": "productivity",
@@ -26,10 +26,17 @@
   "keywords": ["scheduler", "reminders", "recurring", "tasks", "cron", "time"],
   "layers": {
     "tools": true,
-    "events": false,
+    "events": true,
     "ui": false,
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-20",
+      "notes": "Initial release — schedule, snooze, and cancel one-time reminders and recurring tasks using plain-language or cron times, timezone-aware"
+    }
+  ]
 }

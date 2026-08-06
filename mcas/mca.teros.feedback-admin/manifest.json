@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "Manage user feedback: review bug reports and suggestions, update status, set priorities, and communicate updates to users.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "system",
   "entrypoint": "src/index.ts",
   "author": {
@@ -33,5 +33,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["feedback", "admin", "bugs", "suggestions", "management"]
+  "keywords": ["feedback", "admin", "bugs", "suggestions", "management"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-02-01",
+      "notes": "Initial release — review user bug reports and suggestions, set status and priority, and reply with updates"
+    }
+  ]
 }

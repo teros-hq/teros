@@ -1,0 +1,106 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Intercom API token and connectivity."
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "Get information about the connected Intercom workspace: name, region, timezone, and the authenticated admin."
+    },
+    "search-conversations": {
+      "name": "search-conversations",
+      "description": "Search conversations in Intercom with filters by state, date range, tags, and assignee. Returns paginated results with conversation metadata.",
+      "params": {
+        "state": "Filter by conversation state",
+        "createdAfter": "Unix timestamp — only conversations created after this time",
+        "createdBefore": "Unix timestamp — only conversations created before this time",
+        "assigneeId": "Filter by assigned admin ID",
+        "teamId": "Filter by assigned team ID",
+        "perPage": "Results per page (default: 20, max: 50)",
+        "startingAfter": "Pagination cursor from previous response"
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "Get the full details of a specific Intercom conversation by ID, including all messages, notes, tags, and assignee.",
+      "params": {
+        "conversationId": "The Intercom conversation ID"
+      }
+    },
+    "reply-conversation": {
+      "name": "reply-conversation",
+      "description": "Reply to an Intercom conversation as an admin. Can send a public reply to the customer or add a private internal note.",
+      "params": {
+        "conversationId": "The Intercom conversation ID",
+        "body": "The reply text (plain text or HTML)",
+        "type": "\"comment\" sends a public reply to the customer; \"note\" adds a private internal note visible only to the team (default: comment)",
+        "adminId": "The admin ID to reply as. If omitted, uses the token owner."
+      }
+    },
+    "assign-conversation": {
+      "name": "assign-conversation",
+      "description": "Assign an Intercom conversation to a specific admin or team. Can also unassign by omitting both.",
+      "params": {
+        "conversationId": "The Intercom conversation ID",
+        "adminId": "Admin ID to assign the conversation to",
+        "teamId": "Team ID to assign the conversation to"
+      }
+    },
+    "update-conversation": {
+      "name": "update-conversation",
+      "description": "Update a conversation state (open, close, snooze) or priority in Intercom.",
+      "params": {
+        "conversationId": "The Intercom conversation ID",
+        "state": "New state for the conversation",
+        "priority": "Set or unset priority flag",
+        "snoozedUntil": "Unix timestamp — required when state is \"snoozed\""
+      }
+    },
+    "tag-conversation": {
+      "name": "tag-conversation",
+      "description": "Add or remove tags from an Intercom conversation.",
+      "params": {
+        "conversationId": "The Intercom conversation ID",
+        "tagIds": "Tag IDs to add to the conversation",
+        "removeTagIds": "Tag IDs to remove from the conversation"
+      }
+    },
+    "list-admins": {
+      "name": "list-admins",
+      "description": "List all admins (agents) in the Intercom workspace with their IDs, names, emails, and seat status."
+    },
+    "list-teams": {
+      "name": "list-teams",
+      "description": "List all teams in the Intercom workspace with their IDs, names, and member counts."
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "List all tags defined in the Intercom workspace. Useful for finding tag IDs before tagging conversations."
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Get details of an Intercom contact (user or lead) by their Intercom ID.",
+      "params": {
+        "contactId": "The Intercom contact ID"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "Search Intercom contacts by email, name, or phone number.",
+      "params": {
+        "email": "Filter by exact email address",
+        "name": "Filter by name (partial match)",
+        "phone": "Filter by phone number",
+        "perPage": "Results per page (default: 20, max: 50)"
+      }
+    }
+  },
+  "name": "Intercom",
+  "description": "Intercom customer support integration — manage conversations, tickets, contacts, and teams via the Intercom API.",
+  "changelog": [
+    {
+      "notes": "Initial release — search and reply to customer conversations, assign, tag, snooze, and look up contacts and teammates"
+    }
+  ]
+}

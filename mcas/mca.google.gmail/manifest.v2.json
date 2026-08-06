@@ -1,0 +1,61 @@
+{
+  "id": "mca.google.gmail",
+  "name": "Gmail",
+  "version": "1.0.0",
+  "description": "Send and receive emails via Gmail",
+  "readme": "./DESCRIPTION.md",
+  "changelog": [
+    { "version": "1.0.0", "date": "2026-05-01", "notes": "Initial release. Supports sending, receiving, drafts and labels." }
+  ],
+  "category": "communication",
+  "tags": ["email", "google", "inbox"],
+  "icon": {
+    "svg": "./assets/icon.svg",
+    "png": "./static/icon.png"
+  },
+  "headerImage": "./static/header.jpg",
+  "brandColor": "#EA4335",
+  "isOfficial": true,
+  "author": {
+    "name": "Teros",
+    "email": "hello@teros.ai",
+    "url": "https://teros.ai",
+    "verified": true
+  },
+  "connectivity": "oauth",
+  "auth": {
+    "type": "oauth2",
+    "provider": "google",
+    "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": ["https://mail.google.com/"],
+    "pkce": true,
+    "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+    "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+  },
+  "permissions": ["network", "filesystem"],
+  "tools": [
+    "list-messages",
+    "get-message",
+    "send-message",
+    "reply-message",
+    "search-messages",
+    "modify-labels",
+    "list-drafts",
+    "create-draft",
+    "update-draft",
+    "delete-draft",
+    "list-labels",
+    "create-label",
+    "update-label",
+    "delete-label",
+    "list-filters",
+    "create-filter",
+    "delete-filter",
+    "store-attachment",
+    "get-attachment"
+  ],
+  "support": "https://teros.ai/docs/mcas/gmail",
+  "homepage": "https://mail.google.com",
+  "availability": "public"
+}

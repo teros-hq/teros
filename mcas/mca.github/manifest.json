@@ -2,10 +2,10 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.github",
   "name": "GitHub",
-  "version": "2.0.0",
-  "description": "GitHub repository management - repos, issues, pull requests, actions, commits, and branches",
+  "version": "5.1.0",
+  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user actúa con su propia identidad de GitHub).",
   "type": "integration",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "development",
   "entrypoint": "src/index.ts",
   "author": {
@@ -25,14 +25,39 @@
     "ui": false,
     "permissions": false,
     "auth": {
-      "type": "oauth2",
+      "type": "github-app",
       "provider": "github",
-      "authorizeUrl": "https://github.com/login/oauth/authorize",
+      "appSlug": "teros-ai-prod",
+      "setupUrl": "https://be.teros.ai/auth/mca/callback?provider=github-app",
+      "userOAuth": true,
       "tokenUrl": "https://github.com/login/oauth/access_token",
-      "scopes": ["repo", "read:user", "user:email", "workflow", "read:org"],
-      "pkce": false,
-      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
-      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+      "permissions": {
+        "contents": "write",
+        "issues": "write",
+        "pull_requests": "write",
+        "metadata": "read",
+        "workflows": "write",
+        "actions": "write",
+        "checks": "write",
+        "members": "read",
+        "administration": "read"
+      },
+      "events": ["installation", "installation_repositories"],
+      "systemSecrets": [
+        "GITHUB_APP_ID",
+        "GITHUB_APP_CLIENT_ID",
+        "GITHUB_APP_CLIENT_SECRET",
+        "GITHUB_APP_PRIVATE_KEY",
+        "GITHUB_APP_WEBHOOK_SECRET",
+        "GITHUB_APP_SLUG"
+      ],
+      "userSecrets": [
+        "INSTALLATION_ID",
+        "USER_ACCESS_TOKEN",
+        "USER_REFRESH_TOKEN",
+        "USER_TOKEN_EXPIRES_AT",
+        "USER_LOGIN"
+      ]
     },
     "agent": false
   },
@@ -42,5 +67,12 @@
     "port": 3000,
     "healthCheck": "/health"
   },
-  "keywords": ["github", "git", "repositories", "issues", "pull-requests", "ci-cd", "actions"]
+  "keywords": ["github", "git", "repositories", "issues", "pull-requests", "ci-cd", "actions", "github-app", "local-development"],
+  "changelog": [
+    {
+      "version": "5.1.0",
+      "date": "2026-05-13",
+      "notes": "Manage repos, issues, pull requests and reviews, run Actions and releases, plus full local git on cloned repos"
+    }
+  ]
 }

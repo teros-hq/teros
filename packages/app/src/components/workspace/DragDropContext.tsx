@@ -11,6 +11,7 @@ import type React from 'react';
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import type { SplitDirection } from '../../store/tilingStore';
+import { useTilingStore } from '../../store/tilingStore';
 
 // ============================================
 // TYPES
@@ -97,6 +98,9 @@ export function DragDropProvider({ children, onDrop }: Props) {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dropTarget, setDropTargetState] = useState<DropTarget | null>(null);
 
+  const setGlobalDrag = useTilingStore((state) => state.setGlobalDrag);
+  const clearGlobalDrag = useTilingStore((state) => state.clearGlobalDrag);
+
   const startDrag = useCallback((windowId: string, sourceContainerId: string, title: string) => {
     console.log('[DragDrop] Start drag:', windowId, 'from', sourceContainerId);
     setDragState({
@@ -106,12 +110,13 @@ export function DragDropProvider({ children, onDrop }: Props) {
       title,
       isGroup: false,
     });
+    setGlobalDrag(windowId, [windowId], false);
 
     // Change cursor on web
     if (Platform.OS === 'web') {
       document.body.style.cursor = 'grabbing';
     }
-  }, []);
+  }, [setGlobalDrag]);
 
   const startGroupDrag = useCallback(
     (windowIds: string[], sourceContainerId: string, title: string) => {
@@ -128,12 +133,13 @@ export function DragDropProvider({ children, onDrop }: Props) {
         title,
         isGroup: true,
       });
+      setGlobalDrag(null, windowIds, true);
 
       if (Platform.OS === 'web') {
         document.body.style.cursor = 'grabbing';
       }
     },
-    [],
+    [setGlobalDrag],
   );
 
   const setDropTarget = useCallback((target: DropTarget | null) => {
@@ -160,12 +166,13 @@ export function DragDropProvider({ children, onDrop }: Props) {
 
     setDragState(null);
     setDropTargetState(null);
+    clearGlobalDrag();
 
     // Restaurar cursor
     if (Platform.OS === 'web') {
       document.body.style.cursor = '';
     }
-  }, [dragState, dropTarget, onDrop]);
+  }, [dragState, dropTarget, onDrop, clearGlobalDrag]);
 
   const value: DragDropContextValue = {
     dragState,

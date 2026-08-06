@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { adminRequest, isWsConnected } from '../lib';
 
 export const appsList: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'List all installed apps (MCA instances) with their configuration.',
   parameters: {
     type: 'object',

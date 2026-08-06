@@ -1,4 +1,6 @@
 import { marked } from 'marked';
+import { colors as semanticColors } from '../../mca/primitives/colors';
+import { useColors } from '../../mca/primitives/useColors';
 import { useMemo } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import RenderHtml from 'react-native-render-html';
@@ -13,112 +15,116 @@ marked.setOptions({
   gfm: true,
 });
 
-// Styles for HTML rendering - with userSelect for web
-const tagsStyles: any = {
-  body: {
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontSize: 15,
-    lineHeight: 24,
-    ...(Platform.OS === 'web' ? { userSelect: 'text', cursor: 'text' } : {}),
-  },
-  p: {
-    marginTop: 0,
-    marginBottom: 8,
-  },
-  strong: {
-    fontWeight: '600' as const,
-    color: '#fff',
-  },
-  em: {
-    fontStyle: 'italic' as const,
-  },
-  code: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontFamily: 'monospace',
-    fontSize: 13,
-  },
-  pre: {
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    padding: 12,
-    borderRadius: 8,
-    marginVertical: 8,
-    fontFamily: 'monospace, monospace',
-    fontSize: 13,
-  },
-  ul: {
-    marginVertical: 8,
-    paddingLeft: 24,
-  },
-  ol: {
-    marginVertical: 8,
-    paddingLeft: 24,
-  },
-  li: {
-    marginVertical: 4,
-  },
-  a: {
-    color: '#06B6D4',
-  },
-  blockquote: {
-    borderLeftWidth: 3,
-    borderLeftColor: 'rgba(255, 255, 255, 0.3)',
-    marginVertical: 8,
-    paddingLeft: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  h1: {
-    marginTop: 16,
-    marginBottom: 8,
-    fontWeight: '600' as const,
-    color: '#fff',
-    fontSize: 22,
-  },
-  h2: {
-    marginTop: 16,
-    marginBottom: 8,
-    fontWeight: '600' as const,
-    color: '#fff',
-    fontSize: 19,
-  },
-  h3: {
-    marginTop: 16,
-    marginBottom: 8,
-    fontWeight: '600' as const,
-    color: '#fff',
-    fontSize: 17,
-  },
-  // Table styles for web platform
-  table: {
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 8,
-    marginVertical: 8,
-    overflow: 'hidden' as const,
-  },
-  th: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
-    fontWeight: '600' as const,
-    color: '#fff',
-  },
-  td: {
-    padding: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  tr: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-};
+// Build theme-adaptive HTML styles for react-native-render-html.
+// Called inside the component so it has access to useColors() tokens.
+function buildTagsStyles(c: ReturnType<typeof useColors>): any {
+  return {
+    body: {
+      color: c.text,
+      fontSize: 15,
+      lineHeight: 24,
+      ...(Platform.OS === 'web' ? { userSelect: 'text', cursor: 'text' } : {}),
+    },
+    p: {
+      marginTop: 0,
+      marginBottom: 8,
+    },
+    strong: {
+      fontWeight: '600' as const,
+      color: c.text,
+    },
+    em: {
+      fontStyle: 'italic' as const,
+    },
+    code: {
+      backgroundColor: c.bgInner,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      fontFamily: '$mono',
+      fontSize: 13,
+    },
+    pre: {
+      backgroundColor: c.bgCard,
+      padding: 12,
+      borderRadius: 8,
+      marginVertical: 8,
+      fontFamily: '$mono',
+      fontSize: 13,
+    },
+    ul: {
+      marginVertical: 8,
+      paddingLeft: 24,
+    },
+    ol: {
+      marginVertical: 8,
+      paddingLeft: 24,
+    },
+    li: {
+      marginVertical: 4,
+    },
+    a: {
+      color: semanticColors.indigo,
+    },
+    blockquote: {
+      borderLeftWidth: 3,
+      borderLeftColor: c.borderStrong,
+      marginVertical: 8,
+      paddingLeft: 12,
+      color: c.text2,
+    },
+    h1: {
+      marginTop: 16,
+      marginBottom: 8,
+      fontWeight: '600' as const,
+      color: c.text,
+      fontSize: 22,
+    },
+    h2: {
+      marginTop: 16,
+      marginBottom: 8,
+      fontWeight: '600' as const,
+      color: c.text,
+      fontSize: 19,
+    },
+    h3: {
+      marginTop: 16,
+      marginBottom: 8,
+      fontWeight: '600' as const,
+      color: c.text,
+      fontSize: 17,
+    },
+    // Table styles for web platform
+    table: {
+      borderWidth: 1,
+      borderColor: c.borderStrong,
+      borderRadius: 8,
+      marginVertical: 8,
+      overflow: 'hidden' as const,
+    },
+    th: {
+      backgroundColor: c.bgInner,
+      padding: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: c.borderStrong,
+      fontWeight: '600' as const,
+      color: c.text,
+    },
+    td: {
+      padding: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+    tr: {
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+    },
+  };
+}
 
 // Custom renderer for <pre> blocks on web - enables horizontal scroll
 export const PreRenderer = ({ tnode }: any) => {
+  const c = useColors()
   // Extract text content from the DOM tree recursively
   const extractText = (node: any): string => {
     if (!node) return '';
@@ -134,7 +140,7 @@ export const PreRenderer = ({ tnode }: any) => {
   return (
     <div
       style={{
-        backgroundColor: 'rgba(30, 30, 30, 0.9)',
+        backgroundColor: c.bgCard,
         padding: 12,
         borderRadius: 8,
         marginTop: 8,
@@ -145,9 +151,9 @@ export const PreRenderer = ({ tnode }: any) => {
     >
       <code
         style={{
-          fontFamily: 'monospace, monospace',
+          fontFamily: '$mono',
           fontSize: 13,
-          color: 'rgba(255, 255, 255, 0.9)',
+          color: c.text,
           whiteSpace: 'pre',
           wordWrap: 'normal',
           overflowWrap: 'normal',
@@ -170,80 +176,85 @@ const customHTMLElementModels: any =
       }
     : {};
 
-// Table configuration for WebView rendering on native
-const tableConfig = {
-  WebView,
-  webViewProps: {
-    style: {
-      backgroundColor: 'transparent',
+// Table configuration for WebView rendering on native — theme-adaptive
+function buildTableConfig(c: ReturnType<typeof useColors>) {
+  return {
+    WebView,
+    webViewProps: {
+      style: {
+        backgroundColor: 'transparent',
+      },
     },
-  },
-  tableStyleSpecs: {
-    outerContainerStyle: {
-      borderRadius: 8,
-      overflow: 'hidden' as const,
-      marginVertical: 8,
+    tableStyleSpecs: {
+      outerContainerStyle: {
+        borderRadius: 8,
+        overflow: 'hidden' as const,
+        marginVertical: 8,
+      },
     },
-  },
-  cssRules: `
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: rgba(0, 0, 0, 0.3);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    th {
-      background-color: rgba(255, 255, 255, 0.1);
-      padding: 10px 12px;
-      text-align: left;
-      font-weight: 600;
-      color: #fff;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-      font-size: 14px;
-    }
-    td {
-      padding: 10px 12px;
-      color: rgba(255, 255, 255, 0.9);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      font-size: 14px;
-    }
-    tr:last-child td {
-      border-bottom: none;
-    }
-    tr:nth-child(even) {
-      background-color: rgba(255, 255, 255, 0.03);
-    }
-  `,
-};
-
-// Render props for native platforms
-const renderersProps: any =
-  Platform.OS !== 'web'
-    ? {
-        table: tableConfig,
+    cssRules: `
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background-color: ${c.bgCard};
+        border-radius: 8px;
+        overflow: hidden;
       }
-    : {};
+      th {
+        background-color: ${c.bgInner};
+        padding: 10px 12px;
+        text-align: left;
+        font-weight: 600;
+        color: ${c.text};
+        border-bottom: 1px solid ${c.borderStrong};
+        font-size: 14px;
+      }
+      td {
+        padding: 10px 12px;
+        color: ${c.text};
+        border-bottom: 1px solid ${c.border};
+        font-size: 14px;
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+      tr:nth-child(even) {
+        background-color: ${c.bgInner};
+      }
+    `,
+  };
+}
+
+// Render props for native platforms — built per-render with theme tokens
+// (tableConfig needs useColors() tokens, so it's constructed in the component)
 
 /**
  * Render markdown content as HTML using react-native-render-html
  */
 export function MarkdownContent({ text }: { text: string }) {
+  const c = useColors()
   const { width } = useWindowDimensions();
 
   const html = useMemo(() => {
     return marked.parse(text) as string;
   }, [text]);
 
+  const tagsStylesMemo = useMemo(() => buildTagsStyles(c), [c]);
+
+  const renderersPropsMemo = useMemo(() =>
+    Platform.OS !== 'web' ? { table: buildTableConfig(c) } : {},
+    [c],
+  );
+
   return (
     <RenderHtml
       contentWidth={width * 0.85}
       source={{ html }}
-      tagsStyles={tagsStyles}
+      tagsStyles={tagsStylesMemo}
       defaultTextProps={{ selectable: true }}
       renderers={renderers}
       customHTMLElementModels={customHTMLElementModels}
-      renderersProps={renderersProps}
+      renderersProps={renderersPropsMemo}
     />
   );
 }

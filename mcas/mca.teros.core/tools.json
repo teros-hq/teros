@@ -21,6 +21,9 @@
             "description": "Optional: Filter agents by workspace ID. If not provided, lists all accessible agents."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -37,18 +40,17 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "create-agent",
-      "description": "Create a new agent instance from an agent core.",
+      "description": "Create a new agent instance. The core is assigned automatically by scope (no workspace → super-agent; workspace → agent).",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "coreId": {
-            "type": "string",
-            "description": "The agent core ID to use (e.g., 'alice', 'iria')"
-          },
           "name": {
             "type": "string",
             "description": "Short name for the agent (e.g., 'Alice')"
@@ -67,16 +69,18 @@
           },
           "workspaceId": {
             "type": "string",
-            "description": "Optional: Workspace ID to create the agent in. If not provided, creates a global agent."
+            "description": "Optional: Workspace ID to create the agent in. If not provided, creates a global agent. Pass null explicitly to create a Superagent (a global agent with elevated capabilities not bound to any workspace)."
           }
         },
         "required": [
-          "coreId",
           "name",
           "fullName",
           "role",
           "intro"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -121,6 +125,9 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -137,14 +144,10 @@
         "required": [
           "agentId"
         ]
-      }
-    },
-    {
-      "name": "list-agent-cores",
-      "description": "List all available agent cores (base personalities/engines).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -161,6 +164,9 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -177,6 +183,9 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -201,6 +210,9 @@
           "agentId",
           "providerIds"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -221,6 +233,9 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -229,6 +244,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -245,6 +263,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -265,6 +286,9 @@
         "required": [
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -293,6 +317,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -309,6 +336,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -340,6 +370,9 @@
           "userId",
           "role"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -361,6 +394,9 @@
           "workspaceId",
           "userId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -392,6 +428,9 @@
           "userId",
           "role"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -399,7 +438,15 @@
       "description": "List apps owned by the user.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Optional: Filter apps by workspace ID. If not provided, lists all apps owned by the user across all workspaces."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -416,11 +463,14 @@
         "required": [
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "install-app",
-      "description": "Install an MCA from the catalog as an app.",
+      "description": "Install an MCA from the catalog as an app. The installed app is auto-granted to the user's superagents. Apps are scoped to a workspace: their tools are only available in conversations of that workspace.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -430,16 +480,20 @@
           },
           "name": {
             "type": "string",
-            "description": "Optional: Custom name for the app. Auto-generated if not provided."
+            "description": "Optional: Custom name for the app (lower-kebab-case). Auto-generated if not provided."
           },
           "workspaceId": {
             "type": "string",
-            "description": "Optional: Install in a workspace. If not provided, installs as a user app."
+            "description": "Optional: Workspace ID to install the app in. Defaults to the user's Private Workspace. To use the app's tools in the current conversation, install it in the conversation's workspace."
           }
         },
         "required": [
           "mcaId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
       }
     },
     {
@@ -456,6 +510,9 @@
         "required": [
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -477,6 +534,47 @@
           "appId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "check-app-auth",
+      "description": "Check an app's authentication status (connected, expired, missing credentials, not required) without showing anything to the user. Use it to verify auth before or after operating an app. If the status is broken, use show-app-auth so the user can fix it from the chat — never ask for credentials directly.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app whose authentication status to check"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "show-app-auth",
+      "description": "Show an app's authentication widget to the user, inline in the chat, so they can connect or re-authenticate it right there (e.g. reconnect Gmail when the OAuth session expired). Use it when an app's tools fail for auth reasons (expired session, missing credentials). Returns the app's current auth status so you can tell the user what needs fixing. Never ask the user for credentials directly — the widget is the only place they should enter them.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app whose authentication section to show"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -493,6 +591,9 @@
         "required": [
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -509,6 +610,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -525,6 +629,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -542,6 +649,9 @@
             "description": "Include hidden MCAs (default: false)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -550,6 +660,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -571,6 +684,10 @@
           "agentId",
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
       }
     },
     {
@@ -592,6 +709,271 @@
           "agentId",
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-app-permissions",
+      "description": "Get the tool permissions of an app: each tool's configured permission ('allow' runs without asking, 'ask' requires user confirmation, 'forbid' is blocked), its manifest flags (readOnly, alwaysAsk), and a summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app whose permissions to read"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "set-app-permissions",
+      "description": "Set tool permissions for an app, in batch. Values: 'allow' (runs without asking), 'ask' (requires user confirmation), 'forbid' (blocked), 'default' (clear the explicit setting so the tool falls back to the app default). Use `tools` for per-tool changes and/or `all` to change every tool at once; `all: 'default'` resets the whole app to defaults.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app whose permissions to change"
+          },
+          "all": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "ask",
+              "forbid",
+              "default"
+            ],
+            "description": "Set every tool of the app at once; 'default' resets all tools to the app default"
+          },
+          "tools": {
+            "type": "object",
+            "description": "Per-tool changes: a map of tool name to 'allow' | 'ask' | 'forbid' | 'default'. Applied on top of `all` when both are given.",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "allow",
+                "ask",
+                "forbid",
+                "default"
+              ]
+            }
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "skill-list",
+      "description": "List all skills in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to list skills from"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "skill-create",
+      "description": "Create a new skill in a workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "The workspace ID to create the skill in"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name of the skill"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description of the skill"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown content / instructions for the skill"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "name",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "skill-update",
+      "description": "Update an existing skill.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "description": "The skill ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the skill"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description for the skill"
+          },
+          "content": {
+            "type": "string",
+            "description": "New Markdown content / instructions for the skill"
+          }
+        },
+        "required": [
+          "skillId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "skill-delete",
+      "description": "Delete a skill and all its agent access entries.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "description": "The skill ID to delete"
+          }
+        },
+        "required": [
+          "skillId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "skill-grant-access",
+      "description": "Assign a skill to an agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to assign the skill to"
+          },
+          "skillId": {
+            "type": "string",
+            "description": "The skill ID to assign"
+          }
+        },
+        "required": [
+          "agentId",
+          "skillId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "skill-revoke-access",
+      "description": "Remove a skill assignment from an agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to remove the skill from"
+          },
+          "skillId": {
+            "type": "string",
+            "description": "The skill ID to remove"
+          }
+        },
+        "required": [
+          "agentId",
+          "skillId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "skill-set-enabled",
+      "description": "Enable or disable a skill for a specific agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID"
+          },
+          "skillId": {
+            "type": "string",
+            "description": "The skill ID"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether to enable (true) or disable (false) the skill for the agent"
+          }
+        },
+        "required": [
+          "agentId",
+          "skillId",
+          "enabled"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "skill-get-agent-skills",
+      "description": "Get all skills assigned to an agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to get skills for"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

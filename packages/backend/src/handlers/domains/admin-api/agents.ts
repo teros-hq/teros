@@ -14,8 +14,11 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
-import { generateAgentId } from '@teros/core'
+import { requireSuperAdmin } from '../../../auth/auth-helpers'
+import { AgentProvisioningService } from '../../../services/agent-provisioning-service'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
 import type { McaService } from '../../../services/mca-service'
+import type { FeatureFlagService } from '../../../services/feature-flag-service'
 
 async function requireAdmin(db: Db, userId: string): Promise<void> {
   const user = await db.collection('users').findOne({ userId })
@@ -30,9 +33,12 @@ export function createAgentsListHandler(db: Db) {
 
   return async function agentsList(ctx: WsHandlerContext, rawData: unknown) {
     await requireAdmin(db, ctx.userId)
-    const data = (rawData ?? {}) as { workspaceId?: string }
+    const data = (rawData ?? {}) as { workspaceId?: string; includeAll?: boolean }
 
-    const filter: Record<string, unknown> = { status: 'active' }
+    // Default: solo agents activos (compat con UsersWindow / managed agents).
+    // includeAll: super admin tools (e.g. AgentUsageWindow) que necesitan
+    // ver agents legacy con `status:undefined` o archivados.
+    const filter: Record<string, unknown> = data.includeAll === true ? {} : { status: 'active' }
     if (data.workspaceId) filter.workspaceId = data.workspaceId
 
     const agentList = await agents.find(filter).toArray()
@@ -48,7 +54,7 @@ export function createAgentsListHandler(db: Db) {
           fullName: a.fullName,
           role: a.role,
           intro: a.intro,
-          avatarUrl: a.avatarUrl || core?.avatarUrl,
+          avatarUrl: buildAvatarUrl(a.avatarUrl || core?.avatarUrl),
           coreId: a.coreId,
           workspaceId: a.workspaceId,
           ownerId: a.ownerId,
@@ -74,7 +80,7 @@ export function createAgentsGetHandler(db: Db) {
     const core = await agentCores.findOne({ coreId: (agent as any).coreId })
     return {
       ...agent,
-      avatarUrl: (agent as any).avatarUrl || (core as any)?.avatarUrl,
+      avatarUrl: buildAvatarUrl((agent as any).avatarUrl || (core as any)?.avatarUrl),
       core: core
         ? { coreId: (core as any).coreId, name: (core as any).name, fullName: (core as any).fullName }
         : null,
@@ -82,44 +88,36 @@ export function createAgentsGetHandler(db: Db) {
   }
 }
 
-export function createAgentsCreateHandler(db: Db) {
-  const agents = db.collection('agents')
-  const agentCores = db.collection('agent_cores')
+export function createAgentsCreateHandler(db: Db, mcaService: McaService) {
+  // Single creation path: the same service that backs onboarding and agent.create.
+  // Guarantees an admin-created agent is shaped and provisioned identically.
+  const provisioning = new AgentProvisioningService(db, mcaService)
 
   return async function agentsCreate(ctx: WsHandlerContext, rawData: unknown) {
     await requireAdmin(db, ctx.userId)
     const data = rawData as {
-      coreId: string; name: string; fullName: string; role: string; intro: string
-      workspaceId?: string; ownerId?: string
+      name: string; fullName: string; role: string; intro: string
+      workspaceId?: string; ownerId?: string; context?: string
     }
 
-    if (!data.coreId || !data.name || !data.fullName || !data.role || !data.intro) {
-      throw new HandlerError('VALIDATION_ERROR', 'Missing required fields: coreId, name, fullName, role, intro')
+    if (!data.name || !data.fullName || !data.role || !data.intro) {
+      throw new HandlerError('VALIDATION_ERROR', 'Missing required fields: name, fullName, role, intro')
     }
 
-    const core = await agentCores.findOne({ coreId: data.coreId })
-    if (!core) throw new HandlerError('NOT_FOUND', `Agent core '${data.coreId}' not found`)
-
-    const agentId = generateAgentId()
-    const now = new Date().toISOString()
-
-    const newAgent = {
-      agentId,
-      coreId: data.coreId,
+    // Cores are internal: derived from scope, never chosen. Any `coreId` in the
+    // request is ignored — to re-point a core, admins use agents-change-core.
+    const agent = await provisioning.createAgentFromCore({
       ownerId: data.ownerId || 'system',
       workspaceId: data.workspaceId,
-      name: data.name,
-      fullName: data.fullName,
-      role: data.role,
-      intro: data.intro,
-      avatarUrl: (core as any).avatarUrl,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    }
-
-    await agents.insertOne(newAgent)
-    return { agent: newAgent }
+      profile: {
+        name: data.name,
+        fullName: data.fullName,
+        role: data.role,
+        intro: data.intro,
+        context: data.context,
+      },
+    })
+    return { agent }
   }
 }
 
@@ -207,5 +205,135 @@ export function createAgentCoresListHandler(db: Db) {
     await requireAdmin(db, ctx.userId)
     const cores = await agentCores.find({ status: 'active' }).toArray()
     return { cores }
+  }
+}
+
+export function createAgentsChangeCoreHandler(db: Db, mcaService: McaService) {
+  const agents = db.collection('agents')
+
+  return async function agentsChangeCore(ctx: WsHandlerContext, rawData: unknown) {
+    await requireAdmin(db, ctx.userId)
+    const data = rawData as { agentId: string; coreId: string }
+    if (!data.agentId || !data.coreId) {
+      throw new HandlerError('VALIDATION_ERROR', 'agentId and coreId are required')
+    }
+
+    // Reassign the agent's core and (re-)provision its core default apps.
+    const provisioning = new AgentProvisioningService(db, mcaService)
+    await provisioning.reprovisionForCore(data.agentId, data.coreId)
+
+    const agent = await agents.findOne({ agentId: data.agentId })
+    if (!agent) throw new HandlerError('NOT_FOUND', 'Agent not found')
+    return { agent }
+  }
+}
+
+/**
+ * admin-api.core-rollout-apply — apply the % rollout for a coreType by re-pointing
+ * + reprovisioning its agents (super only; affects real users in production).
+ */
+export function createCoreRolloutApplyHandler(
+  db: Db,
+  mcaService: McaService,
+  featureFlagService: FeatureFlagService,
+) {
+  return async function coreRolloutApply(ctx: WsHandlerContext, rawData: unknown) {
+    await requireSuperAdmin(db, ctx.userId)
+    const data = rawData as { coreType?: 'agent' | 'super-agent' }
+    if (data.coreType !== 'agent' && data.coreType !== 'super-agent') {
+      throw new HandlerError('VALIDATION_ERROR', "coreType must be 'agent' or 'super-agent'")
+    }
+
+    const provisioning = new AgentProvisioningService(db, mcaService)
+    let summary: Awaited<ReturnType<AgentProvisioningService['applyCoreRollout']>>
+    try {
+      summary = await provisioning.applyCoreRollout(data.coreType, featureFlagService)
+    } catch (err) {
+      throw new HandlerError('ROLLOUT_APPLY_FAILED', (err as Error).message)
+    }
+
+    console.log(`[admin-api.core-rollout-apply] ${data.coreType}:`, summary)
+    // Record the apply in the audit timeline (when / who / result). Best-effort:
+    // the migration already succeeded, so a failed audit write must not fail the call.
+    try {
+      await featureFlagService.recordRolloutApply(`core.${data.coreType}`, ctx.userId, summary)
+    } catch (err) {
+      console.error('[admin-api.core-rollout-apply] failed to record audit:', err)
+    }
+    return { coreType: data.coreType, ...summary }
+  }
+}
+
+type RolloutRequest = {
+  coreType?: 'agent' | 'super-agent'
+  experimentalCoreId?: string
+  percentage?: number
+}
+
+/** Validate the coreType and the optional hypothetical (shared by preview/cohort). */
+function parseRolloutRequest(rawData: unknown): {
+  coreType: 'agent' | 'super-agent'
+  hypothetical?: { experimentalCoreId: string; percentage: number }
+} {
+  const data = (rawData ?? {}) as RolloutRequest
+  if (data.coreType !== 'agent' && data.coreType !== 'super-agent') {
+    throw new HandlerError('VALIDATION_ERROR', "coreType must be 'agent' or 'super-agent'")
+  }
+  // Hypothetical only when BOTH are provided and valid; else the saved rollout is
+  // used. Guard the percentage at the boundary (JSON Schema can't express [0,100]).
+  let hypothetical: { experimentalCoreId: string; percentage: number } | undefined
+  if (data.experimentalCoreId !== undefined || data.percentage !== undefined) {
+    if (
+      typeof data.experimentalCoreId !== 'string' ||
+      data.experimentalCoreId.trim() === '' ||
+      !Number.isInteger(data.percentage) ||
+      (data.percentage as number) < 0 ||
+      (data.percentage as number) > 100
+    ) {
+      throw new HandlerError(
+        'VALIDATION_ERROR',
+        'For a hypothetical, experimentalCoreId must be a non-empty string and percentage an integer in [0, 100]',
+      )
+    }
+    hypothetical = { experimentalCoreId: data.experimentalCoreId, percentage: data.percentage as number }
+  }
+  return { coreType: data.coreType, hypothetical }
+}
+
+/**
+ * admin-api.core-rollout-preview — dry-run of a coreType rollout (super only):
+ * current per-core distribution + what an Apply would do, without migrating anyone.
+ */
+export function createCoreRolloutPreviewHandler(
+  db: Db,
+  mcaService: McaService,
+  featureFlagService: FeatureFlagService,
+) {
+  return async function coreRolloutPreview(ctx: WsHandlerContext, rawData: unknown) {
+    await requireSuperAdmin(db, ctx.userId)
+    const { coreType, hypothetical } = parseRolloutRequest(rawData)
+    const provisioning = new AgentProvisioningService(db, mcaService)
+    const preview = await provisioning.previewCoreRollout(coreType, featureFlagService, hypothetical)
+    return { coreType, ...preview }
+  }
+}
+
+/**
+ * admin-api.core-rollout-cohort — the per-agent cohort (super only): WHICH users
+ * and agents a rollout touches (current/target core, kind, owner, bucket), not just
+ * counts. Without a hypothetical it reflects the saved rollout (who is on the
+ * experimental NOW + who an Apply would move).
+ */
+export function createCoreRolloutCohortHandler(
+  db: Db,
+  mcaService: McaService,
+  featureFlagService: FeatureFlagService,
+) {
+  return async function coreRolloutCohort(ctx: WsHandlerContext, rawData: unknown) {
+    await requireSuperAdmin(db, ctx.userId)
+    const { coreType, hypothetical } = parseRolloutRequest(rawData)
+    const provisioning = new AgentProvisioningService(db, mcaService)
+    const cohort = await provisioning.coreRolloutCohort(coreType, featureFlagService, hypothetical)
+    return { coreType, cohort }
   }
 }

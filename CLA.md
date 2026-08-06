@@ -1,14 +1,14 @@
 # Contributor License Agreement
 
-**Teros — Copernico Labs S.L.**
+**Teros — Teros AI, S.L.**
 
 Thank you for your interest in contributing to Teros, developed and maintained
-by Copernico Labs S.L. (CIF B88388350), with registered address in Spain
-("Copernico Labs", "we", or "us").
+by Teros AI, S.L. (CIF B88787445), with registered address in Spain
+("Teros AI", "we", or "us").
 
 This Contributor License Agreement ("CLA") clarifies the intellectual property
 rights granted with contributions from any person or entity. This agreement is
-for your protection as a contributor as well as for the protection of Copernico
+for your protection as a contributor as well as for the protection of Teros AI
 Labs and its users; it does not change your rights to use your own contributions
 for any other purpose.
 
@@ -22,20 +22,20 @@ Please read this document carefully before agreeing to it.
 
 **"Contribution"** means any original work of authorship, including any
 modifications or additions to an existing work, that you intentionally submit
-to Copernico Labs for inclusion in, or documentation of, any of the products or
-services owned or managed by Copernico Labs (the "Work"). For the purposes of
+to Teros AI for inclusion in, or documentation of, any of the products or
+services owned or managed by Teros AI (the "Work"). For the purposes of
 this definition, "submit" means any form of electronic, verbal, or written
-communication sent to Copernico Labs or its representatives, including but not
+communication sent to Teros AI or its representatives, including but not
 limited to communication on electronic mailing lists, source code control
 systems, and issue tracking systems that are managed by, or on behalf of,
-Copernico Labs for the purpose of discussing and improving the Work.
+Teros AI for the purpose of discussing and improving the Work.
 
 ---
 
 ## 2. Grant of Copyright License
 
 Subject to the terms and conditions of this Agreement, you hereby grant to
-Copernico Labs and its successors and assigns a perpetual, worldwide,
+Teros AI and its successors and assigns a perpetual, worldwide,
 non-exclusive, no-charge, royalty-free, irrevocable copyright license to
 reproduce, prepare derivative works of, publicly display, publicly perform,
 sublicense, and distribute your Contributions and such derivative works,
@@ -44,7 +44,7 @@ including but not limited to use in:
 - The Teros open-source project and any future versions thereof;
 - The Teros hosted cloud service (available at teros.ai and any successor
   domains); and
-- Any other product or service developed by Copernico Labs that incorporates
+- Any other product or service developed by Teros AI that incorporates
   your Contribution.
 
 ---
@@ -52,7 +52,7 @@ including but not limited to use in:
 ## 3. Grant of Patent License
 
 Subject to the terms and conditions of this Agreement, you hereby grant to
-Copernico Labs and its successors and assigns a perpetual, worldwide,
+Teros AI and its successors and assigns a perpetual, worldwide,
 non-exclusive, no-charge, royalty-free, irrevocable patent license to make,
 have made, use, offer to sell, sell, import, and otherwise transfer the Work,
 where such license applies only to those patent claims licensable by you that
@@ -64,7 +64,7 @@ your Contribution(s) with the Work to which such Contribution(s) was submitted.
 ## 4. You Retain Your Copyright
 
 You retain full copyright ownership of your Contributions. This CLA does not
-transfer ownership of your intellectual property to Copernico Labs. You are free
+transfer ownership of your intellectual property to Teros AI. You are free
 to use your Contributions in any other project or product, subject to any
 third-party obligations you may have.
 
@@ -78,7 +78,7 @@ You represent that:
    has rights to intellectual property that you create, you represent that you
    have received permission to make Contributions on behalf of that employer,
    or that your employer has waived such rights for your Contributions to
-   Copernico Labs.
+   Teros AI.
 
 2. Each of your Contributions is your original creation. You represent that
    your Contribution submissions include complete details of any third-party
@@ -94,8 +94,8 @@ You represent that:
 ## 6. No Obligation to Include
 
 You understand that the decision to include your Contribution in any project or
-product is entirely at the discretion of Copernico Labs, and this Agreement does
-not obligate Copernico Labs to use or include your Contribution.
+product is entirely at the discretion of Teros AI, and this Agreement does
+not obligate Teros AI to use or include your Contribution.
 
 ---
 

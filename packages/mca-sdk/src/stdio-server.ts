@@ -4,7 +4,7 @@
  * Provides a stdio interface (MCP protocol) for MCAs.
  * Used for tool discovery during sync and for MCAs that run in stdio mode.
  *
- * @see docs/RFC-001-mca-protocol.md
+ *
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -29,10 +29,40 @@ export interface ToolContext {
   requestId: string;
   /** Backend client for MCA → Backend calls (null if no callbackUrl) */
   backend: McaBackendClient | null;
+  /**
+   * AbortSignal — currently a never-aborts stub for stdio transport.
+   * Real cancellation via MCP `notifications/cancelled` is roadmapped for
+   * Phase 2.6. Handlers can safely check this signal; it will simply never
+   * fire today. Documenting via the same shape as HTTP transport so MCAs
+   * have a uniform `ToolContext.signal` contract across transports.
+   */
+  signal: AbortSignal;
 
   // Secrets
   getSystemSecrets: () => Promise<Record<string, string>>;
   getUserSecrets: () => Promise<Record<string, string>>;
+}
+
+/**
+ * Optional metadata attached to a tool. Mirrors the shape in http-server.ts
+ * and server.ts so MCAs can use the same annotations object across transports.
+ */
+export interface ToolAnnotations {
+  version?: string;
+  stability?: 'experimental' | 'stable' | 'deprecated';
+  deprecationMessage?: string;
+  /** Teros — action cannot be undone (delete, send-with-no-unsend). Frontend shows a badge. */
+  irreversible?: boolean;
+  /** Teros policy — tool NEVER runs without human confirmation; user 'allow' config is ignored. */
+  alwaysAsk?: boolean;
+  /** MCP spec hint — tool only reads, never mutates state. Clients MAY auto-approve. */
+  readOnlyHint?: boolean;
+  /** MCP spec hint — tool may modify or delete state irreversibly. Clients SHOULD confirm. */
+  destructiveHint?: boolean;
+  /** MCP spec hint — repeating the call with the same args has no extra effect. */
+  idempotentHint?: boolean;
+  /** MCP spec hint — tool reaches outside the local environment (network, external services). */
+  openWorldHint?: boolean;
 }
 
 export interface RegisteredTool {
@@ -44,6 +74,7 @@ export interface RegisteredTool {
     required?: string[];
   };
   handler: ToolHandler;
+  annotations?: ToolAnnotations;
 }
 
 export interface ToolConfig {
@@ -54,6 +85,8 @@ export interface ToolConfig {
     required?: string[];
   };
   handler: ToolHandler;
+  /** Optional metadata for versioning and stability signals. */
+  annotations?: ToolAnnotations;
 }
 
 export interface McaStdioServerConfig {
@@ -119,6 +152,7 @@ export class McaStdioServer {
       description: toolConfig.description,
       parameters: toolConfig.parameters,
       handler: toolConfig.handler,
+      annotations: toolConfig.annotations,
     });
   }
 
@@ -165,6 +199,7 @@ export class McaStdioServer {
           properties: tool.parameters.properties,
           required: tool.parameters.required,
         },
+        ...(tool.annotations ? { annotations: tool.annotations } : {}),
       }));
 
       return { tools };
@@ -198,24 +233,50 @@ export class McaStdioServer {
             callbackUrl: execution.callbackUrl,
             appId: execution.appId,
             mcaId: this.config.id,
+            callbackToken: process.env.MCA_CALLBACK_TOKEN,
           })
         : null;
+
+      // Never-aborts AbortSignal stub for stdio transport. Phase 2.6 wires
+      // real cancellation via MCP notifications/cancelled.
+      const neverAbortsController = new AbortController();
 
       const context: ToolContext = {
         execution,
         requestId: execution.requestId!,
         backend: backendClient,
+        signal: neverAbortsController.signal,
         ...buildContextMethods(backendClient),
       };
 
       try {
         const result = await tool.handler(args || {}, context);
 
-        // Format result as text
-        const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+        // Build MCP content array
+        const content: Array<{ type: string; [key: string]: any }> = [];
+
+        if (result && typeof result === 'object' && 'attachments' in result && Array.isArray((result as any).attachments)) {
+          // Handler returned { text, attachments } shape — serialize text + attachments
+          const text = (result as any).text ?? JSON.stringify(result, null, 2);
+          if (text) content.push({ type: 'text', text });
+          for (const a of (result as any).attachments) {
+            if (a?.url && a?.mime) {
+              if (a.url.startsWith('data:')) {
+                const base64 = a.url.split(',')[1];
+                content.push({ type: 'image', data: base64, mimeType: a.mime });
+              } else {
+                content.push({ type: 'resource', resource: { uri: a.url, mimeType: a.mime, text: a.filename || '' } });
+              }
+            }
+          }
+        } else {
+          // Legacy: plain string or object → single text block
+          const text = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+          content.push({ type: 'text', text });
+        }
 
         return {
-          content: [{ type: 'text', text }],
+          content,
           isError: false,
         };
       } catch (error: unknown) {

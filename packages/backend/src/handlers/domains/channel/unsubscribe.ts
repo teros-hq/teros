@@ -3,17 +3,17 @@
  */
 
 import type { WsHandlerContext } from '@teros/shared'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface UnsubscribeChannelData {
   channelId: string
 }
 
-export function createUnsubscribeChannelHandler(sessionManager: SessionManager) {
+export function createUnsubscribeChannelHandler(pubSubService: PubSubService) {
   return async function unsubscribeChannel(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UnsubscribeChannelData
 
-    sessionManager.unsubscribeFromChannel(ctx.sessionId, data.channelId)
+    pubSubService.unsubscribeSession(ctx.sessionId, `channel:${data.channelId}`)
 
     return { channelId: data.channelId }
   }

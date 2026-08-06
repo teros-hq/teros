@@ -1,0 +1,85 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.context7",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies Context7 API key presence and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "summary": "Check the connection status",
+        "group": "Status"
+      }
+    },
+    {
+      "name": "resolve-library",
+      "description": "Resolve a Context7 library identifier from a free-text name (e.g. \"react\" → \"/reactjs/react.dev\"). Returns ranked candidates with reputation and snippet count. Cache: 7d. Use the chosen `id` as `libraryId` for `get-docs`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "libraryName": {
+            "type": "string",
+            "description": "Library name to resolve (e.g. \"react\", \"tamagui\")"
+          },
+          "query": {
+            "type": "string",
+            "description": "Optional refinement query (e.g. \"hooks\", \"router\")"
+          }
+        },
+        "required": [
+          "libraryName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "summary": "Find a library by name",
+        "group": "Libraries"
+      }
+    },
+    {
+      "name": "get-docs",
+      "description": "Fetch up-to-date documentation snippets for a Context7-resolved libraryId. Returns array of {title, source, description, code, language}. Use `resolve-library` first to get the libraryId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "libraryId": {
+            "type": "string",
+            "description": "Context7-compatible library id (e.g. \"/reactjs/react.dev\"). Get it from `resolve-library`."
+          },
+          "query": {
+            "type": "string",
+            "description": "Topic or question (e.g. \"useEffect cleanup\", \"router hooks\")"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "json",
+              "txt"
+            ],
+            "description": "Response format from Context7 (default: json)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max snippets to return (default 10, max 30)"
+          }
+        },
+        "required": [
+          "libraryId",
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true,
+        "summary": "Fetch up-to-date library documentation",
+        "group": "Docs"
+      }
+    }
+  ]
+}

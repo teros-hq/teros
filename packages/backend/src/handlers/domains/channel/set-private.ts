@@ -7,6 +7,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ChannelManager } from '../../../services/channel-manager'
 import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface SetChannelPrivateData {
   channelId: string
@@ -16,6 +17,7 @@ interface SetChannelPrivateData {
 export function createSetPrivateHandler(
   channelManager: ChannelManager,
   sessionManager: SessionManager,
+  pubSubService: PubSubService,
 ) {
   return async function setChannelPrivate(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as SetChannelPrivateData
@@ -33,17 +35,11 @@ export function createSetPrivateHandler(
     await channelManager.setChannelPrivate(data.channelId, data.isPrivate)
 
     // Broadcast channel_status to channel subscribers
-    const subscribers = sessionManager.getChannelSubscribers(data.channelId)
-    const channelStatusMsg = JSON.stringify({
+    pubSubService.broadcastToTopic(`channel:${data.channelId}`, {
       type: 'channel_status',
       channelId: data.channelId,
       isPrivate: data.isPrivate,
     })
-    for (const session of subscribers) {
-      if (session.ws.readyState === session.ws.OPEN) {
-        session.ws.send(channelStatusMsg)
-      }
-    }
 
     // If set to private, remove from conversation lists of all user sessions
     if (data.isPrivate) {

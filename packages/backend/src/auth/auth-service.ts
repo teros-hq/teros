@@ -7,11 +7,21 @@
  */
 
 import type { Db, ObjectId } from 'mongodb';
+import type { AgentProvisioningService } from '../services/agent-provisioning-service';
+import type { FeatureFlagService } from '../services/feature-flag-service';
+import type { ProviderService } from '../services/provider-service';
+import type { WorkspaceService } from '../services/workspace-service';
 import { DefaultAgentService } from './default-agent-service';
 import { IdentityService } from './identity-service';
 import { SessionService, type SessionWithToken } from './session-service';
 import type { IdentityProvider, OAuthIdentityData, User, UserIdentity, UserSession } from './types';
 import { UserService } from './user-service';
+
+export interface ImpersonationMeta {
+  isImpersonating: true;
+  impersonatedBy: string;
+  impersonatedByName: string;
+}
 
 export interface AuthResult {
   success: boolean;
@@ -28,6 +38,8 @@ export interface AuthResult {
     | 'invalid_token'
     | 'session_expired';
   lockedUntil?: Date;
+  /** Present when the session is an impersonation session */
+  impersonationMeta?: ImpersonationMeta;
 }
 
 export interface RegisterParams {
@@ -71,6 +83,45 @@ export class AuthService {
     this.identityService = new IdentityService(db);
     this.sessionService = new SessionService(db);
     this.defaultAgentService = new DefaultAgentService(db);
+  }
+
+  /**
+   * Late-bind the WorkspaceService after the DI container is ready.
+   * Called from index.ts after the container is initialized to avoid
+   * circular dependency issues at startup.
+   */
+  setWorkspaceService(workspaceService: WorkspaceService): void {
+    this.userService.setWorkspaceService(workspaceService);
+    console.log('[AuthService] WorkspaceService connected to UserService');
+  }
+
+  /**
+   * Late-bind the AgentProvisioningService (depends on McaService, built after
+   * AuthService). Required for default-agent creation during onboarding.
+   */
+  setProvisioningService(provisioningService: AgentProvisioningService): void {
+    this.defaultAgentService.setProvisioningService(provisioningService);
+    console.log('[AuthService] AgentProvisioningService connected to DefaultAgentService');
+  }
+
+  /**
+   * Late-bind the FeatureFlagService (depends on the DB and is registered after
+   * AuthService). Required so UserService can read access.auto-grant at user
+   * creation time without a circular dependency at construction.
+   */
+  setFeatureFlagService(featureFlagService: FeatureFlagService): void {
+    this.userService.setFeatureFlagService(featureFlagService);
+    console.log('[AuthService] FeatureFlagService connected to UserService');
+  }
+
+  /**
+   * Late-bind the ProviderService (depends on the DB and is registered after
+   * AuthService). Required so UserService can provision the default Teros
+   * provider at user creation time without a circular dependency at construction.
+   */
+  setProviderService(providerService: ProviderService): void {
+    this.userService.setProviderService(providerService);
+    console.log('[AuthService] ProviderService connected to UserService');
   }
 
   /**
@@ -141,6 +192,20 @@ export class AuthService {
 
     // Create default agent if user has none
     await this.defaultAgentService.createDefaultAgentIfNeeded(user.userId);
+
+    // Send welcome email (fire-and-forget)
+    try {
+      const { isEmailConfigured, getEmailService } = await import('../services/email-service');
+      if (isEmailConfigured()) {
+        getEmailService()
+          .sendWelcomeRegistered(user.profile.email, {
+            USER_NAME: user.profile.displayName,
+          })
+          .catch((e) => console.error('[AuthService] Failed to send welcome email:', e));
+      }
+    } catch (e) {
+      console.error('[AuthService] Email service not available:', e);
+    }
 
     return {
       success: true,
@@ -459,10 +524,20 @@ export class AuthService {
       };
     }
 
+    const impersonationMeta: ImpersonationMeta | undefined =
+      session.metadata?.isImpersonating
+        ? {
+            isImpersonating: true,
+            impersonatedBy: session.metadata.impersonatedBy!,
+            impersonatedByName: session.metadata.impersonatedByName!,
+          }
+        : undefined;
+
     return {
       success: true,
       user,
       session: { session, token },
+      impersonationMeta,
     };
   }
 

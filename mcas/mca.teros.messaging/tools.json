@@ -29,6 +29,9 @@
             "description": "Optional height in pixels"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -58,6 +61,9 @@
             "description": "Optional MIME type (e.g., 'audio/mp3')"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -99,6 +105,9 @@
             "description": "Optional MIME type (e.g., 'video/mp4')"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -132,6 +141,9 @@
             "description": "Optional file size in bytes"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -156,11 +168,14 @@
         "required": [
           "html"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "send-html-file",
-      "description": "Send an HTML file to the user. The file will be rendered inline in the chat AND can be opened in a dedicated FileViewer window that auto-refreshes in real time when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.",
+      "description": "Send an HTML file to the user. The file will be rendered inline in the chat (fetched from its path) AND can be opened in a dedicated FileViewer window that auto-refreshes when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -176,6 +191,41 @@
         "required": [
           "filePath"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "notify-by-email",
+      "description": "Send a notification email to the current user. The email is sent via Resend from a Teros notification address (notifications@teros.ai). Use this instead of Gmail when you want to deliver a report or alert to the user by email — it does not require any email account connection. The user's email is resolved automatically from their Teros account. The backend appends a Teros banner with a CTA to os.teros.ai at the bottom automatically — do NOT include your own footer or Teros branding. EMAIL HTML GUIDELINES: Use table-based layouts (not divs/flexbox/grid). Inline ALL styles (no <style> blocks, no class attributes). Use full HTML document: <!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>...</body></html>. Max width 560px for content. Use system fonts: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif. For headings use Georgia, serif. Background via <body> or outer table with bgcolor. Use <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"> for layout. Spacers: <tr><td style=\"height: Npx;\"></td></tr>. Buttons: <a> with inline display:inline-block, padding, background-color, border-radius. Images: absolute URLs only, width/height attributes, style=\"display:block\". No JavaScript, no <form>, no external CSS, no web fonts. Colors: dark theme #0A0A0F (bg), #FAFAFA (text), #A1A1AA (secondary), #5E6AD2 (accent/CTA). Light theme: #EFE9DB (bg), #18181B (text). Keep it clean and minimal.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "Email subject line"
+          },
+          "content": {
+            "type": "string",
+            "description": "Email body content as email-safe HTML. The backend sends it as-is (no wrapping template) and appends a Teros banner at the bottom. See the tool description for HTML formatting guidelines. If contentType is \"text\", line breaks are converted to <br> tags."
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "text",
+              "html"
+            ],
+            "description": "Format of the content. \"text\" = plain text (will be converted to HTML with line breaks). \"html\" = raw HTML (will be embedded as-is). Default: \"html\"."
+          }
+        },
+        "required": [
+          "subject",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

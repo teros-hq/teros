@@ -12,99 +12,214 @@
     },
     {
       "name": "get-project",
-      "description": "Get detailed information about a project, including its board columns with their IDs.",
+      "description": "Get project detail + its board columns. Returns: { project: { projectId, name, description, context, status, boardId, createdAt }, board: { boardId, columns: [{ columnId, slug, name, position }] } }. Use list-tasks to enumerate tasks.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "projectId": {
             "type": "string",
-            "description": "The project ID to retrieve"
+            "description": "Project ID"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset for project"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full project + board"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "list-projects",
-      "description": "List all projects in a workspace.",
+      "description": "List projects in a workspace. Returns: { workspaceId, projects: [{ projectId, name, description, status, boardId, taskCount, activeAgentCount, createdAt }], nextCursor? }. Paginated: default 50, max 200. Use get-project for full detail + board columns.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "workspaceId": {
             "type": "string",
-            "description": "The workspace ID (optional, defaults to current workspace)"
+            "description": "Workspace ID (optional, defaults to execution workspace)"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields"
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived projects (default: false)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full project documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "get-task",
-      "description": "Get detailed information about a specific task by its ID.",
+      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "string",
-            "description": "The task ID to retrieve"
+            "description": "Task ID"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields for task + subTasks"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
-        "required": ["taskId"]
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "list-tasks",
-      "description": "List tasks in a project with optional filters by column, status, assignee, or tags.",
+      "description": "List tasks in a project. Returns: { projectId, projectName, tasks: [{ taskId, title, columnName, columnSlug, priority, archived, tags, running, assigneeName, assigneeAvatarUrl }], agents, nextCursor? }. Paginated: default 50, max 200. For agent-view of own tasks use get-my-tasks (runner MCA).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "projectId": {
             "type": "string",
-            "description": "The project ID to list tasks from"
+            "description": "Project ID"
           },
           "columnId": {
             "type": "string",
-            "description": "Filter by column ID (optional)"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["idle", "assigned", "working", "blocked", "review", "done"],
-            "description": "Filter by task status (optional)"
+            "description": "Filter by column (optional)"
           },
           "assignedAgentId": {
             "type": "string",
-            "description": "Filter by assigned agent ID (optional)"
+            "description": "Filter by assignee (optional)"
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
-            "description": "Filter by tags — returns tasks that have ALL specified tags (optional)"
+            "items": {
+              "type": "string"
+            },
+            "description": "Return only tasks that have ALL these tags (optional)"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "true=archived only, false=active only (default: active)"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields to return (overrides default whitelist)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response"
           }
         },
-        "required": ["projectId"]
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "list-board-agents",
-      "description": "List all agents in the workspace that have access to board-manager or board-runner apps, including their role (manager, runner, or both).",
+      "description": "List agents in the workspace with access to board-manager or board-runner apps. Returns: { agents: [{ agentId, name, fullName, role, avatarUrl, capabilities }], nextCursor? }. Paginated: default 50, max 200.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "workspaceId": {
             "type": "string",
-            "description": "The workspace ID (optional, defaults to current workspace)"
+            "description": "Workspace (optional, defaults to execution)"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full agent documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "create-project",
-      "description": "Create a new project with an associated Kanban board in a workspace.",
+      "description": "Create a project with an associated Kanban board in a workspace. Returns: { project: { projectId, workspaceId, name, status, boardId }, board: { boardId, columns: [...] } }. Default columns: Backlog, To Do, In Progress, Blocked, Review, Done.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "workspaceId": {
             "type": "string",
-            "description": "The workspace ID to create the project in (optional, defaults to current workspace)"
+            "description": "Workspace ID (optional, defaults to execution workspace)"
           },
           "name": {
             "type": "string",
@@ -113,20 +228,31 @@
           "description": {
             "type": "string",
             "description": "Optional project description"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the full documents"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "create-task",
-      "description": "Create a new task on a project board. Defaults to backlog column.",
+      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. Providing `instructions` is encouraged — it gives the assigned agent the context and steps needed to work autonomously.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "projectId": {
             "type": "string",
-            "description": "The project ID"
+            "description": "Project ID"
           },
           "title": {
             "type": "string",
@@ -134,241 +260,950 @@
           },
           "description": {
             "type": "string",
-            "description": "Task description (supports markdown)"
+            "description": "Short one-line summary of what the task is about (max ~1000 chars)"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Detailed task instructions in markdown — context, specific steps, acceptance criteria, relevant paths, examples, and constraints. This is what the assigned agent receives as their briefing, so providing clear instructions is highly valuable for autonomous execution."
           },
           "priority": {
             "type": "string",
-            "enum": ["urgent", "high", "medium", "low"],
-            "description": "Task priority (default: medium)"
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
+            "description": "Priority (default: medium)"
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Tags for categorization"
           },
           "assignedAgentId": {
             "type": "string",
-            "description": "Agent ID to assign the task to"
+            "description": "Agent to assign"
           },
           "columnId": {
             "type": "string",
-            "description": "Column ID to place the task in (default: backlog)"
+            "description": "Target column (default: backlog)"
           },
           "parentTaskId": {
             "type": "string",
-            "description": "Parent task ID for sub-tasks"
+            "description": "Parent task (for sub-tasks)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
-        "required": ["projectId", "title"]
+        "required": [
+          "projectId",
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "batch-create-tasks",
-      "description": "Create multiple tasks at once on a project board. Atomic operation — all succeed or all fail. Max 100 tasks.",
+      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task. Providing `instructions` for each task is encouraged — it gives the assigned agent the context and steps needed to work autonomously.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "projectId": {
             "type": "string",
-            "description": "The project ID"
+            "description": "Project ID"
           },
           "tasks": {
             "type": "array",
-            "description": "Array of task objects to create",
+            "description": "Array of task objects (max 100)",
             "items": {
               "type": "object",
               "properties": {
-                "title": { "type": "string", "description": "Task title" },
-                "description": { "type": "string", "description": "Task description" },
+                "title": {
+                  "type": "string",
+                  "description": "Task title"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Short one-line summary of what the task is about (max ~1000 chars)"
+                },
+                "instructions": {
+                  "type": "string",
+                  "description": "Detailed task instructions in markdown — context, specific steps, acceptance criteria, relevant paths, examples, and constraints. This is what the assigned agent receives as their briefing, so providing clear instructions is highly valuable for autonomous execution."
+                },
                 "priority": {
                   "type": "string",
-                  "enum": ["urgent", "high", "medium", "low"],
-                  "description": "Task priority (default: medium)"
+                  "enum": [
+                    "urgent",
+                    "high",
+                    "medium",
+                    "low"
+                  ],
+                  "description": "Priority (default: medium)"
                 },
                 "tags": {
                   "type": "array",
-                  "items": { "type": "string" },
-                  "description": "Tags for categorization"
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Tags"
                 },
-                "assignedAgentId": { "type": "string", "description": "Agent ID to assign" },
-                "columnId": { "type": "string", "description": "Column ID (default: backlog)" },
-                "parentTaskId": { "type": "string", "description": "Parent task ID for sub-tasks" }
+                "assignedAgentId": {
+                  "type": "string",
+                  "description": "Agent to assign"
+                },
+                "columnId": {
+                  "type": "string",
+                  "description": "Target column (default: backlog)"
+                },
+                "parentTaskId": {
+                  "type": "string",
+                  "description": "Parent task ID"
+                }
               },
-              "required": ["title"]
+              "required": [
+                "title"
+              ]
             }
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task documents"
           }
         },
-        "required": ["projectId", "tasks"]
+        "required": [
+          "projectId",
+          "tasks"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "update-task",
-      "description": "Update task properties (title, description, priority, tags).",
+      "description": "Partial update of task properties. Omitted fields unchanged. Returns: { task: { ...TASK_FIELDS } }. To move a task between columns use move-task. To assign an agent use assign-task.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "taskId": { "type": "string", "description": "The task ID to update" },
-          "title": { "type": "string", "description": "New task title" },
-          "description": { "type": "string", "description": "New task description" },
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "title": {
+            "type": "string",
+            "description": "New title"
+          },
+          "description": {
+            "type": "string",
+            "description": "New short one-line summary of what the task is about (max ~1000 chars)"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "New detailed task instructions in markdown — context, specific steps, acceptance criteria, relevant paths, examples, and constraints. This is what the assigned agent receives as their briefing, so providing clear instructions is highly valuable for autonomous execution."
+          },
           "priority": {
             "type": "string",
-            "enum": ["urgent", "high", "medium", "low"],
+            "enum": [
+              "urgent",
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "New priority"
           },
           "tags": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "New tags (replaces existing)"
-          }
-        },
-        "required": ["taskId"]
-      }
-    },
-    {
-      "name": "update-task-status",
-      "description": "Update the semantic status of a task. Status is decoupled from column position. When set to \"review\" or \"done\", the task is automatically moved to the matching column.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID to update" },
-          "status": {
-            "type": "string",
-            "description": "New status for the task",
-            "enum": ["idle", "assigned", "working", "blocked", "review", "done"]
-          }
-        },
-        "required": ["taskId", "status"]
-      }
-    },
-    {
-      "name": "move-task",
-      "description": "Move a task to a different column on the board.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID to move" },
-          "columnId": { "type": "string", "description": "Target column ID" },
-          "position": { "type": "number", "description": "Position within the column (optional, defaults to end)" }
-        },
-        "required": ["taskId", "columnId"]
-      }
-    },
-    {
-      "name": "assign-task",
-      "description": "Assign or unassign an agent to a task. Pass null or omit agentId to unassign.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID" },
-          "agentId": { "type": "string", "description": "Agent ID to assign (omit or null to unassign)" }
-        },
-        "required": ["taskId"]
-      }
-    },
-    {
-      "name": "start-task",
-      "description": "Start a task: moves it to in_progress, creates a headless conversation with the assigned agent, sends the task description as the initial message, and links the conversation to the task. Optionally override the assigned agent or provide a custom prompt.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID to start" },
-          "agentId": { "type": "string", "description": "Optional agent ID override. If provided, the task will be reassigned to this agent before starting." },
-          "prompt": { "type": "string", "description": "Optional custom prompt to send to the agent instead of the default task description message." }
-        },
-        "required": ["taskId"]
-      }
-    },
-    {
-      "name": "link-conversation",
-      "description": "Link an existing conversation to a task. Replaces any previously linked conversation.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID" },
-          "channelId": { "type": "string", "description": "The conversation channel ID to link" }
-        },
-        "required": ["taskId", "channelId"]
-      }
-    },
-    {
-      "name": "add-progress-note",
-      "description": "Add a progress note to a task. Use this to post updates about what you are doing on a task. Progress notes are visible in the task detail and on the board.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID to add a note to" },
-          "text": { "type": "string", "description": "The progress note text" }
-        },
-        "required": ["taskId", "text"]
-      }
-    },
-    {
-      "name": "delete-task",
-      "description": "Delete a task from the board. Sub-tasks become top-level tasks. Linked conversations are NOT deleted.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": { "type": "string", "description": "The task ID to delete" }
-        },
-        "required": ["taskId"]
-      }
-    },
-    {
-      "name": "add-task-dependency",
-      "description": "Add a dependency between two tasks. After this call, taskId depends on dependsOnTaskId (i.e. dependsOnTaskId must be completed before taskId can start). Cycle detection is performed automatically — if adding the dependency would create a cycle, an error is returned and the affected tasks are marked with status `circular_dependency`.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": {
-            "type": "string",
-            "description": "The task that gains the new dependency (the dependent task)"
           },
-          "dependsOnTaskId": {
-            "type": "string",
-            "description": "The task that taskId will depend on (must be completed first)"
-          }
-        },
-        "required": [
-          "taskId",
-          "dependsOnTaskId"
-        ]
-      }
-    },
-    {
-      "name": "remove-task-dependency",
-      "description": "Remove a dependency between two tasks. After this call, taskId no longer depends on dependsOnTaskId. This operation is idempotent — if the dependency does not exist, the task is returned unchanged.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": {
-            "type": "string",
-            "description": "The task that currently has the dependency"
-          },
-          "dependsOnTaskId": {
-            "type": "string",
-            "description": "The task to remove from taskId's dependencies"
-          }
-        },
-        "required": [
-          "taskId",
-          "dependsOnTaskId"
-        ]
-      }
-    },
-    {
-      "name": "get-task-dependencies",
-      "description": "Get the dependencies of a task — i.e. the list of task IDs that must be completed before the given task can start. Returns the dependency task IDs and their count.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "taskId": {
-            "type": "string",
-            "description": "The task ID to get dependencies for"
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "archive-task",
+      "description": "Archive or restore a task (manager action). archived=true takes the task out of the active board (done / cancelled / discarded); archived=false restores it and triggers autoplay rescheduling. Returns: { task: { ...TASK_FIELDS } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "true = archive, false = restore to active board"
+          },
+          "archiveNote": {
+            "type": "string",
+            "description": "Optional note explaining why the task was archived"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "archived"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "archive-project",
+      "description": "Archive a project (soft-delete) and all its non-archived tasks. Only admin/owner can archive. Idempotent — if already archived, returns the project. Returns: { project: { ...PROJECT_FIELDS } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to archive"
+          },
+          "archiveNote": {
+            "type": "string",
+            "description": "Optional note explaining why the project was archived"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full project document"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "update-project",
+      "description": "Partial update of project properties (name, description, context). context is injected into agent system prompts when working on this project (markdown supported). Returns: { project: { ...PROJECT_FIELDS } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "context": {
+            "type": "string",
+            "description": "Project context injected into agent system prompts (architecture notes, coding standards, etc.). Markdown supported."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full project document"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "update-board-config",
+      "description": "Update the board execution config for a project. The config object is passed as-is to the board. Currently reserved for future auto-dispatcher settings. Returns: { projectId, config }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "config": {
+            "type": "object",
+            "description": "Board config object (passed as-is to the board document)",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "projectId",
+          "config"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "move-task",
+      "description": "Move a task to a different column on the board. Returns: { task: { ...TASK_FIELDS } } (includes columnName + columnSlug after move). Use list-board-subscriptions + subscribe-to-board to get notified when tasks move.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "columnId": {
+            "type": "string",
+            "description": "Target column ID"
+          },
+          "position": {
+            "type": "number",
+            "description": "Position within the column (optional, defaults to end)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "columnId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "assign-task",
+      "description": "Assign or unassign an agent to a task. Pass agentId to assign, omit or null to unassign. Returns: { task: { ...TASK_FIELDS } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID (omit or null to unassign)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "start-task",
+      "description": "Start a task: moves to in_progress, creates a headless conversation with the assigned agent, sends the task description as the first message, and links the conversation to the task. Returns: { task: { ...TASK_FIELDS, channelId }, channelId }. Optional override of agent or prompt.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Optional agent override. Reassigns the task before starting."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Optional custom prompt. Overrides the default task description as the first message."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "link-conversation",
+      "description": "Link an existing conversation (channel) to a task. Replaces any previously linked channel. Returns: { task: { ...TASK_FIELDS, channelId } }. Use start-task to link a new headless conversation instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID to link"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "add-progress-note",
+      "description": "Post a progress note on a task (manager action). Notes are visible on the task detail and the board. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }. Runner agents should use the board-runner add-progress-note instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "text": {
+            "type": "string",
+            "description": "Progress note text"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "delete-task",
+      "description": "Permanently delete a task. Sub-tasks become top-level tasks. Linked conversations are NOT deleted. Irreversible. Returns: { taskId, deleted: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID to delete"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "delete-project",
+      "description": "Permanently delete a project and all its tasks and board. Only workspace admin/owner can delete. Irreversible — prefer archive-project for soft-delete. Returns: { projectId, deleted: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID to delete"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "add-task-dependency",
+      "description": "Add a dependency: after this call, taskId depends on dependsOnTaskId (dependsOnTaskId must complete first). Cycle detection runs automatically; if adding the edge would create a cycle, the call errors and affected tasks are marked circular_dependency. Returns: { task: { ...TASK_FIELDS, dependencies } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task that gains the new dependency (the dependent task)"
+          },
+          "dependsOnTaskId": {
+            "type": "string",
+            "description": "Task that taskId will depend on (must complete first)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "dependsOnTaskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "remove-task-dependency",
+      "description": "Remove a dependency between two tasks. Idempotent — if the dependency does not exist, the task is returned unchanged. Returns: { task: { ...TASK_FIELDS, dependencies } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task that currently has the dependency"
+          },
+          "dependsOnTaskId": {
+            "type": "string",
+            "description": "Task to remove from taskId's dependencies"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "dependsOnTaskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-task-dependencies",
+      "description": "Get dependencies of a task (tasks that must complete before it can start). Returns: { taskId, dependencies: [{ taskId, title, columnSlug, priority, archived }], count, nextCursor? }. Paginated when large: default 50, max 200.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID whose dependencies to list"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-agent-slots",
+      "description": "Configure parallel execution slots for an agent in a project. slots=0 disables autoplay (also auto-disables playEnabled if it was on). slots≥1 enables the play button. Returns: { relationship: { agentId, projectId, slots, playEnabled, activeSlots } }. Use set-agent-play to toggle autoplay after setting slots.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID"
+          },
+          "slots": {
+            "type": "number",
+            "description": "Parallel execution slots (0 = disabled, ≥1 = available)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full relationship document"
+          }
+        },
+        "required": [
+          "projectId",
+          "agentId",
+          "slots"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "set-agent-play",
+      "description": "Toggle autoplay for an agent on a project. When enabled=true the agent auto-picks eligible To Do tasks up to its slot limit. Requires slots≥1 (use set-agent-slots first). Disabling does NOT cancel tasks already running. Returns: { relationship: { agentId, projectId, slots, playEnabled } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project ID"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "true = activate autoplay, false = deactivate"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full relationship document"
+          }
+        },
+        "required": [
+          "projectId",
+          "agentId",
+          "enabled"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "subscribe-to-board",
+      "description": "Subscribe the current conversation to real-time board events. Events (task moves, status changes, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID to subscribe to"
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter to narrow delivered events",
+            "properties": {
+              "agentIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events for tasks assigned to these agents"
+              },
+              "columnIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events for tasks in these columns"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Tasks with ALL these tags"
+              },
+              "eventTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Valid: board.task_moved, board.task_status_changed, board.task_assigned, board.task_created, board.task_updated, board.task_progress_note, board.agent_play_changed, board.agent_slots_changed, board.dependency_added, board.dependency_removed"
+              },
+              "wakeUpOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Event types that wake the agent (trigger a response turn). Default: board.task_progress_note"
+              }
+            }
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full subscription document"
+          }
+        },
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "unsubscribe-from-board",
+      "description": "Cancel this conversation's subscription to board events for a specific board. Idempotent — if no subscription exists, returns { boardId, unsubscribed: true } unchanged. Returns: { boardId, unsubscribed: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID to unsubscribe from"
+          }
+        },
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "list-board-subscriptions",
+      "description": "List active board subscriptions for the current conversation. Returns: { subscriptions: [{ subscriptionId, boardId, boardName, filter, createdAt }], nextCursor? }. Paginated: default 50, max 200.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom fields"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full subscription documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "get-board-status",
+      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Use to identify bottlenecks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "boardId": {
+            "type": "string",
+            "description": "Board ID"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset for per-agent rows"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the full backend payload"
+          }
+        },
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "stop-task",
+      "description": "Send cooperative stop signal to a running task (task.running=true). The assigned runner agent finishes its current step, then moves the task to Blocked. Cooperative — the signal is processed at the next runner turn. Only managers should call this. Returns: { taskId, stopRequested: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID of a running task"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional human-readable reason delivered to the runner"
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "subscribe-to-events",
+      "description": "Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "Event topic to subscribe to (e.g. \"mca.teros.scheduler.reminder\")"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID to receive events in (defaults to current conversation)"
+          },
+          "rules": {
+            "type": "array",
+            "description": "Optional filter rules to narrow delivered events",
+            "items": {
+              "type": "object"
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "notify",
+              "wake"
+            ],
+            "description": "Delivery mode: notify = silent notification, wake = trigger agent response turn. Default: notify"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full subscription document"
+          }
+        },
+        "required": [
+          "topic"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "unsubscribe-from-events",
+      "description": "Delete a channel event subscription by ID. Returns: { deleted: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Subscription ID to delete"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "list-event-subscriptions",
+      "description": "List active event subscriptions for a channel. Returns: { subscriptions: [{ id, topic, channelId, rules, mode, createdAt, lastActivityAt }], nextCursor? }. Paginated: default 50, max 200.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID to list subscriptions for (defaults to current conversation)"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom fields"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full subscription documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
       }
     }
   ]

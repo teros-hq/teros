@@ -1,0 +1,53 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 WebSocket 연결을 확인합니다."
+    },
+    "admin-infra-backend-status": {
+      "name": "admin-infra-backend-status",
+      "description": "가동 시간, 메모리 사용량, 프로세스 정보 및 실행 중인 MCA 수를 포함하여 Teros 백엔드의 현재 상태를 가져옵니다."
+    },
+    "admin-infra-restart-backend": {
+      "name": "admin-infra-restart-backend",
+      "description": "Teros 백엔드 서버를 재시작합니다. 이는 모든 MCA 프로세스를 정상적으로 종료하고 백엔드를 재시작합니다. 주의해서 사용하십시오 - 서비스가 일시적으로 중단됩니다.",
+      "params": {
+        "confirm": "확인 플래그 - 재시작을 진행하려면 true여야 합니다."
+      }
+    },
+    "admin-infra-sync": {
+      "name": "admin-infra-sync",
+      "description": "파일 시스템에서 데이터베이스로 MCA, 모델 및 도구를 동기화합니다. MCA를 추가하거나 수정한 후에 이 작업을 실행하십시오."
+    },
+    "admin-infra-mca-status": {
+      "name": "admin-infra-mca-status",
+      "description": "모든 실행 중인 MCA 프로세스의 상태를 가져옵니다. 슈퍼 관리자만 사용 가능합니다."
+    },
+    "admin-infra-mca-kill": {
+      "name": "admin-infra-mca-kill",
+      "description": "ID로 실행 중인 MCA 프로세스를 종료합니다. 슈퍼 관리자만 사용 가능합니다. 파괴적입니다 — 주의해서 사용하십시오.",
+      "params": {
+        "id": "종료할 MCA 프로세스 ID",
+        "confirm": "확인을 위해 true여야 합니다."
+      }
+    },
+    "admin-infra-mca-cleanup": {
+      "name": "admin-infra-mca-cleanup",
+      "description": "오래되었거나 죽은 MCA 프로세스를 정리합니다. 슈퍼 관리자만 사용 가능합니다. 파괴적입니다 — 주의해서 사용하십시오.",
+      "params": {
+        "confirm": "확인을 위해 true여야 합니다."
+      }
+    },
+    "admin-infra-mca-health": {
+      "name": "admin-infra-mca-health",
+      "description": "모든 MCA 프로세스에 대해 건강 검사를 실행합니다. 슈퍼 관리자만 사용 가능합니다."
+    }
+  },
+  "name": "Teros Admin Infra",
+  "description": "Teros 백엔드를 관리하기 위한 인프라 도구: 백엔드 상태, 재시작, 동기화 및 MCA 프로세스 관리(상태, 종료, 정리, 건강 검사).",
+  "changelog": [
+    {
+      "notes": "백엔드 상태를 확인하고, 서버를 재시작 및 동기화하며, 앱 프로세스를 모니터링, 종료, 정리 및 건강 검사를 수행합니다."
+    }
+  ]
+}

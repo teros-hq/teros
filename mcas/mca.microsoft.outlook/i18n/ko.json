@@ -1,0 +1,190 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "받은 편지함 또는 특정 폴더에서 이메일 메시지를 나열합니다. 읽지 않음, 중요도 등으로 필터링을 지원합니다.",
+      "params": {
+        "maxResults": "반환할 최대 메시지 수 (기본값: 10, 최대: 100)",
+        "folderId": "메일 폴더 ID 또는 잘 알려진 이름 (예: \"받은 편지함\", \"보낸 편지\", \"임시 보관함\", \"삭제된 항목\", \"아카이브\"). 기본값은 받은 편지함입니다.",
+        "filter": "OData $filter 표현식 (예: \"isRead eq false\", \"importance eq 'high'\")"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "ID로 특정 이메일 메시지의 전체 세부정보를 가져옵니다. 본문 및 첨부 파일 포함.",
+      "params": {
+        "messageId": "가져올 메시지의 ID"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "연결된 Outlook 계정에서 이메일 메시지를 보냅니다.",
+      "params": {
+        "to": "수신자 이메일 주소(들), 쉼표로 구분",
+        "subject": "이메일 제목",
+        "body": "이메일 본문 (일반 텍스트, Markdown 또는 HTML)",
+        "cc": "CC 수신자 (쉼표로 구분)",
+        "bcc": "BCC 수신자 (쉼표로 구분)",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false, Markdown 자동 감지)",
+        "importance": "메시지 중요도: 낮음, 보통, 높음 (기본값: 보통)",
+        "attachments": "포함할 파일 첨부 배열"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "기존 이메일 메시지에 회신합니다.",
+      "params": {
+        "messageId": "회신할 메시지의 ID",
+        "body": "회신 본문",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)",
+        "replyAll": "모든 수신자에게 회신할지 여부 (기본값: false)"
+      }
+    },
+    "forward-message": {
+      "name": "forward-message",
+      "description": "이메일 메시지를 다른 수신자에게 전달합니다.",
+      "params": {
+        "messageId": "전달할 메시지의 ID",
+        "to": "수신자 이메일 주소(들), 쉼표로 구분",
+        "comment": "전달된 메시지에 포함할 선택적 주석"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "이메일 메시지를 검색합니다. 제목, 본문, 발신자 등으로 검색을 지원합니다.",
+      "params": {
+        "query": "검색 쿼리 텍스트 (제목, 본문, 발신자 등 검색)",
+        "maxResults": "최대 결과 수 (기본값: 10)"
+      }
+    },
+    "modify-message": {
+      "name": "modify-message",
+      "description": "메시지를 수정합니다: 읽음/읽지 않음으로 표시, 중요도 설정, 카테고리 추가 또는 플래그 지정.",
+      "params": {
+        "messageId": "수정할 메시지의 ID",
+        "isRead": "읽음으로 표시 (true) 또는 읽지 않음 (false)",
+        "importance": "중요도 설정: 낮음, 보통, 높음",
+        "categories": "카테고리 레이블 설정 (기존 항목을 대체)",
+        "flag": "플래그 상태 설정: notFlagged, flagged, complete"
+      }
+    },
+    "move-message": {
+      "name": "move-message",
+      "description": "메시지를 다른 메일 폴더로 이동합니다.",
+      "params": {
+        "messageId": "이동할 메시지의 ID",
+        "destinationFolderId": "대상 폴더 ID 또는 잘 알려진 이름 (예: \"받은 편지함\", \"아카이브\", \"삭제된 항목\", \"정크 이메일\")"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "메시지를 삭제합니다 (삭제된 항목으로 이동) 또는 영구 삭제합니다.",
+      "params": {
+        "messageId": "삭제할 메시지의 ID",
+        "permanent": "true인 경우 메시지를 영구 삭제합니다. 그렇지 않으면 삭제된 항목으로 이동합니다 (기본값: false)"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "계정의 모든 임시 이메일을 나열합니다.",
+      "params": {
+        "maxResults": "반환할 최대 임시 이메일 수 (기본값: 10, 최대: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "임시 이메일 메시지를 생성합니다.",
+      "params": {
+        "to": "수신자 이메일 주소(들)",
+        "subject": "이메일 제목",
+        "body": "이메일 본문",
+        "cc": "CC 수신자 (쉼표로 구분)",
+        "bcc": "BCC 수신자 (쉼표로 구분)",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)",
+        "importance": "메시지 중요도: 낮음, 보통, 높음"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "기존 임시 이메일을 내용으로 교체하여 업데이트합니다.",
+      "params": {
+        "draftId": "업데이트할 임시 이메일의 ID",
+        "to": "수신자 이메일 주소(들)",
+        "subject": "이메일 제목",
+        "body": "이메일 본문",
+        "cc": "CC 수신자 (쉼표로 구분)",
+        "bcc": "BCC 수신자 (쉼표로 구분)",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)"
+      }
+    },
+    "send-draft": {
+      "name": "send-draft",
+      "description": "기존 임시 이메일을 보냅니다.",
+      "params": {
+        "draftId": "보낼 임시 이메일의 ID"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "임시 이메일을 삭제합니다.",
+      "params": {
+        "draftId": "삭제할 임시 이메일의 ID"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "계정의 모든 메일 폴더를 나열합니다.",
+      "params": {
+        "includeChildFolders": "하위 폴더 포함 여부 (기본값: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "새 메일 폴더를 생성합니다.",
+      "params": {
+        "displayName": "새 폴더의 이름",
+        "parentFolderId": "부모 폴더 ID (선택 사항, 생략 시 최상위 수준에 생성)"
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "메일 폴더와 그 모든 내용을 삭제합니다.",
+      "params": {
+        "folderId": "삭제할 폴더의 ID"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "첨부 파일 ID로 이메일 첨부 파일의 내용을 가져옵니다.",
+      "params": {
+        "messageId": "첨부 파일이 포함된 메시지의 ID",
+        "attachmentId": "가져올 첨부 파일의 ID",
+        "saveToFile": "true인 경우 첨부 파일을 /workspace/email-attachments/에 저장합니다."
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "이메일 첨부 파일을 로컬 파일 시스템에 다운로드하고 저장합니다.",
+      "params": {
+        "messageId": "첨부 파일이 포함된 메시지의 ID",
+        "attachmentId": "저장할 첨부 파일의 ID",
+        "outputPath": "선택적 출력 디렉토리 경로"
+      }
+    },
+    "list-rules": {
+      "name": "list-rules",
+      "description": "계정의 모든 받은 편지함 규칙(메일 필터)을 나열합니다."
+    }
+  },
+  "name": "Outlook",
+  "description": "Microsoft Outlook 이메일 관리 - Microsoft Graph API를 통해 이메일을 보내고, 읽고, 검색하고, 정리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — Outlook 이메일을 보내고, 읽고, 검색하고, 회신하고, 정리하며, 임시 보관함, 폴더 및 첨부 파일을 포함합니다."
+    }
+  ]
+}

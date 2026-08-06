@@ -5,13 +5,13 @@
  * Uses the WsFramework request/response protocol via WsTransport.
  *
  * Real-time events are pushed by the backend as:
- *   { type: 'event', event: 'file.changed', channel: 'file:<path>', data: { filePath, content } }
+ *   { type: 'event', event: 'file_changed', channel: 'file:<path>', data: { filePath, content } }
  *
  * Listen for changes with:
- *   client.on('file.changed', ({ filePath, content }) => { ... })
+ *   client.on('file_changed', ({ filePath, content }) => { ... })
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Types
@@ -32,19 +32,28 @@ export interface UnwatchFileResult {
 // ============================================================================
 
 export class FileWatcherApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   /**
    * Ask the backend to watch a file for changes.
    *
    * The backend resolves the host path, subscribes this client to the
    * `file:<filePath>` channel, sends the current content immediately, and
-   * pushes `file.changed` events on every subsequent save.
+   * pushes `file_changed` events on every subsequent save.
    *
-   * Listen with: client.on('file.changed', ({ filePath, content }) => { ... })
+   * Pass either a `channelId` (when opening from a chat context) or a
+   * `workspaceId` (when opening from the File Browser, which has no channelId).
+   *
+   * Listen with: client.on('file_changed', ({ filePath, content }) => { ... })
    */
-  watch(filePath: string, channelId: string): Promise<WatchFileResult> {
-    return this.transport.request<WatchFileResult>('file.watch', { filePath, channelId })
+  watch(filePath: string, channelId: string, workspaceId?: string): Promise<WatchFileResult>
+  watch(filePath: string, channelId: undefined, workspaceId: string): Promise<WatchFileResult>
+  watch(filePath: string, channelId?: string, workspaceId?: string): Promise<WatchFileResult> {
+    return this.transport.request<WatchFileResult>('file.watch', {
+      filePath,
+      ...(channelId ? { channelId } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
+    })
   }
 
   /**

@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the platform guide content is loaded."
+    },
+    "list-guide-topics": {
+      "name": "list-guide-topics",
+      "description": "Index of the Teros platform guide (sections + one-line summaries). Teros UI, windows and exact steps are NOT in your training data — answering how-to questions about Teros from memory is usually wrong. Whenever the user asks how to do anything in Teros (create an agent, connect an app, set up a board, providers, files…), call this FIRST, then get-guide-section, and answer from the guide. Returns {topics:[{id,title,summary}], count}."
+    },
+    "search-guide": {
+      "name": "search-guide",
+      "description": "Search the Teros platform guide by free-text query and get the most relevant section(s) with a snippet — the fastest way to answer how-to questions about Teros. Teros specifics are NOT in your training data; search here instead of guessing. Returns {query, results:[{id,title,summary,score,snippet}], count}. Use get-guide-section for a result's full body.",
+      "params": {
+        "query": "Free-text query, e.g. \"how do I create an agent\" or \"connect gmail\".",
+        "limit": "Max results to return (default 5, max 13)."
+      }
+    },
+    "get-guide-section": {
+      "name": "get-guide-section",
+      "description": "Get one Teros platform-guide section by topic id (from list-guide-topics). Use this to answer how-to questions about Teros instead of guessing — Teros specifics are not in your training data. Returns {id,title,summary,body(markdown),related}. Read the body and walk the user through the real steps in their own language; do not paste it verbatim.",
+      "params": {
+        "topic": "Topic id to fetch. Must be one of the ids returned by `list-guide-topics`."
+      }
+    }
+  },
+  "name": "Teros Guide",
+  "description": "Platform self-knowledge for agents. Lets an agent look up how Teros works on demand (agents, apps, boards, providers, workspaces, files…) so it can walk the user through the real steps. Two read-only tools: list-guide-topics and get-guide-section."
+}

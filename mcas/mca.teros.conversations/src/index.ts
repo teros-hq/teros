@@ -12,16 +12,20 @@
  * - get-channel-messages: Get messages from a specific channel
  * - get-channel-summary: Get a quick summary of a conversation
  * - create-conversation: Create a new conversation with an agent
+ * - delegate-task: Delegate a task to a sub-conversation (auto-forwarding back)
  * - send-message: Send a message to an existing conversation
  * - rename-channel: Rename a conversation
+ * - import-attachment: Copy a chat-uploaded file into the agent workspace volume
  */
 
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
 import { CURRENT_CHANNEL_ID, disconnectWsClient, initializeWsClient, isWsConnected } from './lib';
 import {
   createConversation,
+  delegateTask,
   getChannelMessages,
   getChannelSummary,
+  importAttachment,
   listChannels,
   renameChannel,
   searchMessages,
@@ -78,8 +82,10 @@ server.tool('list-channels', listChannels);
 server.tool('get-channel-messages', getChannelMessages);
 server.tool('get-channel-summary', getChannelSummary);
 server.tool('create-conversation', createConversation);
+server.tool('delegate-task', delegateTask);
 server.tool('send-message', sendMessage);
 server.tool('rename-channel', renameChannel);
+server.tool('import-attachment', importAttachment);
 
 // =============================================================================
 // START SERVER

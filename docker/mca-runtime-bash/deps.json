@@ -1,0 +1,8 @@
+{
+  "name": "mca-bash-deps",
+  "private": true,
+  "description": "External deps baked into teros/mca-runtime-bash. bash's only runtime dep beyond the @teros symlinks is the MCP SDK; @teros/mca-sdk brings ws via its own pruned node_modules.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  }
+}

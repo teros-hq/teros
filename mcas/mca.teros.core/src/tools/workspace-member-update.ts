@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceMemberUpdate: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: "Update a member's role in a workspace.",
   parameters: {
     type: 'object',

@@ -1,0 +1,143 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Figma."
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Get the structure of a Figma file (pages, frames, top-level components). Returns curated { name, lastModified, version, thumbnailUrl, document, componentCount, styleCount }. Params: fileKey, depth (1-10, def 2), geometry?, branchData?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "depth": "How deep to traverse the document tree. Min 1, max 10, default 2.",
+        "geometry": "Set to 'paths' to include vector path data (heavier payload).",
+        "branchData": "Include branch metadata when the file is part of a branched workflow.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return the raw upstream payload. Default false."
+      }
+    },
+    "get-node": {
+      "name": "get-node",
+      "description": "Get a single node from a Figma file as a curated tree. Returns the node directly (not wrapped). Use this to drill into a frame/component beyond the depth returned by get-file. Params: fileKey, nodeId (accepts \"1-2\" or \"1:2\"), depth (1-10, def 3), fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "nodeId": "Node ID. Accepts the URL format \"1-2\" or REST format \"1:2\".",
+        "depth": "How deep to traverse children. Min 1, max 10, default 3.",
+        "fields": "Override default node whitelist.",
+        "includeRaw": "Return raw upstream node. Default false."
+      }
+    },
+    "get-file-styles": {
+      "name": "get-file-styles",
+      "description": "List styles defined in a Figma file. Returns { styles: [{id, key, name, type, description}], count }. type ∈ FILL/TEXT/EFFECT/GRID. Params: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "get-file-variables": {
+      "name": "get-file-variables",
+      "description": "Get design tokens (variables) from a Figma file, grouped by collection. Returns { collections: [{id, name, modes, variables, defaultModeId}] }. Each variable has { id, name, type, values: { [modeId]: value } }. type ∈ COLOR/FLOAT/STRING/BOOLEAN. Params: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "fields": "Override default collection whitelist.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "get-components": {
+      "name": "get-components",
+      "description": "List components defined in a Figma file. Returns { components: [{id, key, name, description, componentSetId?}], count }. Params: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "get-component-sets": {
+      "name": "get-component-sets",
+      "description": "List component sets (variant groups) defined in a Figma file. Returns { componentSets: [{id, key, name, description}], count }. Params: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "export-images": {
+      "name": "export-images",
+      "description": "Export Figma nodes as images. Returns { images: [{nodeId, url, format, scale}] }. URLs are pre-signed S3 links and expire in ~30 minutes. Formats: png|jpg|svg|pdf. Scale 0.01-4 (default 1). Params: fileKey, nodeIds, format?, scale?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "nodeIds": "Node IDs to export. Accepts \"1-2\" or \"1:2\".",
+        "format": "Export format. Default png.",
+        "scale": "Scale factor (0.01–4). Default 1.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "List comments on a Figma file. Returns { comments: [{id, message, createdAt, user, resolved, parentId?, clientMeta?}], count }. parentId !== undefined indicates a reply. Params: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Create a new comment on a Figma file, or reply to an existing one. Returns the created comment { id, message, createdAt, user, resolved, parentId? }. To reply, set parentCommentId. To anchor on a canvas position, set clientMeta { x, y } or { node_id }. Params: fileKey, message, parentCommentId?, clientMeta?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "message": "Comment body. Markdown not rendered by Figma — keep plain text or use mentions like @user.",
+        "parentCommentId": "When provided, the new comment is a reply to this comment ID.",
+        "clientMeta": "Optional canvas anchor. Either { x, y } for a free position or { node_id } to attach to a node.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Delete a comment from a Figma file. Returns { ok: true, fileKey, commentId } on success. Not reversible — confirm with the user before invoking. Params: fileKey, commentId.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "commentId": "ID of the comment to delete."
+      }
+    },
+    "list-file-versions": {
+      "name": "list-file-versions",
+      "description": "List the version history of a Figma file. Returns { versions: [{id, createdAt, label, description, user, thumbnailUrl?}], count, nextPage? }. Use to audit changes, compare versions, or find when a design broke. Params: fileKey, pageSize (1-50, def 30), before? (cursor from previous nextPage), fields?, includeRaw.",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "pageSize": "Versions per page. Min 1, max 50, default 30.",
+        "before": "Opaque cursor from a previous response.nextPage.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw upstream payload. Default false."
+      }
+    },
+    "extract-colors": {
+      "name": "extract-colors",
+      "description": "Extract solid colors from a file or node, formatted for CSS variables, Tailwind config, or JSON. Returns { count, output: string, format }. Params: fileKey, nodeId? (scope to one node), format? (default css).",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "nodeId": "Optional: scope extraction to a single node.",
+        "format": "Output format. Default css."
+      }
+    },
+    "extract-typography": {
+      "name": "extract-typography",
+      "description": "Extract typography styles (font family, size, weight, line height, letter spacing) used in TEXT nodes of a Figma file. Returns { count, output: string, format }. Params: fileKey, format? (default css).",
+      "params": {
+        "fileKey": "The file key from a Figma URL.",
+        "format": "Output format. Default css."
+      }
+    }
+  },
+  "name": "Figma",
+  "description": "Access Figma design files, extract styles, components, design tokens, and export assets. Works directly with files via file key — no project or team browsing. Perfect for design-to-code workflows.",
+  "changelog": [
+    {
+      "notes": "Inspect Figma files, extract design tokens, colors and fonts as CSS or Tailwind, export images, and manage comments"
+    }
+  ]
+}

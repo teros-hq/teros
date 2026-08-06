@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface DeleteProjectData {
   projectId: string
@@ -14,6 +15,7 @@ interface DeleteProjectData {
 export function createDeleteProjectHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
+  pubSubService?: PubSubService | null,
 ) {
   return async function deleteProject(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as DeleteProjectData
@@ -34,7 +36,17 @@ export function createDeleteProjectHandler(
       throw new HandlerError('FORBIDDEN', 'Only workspace admin or owner can delete projects')
     }
 
+    const { workspaceId } = project
+
     await boardService.deleteProject(projectId)
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(workspaceId, {
+        type: 'project.deleted',
+        projectId,
+        workspaceId,
+      })
+    }
 
     return { projectId }
   }

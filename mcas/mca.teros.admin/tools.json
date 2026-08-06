@@ -3,37 +3,893 @@
   "mcaId": "mca.teros.admin",
   "tools": [
     {
-      "name": "admin-backend-status",
-      "description": "Get current status of the Teros backend including uptime, memory usage, process info, and number of running MCAs.",
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "admin-agents-list",
+      "description": "List all agents in the system. Super admin only.",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "admin-restart-backend",
-      "description": "Restart the Teros backend server. This will gracefully shutdown all MCA processes and restart the backend. Use with caution - this will temporarily interrupt service.",
+      "name": "admin-agents-get",
+      "description": "Get a single agent by ID. Super admin only.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "confirm": {
-            "type": "boolean",
-            "description": "Confirmation flag - must be true to proceed with restart"
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID"
           }
         },
         "required": [
+          "agentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-agents-create",
+      "description": "Create a new agent. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Agent name"
+          },
+          "coreId": {
+            "type": "string",
+            "description": "Agent core ID"
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description"
+          }
+        },
+        "required": [
+          "name",
+          "coreId",
+          "workspaceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-agents-update",
+      "description": "Update an existing agent. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID to update"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Active state"
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-agents-delete",
+      "description": "Delete an agent. Super admin only. DESTRUCTIVE \u2014 use with caution.",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID to delete"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to confirm deletion"
+          }
+        },
+        "required": [
+          "agentId",
           "confirm"
         ]
       }
     },
     {
-      "name": "admin-sync",
-      "description": "Sync MCAs, models, and tools from filesystem to database. Run this after adding or modifying MCAs.",
+      "name": "admin-workspaces-list",
+      "description": "List all workspaces. Super admin only.",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-get",
+      "description": "Get a workspace by ID. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-create",
+      "description": "Create a new workspace. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Workspace name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional description"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-update",
+      "description": "Update a workspace. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New description"
+          }
+        },
+        "required": [
+          "workspaceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-archive",
+      "description": "Archive (soft-delete) a workspace. Super admin only. DESTRUCTIVE \u2014 use with caution.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to confirm"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "confirm"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-members-add",
+      "description": "Add a member to a workspace. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID to add"
+          },
+          "role": {
+            "type": "string",
+            "description": "Role (e.g. member, admin)"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId",
+          "role"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-members-remove",
+      "description": "Remove a member from a workspace. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID to remove"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-workspaces-members-update",
+      "description": "Update a workspace member role. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "workspaceId": {
+            "type": "string",
+            "description": "Workspace ID"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID"
+          },
+          "role": {
+            "type": "string",
+            "description": "New role"
+          }
+        },
+        "required": [
+          "workspaceId",
+          "userId",
+          "role"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-apps-list",
+      "description": "List all installed apps. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-apps-get",
+      "description": "Get an installed app by ID. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-apps-create",
+      "description": "Install/create an app instance. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mcaId": {
+            "type": "string",
+            "description": "MCA ID to install"
+          },
+          "ownerId": {
+            "type": "string",
+            "description": "Owner user ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "App instance name"
+          },
+          "config": {
+            "type": "object",
+            "description": "App configuration"
+          }
+        },
+        "required": [
+          "mcaId",
+          "ownerId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "admin-apps-update",
+      "description": "Update an installed app. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "New name"
+          },
+          "config": {
+            "type": "object",
+            "description": "Updated configuration"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Active state"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-apps-delete",
+      "description": "Delete an installed app. Super admin only. DESTRUCTIVE \u2014 use with caution.",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "App ID to delete"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to confirm"
+          }
+        },
+        "required": [
+          "appId",
+          "confirm"
+        ]
+      }
+    },
+    {
+      "name": "admin-apps-get-access",
+      "description": "Get agents that have access to an app. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          }
+        },
+        "required": [
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-apps-set-permissions",
+      "description": "Set permissions for an app (which agents can use it). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          },
+          "agentIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of agent IDs allowed to use this app"
+          }
+        },
+        "required": [
+          "appId",
+          "agentIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "admin-access-list",
+      "description": "List all agent-app access grants. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-access-grant",
+      "description": "Grant an agent access to an app. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID"
+          },
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          }
+        },
+        "required": [
+          "agentId",
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "admin-access-revoke",
+      "description": "Revoke an agent access to an app. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID"
+          },
+          "appId": {
+            "type": "string",
+            "description": "App ID"
+          }
+        },
+        "required": [
+          "agentId",
+          "appId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-catalog-list",
+      "description": "List all available MCAs in the catalog. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-summary",
+      "description": "Get overall usage summary (messages, tokens, costs). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-by-user",
+      "description": "Get usage breakdown by user. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-by-workspace",
+      "description": "Get usage breakdown by workspace. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-by-agent",
+      "description": "Get usage breakdown by agent. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-by-model",
+      "description": "Get usage breakdown by LLM model. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-expensive-conversations",
+      "description": "List most expensive conversations by cost. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50)"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-timeline",
+      "description": "Get usage timeline (daily/weekly aggregates). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "week",
+              "month"
+            ],
+            "description": "Time granularity"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date (ISO)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date (ISO)"
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-list",
+      "description": "List all registered feature flags with their DB defaults and override counts. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-get",
+      "description": "Get a single feature flag by key, including its current default value and all overrides. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-update",
+      "description": "Update the default value of a feature flag. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key"
+          },
+          "defaultValue": {
+            "description": "New default value (boolean, number, or string)"
+          }
+        },
+        "required": [
+          "key",
+          "defaultValue"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-reset-default",
+      "description": "Reset a feature flag default value to the code-defined registry default. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key to reset"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-get-overrides",
+      "description": "List all overrides for a specific feature flag. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key"
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-set-override",
+      "description": "Create or update an override for a feature flag. Overrides apply to a specific user, workspace, or company. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "user",
+              "workspace",
+              "company"
+            ],
+            "description": "Scope of the override"
+          },
+          "targetId": {
+            "type": "string",
+            "description": "ID of the target"
+          },
+          "value": {
+            "description": "Override value"
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional note explaining the override"
+          }
+        },
+        "required": [
+          "key",
+          "targetType",
+          "targetId",
+          "value"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-feature-flags-delete-override",
+      "description": "Delete an existing override for a feature flag. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Feature flag key"
+          },
+          "targetType": {
+            "type": "string",
+            "enum": [
+              "user",
+              "workspace",
+              "company"
+            ],
+            "description": "Scope of the override to delete"
+          },
+          "targetId": {
+            "type": "string",
+            "description": "ID of the target"
+          }
+        },
+        "required": [
+          "key",
+          "targetType",
+          "targetId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

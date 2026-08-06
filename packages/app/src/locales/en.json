@@ -1,0 +1,66 @@
+{
+  "common": {
+    "cancel": "Cancel"
+  },
+  "chat": {
+    "stop": {
+      "label": "Stop",
+      "ariaLabel": "Stop agent response",
+      "hardHint": "Long-press the button or press Shift+Enter to discard the turn",
+      "stoppingIndicator": "Stopping…",
+      "stoppedIndicator": "Stopped",
+      "hardConfirm": {
+        "title": "Cancel immediately?",
+        "bodyNoIrreversible": "Hard cancel may leave partial work. Continue?",
+        "bodyWithIrreversible": "The tool '{{toolName}}' is running and cannot be interrupted without risk of partial side effects. Hard cancel will end the turn but wait for the tool result before closing.",
+        "confirm": "Cancel anyway",
+        "confirmWait": "Wait and cancel",
+        "deny": "Keep going"
+      },
+      "autoCloseToast": "The agent finished on its own. No need to cancel.",
+      "connectionLost": "Connection lost — recovering…"
+    },
+    "queue": {
+      "indicator_one": "{{count}} message queued",
+      "indicator_other": "{{count}} messages queued",
+      "edit": "Edit",
+      "cancel": "Cancel",
+      "cannotEditStarted": "Cannot edit — already in progress"
+    },
+    "restore": {
+      "banner": "Your previous message was cancelled",
+      "button": "Restore text",
+      "dismiss": "Dismiss"
+    },
+    "irreversibleBanner": "Finishing '{{toolName}}' before stopping (cannot be cancelled without risk)",
+    "recovering": "Recovering after restart…"
+  },
+  "feedback": {
+    "thumbsUp": "Thumbs up",
+    "thumbsDown": "Thumbs down",
+    "copy": "Copy message",
+    "copied": "Copied to clipboard",
+    "copyError": "Could not copy",
+    "report": "Report problem",
+    "reportSent": "Report sent to the team",
+    "reportError": "Could not send report",
+    "submitReport": "Submit report",
+    "reportDescriptionLabel": "What went wrong?",
+    "reportPlaceholder": "Describe the problem…",
+    "why": "Why was this unhelpful?",
+    "commentPlaceholder": "Add a comment (optional)",
+    "submit": "Submit feedback",
+    "sending": "Sending…",
+    "thankYou": "Thanks for your feedback",
+    "submitError": "Could not save feedback",
+    "tryAgain": "Please try again",
+    "reasons": {
+      "inaccurate": "Incorrect",
+      "incomplete": "Incomplete",
+      "not_helpful": "Not helpful",
+      "wrong_tone": "Wrong tone",
+      "did_not_follow_instructions": "Didn't follow instructions",
+      "other": "Other"
+    }
+  }
+}

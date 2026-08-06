@@ -1,0 +1,160 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.rentahuman",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies RentAHuman.ai API connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "search-humans",
+      "description": "Search for available humans on RentAHuman.ai. Filter by skill, hourly rate range, or name. No API key required — searching is free.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "skill": {
+            "type": "string",
+            "description": "Filter by skill (e.g., 'Photography', 'In-Person Meetings', 'Errands', 'Translation')"
+          },
+          "name": {
+            "type": "string",
+            "description": "Filter by human name"
+          },
+          "minRate": {
+            "type": "number",
+            "description": "Minimum hourly rate in USD"
+          },
+          "maxRate": {
+            "type": "number",
+            "description": "Maximum hourly rate in USD"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 20, max: 100)",
+            "default": 20
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-human",
+      "description": "Get the full profile of a specific human including skills, availability, hourly rate, location, rating, and payment wallet addresses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "humanId": {
+            "type": "string",
+            "description": "The human's profile ID"
+          }
+        },
+        "required": [
+          "humanId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-booking",
+      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Creates a booking with task details, start time, and estimated duration. Returns payment instructions.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "humanId": {
+            "type": "string",
+            "description": "The ID of the human to book"
+          },
+          "taskTitle": {
+            "type": "string",
+            "description": "Brief title of the task (3-200 characters)"
+          },
+          "taskDescription": {
+            "type": "string",
+            "description": "Detailed description of what the human needs to do"
+          },
+          "taskCategory": {
+            "type": "string",
+            "description": "Task category (e.g., 'errands', 'meetings', 'research', 'photography', 'delivery')"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "When the task should start (ISO 8601 format, e.g., '2025-06-15T10:00:00Z')"
+          },
+          "estimatedHours": {
+            "type": "number",
+            "description": "Estimated hours needed (min: 0.5, max: 168)"
+          },
+          "agentName": {
+            "type": "string",
+            "description": "Your agent's display name (optional)"
+          }
+        },
+        "required": [
+          "humanId",
+          "taskTitle",
+          "taskDescription",
+          "startTime",
+          "estimatedHours"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-bookings",
+      "description": "List bookings for the current agent. Optionally filter by status. Requires a RENTAHUMAN_API_KEY.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "confirmed",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ],
+            "description": "Filter by booking status"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results (default: 20)",
+            "default": 20
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-booking",
+      "description": "Get the details and current status of a specific booking. Requires a RENTAHUMAN_API_KEY.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "bookingId": {
+            "type": "string",
+            "description": "The booking ID to retrieve"
+          }
+        },
+        "required": [
+          "bookingId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

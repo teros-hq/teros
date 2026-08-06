@@ -9,6 +9,7 @@ import {
 import type React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { XStack, YStack } from 'tamagui';
+import { badges, colors, surface } from './mca/primitives/colors';
 
 // Toast types for different styling
 export type ToastType = 'info' | 'success' | 'warning' | 'error';
@@ -23,24 +24,24 @@ declare module '@tamagui/toast' {
 // Toast styling based on type
 const toastStyles: Record<ToastType, { bg: string; border: string; icon: React.ReactNode }> = {
   info: {
-    bg: 'rgba(6, 182, 212, 0.15)',
-    border: 'rgba(6, 182, 212, 0.3)',
-    icon: <Info size={18} color="#06B6D4" />,
+    bg: badges.dark.info.bg,
+    border: badges.dark.info.border,
+    icon: <Info size={18} color={colors.indigo} />,
   },
   success: {
-    bg: 'rgba(34, 197, 94, 0.15)',
-    border: 'rgba(34, 197, 94, 0.3)',
-    icon: <CheckCircle size={18} color="#22C55E" />,
+    bg: badges.dark.ok.bg,
+    border: badges.dark.ok.border,
+    icon: <CheckCircle size={18} color={colors.green} />,
   },
   warning: {
-    bg: 'rgba(245, 158, 11, 0.15)',
-    border: 'rgba(245, 158, 11, 0.3)',
-    icon: <AlertTriangle size={18} color="#F59E0B" />,
+    bg: badges.dark.warn.bg,
+    border: badges.dark.warn.border,
+    icon: <AlertTriangle size={18} color={colors.amber} />,
   },
   error: {
-    bg: 'rgba(239, 68, 68, 0.15)',
-    border: 'rgba(239, 68, 68, 0.3)',
-    icon: <AlertCircle size={18} color="#EF4444" />,
+    bg: badges.dark.err.bg,
+    border: badges.dark.err.border,
+    icon: <AlertCircle size={18} color={colors.red} />,
   },
 };
 
@@ -58,6 +59,7 @@ function CurrentToast() {
   return (
     <Toast
       key={toast.id}
+      testID={`toast-${type}`}
       duration={toast.duration}
       enterStyle={{ opacity: 0, scale: 0.95, y: -10 }}
       exitStyle={{ opacity: 0, scale: 0.95, y: -10 }}
@@ -77,12 +79,12 @@ function CurrentToast() {
         {styles.icon}
         <YStack flex={1}>
           {toast.title && (
-            <Toast.Title color="#E4E4E7" fontSize="$3" fontWeight="600">
+            <Toast.Title color={surface.dark.text} fontSize="$3" fontWeight="600">
               {toast.title}
             </Toast.Title>
           )}
           {toast.message && (
-            <Toast.Description color="#A1A1AA" fontSize="$2">
+            <Toast.Description color={surface.dark.text2} fontSize="$2">
               {toast.message}
             </Toast.Description>
           )}

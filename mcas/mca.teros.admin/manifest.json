@@ -2,10 +2,10 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.admin",
   "name": "Teros Admin",
-  "version": "2.0.0",
-  "description": "Administrative tools for managing Teros backend - restart, status, health checks",
+  "version": "3.0.0",
+  "description": "Full admin panel via chat — manage agents, workspaces, apps, access, usage, feature flags, and catalog browsing.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "system",
   "entrypoint": "./src/index.ts",
   "author": {
@@ -24,7 +24,7 @@
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["admin", "system", "restart", "management"],
+  "keywords": ["admin", "panel", "agents", "workspaces", "apps", "access", "usage", "feature-flags", "management"],
   "layers": {
     "tools": true,
     "events": false,
@@ -32,5 +32,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "3.0.0",
+      "date": "2026-05-19",
+      "notes": "Manage agents, workspaces, members and apps, control access and feature flags, and track usage and costs"
+    }
+  ]
 }

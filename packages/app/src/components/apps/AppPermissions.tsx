@@ -3,6 +3,11 @@
  *
  * Manages tool-level permissions for an app.
  * Allows setting each tool to: allow, ask, or forbid.
+ *
+ * Migrated to the Design System:
+ * - Uses `useColors()` for theme-adaptive surface/border tokens.
+ * - Uses `semanticColors` for permission accents (green, amber, red).
+ * - Uses Tamagui font tokens (`$body`, `$mono`).
  */
 
 import {
@@ -17,8 +22,15 @@ import {
 import type React from 'react';
 import { useCallback, useState } from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack, useThemeName } from 'tamagui';
 import { AppSpinner } from '../../components/ui';
+import {
+  badges,
+  colors as semanticColors,
+  surface,
+  type Theme,
+} from '../mca/primitives/colors';
+import { useColors } from '../mca/primitives/useColors';
 
 export type ToolPermission = 'allow' | 'ask' | 'forbid';
 
@@ -56,57 +68,43 @@ interface AppPermissionsProps {
   onSetAllPermissions?: (permission: ToolPermission) => void;
 }
 
-/**
- * Permission button configuration
- */
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function useAppTheme(): Theme {
+  const name = useThemeName();
+  return typeof name === 'string' && name.startsWith('light') ? 'light' : 'dark';
+}
+
+function getPermissionColors() {
+  return {
+    allow: semanticColors.green,
+    allowBg: 'rgba(34, 197, 94, 0.2)',
+    ask: semanticColors.amber,
+    askBg: 'rgba(245, 158, 11, 0.2)',
+    forbid: semanticColors.red,
+    forbidBg: 'rgba(239, 68, 68, 0.2)',
+  };
+}
+
+// ============================================================================
+// Permission Button
+// ============================================================================
+
 const permissionConfig: Record<
   ToolPermission,
   {
     icon: React.ComponentType<{ size?: number; color?: string }>;
     label: string;
     shortLabel: string;
-    bgColor: string;
-    bgColorActive: string;
-    borderColor: string;
-    textColor: string;
-    iconColor: string;
   }
 > = {
-  allow: {
-    icon: Check,
-    label: 'Permitir',
-    shortLabel: 'Permitir',
-    bgColor: 'rgba(16, 185, 129, 0.05)',
-    bgColorActive: 'rgba(16, 185, 129, 0.2)',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    textColor: '#10B981',
-    iconColor: '#10B981',
-  },
-  ask: {
-    icon: HelpCircle,
-    label: 'Preguntar',
-    shortLabel: 'Preguntar',
-    bgColor: 'rgba(245, 158, 11, 0.05)',
-    bgColorActive: 'rgba(245, 158, 11, 0.2)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    textColor: '#F59E0B',
-    iconColor: '#F59E0B',
-  },
-  forbid: {
-    icon: Ban,
-    label: 'Prohibir',
-    shortLabel: 'Prohibir',
-    bgColor: 'rgba(239, 68, 68, 0.05)',
-    bgColorActive: 'rgba(239, 68, 68, 0.2)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    textColor: '#EF4444',
-    iconColor: '#EF4444',
-  },
+  allow: { icon: Check, label: 'Permitir', shortLabel: 'Permitir' },
+  ask: { icon: HelpCircle, label: 'Preguntar', shortLabel: 'Preguntar' },
+  forbid: { icon: Ban, label: 'Prohibir', shortLabel: 'Prohibir' },
 };
 
-/**
- * Single permission toggle button
- */
 function PermissionButton({
   permission,
   isActive,
@@ -118,8 +116,15 @@ function PermissionButton({
   onPress: () => void;
   size?: 'small' | 'medium';
 }) {
+  const c = useColors();
+  const permColors = getPermissionColors();
   const config = permissionConfig[permission];
   const IconComponent = config.icon;
+
+  const activeColor =
+    permission === 'allow' ? permColors.allow : permission === 'ask' ? permColors.ask : permColors.forbid;
+  const activeBg =
+    permission === 'allow' ? permColors.allowBg : permission === 'ask' ? permColors.askBg : permColors.forbidBg;
 
   return (
     <TouchableOpacity
@@ -132,19 +137,17 @@ function PermissionButton({
         paddingHorizontal: size === 'small' ? 8 : 12,
         paddingVertical: size === 'small' ? 4 : 6,
         borderRadius: 6,
-        backgroundColor: isActive ? config.bgColorActive : config.bgColor,
+        backgroundColor: isActive ? activeBg : c.bgCard,
         borderWidth: 1,
-        borderColor: isActive ? config.borderColor : 'transparent',
+        borderColor: isActive ? activeColor : 'transparent',
       }}
     >
-      <IconComponent
-        size={size === 'small' ? 12 : 14}
-        color={isActive ? config.iconColor : '#71717A'}
-      />
+      <IconComponent size={size === 'small' ? 12 : 14} color={isActive ? activeColor : c.text3} />
       <Text
         fontSize={size === 'small' ? 11 : 12}
         fontWeight={isActive ? '600' : '400'}
-        color={isActive ? config.textColor : '#71717A'}
+        color={isActive ? activeColor : c.text3}
+        fontFamily="$body"
       >
         {config.shortLabel}
       </Text>
@@ -152,9 +155,10 @@ function PermissionButton({
   );
 }
 
-/**
- * Tool row with permission selector
- */
+// ============================================================================
+// Tool Row
+// ============================================================================
+
 function ToolPermissionRow({
   tool,
   onPermissionChange,
@@ -162,20 +166,22 @@ function ToolPermissionRow({
   tool: ToolWithPermission;
   onPermissionChange: (permission: ToolPermission) => void;
 }) {
+  const c = useColors();
+
   return (
     <XStack
       alignItems="center"
       justifyContent="space-between"
       paddingVertical={8}
       paddingHorizontal={12}
-      backgroundColor="rgba(0, 0, 0, 0.2)"
+      backgroundColor={c.bgInner}
       borderRadius={8}
       gap={8}
     >
       {/* Tool name */}
       <XStack alignItems="center" gap={8} flex={1}>
-        <Wrench size={14} color="#71717A" />
-        <Text fontSize={13} color="#E4E4E7" numberOfLines={1} style={{ flex: 1 }}>
+        <Wrench size={14} color={c.text3} />
+        <Text fontSize={13} color={c.text} numberOfLines={1} style={{ flex: 1 }} fontFamily="$body">
           {tool.name}
         </Text>
       </XStack>
@@ -195,42 +201,46 @@ function ToolPermissionRow({
   );
 }
 
-/**
- * Summary badge showing permission counts
- */
+// ============================================================================
+// Summary Badge
+// ============================================================================
+
 function PermissionsSummary({ summary }: { summary: AppPermissionsData['summary'] }) {
+  const c = useColors();
+  const permColors = getPermissionColors();
   const total = summary.allow + summary.ask + summary.forbid;
 
   return (
     <XStack gap={12} alignItems="center">
       <XStack alignItems="center" gap={4}>
-        <Check size={12} color="#10B981" />
-        <Text fontSize={12} color="#10B981">
+        <Check size={12} color={permColors.allow} />
+        <Text fontSize={12} color={permColors.allow} fontFamily="$mono">
           {summary.allow}
         </Text>
       </XStack>
       <XStack alignItems="center" gap={4}>
-        <HelpCircle size={12} color="#F59E0B" />
-        <Text fontSize={12} color="#F59E0B">
+        <HelpCircle size={12} color={permColors.ask} />
+        <Text fontSize={12} color={permColors.ask} fontFamily="$mono">
           {summary.ask}
         </Text>
       </XStack>
       <XStack alignItems="center" gap={4}>
-        <Ban size={12} color="#EF4444" />
-        <Text fontSize={12} color="#EF4444">
+        <Ban size={12} color={permColors.forbid} />
+        <Text fontSize={12} color={permColors.forbid} fontFamily="$mono">
           {summary.forbid}
         </Text>
       </XStack>
-      <Text fontSize={11} color="#71717A">
+      <Text fontSize={11} color={c.text3} fontFamily="$body">
         / {total} tools
       </Text>
     </XStack>
   );
 }
 
-/**
- * Main AppPermissions component
- */
+// ============================================================================
+// Main Component
+// ============================================================================
+
 export function AppPermissions({
   data,
   loading = false,
@@ -239,22 +249,25 @@ export function AppPermissions({
   onDefaultPermissionChange,
   onSetAllPermissions,
 }: AppPermissionsProps) {
+  const c = useColors();
   const [expanded, setExpanded] = useState(false);
 
   if (loading) {
     return (
       <View
         style={{
-          backgroundColor: 'rgba(24, 24, 27, 0.9)',
+          backgroundColor: c.bgCard,
           borderRadius: 12,
           padding: 16,
           alignItems: 'center',
           justifyContent: 'center',
           minHeight: 100,
+          borderWidth: 1,
+          borderColor: c.border,
         }}
       >
         <AppSpinner size="sm" variant="default" />
-        <Text color="#71717A" marginTop={8} fontSize={13}>
+        <Text color={c.text3} marginTop={8} fontSize={13} fontFamily="$body">
           Cargando permisos...
         </Text>
       </View>
@@ -263,10 +276,10 @@ export function AppPermissions({
 
   return (
     <YStack
-      backgroundColor="rgba(24, 24, 27, 0.9)"
+      backgroundColor={c.bgCard}
       borderRadius={12}
       borderWidth={1}
-      borderColor="rgba(39, 39, 42, 0.5)"
+      borderColor={c.border}
       overflow="hidden"
     >
       {/* Header */}
@@ -286,15 +299,15 @@ export function AppPermissions({
               width: 36,
               height: 36,
               borderRadius: 8,
-              backgroundColor: 'rgba(6, 182, 212, 0.1)',
+              backgroundColor: surface[useAppTheme()].bgInner,
               justifyContent: 'center',
               alignItems: 'center',
             }}
           >
-            <Shield size={18} color="#06B6D4" />
+            <Shield size={18} color={semanticColors.indigo} />
           </View>
           <YStack>
-            <Text fontSize={14} fontWeight="600" color="#FAFAFA">
+            <Text fontSize={14} fontWeight="600" color={c.text} fontFamily="$body">
               Permisos de Tools
             </Text>
             <PermissionsSummary summary={data.summary} />
@@ -304,19 +317,19 @@ export function AppPermissions({
         <XStack alignItems="center" gap={8}>
           {saving && <AppSpinner size="sm" variant="default" />}
           {expanded ? (
-            <ChevronUp size={18} color="#71717A" />
+            <ChevronUp size={18} color={c.text3} />
           ) : (
-            <ChevronDown size={18} color="#71717A" />
+            <ChevronDown size={18} color={c.text3} />
           )}
         </XStack>
       </TouchableOpacity>
 
       {/* Expanded content */}
       {expanded && (
-        <YStack borderTopWidth={1} borderTopColor="rgba(39, 39, 42, 0.5)">
+        <YStack borderTopWidth={1} borderTopColor={c.border}>
           {/* Quick actions */}
-          <XStack padding={12} gap={8} backgroundColor="rgba(0, 0, 0, 0.2)" justifyContent="center">
-            <Text fontSize={12} color="#71717A" marginRight={8}>
+          <XStack padding={12} gap={8} backgroundColor={c.bgInner} justifyContent="center">
+            <Text fontSize={12} color={c.text3} marginRight={8} fontFamily="$body">
               Aplicar a todos:
             </Text>
             {(['allow', 'ask', 'forbid'] as ToolPermission[]).map((perm) => (
@@ -336,13 +349,13 @@ export function AppPermissions({
             alignItems="center"
             justifyContent="space-between"
             borderBottomWidth={1}
-            borderBottomColor="rgba(39, 39, 42, 0.3)"
+            borderBottomColor={c.border}
           >
             <YStack>
-              <Text fontSize={13} fontWeight="500" color="#E4E4E7">
+              <Text fontSize={13} fontWeight="500" color={c.text} fontFamily="$body">
                 Permiso por defecto
               </Text>
-              <Text fontSize={11} color="#71717A">
+              <Text fontSize={11} color={c.text3} fontFamily="$body">
                 Para tools nuevas no configuradas
               </Text>
             </YStack>
@@ -376,14 +389,14 @@ export function AppPermissions({
           {/* Footer info */}
           <XStack
             padding={12}
-            backgroundColor="rgba(0, 0, 0, 0.2)"
+            backgroundColor={c.bgInner}
             borderTopWidth={1}
-            borderTopColor="rgba(39, 39, 42, 0.3)"
+            borderTopColor={c.border}
           >
-            <Text fontSize={11} color="#52525B">
-              💡 <Text color="#71717A">Permitir</Text> = ejecutar sin preguntar ·
-              <Text color="#71717A"> Ask</Text> = request confirmation ·
-              <Text color="#71717A"> Prohibir</Text> = bloquear siempre
+            <Text fontSize={11} color={c.text3} fontFamily="$body">
+              💡 <Text color={c.text2} fontFamily="$body">Permitir</Text> = ejecutar sin preguntar ·
+              <Text color={c.text2} fontFamily="$body"> Ask</Text> = request confirmation ·
+              <Text color={c.text2} fontFamily="$body"> Prohibir</Text> = bloquear siempre
             </Text>
           </XStack>
         </YStack>

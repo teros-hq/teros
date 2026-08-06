@@ -6,6 +6,7 @@
 
 import type React from 'react';
 
+import { ToolCallCard } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
 
@@ -17,8 +18,11 @@ import {
   DeleteBlockRenderer,
   GetBlockChildrenRenderer,
   GetBlockRenderer,
+  GetBlocksRenderer,
   UpdateBlockRenderer,
 } from './notion/BlocksRenderer';
+
+import { HealthCheckRenderer as NotionHealthCheckRenderer } from './notion/HealthCheckRenderer';
 
 import {
   CreateDatabaseRenderer,
@@ -28,23 +32,30 @@ import {
 } from './notion/DatabaseRenderer';
 
 import {
+  CreateDatabaseItemRenderer,
   CreatePageRenderer,
   DuplicatePageRenderer,
-  GetPageContentRenderer,
+  GetPageMarkdownRenderer,
   GetPageRenderer,
   SearchRenderer,
   SetPageCoverRenderer,
   SetPageIconRenderer,
+  UpdateDatabaseItemRenderer,
+  UpdatePageMarkdownRenderer,
   UpdatePageRenderer,
 } from './notion/PagesRenderer';
 
 import {
   CreateCommentRenderer,
+  DeleteCommentRenderer,
   GetMeRenderer,
   GetUserRenderer,
   ListCommentsRenderer,
   ListUsersRenderer,
+  UpdateCommentRenderer,
 } from './notion/UsersCommentsRenderer';
+
+import { UploadFileRenderer } from './notion/UploadFileRenderer';
 
 import { Badge, getShortToolName, HeaderRow } from './notion/shared';
 
@@ -58,9 +69,10 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 
   // Pages
   'get-page': GetPageRenderer,
-  'get-page-content': GetPageContentRenderer,
+  'get-page-markdown': GetPageMarkdownRenderer,
   'create-page': CreatePageRenderer,
   'update-page': UpdatePageRenderer,
+  'update-page-markdown': UpdatePageMarkdownRenderer,
   'duplicate-page': DuplicatePageRenderer,
   'set-page-icon': SetPageIconRenderer,
   'set-page-cover': SetPageCoverRenderer,
@@ -70,10 +82,13 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'query-database': QueryDatabaseRenderer,
   'create-database': CreateDatabaseRenderer,
   'update-database-schema': UpdateDatabaseSchemaRenderer,
+  'create-database-item': CreateDatabaseItemRenderer,
+  'update-database-item': UpdateDatabaseItemRenderer,
 
   // Blocks
   'get-block': GetBlockRenderer,
   'get-block-children': GetBlockChildrenRenderer,
+  'get-blocks': GetBlocksRenderer,
   'append-blocks': AppendBlocksRenderer,
   'update-block': UpdateBlockRenderer,
   'delete-block': DeleteBlockRenderer,
@@ -88,30 +103,45 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   // Comments
   'list-comments': ListCommentsRenderer,
   'create-comment': CreateCommentRenderer,
+  'update-comment': UpdateCommentRenderer,
+  'delete-comment': DeleteCommentRenderer,
+
+  // File uploads
+  'upload-file': UploadFileRenderer,
+
+  // Leading dash: tool name is `notion_-health-check`; `getShortToolName` splits on `_` so the suffix carries the dash.
+  '-health-check': NotionHealthCheckRenderer,
 };
 
 // ============================================================================
 // Fallback Renderer
 // ============================================================================
 
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
 
-  let badge: React.ReactNode = null;
-  if (status === 'completed') {
-    badge = <Badge text="done" variant="success" />;
-  } else if (status === 'failed') {
-    badge = <Badge text="failed" variant="error" />;
+  // With 100% coverage this branch should never fire in production.
+  if (__DEV__) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[NotionRenderer] missing dedicated renderer for tool: ${toolName}. ` +
+        'Add a sub-renderer and register it in RENDERERS.',
+    );
   }
 
+  const badge =
+    status === 'completed' ? (
+      <Badge text="done (fallback)" variant="warning" />
+    ) : status === 'failed' ? (
+      <Badge text="failed" variant="error" />
+    ) : null;
+
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
-      description={shortName.replace(/-/g, ' ')}
-      duration={duration}
+      description={`${shortName.replace(/-/g, ' ')} (no renderer)`}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
+      iconUri={appIcon}
     />
   );
 }

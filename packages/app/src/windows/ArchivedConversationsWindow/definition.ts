@@ -7,8 +7,11 @@
 import { Archive } from '@tamagui/lucide-icons';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { ArchivedConversationsWindowContent } from './ArchivedConversationsWindowContent';
+import i18n from '../../i18n';
 
 export interface ArchivedConversationsWindowProps {
+  /** Workspace context */
+  workspaceId?: string;
   /** Optional search query to pre-fill */
   searchQuery?: string;
 }
@@ -24,10 +27,9 @@ export const archivedConversationsWindowDefinition: WindowTypeDefinition<Archive
     defaultSize: { width: 320, height: 450 },
     minSize: { width: 250, height: 300 },
 
-    singleton: true,
 
-    getTitle: () => 'Archivadas',
+    getTitle: () => i18n.t("windows.archivedConversations"),
 
-    serialize: (props) => ({ searchQuery: props.searchQuery }),
-    deserialize: (data) => ({ searchQuery: data.searchQuery }),
+    serialize: (props) => ({ workspaceId: props.workspaceId, searchQuery: props.searchQuery }),
+    deserialize: (data) => ({ workspaceId: data.workspaceId, searchQuery: data.searchQuery }),
   };

@@ -5,6 +5,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const storeAttachment: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Download and store an email attachment to the local filesystem.',
   parameters: {
     type: 'object',

@@ -1,7 +1,7 @@
 /**
  * API Tests - Feature-based API testing
  *
- * Tests the WebSocket API following the BDD feature scenarios in docs/features/.
+ * Tests the WebSocket API following the BDD feature scenarios
  * These tests validate the API contract from an external perspective.
  */
 

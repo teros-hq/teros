@@ -1,111 +1,92 @@
 /**
- * Linear Renderer - Workflow States
+ * Linear Renderer — Workflow states
  *
- * Handles: linear-list-workflow-states
+ * Handles: list-workflow-states.
  */
 
-import { Circle } from '@tamagui/lucide-icons';
-import type React from 'react';
-import { useState } from 'react';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import {
+  Empty,
+  EntityRow,
+  ErrorBlock,
+  IconChip,
+  parseOutput,
+} from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
-  Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
-  HeaderRow,
   type LinearWorkflowState,
-  parseOutput,
+  LinearToolShell,
+  shortId,
+  unwrapList,
+  useLinearColors,
+  useScrollStyle,
+  workflowStateChipProps,
 } from './shared';
 
-// ============================================================================
-// Content Blocks
-// ============================================================================
-
-function WorkflowStateListBlock({ states }: { states: LinearWorkflowState[] }) {
-  return (
-    <YStack backgroundColor={colors.bgInner} borderRadius={5} paddingVertical={4}>
-      {states.map((state) => (
-        <XStack
-          key={state.id}
-          alignItems="center"
-          gap={8}
-          paddingVertical={4}
-          paddingHorizontal={8}
-        >
-          <Circle
-            size={10}
-            color={state.color || colors.statusBacklog}
-            fill={state.color || colors.statusBacklog}
-          />
-          <Text flex={1} color={colors.primary} fontSize={10}>
-            {state.name}
-          </Text>
-          {state.type && <Badge text={state.type} variant="gray" />}
-        </XStack>
-      ))}
-    </YStack>
-  );
-}
-
-// ============================================================================
-// Renderers
-// ============================================================================
-
 export function ListWorkflowStatesRenderer({
+  toolName,
   input,
   status,
   output,
   error,
   duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-  const parsed = output
-    ? parseOutput<{ count?: number; states?: LinearWorkflowState[] } | LinearWorkflowState[]>(
-        output,
-      )
-    : null;
-
-  // Handle both { states: [...] } and direct array formats
-  const states =
-    parsed && typeof parsed === 'object' && 'states' in parsed
-      ? (parsed as { states: LinearWorkflowState[] }).states
-      : Array.isArray(parsed)
-        ? parsed
-        : null;
-  const isStateArray = Array.isArray(states) && states.length > 0 && 'type' in states[0];
-
-  let description = 'List workflow states';
-  if (input?.teamId) description += ` (team)`;
-
-  let badge: React.ReactNode = null;
-  if (status === 'completed' && isStateArray) {
-    badge = <Badge text={`${states!.length} states`} variant="gray" />;
-  } else if (status === 'failed') {
-    badge = <Badge text="failed" variant="error" />;
-  }
-
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
-
-  if (!expanded) return <HeaderRow {...headerProps} />;
+  const c = useLinearColors();
+  const scrollStyle = useScrollStyle(260);
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const { items: statesRaw, nextCursor, total } = unwrapList<LinearWorkflowState>(parsed, 'states');
+  const states = [...statesRaw].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+  const teamId = typeof input?.teamId === 'string' ? input.teamId : undefined;
+  const description = teamId ? `Workflow states (team ${shortId(teamId)})` : undefined;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
-        {isStateArray && <WorkflowStateListBlock states={states!} />}
-        {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+    <LinearToolShell
+      toolName={toolName}
+      status={status}
+      description={description}
+      defaultExpanded={false}
+    >
+      {error && <ErrorBlock error={error} />}
+      {!error && status === 'completed' && (
+        <>
+          {states.length === 0 ? (
+            <Empty message="No workflow states" />
+          ) : (
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
+              <YStack>
+                {states.map((s) => {
+                  const chip = workflowStateChipProps(s);
+                  return (
+                    <EntityRow
+                      key={s.id}
+                      leading={chip ? <IconChip {...chip} /> : null}
+                      title={s.name}
+                      subtitle={s.type}
+                      meta={
+                        typeof s.position === 'number' ? (
+                          <Text color={c.text3} fontSize={9} fontFamily="$mono">
+                            pos {s.position.toFixed(1)}
+                          </Text>
+                        ) : undefined
+                      }
+                    />
+                  );
+                })}
+              </YStack>
+            </ScrollView>
+          )}
+          {(nextCursor || typeof total === 'number') && (
+            <XStack justifyContent="flex-end" paddingTop={2}>
+              <Text color={c.text3} fontSize={9} fontFamily="$mono">
+                {typeof total === 'number' ? `${total} shown` : ''}
+                {nextCursor ? ` · more · cursor ${shortId(nextCursor, 12)}` : ''}
+              </Text>
+            </XStack>
+          )}
+        </>
+      )}
+    </LinearToolShell>
   );
 }

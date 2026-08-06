@@ -128,6 +128,7 @@ server.tool('-health-check', {
 // =============================================================================
 
 server.tool('railway-get-user', {
+  annotations: { readOnlyHint: true },
   description: 'Get current Railway user info including available workspaces.',
   parameters: {
     type: 'object',
@@ -156,6 +157,7 @@ server.tool('railway-get-user', {
 });
 
 server.tool('railway-list-workspaces', {
+  annotations: { readOnlyHint: true },
   description: 'List all Railway workspaces available to the current user.',
   parameters: {
     type: 'object',
@@ -182,6 +184,7 @@ server.tool('railway-list-workspaces', {
 // =============================================================================
 
 server.tool('railway-list-projects', {
+  annotations: { readOnlyHint: true },
   description: 'List all Railway projects in the connected account.',
   parameters: {
     type: 'object',
@@ -201,6 +204,7 @@ server.tool('railway-list-projects', {
 });
 
 server.tool('railway-get-project', {
+  annotations: { readOnlyHint: true },
   description:
     'Get detailed information about a Railway project including services and environments.',
   parameters: {
@@ -250,6 +254,7 @@ server.tool('railway-get-project', {
 });
 
 server.tool('railway-create-project', {
+  annotations: { readOnlyHint: false },
   description: 'Create a new Railway project. Requires a workspaceId - use railway-list-workspaces to get available workspaces.',
   parameters: {
     type: 'object',
@@ -291,6 +296,7 @@ server.tool('railway-create-project', {
 });
 
 server.tool('railway-delete-project', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a Railway project. This action is irreversible!',
   parameters: {
     type: 'object',
@@ -326,6 +332,7 @@ server.tool('railway-delete-project', {
 // =============================================================================
 
 server.tool('railway-list-environments', {
+  annotations: { readOnlyHint: true },
   description: 'List all environments in a Railway project.',
   parameters: {
     type: 'object',
@@ -359,6 +366,7 @@ server.tool('railway-list-environments', {
 });
 
 server.tool('railway-create-environment', {
+  annotations: { readOnlyHint: false },
   description:
     'Create a new environment in a Railway project (e.g., staging, production).',
   parameters: {
@@ -395,6 +403,7 @@ server.tool('railway-create-environment', {
 // =============================================================================
 
 server.tool('railway-list-services', {
+  annotations: { readOnlyHint: true },
   description: 'List all services in a Railway project.',
   parameters: {
     type: 'object',
@@ -428,6 +437,7 @@ server.tool('railway-list-services', {
 });
 
 server.tool('railway-create-service', {
+  annotations: { readOnlyHint: false },
   description: 'Create a new service in a Railway project.',
   parameters: {
     type: 'object',
@@ -459,6 +469,7 @@ server.tool('railway-create-service', {
 });
 
 server.tool('railway-delete-service', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a service from a Railway project.',
   parameters: {
     type: 'object',
@@ -488,6 +499,7 @@ server.tool('railway-delete-service', {
 // =============================================================================
 
 server.tool('railway-list-variables', {
+  annotations: { readOnlyHint: true },
   description: 'List environment variables for a service.',
   parameters: {
     type: 'object',
@@ -548,6 +560,7 @@ server.tool('railway-list-variables', {
 });
 
 server.tool('railway-set-variables', {
+  annotations: { readOnlyHint: false },
   description: 'Set environment variables for a service.',
   parameters: {
     type: 'object',
@@ -596,6 +609,7 @@ server.tool('railway-set-variables', {
 // =============================================================================
 
 server.tool('railway-list-deployments', {
+  annotations: { readOnlyHint: false },
   description: 'List recent deployments for a service.',
   parameters: {
     type: 'object',
@@ -645,6 +659,7 @@ server.tool('railway-list-deployments', {
 });
 
 server.tool('railway-get-deployment', {
+  annotations: { readOnlyHint: false },
   description: 'Get the status of a specific deployment.',
   parameters: {
     type: 'object',
@@ -676,6 +691,7 @@ server.tool('railway-get-deployment', {
 });
 
 server.tool('railway-redeploy', {
+  annotations: { readOnlyHint: false },
   description: 'Trigger a redeploy of an existing deployment.',
   parameters: {
     type: 'object',
@@ -705,6 +721,7 @@ server.tool('railway-redeploy', {
 // =============================================================================
 
 server.tool('railway-list-domains', {
+  annotations: { readOnlyHint: true },
   description: 'List domains for a service.',
   parameters: {
     type: 'object',
@@ -749,6 +766,7 @@ server.tool('railway-list-domains', {
 });
 
 server.tool('railway-create-domain', {
+  annotations: { readOnlyHint: false },
   description:
     'Create a Railway-generated domain for a service (e.g., myapp.up.railway.app).',
   parameters: {
@@ -787,6 +805,7 @@ server.tool('railway-create-domain', {
 // =============================================================================
 
 server.tool('railway-connect-repo', {
+  annotations: { readOnlyHint: false },
   description:
     'Connect a GitHub repository to a Railway service. Works with both public and private repos (if GitHub is connected in your Railway account). Automatically triggers a deployment.',
   parameters: {
@@ -829,6 +848,7 @@ server.tool('railway-connect-repo', {
 });
 
 server.tool('railway-deploy-public-repo', {
+  annotations: { readOnlyHint: false },
   description:
     'Deploy a public GitHub repository to Railway. Creates a new service from the repo. Only works with PUBLIC repositories. For private repos, use railway-connect-repo instead.',
   parameters: {
@@ -890,6 +910,7 @@ server.tool('railway-deploy-public-repo', {
 // =============================================================================
 
 server.tool('railway-create-volume', {
+  annotations: { readOnlyHint: false },
   description:
     'Create a persistent volume for a service (useful for databases).',
   parameters: {
@@ -944,6 +965,7 @@ server.tool('railway-create-volume', {
 // =============================================================================
 
 server.tool('railway-get-build-logs', {
+  annotations: { readOnlyHint: true },
   description:
     'Get build logs for a deployment. Shows what happened during the build/compile phase.',
   parameters: {
@@ -996,6 +1018,7 @@ server.tool('railway-get-build-logs', {
 });
 
 server.tool('railway-get-deploy-logs', {
+  annotations: { readOnlyHint: false },
   description:
     'Get runtime/deployment logs for a deployment. Shows application output, errors, and startup logs.',
   parameters: {

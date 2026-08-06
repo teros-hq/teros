@@ -5,6 +5,7 @@ import { searchConversations } from '@teros/shared/memory/conversation';
 
 export const memorySearchConversations: HttpToolConfig = {
   description: 'Search through conversation history using semantic search',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {

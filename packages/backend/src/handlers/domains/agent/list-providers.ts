@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
+import { canAccessAgent } from '../../../auth/workspace-access'
 import type { UserProviderRecord } from '../../../services/provider-service'
 
 interface ListProvidersData {
@@ -12,12 +13,15 @@ interface ListProvidersData {
 }
 
 export function createListProvidersHandler(db: Db) {
-  return async function listProviders(_ctx: WsHandlerContext, rawData: unknown) {
+  return async function listProviders(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as ListProvidersData
     const { agentId } = data
 
     if (!agentId) {
       throw new HandlerError('MISSING_AGENT_ID', 'agentId is required')
+    }
+    if (!(await canAccessAgent(db, ctx.userId, agentId))) {
+      throw new HandlerError('FORBIDDEN', 'No access to this agent')
     }
 
     const agent = await db.collection('agents').findOne({ agentId })

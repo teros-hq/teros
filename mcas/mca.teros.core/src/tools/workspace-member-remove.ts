@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceMemberRemove: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Remove a member from a workspace.',
   parameters: {
     type: 'object',

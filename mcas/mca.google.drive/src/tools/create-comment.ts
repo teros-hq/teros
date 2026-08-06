@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const createComment: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a comment on a file.',
   parameters: {
     type: 'object',

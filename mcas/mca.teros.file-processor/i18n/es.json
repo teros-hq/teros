@@ -1,0 +1,77 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las claves de la API y la conectividad."
+    },
+    "file-to-markdown": {
+      "name": "file-to-markdown",
+      "description": "Convierte un archivo a texto/Markdown (síncrono). PDF y Word .docx se extraen localmente; los PDF escaneados usan OCR con LLM si hay una clave del sistema configurada. Usa file-to-markdown-async para trabajos largos.",
+      "params": {
+        "inputPath": "Ruta del archivo a convertir",
+        "outputPath": "Ruta de salida opcional (por defecto: ruta de entrada con extensión .md)",
+        "chunkSize": "Páginas por fragmento para PDFs grandes (por defecto: 10). Solo se usa para PDFs >3MB",
+        "maxRetries": "Reintentos máximos por fragmento si el procesamiento falla (por defecto: 3)",
+        "timeout": "Tiempo de espera en milisegundos por fragmento (por defecto: 120000 para fragmentos, 180000 para procesamiento directo)"
+      }
+    },
+    "file-to-markdown-async": {
+      "name": "file-to-markdown-async",
+      "description": "Convierte un archivo a Markdown de forma asíncrona (no bloqueante). Soporta PDF y Word .docx. Devuelve un ID de trabajo inmediatamente. Usa get-job-status para comprobar el progreso.",
+      "params": {
+        "inputPath": "Ruta del archivo a convertir",
+        "outputPath": "Ruta de salida opcional (por defecto: ruta de entrada con extensión .md)",
+        "chunkSize": "Páginas por fragmento para PDFs grandes (por defecto: 10)",
+        "maxRetries": "Reintentos máximos por fragmento si el procesamiento falla (por defecto: 3)",
+        "timeout": "Tiempo de espera en milisegundos por fragmento (por defecto: 120000)"
+      }
+    },
+    "get-job-status": {
+      "name": "get-job-status",
+      "description": "Obtiene el estado de un trabajo asíncrono. Devuelve el progreso actual, el estado y los resultados cuando se completa.",
+      "params": {
+        "jobId": "El ID de trabajo devuelto por file-to-markdown-async"
+      }
+    },
+    "list-jobs": {
+      "name": "list-jobs",
+      "description": "Lista todos los trabajos con filtros opcionales. Útil para comprobar trabajos activos o finalizados recientemente.",
+      "params": {
+        "status": "Filtrar por estado: queued, processing, completed, failed, cancelled",
+        "limit": "Número máximo de trabajos a devolver (por defecto: 20)"
+      }
+    },
+    "cancel-job": {
+      "name": "cancel-job",
+      "description": "Cancela un trabajo en cola o en procesamiento. No se pueden cancelar trabajos completados o fallidos.",
+      "params": {
+        "jobId": "El ID del trabajo a cancelar"
+      }
+    },
+    "audio-to-text": {
+      "name": "audio-to-text",
+      "description": "Transcribe archivos de audio a texto usando la API Whisper de OpenAI. Soporta .m4a, .mp3, .wav, .ogg, .webm, .opus y otros formatos de audio.",
+      "params": {
+        "inputPath": "Ruta del archivo de audio a transcribir",
+        "language": "Opcional: Código de idioma (ej. 'es' para español, 'en' para inglés). Se detecta automáticamente si no se proporciona."
+      }
+    },
+    "svg-to-png": {
+      "name": "svg-to-png",
+      "description": "Convierte archivos SVG a PNG con restricciones opcionales de ancho/alto",
+      "params": {
+        "inputPath": "Ruta del archivo SVG a convertir",
+        "outputPath": "Ruta de salida opcional (por defecto: ruta de entrada con extensión .png)",
+        "width": "Opcional: Ancho objetivo en píxeles",
+        "height": "Opcional: Alto objetivo en píxeles"
+      }
+    }
+  },
+  "name": "File Processor",
+  "description": "Convierte archivos a Markdown, transcribe audio, convierte Markdown a PDF",
+  "changelog": [
+    {
+      "notes": "Versión inicial — convierte documentos a Markdown, transcribe audio a texto y transforma SVGs en imágenes PNG"
+    }
+  ]
+}

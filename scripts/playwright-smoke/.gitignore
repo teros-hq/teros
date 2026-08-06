@@ -1,0 +1,5 @@
+# Auth storageState carries session tokens — never commit.
+.auth/
+# Playwright artifacts.
+.report/
+test-results/

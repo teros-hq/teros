@@ -1,10 +1,14 @@
 {
-  "name": "@teros/mca-admin-filesystem",
-  "version": "1.0.0",
+  "name": "mca.teros.admin.filesystem",
+  "version": "2.0.0",
   "type": "module",
-  "main": "index.ts",
+  "main": "src/index.ts",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "glob": "^11.0.0"
+    "@teros/mca-sdk": "0.1.0",
+    "mca.teros.filesystem": "file:../mca.teros.filesystem"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "tsx": "^4.19.2"
   }
 }

@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "-health-check",
-      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.\n\nIMPORTANT — Cooperative stop protocol:\nAt the start of every turn, check if the current task has stopRequested=true by calling get-my-task.\nIf stopRequested is true on your active task:\n1. Finish only the current atomic step (do not start new work).\n2. Add a progress note explaining where you left off.\n3. Call block-my-task with a reason explaining where you stopped.\n4. Do NOT continue with further tool calls after completing steps 1-3.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -12,84 +12,181 @@
     },
     {
       "name": "get-my-tasks",
-      "description": "Get all tasks assigned to this agent across all projects in the workspace.",
+      "description": "List tasks assigned to this agent across all projects in the workspace. Returns: { agentId, tasks: [{ taskId, title, columnName, columnSlug, priority, projectName, running, stopRequested }], nextCursor? }. Paginated: default 50, max 200. Use get-my-task for the active task in the current conversation.",
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "workspaceId": {
             "type": "string",
             "description": "Workspace ID (optional, defaults to current workspace)"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Return only tasks that have ALL these tags (optional). Useful for a cycle/release scope (e.g. [\"cycle:sesion-20260412\"])."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task documents"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor"
           }
         }
       }
     },
     {
-      "name": "move-my-task",
-      "description": "Move one of your assigned tasks to a different column on the board. You can only move tasks assigned to you.",
+      "name": "get-my-task",
+      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Custom subset of fields"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        }
+      }
+    },
+    {
+      "name": "complete-my-task",
+      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "string",
-            "description": "The task ID to move"
+            "description": "Task ID"
           },
-          "columnId": {
-            "type": "string",
-            "description": "Target column ID"
-          },
-          "position": {
-            "type": "number",
-            "description": "Position within the column (optional, defaults to end)"
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
         "required": [
-          "taskId",
-          "columnId"
+          "taskId"
         ]
       }
     },
     {
-      "name": "update-my-task-status",
-      "description": "Update the semantic status of one of your assigned tasks. You can only update status of tasks assigned to you. Status is decoupled from column position. When set to \"review\" or \"done\", the task is automatically moved to the matching column.",
+      "name": "block-my-task",
+      "description": "Mark your assigned task blocked. Moves it to Blocked + adds a progress note with the reason. Clears running. Use for dependencies, missing info, or external blockers. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: \"blocked\" } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "string",
-            "description": "The task ID to update"
+            "description": "Task ID"
           },
-          "status": {
+          "reason": {
             "type": "string",
-            "description": "New status for the task",
-            "enum": [
-              "idle",
-              "assigned",
-              "working",
-              "blocked",
-              "review",
-              "done"
-            ]
+            "description": "Why the task is blocked (added as a progress note)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
         "required": [
           "taskId",
-          "status"
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "cancel-my-task",
+      "description": "Cancel your assigned task. Archives in-place (does not move column) + adds a progress note with the reason. Clears running. Use when the task is no longer needed, is a duplicate, or cannot be completed. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "description": "Task ID"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the task is cancelled (added as a progress note)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
+          }
+        },
+        "required": [
+          "taskId",
+          "reason"
         ]
       }
     },
     {
       "name": "add-progress-note",
-      "description": "Add a progress note to one of your assigned tasks. Use this to post updates about what you are doing on a task. Progress notes are visible in the task detail and on the board. You can also use this to suggest new tasks or improvements by prefixing with \"PROPUESTA: \".",
+      "description": "Add a progress note to one of your assigned tasks. Notes are visible on the task detail and the board. Prefix with \"PROPUESTA: \" to suggest new tasks to the manager. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "string",
-            "description": "The task ID to add a note to"
+            "description": "Task ID"
           },
           "text": {
             "type": "string",
-            "description": "The progress note text"
+            "description": "Progress note text"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return full task document"
           }
         },
         "required": [

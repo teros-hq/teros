@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. 백엔드에 대한 WebSocket 연결을 확인합니다."
+    },
+    "mca-status": {
+      "name": "mca-status",
+      "description": "모든 실행 중인 MCA 프로세스의 상태를 가져옵니다. 각 MCA에 대한 appId, 상태, 도구 수, 유휴 시간 및 재시작 수를 표시합니다."
+    },
+    "mca-kill": {
+      "name": "mca-kill",
+      "description": "appId로 특정 MCA 프로세스를 종료합니다. 프로세스는 다음 사용 시 재시작됩니다.",
+      "params": {
+        "appId": "종료할 MCA의 appId (예: 'app:mca-teros-bash-system')"
+      }
+    },
+    "mca-cleanup": {
+      "name": "mca-cleanup",
+      "description": "비활성 MCA 프로세스의 정리를 트리거합니다. 너무 오랫동안 유휴 상태인 MCA를 종료합니다."
+    },
+    "apps-list": {
+      "name": "apps-list",
+      "description": "구성과 함께 설치된 모든 앱(MCA 인스턴스)을 나열합니다."
+    },
+    "agent-access-list": {
+      "name": "agent-access-list",
+      "description": "모든 에이전트 앱 접근 권한을 나열합니다. 어떤 에이전트가 어떤 앱에 접근할 수 있는지 보여줍니다."
+    },
+    "catalog-list": {
+      "name": "catalog-list",
+      "description": "카탈로그에 있는 모든 MCA를 나열합니다(설치할 수 있는 사용 가능한 MCA)."
+    }
+  },
+  "name": "MCA 관리자",
+  "description": "MCA 프로세스를 모니터링하고 관리합니다. 실행 중인 MCA를 보고, 프로세스를 종료하고, 비활성 상태를 정리하며, 앱 접근을 관리합니다.",
+  "changelog": [
+    {
+      "notes": "실행 중인 앱을 모니터링하고, 유휴 프로세스를 중지하거나 정리하며, 설치된 앱을 나열하고, 카탈로그를 탐색하며, 에이전트 접근을 검토합니다."
+    }
+  ]
+}

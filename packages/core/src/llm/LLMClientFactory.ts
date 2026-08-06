@@ -7,6 +7,7 @@
  * - 'anthropic-oauth': Uses OAuth tokens from Claude Max subscription
  * - 'openai': OpenAI API
  * - 'openrouter': OpenRouter API (multi-provider routing)
+ * - 'google': Google AI (Gemini models)
  * - 'zhipu': Z.ai / ZhipuAI (GLM models)
  * - 'zhipu-coding': Z.ai coding API
  * - 'ollama': Local Ollama models
@@ -27,17 +28,20 @@ import {
   loadOAuthTokens,
 } from './ClaudeOAuth';
 import type { ILLMClient } from './ILLMClient';
+import { GeminiLLMAdapter } from './GeminiLLMAdapter';
 import { OllamaLLMAdapter } from './OllamaLLMAdapter';
+import { OpenAICompatibleLLMAdapter } from './OpenAICompatibleLLMAdapter';
 import { OpenAILLMAdapter } from './OpenAILLMAdapter';
 import { OpenAICodexOAuthAdapter } from './OpenAICodexOAuthAdapter';
 import type { CodexOAuthTokens } from './CodexOAuth';
 import { OpenRouterLLMAdapter } from './OpenRouterLLMAdapter';
 import { ZhipuLLMAdapter } from './ZhipuLLMAdapter';
+import { MockLLMAdapter, RecordingLLMAdapter } from '../testing/LLMRecorder';
 
 const MODULE = "LLMClientFactory"
 
 export interface LLMConfig {
-  provider: 'anthropic' | 'anthropic-oauth' | 'openai' | 'openai-codex-oauth' | 'openrouter' | 'zhipu' | 'zhipu-coding' | 'ollama';
+  provider: 'anthropic' | 'anthropic-oauth' | 'openai' | 'openai-codex-oauth' | 'openrouter' | 'google' | 'zhipu' | 'zhipu-coding' | 'ollama' | 'ollama-cloud' | 'openai-compatible' | 'minimax' | 'teros' | 'cloudflare' | 'fireworks' | 'together';
   anthropic?: {
     apiKey?: string // Optional for 'anthropic' - can use env or Claude Code CLI
     model: string // Model is required
@@ -65,6 +69,11 @@ export interface LLMConfig {
     siteUrl?: string
     appName?: string
   }
+  google?: {
+    apiKey: string // Required - Google AI Studio API key
+    model: string // Model is required (e.g., 'gemini-2.0-flash', 'gemini-2.5-pro-preview-06-05')
+    maxTokens?: number
+  }
   zhipu?: {
     apiKey?: string // Optional - can use env ZHIPU_API_KEY
     model: string // Model is required (e.g., 'glm-4.6', 'glm-4', 'glm-4v')
@@ -75,6 +84,48 @@ export interface LLMConfig {
   ollama?: {
     baseUrl: string // Ollama server URL (e.g., 'http://midgar:11434' or 'http://localhost:11434')
     model: string // Model name (e.g., 'qwen2.5:7b-instruct', 'deepseek-r1:latest')
+    maxTokens?: number
+  }
+  'ollama-cloud'?: {
+    apiKey: string // API key from https://ollama.com/settings/api-keys
+    model: string // Cloud model name (e.g., 'qwen3-coder:480b-cloud', 'deepseek-v3.1:671b-cloud')
+    maxTokens?: number
+  }
+  'openai-compatible'?: {
+    baseUrl: string // Custom OpenAI-compatible endpoint URL
+    model: string // Model name
+    apiKey?: string // Optional Bearer token
+    customHeaders?: Record<string, string> // Optional custom headers (e.g., CF Access)
+    maxTokens?: number
+  }
+  minimax?: {
+    apiKey: string // MiniMax Token Plan API key
+    model: string // Model name (e.g., 'MiniMax-M2.7')
+    maxTokens?: number
+  }
+  teros?: {
+    apiKey: string // upstream API key (system secret: fireworks or together)
+    model: string // upstream model string (e.g., 'accounts/fireworks/models/kimi-k2p6')
+    maxTokens?: number
+    /** Upstream base URL — set by resolveTerosUpstream (TER-617/F3). Defaults to Fireworks. */
+    baseUrl?: string
+    /** Real upstream label (`fireworks` | `together`) for telemetry. Defaults to `fireworks`. */
+    actualProvider?: string
+  }
+  cloudflare?: {
+    apiKey: string // Cloudflare API token (user secret)
+    accountId: string // Cloudflare account ID (user config)
+    model: string // Model name (e.g., '@cf/moonshotai/kimi-k2.5')
+    maxTokens?: number
+  }
+  fireworks?: {
+    apiKey: string // Fireworks AI API key (user secret)
+    model: string // Model name (e.g., 'accounts/fireworks/models/kimi-k2p6')
+    maxTokens?: number
+  }
+  together?: {
+    apiKey: string // Together AI API key (user secret)
+    model: string // Model name (e.g., 'meta-llama/Llama-3.3-70B-Instruct-Turbo')
     maxTokens?: number
   }
 }
@@ -115,6 +166,23 @@ async function resolveOpenRouterApiKey(config: LLMConfig["openrouter"]): Promise
 }
 
 /**
+ * Resolve Google AI API key
+ *
+ * Only accepts explicit apiKey in config (from user provider).
+ * No environment variable fallback.
+ */
+async function resolveGeminiApiKey(config: LLMConfig["google"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Google AI API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Google AI API key available.\n" + "Configure a provider in the UI with your API key.",
+  )
+}
+
+/**
  * Resolve Zhipu API key
  *
  * Only accepts explicit apiKey in config (from user provider).
@@ -128,6 +196,91 @@ async function resolveZhipuApiKey(config: LLMConfig["zhipu"]): Promise<string> {
 
   throw new Error(
     "No Zhipu API key available.\n" + "Configure a provider in the UI with your API key.",
+  )
+}
+
+/**
+ * Resolve MiniMax API key
+ *
+ * Only accepts explicit apiKey in config (from user provider).
+ * No environment variable fallback.
+ */
+async function resolveMiniMaxApiKey(config: LLMConfig["minimax"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit MiniMax API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No MiniMax API key available.\n" + "Configure a provider in the UI with your Token Plan API key.",
+  )
+}
+
+/**
+ * Resolve Teros API key
+ *
+ * Only accepts explicit apiKey in config (from user provider or system secret).
+ * No environment variable fallback.
+ */
+async function resolveTerosApiKey(config: LLMConfig["teros"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Teros API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Teros API key available.\n" + "Teros system provider is not configured (missing fireworks secret).",
+  )
+}
+
+/**
+ * Resolve Cloudflare API key
+ *
+ * Only accepts explicit apiKey in config (from user provider).
+ * No environment variable fallback.
+ */
+async function resolveCloudflareApiKey(config: LLMConfig["cloudflare"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Cloudflare API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Cloudflare API key available.\n" + "Configure a provider in the UI with your Cloudflare API token.",
+  )
+}
+
+/**
+ * Resolve Fireworks AI API key
+ *
+ * Only accepts explicit apiKey in config (from user provider).
+ * No environment variable fallback.
+ */
+async function resolveFireworksApiKey(config: LLMConfig["fireworks"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Fireworks AI API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Fireworks AI API key available.\n" + "Configure a provider in the UI with your Fireworks API key.",
+  )
+}
+
+/**
+ * Resolve Together AI API key
+ *
+ * Only accepts explicit apiKey in config (from user provider).
+ * No environment variable fallback.
+ */
+async function resolveTogetherApiKey(config: LLMConfig["together"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Together AI API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Together AI API key available.\n" + "Configure a provider in the UI with your Together API key.",
   )
 }
 
@@ -198,9 +351,37 @@ async function resolveAnthropicApiKey(config: LLMConfig["anthropic"]): Promise<s
  */
 export class LLMClientFactory {
   /**
-   * Create an LLM client based on configuration
+   * Create an LLM client based on configuration.
+   *
+   * Determinismo en tests E2E (sin tocar a los callers ni al provider real):
+   * - TEROS_LLM_REPLAY=<recording.json> → MockLLMAdapter que reproduce respuestas grabadas
+   *   (no llama a NINGÚN provider → sin API key, sin coste, determinista). TER-553.
+   * - TEROS_LLM_RECORD=<recording.json> → envuelve el adapter real para grabar las llamadas
+   *   (one-time, en local con la key real) y generar el recording que CI reproduce.
    */
   static async create(config: LLMConfig): Promise<ILLMClient> {
+    // Record tiene prioridad sobre replay: al RE-grabar en local el override añade
+    // TEROS_LLM_RECORD sobre un compose que ya trae TEROS_LLM_REPLAY → debe grabar, no reproducir
+    // (e intentar reproducir un recording recién borrado petaría).
+    const recordPath = process.env.TEROS_LLM_RECORD
+    if (recordPath) {
+      log.info(MODULE, "LLM record mode", { recording: recordPath, provider: config.provider })
+      return new RecordingLLMAdapter(await LLMClientFactory.createReal(config), recordPath)
+    }
+
+    const replayPath = process.env.TEROS_LLM_REPLAY
+    if (replayPath) {
+      log.info(MODULE, "LLM replay mode (deterministic)", { recording: replayPath })
+      return new MockLLMAdapter(replayPath)
+    }
+
+    return await LLMClientFactory.createReal(config)
+  }
+
+  /**
+   * Create the real provider-backed LLM client based on configuration
+   */
+  private static async createReal(config: LLMConfig): Promise<ILLMClient> {
     log.info(MODULE, "Creating LLM client", { provider: config.provider })
 
     switch (config.provider) {
@@ -301,6 +482,24 @@ export class LLMClientFactory {
         })
       }
 
+      case "google": {
+        if (!config.google?.model) {
+          throw new Error("Google AI model is required")
+        }
+
+        const geminiApiKey = await resolveGeminiApiKey(config.google)
+
+        log.info(MODULE, "✅ Using Google Gemini provider", {
+          model: config.google.model,
+        })
+
+        return new GeminiLLMAdapter({
+          apiKey: geminiApiKey,
+          model: config.google.model,
+          defaultMaxTokens: config.google.maxTokens,
+        })
+      }
+
       case "zhipu": {
         if (!config.zhipu?.model) {
           throw new Error("Zhipu model is required")
@@ -351,6 +550,162 @@ export class LLMClientFactory {
           baseUrl: config.ollama.baseUrl,
           model: config.ollama.model,
           defaultMaxTokens: config.ollama.maxTokens,
+        })
+      }
+
+      case "ollama-cloud": {
+        const cloudConfig = config['ollama-cloud']
+        if (!cloudConfig?.model) {
+          throw new Error("Ollama Cloud model is required")
+        }
+        if (!cloudConfig?.apiKey) {
+          throw new Error(
+            "Ollama Cloud API key is required.\n" +
+              "Get your API key at: https://ollama.com/settings/api-keys",
+          )
+        }
+
+        log.info(MODULE, "✅ Using Ollama Cloud provider", {
+          model: cloudConfig.model,
+        })
+
+        // Ollama Cloud uses the same OpenAI-compatible adapter as local Ollama,
+        // but with the cloud base URL and a real API key.
+        return new OllamaLLMAdapter({
+          baseUrl: 'https://ollama.com',
+          model: cloudConfig.model,
+          apiKey: cloudConfig.apiKey,
+          defaultMaxTokens: cloudConfig.maxTokens,
+        })
+      }
+
+      case 'openai-compatible': {
+        if (!config['openai-compatible']?.baseUrl) {
+          throw new Error('openai-compatible: baseUrl is required')
+        }
+        if (!config['openai-compatible']?.model) {
+          throw new Error('openai-compatible: model is required')
+        }
+
+        log.info(MODULE, `Creating OpenAI-compatible client`, { baseUrl: config['openai-compatible'].baseUrl })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl: config['openai-compatible'].baseUrl,
+          model: config['openai-compatible'].model,
+          apiKey: config['openai-compatible'].apiKey,
+          customHeaders: config['openai-compatible'].customHeaders,
+          defaultMaxTokens: config['openai-compatible'].maxTokens,
+        })
+      }
+
+      case 'minimax': {
+        if (!config.minimax?.model) {
+          throw new Error("MiniMax model is required")
+        }
+
+        const minimaxApiKey = await resolveMiniMaxApiKey(config.minimax)
+
+        log.info(MODULE, "✅ Using MiniMax provider (Anthropic-compatible)", {
+          model: config.minimax.model,
+        })
+
+        return new AnthropicLLMAdapter({
+          apiKey: minimaxApiKey,
+          model: config.minimax.model,
+          defaultMaxTokens: config.minimax.maxTokens,
+          baseURL: 'https://api.minimax.io/anthropic',
+          providerName: 'MiniMax',
+        })
+      }
+
+      case 'teros': {
+        if (!config.teros?.model) {
+          throw new Error("Teros model is required")
+        }
+
+        const terosApiKey = await resolveTerosApiKey(config.teros)
+        // baseUrl + actualProvider come from resolveTerosUpstream (TER-617/F3);
+        // default to Fireworks for callers that don't set them (back-compat).
+        const baseUrl = config.teros.baseUrl ?? 'https://api.fireworks.ai/inference/v1'
+        const actualProvider = config.teros.actualProvider ?? 'fireworks'
+
+        log.info(MODULE, "✅ Using Teros provider", {
+          model: config.teros.model,
+          actualProvider,
+        })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl,
+          apiKey: terosApiKey,
+          model: config.teros.model,
+          defaultMaxTokens: config.teros.maxTokens,
+          actualProvider,
+        })
+      }
+
+      case 'cloudflare': {
+        if (!config.cloudflare?.model) {
+          throw new Error("Cloudflare model is required")
+        }
+        if (!config.cloudflare?.accountId) {
+          throw new Error("Cloudflare accountId is required")
+        }
+
+        const cfApiKey = await resolveCloudflareApiKey(config.cloudflare)
+        const baseUrl = `https://api.cloudflare.com/client/v4/accounts/${config.cloudflare.accountId}/ai/v1`
+
+        log.info(MODULE, "✅ Using Cloudflare provider (user-owned Workers AI)", {
+          model: config.cloudflare.model,
+        })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl,
+          apiKey: cfApiKey,
+          model: config.cloudflare.model,
+          defaultMaxTokens: config.cloudflare.maxTokens,
+          actualProvider: 'cloudflare',
+        })
+      }
+
+      case 'fireworks': {
+        if (!config.fireworks?.model) {
+          throw new Error("Fireworks model is required")
+        }
+
+        const fireworksApiKey = await resolveFireworksApiKey(config.fireworks)
+        const baseUrl = 'https://api.fireworks.ai/inference/v1'
+
+        log.info(MODULE, "✅ Using Fireworks AI provider (Zero Data Retention)", {
+          model: config.fireworks.model,
+        })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl,
+          apiKey: fireworksApiKey,
+          model: config.fireworks.model,
+          defaultMaxTokens: config.fireworks.maxTokens,
+          actualProvider: 'fireworks',
+        })
+      }
+
+      case 'together': {
+        if (!config.together?.model) {
+          throw new Error("Together model is required")
+        }
+
+        const togetherApiKey = await resolveTogetherApiKey(config.together)
+        const baseUrl = 'https://api.together.ai/v1'
+
+        log.info(MODULE, "✅ Using Together AI provider", {
+          model: config.together.model,
+        })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl,
+          apiKey: togetherApiKey,
+          model: config.together.model,
+          defaultMaxTokens: config.together.maxTokens,
+          actualProvider: 'together',
         })
       }
 

@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "Verificación interna. Comprueba la conectividad con WAHA y lista las sesiones activas."
+    },
+    "session-status": {
+      "name": "session-status",
+      "description": "Obtiene el estado de una sesión de WhatsApp. El estado puede ser: WORKING, SCAN_QR_CODE, STARTING, STOPPED, FAILED. SCAN_QR_CODE significa que la sesión está esperando ser vinculada — usa request-pairing-code (la autenticación siempre se hace con un código de emparejamiento, nunca con QR).",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "start-session": {
+      "name": "start-session",
+      "description": "Inicia una sesión de WhatsApp. La crea si no existe. Si la sesión está en estado FAILED, se detendrá y reiniciará automáticamente. Después de iniciar, usa request-pairing-code para vincular el dispositivo — la autenticación siempre se hace con un código de emparejamiento (QR no es compatible).",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "stop-session": {
+      "name": "stop-session",
+      "description": "Detiene una sesión de WhatsApp sin eliminarla. La sesión puede reiniciarse más tarde con start-session.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "request-pairing-code": {
+      "name": "request-pairing-code",
+      "description": "Solicita un código de emparejamiento numérico para vincular una sesión de WhatsApp. Esta es la ÚNICA forma compatible de autenticar/vincular una sesión en Teros. La sesión debe estar en estado SCAN_QR_CODE — el estado de WAHA de \"esperando ser vinculada\" (si no, se detendrá y reiniciará automáticamente). Devuelve un código de 8 dígitos como \"XXXX-YYYY\" para introducir en WhatsApp → Dispositivos vinculados → Vincular con número de teléfono.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "phoneNumber": "Número de teléfono con código de país, sin + ni espacios (ej. \"34612345678\")"
+      }
+    },
+    "send-text": {
+      "name": "send-text",
+      "description": "Envía un mensaje de texto de WhatsApp a un número de teléfono o grupo.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "Destinatario en formato: 34612345678@c.us (individual) o 120363XXXXXX@g.us (grupo)",
+        "text": "Texto del mensaje a enviar"
+      }
+    },
+    "send-image": {
+      "name": "send-image",
+      "description": "Envía una imagen a un chat de WhatsApp desde una URL pública.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat del destinatario (ej. 34612345678@c.us)",
+        "url": "URL HTTPS pública de la imagen a enviar",
+        "caption": "Subtítulo opcional para la imagen",
+        "mimetype": "Tipo MIME opcional de la imagen (ej. \"image/jpeg\", \"image/png\")",
+        "filename": "Nombre de archivo opcional para la imagen"
+      }
+    },
+    "send-document": {
+      "name": "send-document",
+      "description": "Envía un documento o archivo (PDF, DOCX, XLSX, etc.) a un chat de WhatsApp desde una URL pública o una ruta local /workspace/.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat del destinatario (ej. 34612345678@c.us para individuales, 120363XXXXXX@g.us para grupos)",
+        "url": "URL HTTPS pública del archivo a enviar, o una ruta local que empiece por /workspace/ (ej. \"/workspace/report.pdf\")",
+        "filename": "Nombre del archivo mostrado al destinatario (ej. \"report.pdf\")",
+        "mimetype": "Tipo MIME del archivo (ej. \"application/pdf\", \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\"). Por defecto: \"application/octet-stream\".",
+        "caption": "Texto de subtítulo opcional mostrado debajo del archivo"
+      }
+    },
+    "get-messages": {
+      "name": "get-messages",
+      "description": "Obtiene los mensajes recientes de un chat de WhatsApp.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat (ej. 34612345678@c.us)",
+        "limit": "Máximo de mensajes a devolver (por defecto: 20, máx: 100)",
+        "downloadMedia": "Descargar archivos multimedia (por defecto: false)",
+        "offset": "Número de mensajes a omitir (para paginación)",
+        "filter.timestamp.lte": "Filtrar mensajes con timestamp <= este valor (timestamp Unix)",
+        "filter.timestamp.gte": "Filtrar mensajes con timestamp >= este valor (timestamp Unix)",
+        "filter.fromMe": "Filtrar mensajes por dirección: true = enviados por mí, false = recibidos",
+        "sortBy": "Campo por el que ordenar (ej. \"timestamp\")",
+        "sortOrder": "Orden de clasificación: \"asc\" o \"desc\""
+      }
+    },
+    "get-chats": {
+      "name": "get-chats",
+      "description": "Lista todos los chats (conversaciones) de WhatsApp en una sesión.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "limit": "Máximo de chats a devolver (por defecto: 20)",
+        "offset": "Número de chats a omitir para paginación (por defecto: 0)"
+      }
+    },
+    "get-contacts": {
+      "name": "get-contacts",
+      "description": "Obtiene todos los contactos de una sesión de WhatsApp.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "limit": "Máximo de contactos a devolver (por defecto: 50, máx: 200)",
+        "offset": "Número de contactos a omitir para paginación (por defecto: 0)"
+      }
+    },
+    "check-number": {
+      "name": "check-number",
+      "description": "Comprueba si un número de teléfono tiene WhatsApp y obtiene su ID de chat.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "phone": "Número de teléfono con código de país (ej. 34612345678)"
+      }
+    },
+    "get-labels": {
+      "name": "get-labels",
+      "description": "Lista todas las etiquetas disponibles en una sesión de WhatsApp Business. Las etiquetas se usan para organizar chats. Solo disponible en cuentas de WhatsApp Business.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "get-chat-labels": {
+      "name": "get-chat-labels",
+      "description": "Obtiene todas las etiquetas asignadas a un chat de WhatsApp específico. Devuelve un array de objetos etiqueta con id, name, color y colorHex. Solo disponible en cuentas de WhatsApp Business.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat (ej. 34612345678@c.us para individuales, 120363XXXXXX@g.us para grupos)"
+      }
+    },
+    "put-chat-labels": {
+      "name": "put-chat-labels",
+      "description": "Establece (reemplaza) las etiquetas asignadas a un chat de WhatsApp. Debes proporcionar la lista COMPLETA de etiquetas a asignar — cualquier etiqueta no incluida será eliminada. Pasa un array vacío para eliminar todas las etiquetas. Solo disponible en cuentas de WhatsApp Business.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat (ej. 34612345678@c.us para individuales, 120363XXXXXX@g.us para grupos)",
+        "labels": "Lista completa de etiquetas a asignar al chat. Cada elemento debe tener un campo \"id\" (ej. [{ \"id\": \"1\" }, { \"id\": \"2\" }]). Pasa un array vacío [] para eliminar todas las etiquetas."
+      }
+    },
+    "search-chats": {
+      "name": "search-chats",
+      "description": "Busca chats de WhatsApp por nombre o número de teléfono. Filtra en el cliente sobre la lista completa de chats.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "query": "Texto a buscar en el nombre del chat o ID del chat (sin distinción de mayúsculas)",
+        "limit": "Máximo de chats a obtener antes de filtrar (por defecto: 200)"
+      }
+    },
+    "download-media": {
+      "name": "download-media",
+      "description": "Descarga multimedia (imagen, audio, vídeo, documento) de un mensaje de WhatsApp. Obtiene el mensaje por ID para conseguir la URL del medio, luego descarga el archivo y lo guarda en la ruta de salida especificada. Requiere que el mensaje tenga hasMedia: true.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "messageId": "ID del mensaje (ej. \"true_34612345678@c.us_AAAAAAAAAAAAA\")",
+        "chatId": "ID del chat donde se recibió el mensaje (ej. \"34612345678@c.us\"). Usa \"all\" para GOWS/NOWEB si el chatId es desconocido.",
+        "outputPath": "Ruta local donde se guardará el archivo (ej. \"/workspace/archivo.pdf\"). /workspace/ es un volumen compartido accesible por todos los agentes."
+      }
+    },
+    "reaction": {
+      "name": "reaction",
+      "description": "Envía o elimina una reacción (emoji) a un mensaje de WhatsApp.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "messageId": "ID del mensaje al que reaccionar",
+        "reaction": "Emoji con el que reaccionar (ej. \"👍\"). Pasa una cadena vacía \"\" para eliminar una reacción."
+      }
+    },
+    "read-messages": {
+      "name": "read-messages",
+      "description": "Marca los mensajes de un chat de WhatsApp como leídos. Si no se proporcionan IDs de mensaje, marca todos los mensajes del chat como leídos.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat (ej. 34612345678@c.us para individuales, 120363XXXXXX@g.us para grupos)",
+        "messages": "Lista opcional de IDs de mensaje a marcar como leídos. Si se omite, todos los mensajes del chat se marcan como leídos.",
+        "days": "Número opcional de días hacia atrás para marcar mensajes como leídos."
+      }
+    },
+    "mark-unread": {
+      "name": "mark-unread",
+      "description": "Marca un chat de WhatsApp como no leído (muestra el indicador de punto azul).",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "chatId": "ID del chat (ej. 34612345678@c.us para individuales, 120363XXXXXX@g.us para grupos)"
+      }
+    },
+    "get-profile": {
+      "name": "get-profile",
+      "description": "Obtiene el perfil de la cuenta de WhatsApp actual (nombre, URL de foto, texto de estado/Acerca de, etc.).",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "set-profile-name": {
+      "name": "set-profile-name",
+      "description": "Cambia el nombre para mostrar del perfil de WhatsApp actual.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "name": "Nuevo nombre para mostrar a establecer"
+      }
+    },
+    "set-profile-status": {
+      "name": "set-profile-status",
+      "description": "Cambia el texto de estado \"Acerca de\" del perfil de WhatsApp actual.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "status": "Nuevo texto de estado/Acerca de a establecer"
+      }
+    },
+    "set-profile-picture": {
+      "name": "set-profile-picture",
+      "description": "Establece la foto de perfil de la cuenta de WhatsApp actual desde una URL pública de imagen.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "url": "URL HTTPS pública de la imagen para usar como foto de perfil"
+      }
+    },
+    "delete-profile-picture": {
+      "name": "delete-profile-picture",
+      "description": "Elimina la foto de perfil de la cuenta de WhatsApp actual.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")"
+      }
+    },
+    "get-contact-profile-picture": {
+      "name": "get-contact-profile-picture",
+      "description": "Obtiene la URL de la foto de perfil de un contacto de WhatsApp.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "contactId": "ID del chat del contacto (ej. 34612345678@c.us)",
+        "refresh": "Forzar una actualización de la imagen en caché (opcional)"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "Busca contactos por nombre o número de teléfono. Devuelve coincidencias ordenadas por interacción más reciente primero (top 5), luego el resto de coincidencias hasta el límite.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "query": "Término de búsqueda para coincidir con nombre del contacto, pushName o número de teléfono (ej. \"antonio\" o \"346123\")",
+        "limit": "Máximo de resultados a devolver (por defecto: 20)"
+      }
+    },
+    "get-unread-chats": {
+      "name": "get-unread-chats",
+      "description": "Devuelve chats que tienen mensajes sin leer, ordenados por número de no leídos (descendente). Soporta paginación.",
+      "params": {
+        "session": "Nombre de la sesión (por defecto: \"default\")",
+        "limit": "Máximo de chats a devolver por página (por defecto: 20)",
+        "offset": "Número de chats a omitir para paginación (por defecto: 0)"
+      }
+    }
+  },
+  "name": "WhatsApp",
+  "description": "Envía y recibe mensajes de WhatsApp vía WAHA (WhatsApp HTTP API). Gestiona sesiones, envía texto/multimedia y maneja mensajes entrantes. La vinculación de la cuenta siempre se hace con un código de emparejamiento numérico (request-pairing-code) — la autenticación por QR no es compatible.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — enviar y leer mensajes, compartir imágenes y archivos, gestionar chats y contactos, y reaccionar con emoji"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const getUser: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get the authenticated ClickUp user information.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {

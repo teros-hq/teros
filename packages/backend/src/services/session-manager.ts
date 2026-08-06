@@ -6,6 +6,7 @@
 import { generateSessionId } from '@teros/core';
 import type { UserId } from '@teros/shared';
 import type { WebSocket } from 'ws';
+import type { PubSubService } from './pubsub-service';
 
 export interface Session {
   sessionId: string;
@@ -13,16 +14,20 @@ export interface Session {
   ws: WebSocket;
   connectedAt: Date;
   lastActivityAt: Date;
-  subscribedChannels: Set<string>;
-  subscribedBoards: Set<string>;
 }
-
-export type ChannelMessageListener = (message: string) => void;
 
 export class SessionManager {
   private sessions: Map<string, Session> = new Map();
   private userSessions: Map<UserId, Set<string>> = new Map(); // userId -> sessionIds
-  private channelListeners: Map<string, Set<ChannelMessageListener>> = new Map(); // channelId -> listeners
+  private pubSubService?: PubSubService;
+
+  /**
+   * Wire in PubSubService so session registration/unregistration delegates to it.
+   * Called from index.ts after both services are created.
+   */
+  setPubSubService(pubSubService: PubSubService): void {
+    this.pubSubService = pubSubService;
+  }
 
   /**
    * Create a new session for authenticated user
@@ -36,8 +41,6 @@ export class SessionManager {
       ws,
       connectedAt: new Date(),
       lastActivityAt: new Date(),
-      subscribedChannels: new Set(),
-      subscribedBoards: new Set(),
     };
 
     this.sessions.set(sessionId, session);
@@ -47,6 +50,9 @@ export class SessionManager {
       this.userSessions.set(userId, new Set());
     }
     this.userSessions.get(userId)!.add(sessionId);
+
+    // Register with PubSubService so it can look up the WebSocket for broadcasts
+    this.pubSubService?.registerSession(sessionId, ws);
 
     console.log(`✅ Session created: ${sessionId} for user ${userId}`);
 
@@ -93,128 +99,11 @@ export class SessionManager {
     }
 
     this.sessions.delete(sessionId);
+
+    // Unregister from PubSubService to clean up all topic subscriptions
+    this.pubSubService?.unregisterSession(sessionId);
+
     console.log(`🗑️  Session removed: ${sessionId}`);
-  }
-
-  /**
-   * Subscribe session to channel
-   */
-  subscribeToChannel(sessionId: string, channelId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.subscribedChannels.add(channelId);
-      console.log(
-        `📺 [SessionManager] Session ${sessionId} subscribed to channel ${channelId} (user: ${session.userId}, total subscriptions: ${session.subscribedChannels.size})`,
-      );
-    } else {
-      console.warn(`⚠️ [SessionManager] Cannot subscribe: session ${sessionId} not found`);
-    }
-  }
-
-  /**
-   * Unsubscribe session from channel
-   */
-  unsubscribeFromChannel(sessionId: string, channelId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.subscribedChannels.delete(channelId);
-    }
-  }
-
-  /**
-   * Get all sessions subscribed to a channel
-   */
-  getChannelSubscribers(channelId: string): Session[] {
-    const subscribers = Array.from(this.sessions.values()).filter((session) =>
-      session.subscribedChannels.has(channelId),
-    );
-
-    // Log when broadcasting to help debug subscription issues
-    if (subscribers.length === 0) {
-      console.warn(
-        `⚠️ [SessionManager] No subscribers for channel ${channelId}. Total sessions: ${this.sessions.size}`,
-      );
-      // Log all sessions and their subscriptions for debugging
-      for (const session of this.sessions.values()) {
-        console.log(
-          `   - Session ${session.sessionId} (user: ${session.userId}): subscribed to [${Array.from(session.subscribedChannels).join(', ')}]`,
-        );
-      }
-    } else {
-      console.log(
-        `📡 [SessionManager] Broadcasting to ${subscribers.length} subscriber(s) for channel ${channelId}`,
-      );
-    }
-
-    return subscribers;
-  }
-
-  // ==========================================================================
-  // BOARD SUBSCRIPTIONS
-  // ==========================================================================
-
-  /**
-   * Subscribe session to a board (for real-time task updates)
-   */
-  subscribeToBoard(sessionId: string, boardId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.subscribedBoards.add(boardId);
-    }
-  }
-
-  /**
-   * Unsubscribe session from a board
-   */
-  unsubscribeFromBoard(sessionId: string, boardId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.subscribedBoards.delete(boardId);
-    }
-  }
-
-  /**
-   * Get all sessions subscribed to a board
-   */
-  getBoardSubscribers(boardId: string): Session[] {
-    return Array.from(this.sessions.values()).filter((session) =>
-      session.subscribedBoards.has(boardId),
-    );
-  }
-
-  // ==========================================================================
-  // CHANNEL LISTENERS (virtual subscribers — used by voice handler)
-  // ==========================================================================
-
-  /**
-   * Register a callback listener for a channel. Called by broadcastToChannel
-   * alongside regular WebSocket subscribers. Used by voice handler to receive
-   * agent responses without a real WebSocket session.
-   */
-  addChannelListener(channelId: string, listener: ChannelMessageListener): void {
-    if (!this.channelListeners.has(channelId)) {
-      this.channelListeners.set(channelId, new Set());
-    }
-    this.channelListeners.get(channelId)!.add(listener);
-    console.log(`🎧 [SessionManager] Channel listener added for ${channelId}`);
-  }
-
-  /**
-   * Remove a previously registered channel listener.
-   */
-  removeChannelListener(channelId: string, listener: ChannelMessageListener): void {
-    this.channelListeners.get(channelId)?.delete(listener);
-    if (this.channelListeners.get(channelId)?.size === 0) {
-      this.channelListeners.delete(channelId);
-    }
-    console.log(`🎧 [SessionManager] Channel listener removed for ${channelId}`);
-  }
-
-  /**
-   * Get all virtual listeners for a channel.
-   */
-  getChannelListeners(channelId: string): ChannelMessageListener[] {
-    return Array.from(this.channelListeners.get(channelId) ?? []);
   }
 
   /**
@@ -242,16 +131,4 @@ export class SessionManager {
     return Array.from(this.sessions.values());
   }
 
-  /**
-   * Get all unique channel IDs with active subscriptions
-   */
-  getAllActiveChannelIds(): string[] {
-    const channelIds = new Set<string>();
-    for (const session of this.sessions.values()) {
-      for (const channelId of session.subscribedChannels) {
-        channelIds.add(channelId);
-      }
-    }
-    return Array.from(channelIds);
-  }
 }

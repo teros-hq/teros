@@ -16,9 +16,19 @@
 
 import OpenAI from "openai"
 import { LLMError } from "../errors/AgentError"
+import { extractReasoningDelta } from "./reasoningDelta"
 import { createLogger, log } from "../logger"
-import type { MessageWithParts } from "../session/types"
+import type { FilePart, MessageWithParts, ToolStateCompleted } from "../session/types"
+import {
+  collectEmbeddedImages,
+  DocumentExtractor,
+  formatDocumentsAsText,
+} from "./DocumentExtractor"
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from "./ILLMClient"
+import { isContextLengthExceeded } from "./context-length-error"
+import { ImagePipeline, type ProcessedImage } from "./ImagePipeline"
+import { populateRateLimitContext } from "./rate-limit-context"
+import { uncachedInputTokens } from "./usage-normalize"
 
 export interface OpenAIConfig {
   apiKey: string
@@ -42,6 +52,8 @@ export class OpenAILLMAdapter implements ILLMClient {
   private defaultModel: string
   private defaultMaxTokens: number
   private logger = createLogger("OpenAILLM")
+  private imagePipeline = new ImagePipeline()
+  private documentExtractor = new DocumentExtractor()
 
   constructor(config: OpenAIConfig) {
     if (!config.model) {
@@ -67,7 +79,7 @@ export class OpenAILLMAdapter implements ILLMClient {
       options
 
     // Convert messages to OpenAI format
-    const openaiMessages = this.convertMessages(messages, systemPrompt)
+    const openaiMessages = await this.convertMessages(messages, systemPrompt)
 
     // Convert tools to OpenAI format
     const openaiTools = tools?.map((tool) => ({
@@ -103,6 +115,11 @@ export class OpenAILLMAdapter implements ILLMClient {
         messages: openaiMessages,
         tools: openaiTools?.length ? openaiTools : undefined,
         stream: true,
+        // Without this, OpenAI streaming omits the final usage chunk, so
+        // `chunk.usage` never arrives and the turn records 0 tokens / $0 / no
+        // cache for direct-OpenAI (BYOK). Same class as the OpenAI-compatible
+        // fix (63e1f031); this adapter had the identical gap.
+        stream_options: { include_usage: true },
       }
 
       // Add the appropriate token parameter
@@ -122,9 +139,22 @@ export class OpenAILLMAdapter implements ILLMClient {
       let finishReason: string | null = null
       let totalInputTokens = 0
       let totalOutputTokens = 0
+      let cachedReadTokens = 0
 
       // Process stream events
       for await (const chunk of stream) {
+        // Usage arrives in the FINAL chunk, which per the OpenAI streaming spec
+        // has an EMPTY `choices` array (every other chunk carries `usage:
+        // null`). Read it BEFORE the choice guard — otherwise `if (!choice)
+        // continue` skips the usage chunk and the turn records 0 tokens.
+        if (chunk.usage) {
+          totalInputTokens = chunk.usage.prompt_tokens || 0
+          totalOutputTokens = chunk.usage.completion_tokens || 0
+          // OpenAI auto-caches long prompts and reports the hit here (the
+          // registry marks openai `auto`); read-if-present, honest 0 otherwise.
+          cachedReadTokens = chunk.usage.prompt_tokens_details?.cached_tokens || 0
+        }
+
         const choice = chunk.choices[0]
         if (!choice) continue
 
@@ -133,6 +163,13 @@ export class OpenAILLMAdapter implements ILLMClient {
         // Handle text content
         if (delta.content) {
           await callbacks?.onText?.(delta.content)
+        }
+
+        // Reasoning stream → onThinking so the turn's stall watchdog counts a
+        // silent reasoning block as progress, not a frozen socket (TER-650).
+        const reasoningChunk = extractReasoningDelta(delta)
+        if (reasoningChunk) {
+          await callbacks?.onThinking?.(reasoningChunk)
         }
 
         // Handle tool calls (streamed incrementally)
@@ -159,18 +196,15 @@ export class OpenAILLMAdapter implements ILLMClient {
             if (toolCallDelta.function?.arguments) {
               toolCall.arguments += toolCallDelta.function.arguments
             }
+            // Heartbeat: onToolCall only fires once the stream ends, so this is
+            // the only progress signal while large tool args stream (TER-650).
+            await callbacks?.onToolInputDelta?.(toolCallDelta.function?.arguments ?? "")
           }
         }
 
         // Capture finish reason
         if (choice.finish_reason) {
           finishReason = choice.finish_reason
-        }
-
-        // Capture usage (usually in the last chunk)
-        if (chunk.usage) {
-          totalInputTokens = chunk.usage.prompt_tokens
-          totalOutputTokens = chunk.usage.completion_tokens
         }
       }
 
@@ -210,8 +244,11 @@ export class OpenAILLMAdapter implements ILLMClient {
       }
 
       const usage = {
-        inputTokens: totalInputTokens,
+        // `prompt_tokens` includes cached_tokens (OpenAI spec) — normalize to
+        // the canonical non-cached shape so cost isn't double-charged (A2.1).
+        inputTokens: uncachedInputTokens(totalInputTokens, cachedReadTokens),
         outputTokens: totalOutputTokens,
+        ...(cachedReadTokens > 0 ? { cacheReadInputTokens: cachedReadTokens } : {}),
       }
 
       log.info("OpenAILLM", "Response complete", {
@@ -265,10 +302,10 @@ export class OpenAILLMAdapter implements ILLMClient {
    * - { role: 'system' | 'user' | 'assistant' | 'tool', content: string | [...] }
    * - Tool calls in assistant messages, tool results as separate 'tool' role messages
    */
-  private convertMessages(
+  private async convertMessages(
     messages: MessageWithParts[],
     systemPrompt?: string,
-  ): OpenAI.ChatCompletionMessageParam[] {
+  ): Promise<OpenAI.ChatCompletionMessageParam[]> {
     const openaiMessages: OpenAI.ChatCompletionMessageParam[] = []
 
     // Add system prompt if provided
@@ -285,7 +322,67 @@ export class OpenAILLMAdapter implements ILLMClient {
       // Collect text content
       const textParts: string[] = []
       const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = []
-      const toolResults: { tool_call_id: string; content: string }[] = []
+      // Tool results may have image attachments - track them for post-processing
+      const toolResults: {
+        tool_call_id: string
+        content: string
+        imageAttachments?: FilePart[]
+      }[] = []
+
+      // Collect image file parts for user messages and process them
+      const imageParts = msg.parts.filter(
+        (p): p is FilePart => p.type === "file" && p.mime?.startsWith("image/") && role === "user",
+      )
+      let processedImages: Map<string, ProcessedImage> = new Map()
+      if (imageParts.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+        try {
+          processedImages = await this.imagePipeline.processImages(imageParts, "openai")
+        } catch (error: any) {
+          log.error("OpenAILLM", "Failed to process images for message", undefined, {
+            reason: error.message,
+          })
+        }
+      }
+
+      // Extract text + embedded images from non-image documents (PPTX/DOCX/XLSX/ODT/PDF/RTF/plain text)
+      const documentParts = msg.parts.filter(
+        (p): p is FilePart =>
+          p.type === "file" &&
+          !p.mime?.startsWith("image/") &&
+          DocumentExtractor.supportsDocument(p.mime) &&
+          role === "user",
+      )
+      let extractedDocumentText: string | null = null
+      const documentEmbeddedImages: ProcessedImage[] = []
+      if (documentParts.length > 0) {
+        try {
+          const extracted = await this.documentExtractor.extractDocuments(documentParts)
+          extractedDocumentText = formatDocumentsAsText(extracted)
+          const flat = collectEmbeddedImages(extracted)
+          if (flat.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+            for (const img of flat) {
+              const processed = await this.imagePipeline.processBuffer(
+                img.buffer,
+                img.mimeType,
+                "openai",
+              )
+              if (processed) documentEmbeddedImages.push(processed)
+            }
+          } else if (flat.length > 0) {
+            log.warn(
+              "OpenAILLM",
+              `Model ${this.defaultModel} not vision-capable — skipping ${flat.length} embedded image(s) from document(s)`,
+            )
+          }
+        } catch (error: any) {
+          log.error("OpenAILLM", "Failed to extract documents for message", undefined, {
+            reason: error.message,
+          })
+        }
+      }
+
+      // Collect image attachments from tool results for batch processing
+      const toolResultImageParts: FilePart[] = []
 
       // Convert each part
       for (const part of msg.parts) {
@@ -308,9 +405,17 @@ export class OpenAILLMAdapter implements ILLMClient {
 
             // Add tool result
             if (part.state.status === "completed") {
+              const attachments = (part.state as ToolStateCompleted).attachments
+              const imageAttachments = attachments?.filter(
+                (a): a is FilePart => a.type === "file" && a.mime?.startsWith("image/"),
+              )
+              if (imageAttachments && imageAttachments.length > 0) {
+                toolResultImageParts.push(...imageAttachments)
+              }
               toolResults.push({
                 tool_call_id: part.callID,
                 content: part.state.output || "",
+                imageAttachments,
               })
             } else {
               toolResults.push({
@@ -321,9 +426,17 @@ export class OpenAILLMAdapter implements ILLMClient {
           } else if (role === "user") {
             // User messages with tool results
             if (part.state.status === "completed") {
+              const attachments = (part.state as ToolStateCompleted).attachments
+              const imageAttachments = attachments?.filter(
+                (a): a is FilePart => a.type === "file" && a.mime?.startsWith("image/"),
+              )
+              if (imageAttachments && imageAttachments.length > 0) {
+                toolResultImageParts.push(...imageAttachments)
+              }
               toolResults.push({
                 tool_call_id: part.callID,
                 content: part.state.output || "",
+                imageAttachments,
               })
             } else if (part.state.status === "error") {
               toolResults.push({
@@ -334,7 +447,22 @@ export class OpenAILLMAdapter implements ILLMClient {
           }
           // Skip pending/running tools - they don't have results yet
         }
-        // Other part types (file, reasoning, etc.) are handled differently or skipped
+        // Image file parts are handled separately below
+      }
+
+      // Process tool result images through the pipeline
+      let processedToolResultImages: Map<string, ProcessedImage> = new Map()
+      if (toolResultImageParts.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+        try {
+          processedToolResultImages = await this.imagePipeline.processImages(
+            toolResultImageParts,
+            "openai",
+          )
+        } catch (error: any) {
+          log.error("OpenAILLM", "Failed to process tool result images", undefined, {
+            reason: error.message,
+          })
+        }
       }
 
       // Add the main message
@@ -354,6 +482,25 @@ export class OpenAILLMAdapter implements ILLMClient {
               tool_call_id: result.tool_call_id,
               content: result.content,
             })
+            // If tool result has image attachments, add a user message with the images
+            if (result.imageAttachments && result.imageAttachments.length > 0) {
+              const imageContentParts: any[] = []
+              for (const img of result.imageAttachments) {
+                const processed = processedToolResultImages.get(img.url)
+                if (processed) {
+                  imageContentParts.push({
+                    type: "image_url",
+                    image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+                  })
+                }
+              }
+              if (imageContentParts.length > 0) {
+                openaiMessages.push({
+                  role: "user",
+                  content: imageContentParts,
+                })
+              }
+            }
           }
         } else if (textParts.length > 0) {
           // Simple text message
@@ -363,22 +510,63 @@ export class OpenAILLMAdapter implements ILLMClient {
           })
         }
       } else {
-        // User message
-        if (toolResults.length > 0) {
-          // User message with tool results (shouldn't normally happen, but handle it)
-          for (const result of toolResults) {
-            openaiMessages.push({
-              role: "tool",
-              tool_call_id: result.tool_call_id,
-              content: result.content,
+        // User message - may include text, images, and tool results
+        // Tool results go as separate 'tool' role messages first
+        for (const result of toolResults) {
+          openaiMessages.push({
+            role: "tool",
+            tool_call_id: result.tool_call_id,
+            content: result.content,
+          })
+          // If tool result has image attachments, add a user message with the images
+          if (result.imageAttachments && result.imageAttachments.length > 0) {
+            const imageContentParts: any[] = []
+            for (const img of result.imageAttachments) {
+              const processed = processedToolResultImages.get(img.url)
+              if (processed) {
+                imageContentParts.push({
+                  type: "image_url",
+                  image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+                })
+              }
+            }
+            if (imageContentParts.length > 0) {
+              openaiMessages.push({
+                role: "user",
+                content: imageContentParts,
+              })
+            }
+          }
+        }
+
+        // Build content array with text and images
+        // Documents (PPTX/DOCX/...) are prepended as a separate text block before user prose.
+        // Images embedded inside those documents follow the text.
+        const contentParts: any[] = []
+        if (extractedDocumentText) {
+          contentParts.push({ type: "text", text: extractedDocumentText })
+        }
+        for (const processed of documentEmbeddedImages) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+          })
+        }
+        if (textParts.length > 0) {
+          contentParts.push({ type: "text", text: textParts.join("\n") })
+        }
+        for (const part of imageParts) {
+          const processed = processedImages.get(part.url)
+          if (processed) {
+            contentParts.push({
+              type: "image_url",
+              image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
             })
           }
         }
-        if (textParts.length > 0) {
-          openaiMessages.push({
-            role: "user",
-            content: textParts.join("\n"),
-          })
+
+        if (contentParts.length > 0) {
+          openaiMessages.push({ role: "user", content: contentParts })
         }
       }
     }
@@ -404,10 +592,14 @@ export class OpenAILLMAdapter implements ILLMClient {
       }
 
       if (status === 429) {
+        // Populate rate-limit context so the frontend RateLimitWidget can render
+        // a countdown. `error.headers` is a native Headers instance (fetch-based
+        // SDK), so the helper reads `retry-after` via `.get()` — see TER-512.
+        const rateLimit = populateRateLimitContext(error.headers, "OpenAI")
         return new LLMError(
           "The service is very busy. Please try again in a few seconds.",
           `OpenAI rate limit exceeded: ${error.message}`,
-          context,
+          { ...context, ...rateLimit },
           error,
         )
       }
@@ -421,11 +613,16 @@ export class OpenAILLMAdapter implements ILLMClient {
         )
       }
 
-      if (status === 400) {
+      if (status === 400 || status === 413) {
+        // Flag context-length overflow structurally so recovery fires without
+        // relying on luck-of-wording downstream. CTX-007.
+        const isOverflow = isContextLengthExceeded(status, error.message, error.code)
         return new LLMError(
-          "Error en la solicitud a OpenAI.",
+          isOverflow
+            ? "The conversation is too long. Attempting to summarize..."
+            : "There was a problem with the request to OpenAI.",
           `OpenAI request error: ${error.message}`,
-          context,
+          { ...context, isContextLengthError: isOverflow },
           error,
         )
       }
@@ -448,6 +645,7 @@ export class OpenAILLMAdapter implements ILLMClient {
         streaming: true,
         tools: true,
         thinking: false, // OpenAI o-series has reasoning but different from Claude's extended thinking
+        vision: this.imagePipeline.supportsVision(this.defaultModel),
       },
     }
   }

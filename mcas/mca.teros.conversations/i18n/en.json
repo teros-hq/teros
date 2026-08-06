@@ -1,0 +1,92 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend."
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Search for text in messages across all past conversations. Returns matches grouped by channel with context snippets.",
+      "params": {
+        "query": "Text to search for (case-insensitive, minimum 2 characters)",
+        "limit": "Maximum number of results to return (default: 50, max: 100)"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "List past conversations. Returns channel names, agents, and last message preview.",
+      "params": {
+        "status": "Filter by channel status",
+        "limit": "Maximum number of channels to return (default: 20)"
+      }
+    },
+    "get-channel-messages": {
+      "name": "get-channel-messages",
+      "description": "Get messages from a specific past conversation. Supports pagination.",
+      "params": {
+        "channelId": "The ID of the channel to get messages from",
+        "limit": "Number of messages to return (default: 50)",
+        "before": "Message ID for pagination - get messages before this one",
+        "textOnly": "Only return text messages, excluding tool executions (default: true)"
+      }
+    },
+    "get-channel-summary": {
+      "name": "get-channel-summary",
+      "description": "Get a quick summary of a conversation without all messages. Useful to understand what a conversation was about.",
+      "params": {
+        "channelId": "The ID of the channel to summarize"
+      }
+    },
+    "create-conversation": {
+      "name": "create-conversation",
+      "description": "Create a new conversation with a specific agent. Returns the new channel ID that can be used to send messages.",
+      "params": {
+        "agentId": "The ID of the agent to start a conversation with",
+        "name": "Optional name for the conversation"
+      }
+    },
+    "delegate-task": {
+      "name": "delegate-task",
+      "description": "Delegate a task to a new sub-conversation with an agent (defaults to yourself). Creates the conversation, sends the task prompt, and returns immediately. The sub-agent works independently and each of its responses is automatically forwarded back to this conversation.",
+      "params": {
+        "prompt": "Full task description and instructions to send to the sub-agent",
+        "agentId": "Agent ID to delegate to. Defaults to the current agent (self-delegation).",
+        "taskName": "Optional name for the delegated task conversation"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Send a message to an existing conversation. The agent will process and respond to the message.",
+      "params": {
+        "channelId": "The ID of the channel to send the message to",
+        "message": "The message text to send"
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "Rename a conversation. Changes the title/name of a channel.",
+      "params": {
+        "channelId": "The ID of the channel to rename",
+        "name": "The new name/title for the conversation"
+      }
+    },
+    "import-attachment": {
+      "name": "import-attachment",
+      "description": "Copy a file the user uploaded in chat (image or document) into the agent workspace volume so filesystem tools can read it. Identify it by the filename shown in the \"[User sent ...]\" message reference. Returns { workspacePath, size, mime }.",
+      "params": {
+        "filename": "Filename of the chat attachment to import, as shown in the message reference",
+        "destPath": "Optional destination path inside the workspace (relative). Defaults to the original filename at the workspace root.",
+        "channelId": "Channel to import from. Defaults to the current conversation.",
+        "messageId": "Optional message ID to disambiguate when several attachments share a filename.",
+        "overwrite": "Overwrite the destination if it already exists (default: false)."
+      }
+    }
+  },
+  "name": "Conversations",
+  "description": "Access and search past conversations and messages from the database",
+  "changelog": [
+    {
+      "notes": "Initial release — search and read past conversations, start chats, send messages, delegate tasks to agents, and import files"
+    }
+  ]
+}

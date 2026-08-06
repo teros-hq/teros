@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const listFolders: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all mail folders in the account.',
   parameters: {
     type: 'object',

@@ -1,44 +1,60 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import { type HttpToolConfig as ToolConfig, safeFetch } from '@teros/mca-sdk';
 import TurndownService from 'turndown';
 
 const MAX_RESPONSE_SIZE = 5 * 1024 * 1024; // 5MB
 const MAX_TIMEOUT = 120 * 1000; // 2 minutes
 
 /**
- * Extract text content from HTML by removing scripts, styles, and other non-text elements
+ * Extract text content from HTML by removing scripts, styles, and other non-text elements.
+ * Uses regex-based stripping — sufficient for text extraction from fetched web pages.
+ * @fixme nira - 2026.05.02 : consider replacing with a proper HTML parser (e.g. linkedom)
+ * if regex-based extraction proves insufficient for complex documents
  */
-async function extractTextFromHTML(html: string): Promise<string> {
-  let text = '';
-  let skipContent = false;
-
-  const rewriter = new HTMLRewriter()
-    .on('script, style, noscript, iframe, object, embed', {
-      element() {
-        skipContent = true;
-      },
-      text() {
-        // Skip text content inside these elements
-      },
+function extractTextFromHTML(html: string): string {
+  // Remove script, style, noscript, iframe, object, embed tags and their content
+  let text = html
+    .replace(
+      /<(script|style|noscript|iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      ' ',
+    )
+    .replace(/<(script|style|noscript|iframe|object|embed)\b[^>]*\/>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ') // Remove all remaining HTML tags
+    .replace(/&#[0-9]+;/g, (match) => {
+      try {
+        return String.fromCharCode(parseInt(match.slice(2, -1), 10));
+      } catch {
+        return match;
+      }
     })
-    .on('*', {
-      element(element) {
-        // Reset skip flag when entering other elements
-        if (
-          !['script', 'style', 'noscript', 'iframe', 'object', 'embed'].includes(element.tagName)
-        ) {
-          skipContent = false;
-        }
-      },
-      text(input) {
-        if (!skipContent) {
-          text += input.text;
-        }
-      },
+    .replace(/&#[xX][0-9a-fA-F]+;/g, (match) => {
+      try {
+        return String.fromCharCode(parseInt(match.slice(3, -1), 16));
+      } catch {
+        return match;
+      }
     })
-    .transform(new Response(html));
+    .replace(/&[a-zA-Z]+;/g, (match) => {
+      const entities: Record<string, string> = {
+        '&nbsp;': ' ',
+        '&amp;': '&',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#39;': "'",
+        '&apos;': "'",
+        '&ndash;': '–',
+        '&mdash;': '—',
+        '&hellip;': '…',
+        '&copy;': '©',
+        '&reg;': '®',
+        '&trade;': '™',
+      };
+      return entities[match.toLowerCase()] || match;
+    })
+    .replace(/\s+/g, ' ')
+    .trim();
 
-  await rewriter.text();
-  return text.trim();
+  return text;
 }
 
 /**
@@ -76,6 +92,7 @@ function buildAcceptHeader(format: string): string {
 }
 
 export const webfetch: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Fetch content from a URL and convert to text, markdown, or HTML format. Supports intelligent content extraction and format conversion.',
   parameters: {
@@ -105,11 +122,6 @@ export const webfetch: ToolConfig = {
     const format = args?.format as string;
     const timeout = (args?.timeout as number) || 30;
 
-    // Validate URL
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      throw new Error('URL must start with http:// or https://');
-    }
-
     // Calculate timeout
     const timeoutMs = Math.min(timeout * 1000, MAX_TIMEOUT);
 
@@ -118,8 +130,10 @@ export const webfetch: ToolConfig = {
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      // Fetch the URL
-      const response = await fetch(url, {
+      // SSRF-safe fetch: validates http(s) + that the host resolves to a public
+      // address, and follows redirects manually re-validating every hop (a
+      // public host can open-redirect to 169.254.169.254 / an internal IP).
+      const response = await safeFetch(url, {
         signal: controller.signal,
         headers: {
           'User-Agent':
@@ -156,7 +170,7 @@ export const webfetch: ToolConfig = {
       if (format === 'markdown' && contentType.includes('text/html')) {
         processedContent = convertHTMLToMarkdown(content);
       } else if (format === 'text' && contentType.includes('text/html')) {
-        processedContent = await extractTextFromHTML(content);
+        processedContent = extractTextFromHTML(content);
       }
 
       return {

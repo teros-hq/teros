@@ -7,6 +7,7 @@
  * Default permission for all tools is 'ask'.
  */
 
+import type { McaToolAnnotations } from '@teros/shared';
 import type { App, AppToolPermissions, ToolPermission } from './database';
 
 /**
@@ -74,6 +75,97 @@ export function getToolPermission(
 }
 
 /**
+ * Whether a tool is read-only (MCP `readOnlyHint`). Explicit manifest
+ * annotations ONLY — the name heuristic was removed 2026-07-04 after baking
+ * explicit `readOnlyHint` into every MCA. No annotation = mutation.
+ */
+export function isToolReadOnly(_toolName: string, annotations?: McaToolAnnotations): boolean {
+  return annotations?.readOnlyHint === true;
+}
+
+/**
+ * Whether a tool is confirmation-locked (`annotations.alwaysAsk`). Policy
+ * flag, always explicit in the manifest.
+ */
+export function isToolAlwaysAsk(_toolName: string, annotations?: McaToolAnnotations): boolean {
+  return annotations?.alwaysAsk === true;
+}
+
+/**
+ * THE source of truth for "will this tool run without asking the user".
+ *
+ * The configured permission is pure data — seeded at install time by
+ * `createInstallPermissions` (read-only → allow, mutation → ask) and from
+ * then on owned entirely by the user. There is deliberately NO read-only
+ * auto-allow policy here: if the user flips a read tool to `ask`, it asks.
+ *
+ * The single runtime override is the `alwaysAsk` clamp: a
+ * confirmation-locked tool (`annotations.alwaysAsk`) NEVER runs without
+ * asking — a configured `allow` is demoted to `ask`; only `forbid`
+ * survives, being more restrictive. Forbidden-by-design auto-runs: app
+ * self-installation, granting/setting agent permissions.
+ *
+ * Must be the only place that encodes this policy so the runtime gate
+ * (`mca-tool-executor`) and the UI (`app.get-tools`, summaries) never diverge.
+ */
+export function getEffectiveToolPermission(
+  app: App | { permissions?: AppToolPermissions },
+  toolName: string,
+  annotations?: McaToolAnnotations,
+): ToolPermission {
+  const configured = getToolPermission(app, toolName);
+  if (configured !== 'forbid' && isToolAlwaysAsk(toolName, annotations)) {
+    return 'ask';
+  }
+  return configured;
+}
+
+/**
+ * Build the permissions-panel view for an app in ONE place so every handler
+ * (get-tools + the mutation handlers) returns identical data:
+ *   - `tools[].permission` = the **configured** value (drives the toggle).
+ *     Since permissions are seeded explicitly at install time, this IS what
+ *     runs — except for the `alwaysAsk` clamp below.
+ *   - `tools[].readOnly`   = informational manifest flag (`readOnlyHint`).
+ *     Drives the "solo lectura" badge.
+ *   - `tools[].alwaysAsk`  = confirmation-locked by the manifest. The UI
+ *     blocks selecting 'allow' (the runtime clamp would ignore it anyway).
+ *   - `summary`            = counts of the **effective** permission (what
+ *     actually happens), so the header matches runtime behaviour.
+ *
+ * `annotationsByName` is keyed by the kebab-normalised short tool name.
+ */
+export function buildToolPermissionsView(
+  app: App | { permissions?: AppToolPermissions },
+  toolNames: string[],
+  annotationsByName: Map<string, McaToolAnnotations>,
+): {
+  tools: Array<{
+    name: string;
+    permission: ToolPermission;
+    readOnly: boolean;
+    alwaysAsk: boolean;
+  }>;
+  summary: { allow: number; ask: number; forbid: number };
+} {
+  const publicTools = toolNames.filter((name) => !isPrivateTool(name));
+  const summary = { allow: 0, ask: 0, forbid: 0 };
+  const tools = publicTools.map((name) => {
+    const annotations = annotationsByName.get(normalizeToolName(name));
+    const configured = getToolPermission(app, name);
+    const effective = getEffectiveToolPermission(app, name, annotations);
+    summary[effective]++;
+    return {
+      name,
+      permission: configured,
+      readOnly: isToolReadOnly(name, annotations),
+      alwaysAsk: isToolAlwaysAsk(name, annotations),
+    };
+  });
+  return { tools, summary };
+}
+
+/**
  * Check if a tool is allowed (can be used without confirmation)
  */
 export function isToolAllowed(app: App, toolName: string): boolean {
@@ -100,6 +192,32 @@ export function isToolAskRequired(app: App, toolName: string): boolean {
 export function createDefaultPermissions(): AppToolPermissions {
   return {
     tools: {},
+    defaultPermission: 'ask',
+  };
+}
+
+/**
+ * Install-time permission seed: every public tool gets an EXPLICIT entry —
+ * `allow` when the manifest marks it read-only (and not confirmation-locked),
+ * `ask` otherwise. No runtime policy ever upgrades these afterwards: what the
+ * user sees in the panel is exactly what runs, and flipping a read-only tool
+ * back to `ask` sticks because it is just data.
+ *
+ * `defaultPermission` stays 'ask' so tools added by a later MCA update are
+ * conservative until the user (or a re-seed) touches them.
+ */
+export function createInstallPermissions(
+  tools: Array<{ name: string; annotations?: McaToolAnnotations }>,
+): AppToolPermissions {
+  const perms: Record<string, ToolPermission> = {};
+  for (const tool of tools) {
+    if (isPrivateTool(tool.name)) continue;
+    const readOnly = tool.annotations?.readOnlyHint === true;
+    const locked = tool.annotations?.alwaysAsk === true;
+    perms[tool.name] = readOnly && !locked ? 'allow' : 'ask';
+  }
+  return {
+    tools: perms,
     defaultPermission: 'ask',
   };
 }

@@ -1,0 +1,105 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. The webhook trigger needs no credentials; if a MAKE_API_TOKEN is configured, validates it against the Make account API. For full scenario management, the token should have scopes: scenarios:read, scenarios:write, teams:read, organizations:read."
+    },
+    "trigger-webhook": {
+      "name": "trigger-webhook",
+      "description": "Trigger a Make.com scenario by POSTing a JSON payload to its webhook URL. No account token required — the user supplies the webhook URL (https://hook.<region>.make.com/<token>). Returns { delivered, statusCode, webhookHost, region, responseType, response }.",
+      "params": {
+        "webhookUrl": "The Make.com webhook URL (https://hook.<region>.make.com/<token>). Only *.make.com hosts over https are accepted.",
+        "payload": "Body sent to the webhook. A JSON object is sent as application/json; a string is forwarded as-is (JSON string → application/json, otherwise text/plain)."
+      }
+    },
+    "list-scenarios": {
+      "name": "list-scenarios",
+      "description": "List Make.com scenarios for the configured account (requires MAKE_API_TOKEN in user secrets). Optionally filter by teamId and page with limit/offset. Returns { scenarios: [{ id, name, isActive, isPaused, teamId }], returned, total, offset, limit, hasMore, nextOffset, teamId, region }. When hasMore is true, call again with offset=nextOffset to fetch the next page.",
+      "params": {
+        "teamId": "Make team id to scope the scenarios (found in the team URL). Required by the Make API on most accounts.",
+        "limit": "Max scenarios to return per page (1-100, default 50).",
+        "offset": "Number of scenarios to skip for pagination (default 0). Pass the `nextOffset` from a previous response to fetch the next page.",
+        "includeRaw": "Include the unprocessed upstream scenario rows under `raw` for debugging (default false)."
+      }
+    },
+    "run-scenario": {
+      "name": "run-scenario",
+      "description": "Run a Make.com scenario on demand by id (requires MAKE_API_TOKEN in user secrets). Pass optional `data` for the run inputs and `responsive: true` to wait for and return its outputs. Returns { scenarioId, executionId, status, responsive, outputs }.",
+      "params": {
+        "scenarioId": "The id of the scenario to run (from list-scenarios).",
+        "data": "Optional input data passed to the scenario run.",
+        "responsive": "If true, wait for the run to finish and return its outputs (default false)."
+      }
+    },
+    "create-scenario": {
+      "name": "create-scenario",
+      "description": "Create a new Make.com scenario (requires MAKE_API_TOKEN in user secrets). The `blueprint` is provided as a JSON object and is serialized internally. Returns { scenarioId, name, teamId, folderId, isActive, region, url }. Some Make plans require a paid subscription to use this endpoint.",
+      "params": {
+        "teamId": "Make team id that will own the scenario.",
+        "name": "Human-readable name for the scenario.",
+        "blueprint": "Scenario blueprint as a JSON object (not an escaped string). It will be serialized to a string before sending to Make.",
+        "scheduling": "Scheduling configuration. Defaults to { type: \"indefinitely\", interval: 60 }.",
+        "folderId": "Optional folder id to place the scenario in.",
+        "confirmed": "Whether the scenario is confirmed on creation (default true).",
+        "basedon": "Optional id of an existing scenario to base this one on."
+      }
+    },
+    "get-scenario": {
+      "name": "get-scenario",
+      "description": "Get a single Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns the scenario object as returned by Make.",
+      "params": {
+        "scenarioId": "The id of the scenario to retrieve."
+      }
+    },
+    "get-scenario-blueprint": {
+      "name": "get-scenario-blueprint",
+      "description": "Get the blueprint of a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, blueprint } where blueprint is a parsed JSON object when possible.",
+      "params": {
+        "scenarioId": "The id of the scenario whose blueprint to retrieve."
+      }
+    },
+    "update-scenario": {
+      "name": "update-scenario",
+      "description": "Update an existing Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Supports updating name, blueprint (as a JSON object), scheduling, and folderId. Returns the updated scenario summary.",
+      "params": {
+        "scenarioId": "The id of the scenario to update.",
+        "name": "New name for the scenario.",
+        "blueprint": "New scenario blueprint as a JSON object (not an escaped string). It will be serialized to a string before sending to Make.",
+        "scheduling": "New scheduling configuration.",
+        "folderId": "New folder id for the scenario."
+      }
+    },
+    "delete-scenario": {
+      "name": "delete-scenario",
+      "description": "Delete a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). This action is irreversible. Returns { scenarioId, deleted, region }.",
+      "params": {
+        "scenarioId": "The id of the scenario to delete."
+      }
+    },
+    "clone-scenario": {
+      "name": "clone-scenario",
+      "description": "Clone an existing Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Optionally set a new name or folder. Returns the cloned scenario summary.",
+      "params": {
+        "scenarioId": "The id of the scenario to clone.",
+        "name": "Optional new name for the cloned scenario.",
+        "folderId": "Optional folder id for the cloned scenario."
+      }
+    },
+    "start-scenario": {
+      "name": "start-scenario",
+      "description": "Activate (start) a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, isActive, region }.",
+      "params": {
+        "scenarioId": "The id of the scenario to activate."
+      }
+    },
+    "stop-scenario": {
+      "name": "stop-scenario",
+      "description": "Pause (stop) a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, isActive, region }.",
+      "params": {
+        "scenarioId": "The id of the scenario to pause."
+      }
+    }
+  },
+  "name": "Make",
+  "description": "Make.com automation — trigger scenarios via webhooks (no token needed) and manage scenarios via the account API: create, read, update, delete, clone, start, stop, list, run, and inspect blueprints."
+}

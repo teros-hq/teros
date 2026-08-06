@@ -1,47 +1,34 @@
 /**
- * Logout page - Limpia sesión y redirige a login
+ * Logout page — destroys session and redirects to login
+ *
+ * Uses SessionManager.destroySession() which:
+ * - Resets all registered stores
+ * - Clears all storage
+ * - Disconnects transport
+ * - Cleans Sentry context
  */
 
-import { useRouter } from 'expo-router';
-import { useEffect } from 'react';
-import { Text, YStack } from 'tamagui';
-import { STORAGE_KEYS, storage } from '../src/services/storage';
-import { getTerosClient } from './_layout';
+import { useRouter } from "expo-router"
+import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
+import { Text, YStack } from "tamagui"
+import { destroySession } from "../src/store/session/SessionManager"
+import { useColors } from "../src/components/mca/primitives/useColors"
 
 export default function LogoutPage() {
-  const router = useRouter();
+  const router = useRouter()
+  const { t } = useTranslation()
+  const c = useColors()
 
   useEffect(() => {
-    const logout = async () => {
-      try {
-        // Limpiar storage
-        await storage.removeItem(STORAGE_KEYS.USER);
-
-        // Limpiar cliente
-        const client = getTerosClient();
-        client.setSessionToken('');
-        client.disconnect();
-
-        // Limpiar localStorage (por si hay datos corruptos)
-        if (typeof localStorage !== 'undefined') {
-          localStorage.clear();
-        }
-
-        console.log('✅ Session cleared');
-      } catch (e) {
-        console.error('Error during logout:', e);
-      }
-
-      // Redirigir a login
-      router.replace('/(auth)/login');
-    };
-
-    logout();
-  }, []);
+    destroySession().then(() => {
+      router.replace("/(auth)/login")
+    })
+  }, [])
 
   return (
-    <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor="#000">
-      <Text color="#666">Cerrando sesión...</Text>
+    <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={c.bgPage}>
+      <Text color={c.text3}>{t("auth.signingOut")}</Text>
     </YStack>
-  );
+  )
 }

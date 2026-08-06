@@ -8,9 +8,13 @@
  */
 
 import type { LLMResponse, ToolCall, ToolResult } from '../llm/ILLMClient';
+import { createLogger } from '../logger';
+import type { INV1Violation } from '../prompts/PromptBuilder';
 import type { SessionStore } from '../session/SessionStore';
-import type { AssistantMessage, MessageWithParts, TextPart, ToolPart } from '../session/types';
+import type { AssistantMessage, FilePart, MessageWithParts, TextPart, ToolPart, ToolStateCompleted } from '../session/types';
 import type { StreamPublisher } from '../streaming';
+
+const synthLog = createLogger('SynthesizeOrphans');
 
 /**
  * Generic tool result (provider-agnostic)
@@ -19,6 +23,7 @@ export interface GenericToolResult {
   toolCallId: string;
   output: string;
   isError?: boolean;
+  attachments?: FilePart[];
 }
 
 /**
@@ -36,6 +41,7 @@ export class MessageProcessor {
   private currentTextPart?: TextPart;
   private toolCalls = new Map<string, ToolPart>();
   private blocked = false;
+  private seedConsumed = false;
 
   constructor(
     private sessionStore: SessionStore,
@@ -53,12 +59,17 @@ export class MessageProcessor {
   /**
    * Create new assistant message
    * the previous implementation: processor.next()
+   *
+   * `seedId` (optional) is only honored on the first call so the caller
+   * can align the session-store id with the channel-store id.
    */
-  async next(): Promise<AssistantMessage> {
+  async next(seedId?: string): Promise<AssistantMessage> {
     const { generateAscendingID } = await import('../session/types');
 
+    const useSeed = !this.seedConsumed && seedId;
+    this.seedConsumed = true;
     const msg: AssistantMessage = {
-      id: generateAscendingID('message'),
+      id: useSeed ? seedId! : generateAscendingID('message'),
       sessionID: this.sessionID,
       role: 'assistant',
       time: {
@@ -180,6 +191,7 @@ export class MessageProcessor {
       type: 'tool',
       tool: toolCall.name,
       callID: toolCall.id,
+      ...(toolCall.metadata && { metadata: toolCall.metadata }),
       state: {
         status: 'running',
         input: toolCall.input,
@@ -191,17 +203,36 @@ export class MessageProcessor {
       },
     };
 
-    // Publish tool start to stream
+    // Publish tool start to stream, then flush to ensure the async handler
+    // (handleStreamEvent) finishes saving+broadcasting the tool message before
+    // executeTool() runs.  Without this, tool_status_update(pending_permission)
+    // can race ahead of the initial message events (Gemini race condition fix).
+    //
+    // GAP-16 defense: a silent failure of flushCallbacks (rejected promise, WS
+    // disconnect, downstream throw) would leave the frontend without the
+    // initial tool_start event but executeTool would still run — the exact
+    // signature of TER-42 ("a veces no se recibe el final de las tools por
+    // streaming"). Wrap so we never swallow the error silently.
     if (this.streamPublisher && this.streamContext) {
-      this.streamPublisher.publishToolStart(
-        this.sessionID,
-        this.streamContext.channelId,
-        this.streamContext.userId,
-        this.streamContext.threadId,
-        toolCall.id,
-        toolCall.name,
-        toolCall.input,
-      );
+      try {
+        this.streamPublisher.publishToolStart(
+          this.sessionID,
+          this.streamContext.channelId,
+          this.streamContext.userId,
+          this.streamContext.threadId,
+          toolCall.id,
+          toolCall.name,
+          toolCall.input,
+        );
+        await this.streamPublisher.flushCallbacks();
+      } catch (err) {
+        console.error(
+          `[MessageProcessor] flushCallbacks failed for tool_start (${toolCall.name}, ${toolCall.id}) — ` +
+            `executeTool will proceed but the frontend may not see the initial event. ` +
+            `Possible TER-42 root cause if recurring.`,
+          err,
+        );
+      }
     }
 
     await this.sessionStore.writePart(toolPart);
@@ -240,7 +271,7 @@ export class MessageProcessor {
         },
       };
     } else {
-      toolPart.state = {
+      const completedState: ToolStateCompleted = {
         status: 'completed',
         input: toolPart.state.input,
         output: result.output,
@@ -251,6 +282,10 @@ export class MessageProcessor {
           end: Date.now(),
         },
       };
+      if (result.attachments && result.attachments.length > 0) {
+        completedState.attachments = result.attachments;
+      }
+      toolPart.state = completedState;
     }
 
     await this.sessionStore.writePart(toolPart);
@@ -267,6 +302,7 @@ export class MessageProcessor {
         result.isError ? undefined : result.output,
         result.isError ? result.output : undefined,
         toolPart.state.time?.end ? toolPart.state.time.end - toolPart.state.time.start : undefined,
+        result.attachments,
       );
     }
 
@@ -339,4 +375,112 @@ export class MessageProcessor {
     }
     return this.currentMessage;
   }
+}
+
+// INV-1 remediation. Idempotent retry: writePart with a synthetic
+// ToolPart in `state.status='error'` + `meta.synthetic=true` is a no-op
+// upsert if the same content is already persisted.
+
+const SYNTHESIZE_MAX_ATTEMPTS = 3;
+const SYNTHESIZE_BACKOFFS_MS = [500, 1500, 4500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function buildSynthetic(violation: INV1Violation): ToolPart {
+  const existing = violation.toolPart;
+  // assertInvariantINV1 only emits orphan_running / orphan_pending_approval,
+  // both of which carry time.start. Defensive optional chain is for any
+  // future state variants without time.
+  const stateWithTime = existing.state as { time?: { start?: number }; input?: unknown };
+  const startTime = stateWithTime.time?.start ?? Date.now();
+  const message =
+    violation.reason === 'orphan_pending_approval'
+      ? 'User cancelled before approval (auto-recovered by INV-1 guard).'
+      : 'Tool execution did not complete (auto-recovered by INV-1 guard).';
+
+  return {
+    ...existing,
+    state: {
+      status: 'error',
+      input: stateWithTime.input,
+      error: message,
+      time: { start: startTime, end: Date.now() },
+    },
+    meta: {
+      ...((existing as { meta?: Record<string, unknown> }).meta ?? {}),
+      synthetic: true,
+      syntheticReason: 'inv1_recovery',
+    },
+  } as ToolPart;
+}
+
+/**
+ * Persist synthetic `tool_result`s for every orphan `tool_use`.
+ * Idempotent retry; throws when the budget is exhausted (caller must
+ * surface the error and reload from the store before calling the LLM).
+ */
+export async function synthesizeOrphans(
+  sessionStore: SessionStore,
+  sessionID: string,
+  violations: readonly INV1Violation[],
+): Promise<void> {
+  if (violations.length === 0) return;
+
+  let remaining = [...violations];
+  let attempt = 0;
+  while (remaining.length > 0 && attempt < SYNTHESIZE_MAX_ATTEMPTS) {
+    const stillPending: INV1Violation[] = [];
+    for (const v of remaining) {
+      const synthetic = buildSynthetic(v);
+      try {
+        await sessionStore.writePart(synthetic);
+      } catch (err) {
+        stillPending.push(v);
+        synthLog.warn(
+          {
+            sessionID,
+            callID: v.toolPart.callID,
+            messageId: v.messageId,
+            attempt,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          'writePart failed, will retry',
+        );
+      }
+    }
+    remaining = stillPending;
+    attempt += 1;
+    if (remaining.length > 0 && attempt < SYNTHESIZE_MAX_ATTEMPTS) {
+      const delay = SYNTHESIZE_BACKOFFS_MS[attempt - 1] ?? 5000;
+      // Jitter ±200ms to avoid thundering herd from sibling channels.
+      const jitter = Math.floor(Math.random() * 400) - 200;
+      await sleep(delay + jitter);
+    }
+  }
+
+  if (remaining.length > 0) {
+    synthLog.error(
+      {
+        sessionID,
+        remainingCount: remaining.length,
+        attempts: SYNTHESIZE_MAX_ATTEMPTS,
+        callIDs: remaining.map((v) => v.toolPart.callID),
+      },
+      'synthesizeOrphans exhausted retries',
+    );
+    throw new Error(
+      `INV-1 recovery failed after ${SYNTHESIZE_MAX_ATTEMPTS} attempts; ` +
+        `${remaining.length} orphans persist in session ${sessionID}`,
+    );
+  }
+
+  synthLog.info(
+    {
+      sessionID,
+      violationCount: violations.length,
+    },
+    'INV-1 auto-recovered',
+  );
 }

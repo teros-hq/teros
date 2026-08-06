@@ -4,29 +4,28 @@
  * Handles: query-database, get-database, create-database, update-database-schema
  */
 
-import { ExternalLink } from '@tamagui/lucide-icons';
+import { ExternalLink } from '../../primitives';
+import { ErrorBlock, SuccessBlock, ToolCallCard } from '../../primitives';
 import type React from 'react';
-import { useState } from 'react';
 import { Linking, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { countBadgeVariant, Empty, formatCountBadge } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
+  useNotionColors,
+  extractPlainText,
   FilterBlock,
   formatDate,
+  getDateFromProperties,
   getPageIcon,
   getPageTitle,
-  HeaderRow,
+  getStatusFromProperties,
   type NotionDatabase,
   type NotionPage,
   PageStatusBadge,
   parseOutput,
-  SuccessBlock,
   truncate,
 } from './shared';
 
@@ -39,44 +38,26 @@ interface PageListBlockProps {
 }
 
 function PageListBlock({ pages }: PageListBlockProps) {
+  const c = useNotionColors();
+  const colors = useNotionColors();
   return (
     <ScrollView
-      style={{ maxHeight: 300, backgroundColor: colors.bgInner, borderRadius: 5 }}
+      style={{ maxHeight: 300, backgroundColor: c.bgInner, borderRadius: 5 }}
       showsVerticalScrollIndicator={true}
     >
       <YStack paddingVertical={4}>
         {pages.map((page) => {
           const title = getPageTitle(page);
           const icon = getPageIcon(page);
-          
-          // Try to extract status from properties
-          let status: string | undefined;
-          let dateStr: string | undefined;
-          
-          if (page.properties) {
-            // Find status property
-            const statusProp = Object.values(page.properties).find(
-              (p: any) => p?.type === 'status' || p?.type === 'select'
-            ) as any;
-            if (statusProp?.status?.name) {
-              status = statusProp.status.name;
-            } else if (statusProp?.select?.name) {
-              status = statusProp.select.name;
-            }
-            
-            // Find date property
-            const dateProp = Object.values(page.properties).find(
-              (p: any) => p?.type === 'date'
-            ) as any;
-            if (dateProp?.date?.start) {
-              dateStr = formatDate(dateProp.date.start);
-            }
-          }
-          
-          // Fallback to lastEditedTime
-          if (!dateStr && page.lastEditedTime) {
-            dateStr = formatDate(page.lastEditedTime);
-          }
+
+          // Shape-agnostic: handles curated (flat values) and legacy (raw Notion objects).
+          const status = getStatusFromProperties(page.properties);
+          const propertyDate = getDateFromProperties(page.properties);
+          const dateStr = propertyDate
+            ? formatDate(propertyDate)
+            : page.lastEditedTime
+              ? formatDate(page.lastEditedTime)
+              : undefined;
 
           return (
             <XStack
@@ -86,8 +67,8 @@ function PageListBlock({ pages }: PageListBlockProps) {
               paddingVertical={6}
               paddingHorizontal={10}
               borderBottomWidth={1}
-              borderBottomColor={colors.border}
-              hoverStyle={{ backgroundColor: 'rgba(255,255,255,0.02)' }}
+              borderBottomColor={c.border}
+              hoverStyle={{ backgroundColor: c.bgCardHover }}
               cursor="pointer"
               onPress={() => page.url && Linking.openURL(page.url)}
             >
@@ -96,7 +77,7 @@ function PageListBlock({ pages }: PageListBlockProps) {
               </Text>
               <Text
                 flex={1}
-                color={colors.primary}
+                color={c.text}
                 fontSize={11}
                 numberOfLines={1}
               >
@@ -104,7 +85,7 @@ function PageListBlock({ pages }: PageListBlockProps) {
               </Text>
               {status && <PageStatusBadge status={status} />}
               {dateStr && (
-                <Text fontSize={9} fontFamily="$mono" color={colors.muted}>
+                <Text fontSize={9} fontFamily="$mono" color={c.text3}>
                   {dateStr}
                 </Text>
               )}
@@ -122,14 +103,19 @@ interface DatabaseDetailBlockProps {
 }
 
 function DatabaseDetailBlock({ database, variant = 'default' }: DatabaseDetailBlockProps) {
+  const c = useNotionColors();
+  const colors = useNotionColors();
   const bgColors = {
     created: 'rgba(34,197,94,0.1)',
-    default: colors.bgInner,
+    default: c.bgInner,
   };
 
-  const icon = database.icon?.type === 'emoji' && database.icon.emoji 
-    ? database.icon.emoji 
-    : '🗃️';
+  const icon = getPageIcon(database);
+
+  // Schema: prefer the curated `schema` field (TER-272); fall back to the
+  // raw `properties` field for back-compat.
+  const schema = database.schema ?? database.properties;
+  const schemaNames = schema ? Object.keys(schema) : [];
 
   return (
     <YStack
@@ -142,8 +128,8 @@ function DatabaseDetailBlock({ database, variant = 'default' }: DatabaseDetailBl
       {/* Header with icon and title */}
       <XStack alignItems="center" gap={8}>
         <Text fontSize={16}>{icon}</Text>
-        <Text flex={1} color={colors.bright} fontSize={12} fontWeight="500" numberOfLines={1}>
-          {database.title || 'Untitled Database'}
+        <Text flex={1} color={c.text} fontSize={12} fontWeight="500" numberOfLines={1}>
+          {getPageTitle(database) || 'Untitled Database'}
         </Text>
         {database.url && (
           <XStack
@@ -151,37 +137,37 @@ function DatabaseDetailBlock({ database, variant = 'default' }: DatabaseDetailBl
             onPress={() => Linking.openURL(database.url!)}
             hoverStyle={{ opacity: 0.7 }}
           >
-            <ExternalLink size={12} color={colors.secondary} />
+            <ExternalLink size={12} color={c.text2} />
           </XStack>
         )}
       </XStack>
 
       {/* Description */}
       {database.description && (
-        <Text color={colors.secondary} fontSize={10} numberOfLines={2}>
-          {database.description}
+        <Text color={c.text2} fontSize={10} numberOfLines={2}>
+          {extractPlainText(database.description)}
         </Text>
       )}
 
-      {/* Properties summary */}
-      {database.properties && (
+      {/* Schema summary (property names) */}
+      {schemaNames.length > 0 && (
         <XStack gap={4} flexWrap="wrap">
-          {Object.keys(database.properties).slice(0, 6).map((propName, idx) => (
+          {schemaNames.slice(0, 6).map((propName, idx) => (
             <XStack
               key={idx}
-              backgroundColor={colors.badgeGray.bg}
+              backgroundColor={c.badges.gray.bg}
               paddingHorizontal={5}
               paddingVertical={1}
               borderRadius={3}
             >
-              <Text fontSize={8} color={colors.badgeGray.text}>
+              <Text fontSize={8} color={c.badges.gray.text}>
                 {propName}
               </Text>
             </XStack>
           ))}
-          {Object.keys(database.properties).length > 6 && (
-            <Text fontSize={8} color={colors.muted}>
-              +{Object.keys(database.properties).length - 6} more
+          {schemaNames.length > 6 && (
+            <Text fontSize={8} color={c.text3}>
+              +{schemaNames.length - 6} more
             </Text>
           )}
         </XStack>
@@ -197,12 +183,12 @@ function DatabaseDetailBlock({ database, variant = 'default' }: DatabaseDetailBl
 export function QueryDatabaseRenderer({
   input,
   status,
+  appIcon,
   output,
   error,
-  duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(true); // Expanded by default for query results
-  
+  const colors = useNotionColors();
+
   const parsed = output
     ? parseOutput<{ results?: NotionPage[]; pages?: NotionPage[] } | NotionPage[]>(output)
     : null;
@@ -229,61 +215,41 @@ export function QueryDatabaseRenderer({
   }
 
   let badge: React.ReactNode = null;
-  if (status === 'completed' && hasPages) {
-    badge = <Badge text={`${pages!.length} pages`} variant="gray" />;
-  } else if (status === 'completed' && pages?.length === 0) {
-    badge = <Badge text="no results" variant="gray" />;
+  if (status === 'completed') {
+    const count = pages?.length ?? 0;
+    badge = (
+      <Badge text={formatCountBadge(count, 'page')} variant={countBadgeVariant(count)} />
+    );
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
 
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
 
-  if (!expanded) return <HeaderRow {...headerProps} />;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} iconUri={appIcon}>
         {/* Filter info */}
         <FilterBlock filter={input?.filter} sorts={input?.sorts} />
         
         {/* Results */}
         {hasPages && <PageListBlock pages={pages!} />}
         {status === 'completed' && pages?.length === 0 && (
-          <XStack
-            backgroundColor={colors.bgInner}
-            borderRadius={5}
-            paddingVertical={12}
-            paddingHorizontal={10}
-            justifyContent="center"
-          >
-            <Text color={colors.muted} fontSize={10}>
-              No pages match the filter criteria
-            </Text>
-          </XStack>
+          <Empty message="No pages" hint="Try a different filter" />
         )}
         {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
 export function GetDatabaseRenderer({
   input,
   status,
+  appIcon,
   output,
   error,
-  duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+  const colors = useNotionColors();
+
   const parsed = output ? parseOutput<NotionDatabase>(output) : null;
   const isDatabase = parsed && typeof parsed === 'object' && 'id' in parsed;
 
@@ -294,41 +260,30 @@ export function GetDatabaseRenderer({
   let badge: React.ReactNode = null;
   if (status === 'completed' && isDatabase) {
     const db = parsed as NotionDatabase;
-    badge = <Badge text={truncate(db.title || 'Untitled', 20)} variant="info" />;
+    badge = <Badge text={truncate(extractPlainText(db.title) || 'Untitled', 20)} variant="info" />;
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
 
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
 
-  if (!expanded) return <HeaderRow {...headerProps} />;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} iconUri={appIcon}>
         {isDatabase && <DatabaseDetailBlock database={parsed as NotionDatabase} />}
         {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
 export function CreateDatabaseRenderer({
   input,
   status,
+  appIcon,
   output,
   error,
-  duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+  const colors = useNotionColors();
+
   const parsed = output ? parseOutput<NotionDatabase | string>(output) : null;
   const isDatabase = parsed && typeof parsed === 'object' && 'id' in parsed;
 
@@ -343,37 +298,26 @@ export function CreateDatabaseRenderer({
     badge = <Badge text="failed" variant="error" />;
   }
 
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
 
-  if (!expanded) return <HeaderRow {...headerProps} />;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} iconUri={appIcon}>
         {isDatabase && <DatabaseDetailBlock database={parsed as NotionDatabase} variant="created" />}
         {typeof parsed === 'string' && <SuccessBlock message={parsed} />}
         {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
 export function UpdateDatabaseSchemaRenderer({
   input,
   status,
+  appIcon,
   output,
   error,
-  duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+  const colors = useNotionColors();
+
   const parsed = output ? parseOutput<NotionDatabase | string>(output) : null;
   const isDatabase = parsed && typeof parsed === 'object' && 'id' in parsed;
 
@@ -386,25 +330,13 @@ export function UpdateDatabaseSchemaRenderer({
     badge = <Badge text="failed" variant="error" />;
   }
 
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
 
-  if (!expanded) return <HeaderRow {...headerProps} />;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} iconUri={appIcon}>
         {isDatabase && <DatabaseDetailBlock database={parsed as NotionDatabase} />}
         {typeof parsed === 'string' && <SuccessBlock message={parsed} />}
         {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }

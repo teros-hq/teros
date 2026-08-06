@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const getRepo: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific repository',
   parameters: {
     type: 'object',

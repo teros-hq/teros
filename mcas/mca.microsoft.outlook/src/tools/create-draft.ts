@@ -3,6 +3,7 @@ import { createGraphClient, buildRecipients, processEmailBody } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const createDraft: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a draft email message.',
   parameters: {
     type: 'object',

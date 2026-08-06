@@ -1,0 +1,69 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.slack",
+  "name": "Slack",
+  "version": "1.0.0",
+  "description": "Full Slack workspace integration: channels, messages, threads, reactions, files, users, search, and presence. Uses Slack Web API with OAuth 2.0.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "slack",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URIS"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "TEAM_ID", "TEAM_NAME", "USER_ID"],
+      "authorizeUrl": "https://slack.com/oauth/v2/authorize",
+      "tokenUrl": "https://slack.com/api/oauth.v2.access",
+      "scopes": [
+        "channels:read",
+        "channels:manage",
+        "channels:join",
+        "chat:write",
+        "chat:write.public",
+        "chat:write.customize",
+        "files:read",
+        "files:write",
+        "groups:read",
+        "groups:write",
+        "im:read",
+        "im:write",
+        "mpim:read",
+        "mpim:write",
+        "reactions:read",
+        "reactions:write",
+        "search:read",
+        "team:read",
+        "users:read",
+        "users:read.email",
+        "users.profile:read",
+        "usergroups:read"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["slack", "messaging", "chat", "workspace", "collaboration", "team"]
+}

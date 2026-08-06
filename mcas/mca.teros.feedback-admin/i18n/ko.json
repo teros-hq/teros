@@ -1,0 +1,58 @@
+{
+  "tools": {
+    "list-feedback": {
+      "name": "list-feedback",
+      "description": "사용자로부터 모든 피드백 보고서를 나열합니다. 유형, 상태, 우선순위 및 사용자별로 필터링을 지원합니다.",
+      "params": {
+        "type": "유형별 필터링 (선택 사항)",
+        "status": "상태별 필터링 (선택 사항)",
+        "priority": "우선순위별 필터링 (선택 사항)",
+        "userId": "사용자 ID별 필터링 (선택 사항)",
+        "limit": "최대 결과 수 (기본값: 50)"
+      }
+    },
+    "get-feedback": {
+      "name": "get-feedback",
+      "description": "특정 피드백 보고서의 전체 세부정보를 가져옵니다.",
+      "params": {
+        "feedbackId": "피드백 ID (예: fb_xxx)"
+      }
+    },
+    "update-status": {
+      "name": "update-status",
+      "description": "피드백 보고서의 상태를 업데이트합니다.",
+      "params": {
+        "feedbackId": "피드백 ID",
+        "status": "새 상태",
+        "message": "상태 변경과 함께 포함할 선택적 메시지 (사용자에게 표시됨)"
+      }
+    },
+    "set-priority": {
+      "name": "set-priority",
+      "description": "피드백 보고서의 우선순위를 설정하거나 업데이트합니다.",
+      "params": {
+        "feedbackId": "피드백 ID",
+        "priority": "우선순위 수준"
+      }
+    },
+    "add-update": {
+      "name": "add-update",
+      "description": "피드백 보고서에 업데이트 또는 댓글을 추가합니다. 이는 제출한 사용자에게 표시됩니다.",
+      "params": {
+        "feedbackId": "피드백 ID",
+        "message": "사용자를 위한 업데이트 메시지"
+      }
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "전체 피드백 통계를 가져옵니다."
+    }
+  },
+  "name": "피드백 관리자",
+  "description": "사용자 피드백 관리: 버그 보고서 및 제안 검토, 상태 업데이트, 우선순위 설정 및 사용자에게 업데이트 전달.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 사용자 버그 보고서 및 제안 검토, 상태 및 우선순위 설정, 업데이트로 답변"
+    }
+  ]
+}

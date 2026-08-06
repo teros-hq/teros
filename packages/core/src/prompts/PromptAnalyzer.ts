@@ -18,7 +18,23 @@
 
 import { estimateTokens } from '@teros/shared';
 import type { ToolDefinition } from '../llm/ILLMClient';
+import { countTokensForProvider } from '../llm/token-counter';
 import type { MessageWithParts, TextPart, ToolPart } from '../session/types';
+
+/**
+ * Helper: count tokens using the provider-specific BPE encoding when known
+ * (Claude / o200k_base / cl100k_base via ai-tokenizer, 97%+ accuracy), and
+ * fall back to the `chars/4` heuristic when the provider is undefined.
+ *
+ * Centralised here so the conversation breakdown and the per-component
+ * counts agree on the algorithm (consistent factor-of-correction downstream
+ * when normalising against the real `LLMResponse.usage.inputTokens`).
+ */
+function countText(text: string, provider?: string): number {
+  if (!text) return 0;
+  if (provider) return countTokensForProvider(text, provider);
+  return estimateTokens(text);
+}
 
 /**
  * Token breakdown by category
@@ -79,27 +95,33 @@ export interface PromptAnalysis {
 
 export class PromptAnalyzer {
   /**
-   * Analyze prompt components and calculate token breakdown
+   * Analyze prompt components and calculate token breakdown.
+   *
+   * @param provider Optional `LLMUsage.provider` (or compatible string).
+   *   When set, uses provider-specific BPE encoding via ai-tokenizer
+   *   (97%+ accuracy for Claude/GPT-4/5, ~85-90% para otros). When
+   *   undefined, falls back to the legacy chars/4 heuristic so callers
+   *   that don't know the provider (older code) keep working.
    */
-  analyze(components: PromptComponents): PromptAnalysis {
+  analyze(components: PromptComponents, provider?: string): PromptAnalysis {
     // Calculate system tokens
-    const systemTokens = estimateTokens(components.systemPrompt || '');
+    const systemTokens = countText(components.systemPrompt || '', provider);
 
     // Calculate tools tokens (definitions)
     const toolsDescription = this.serializeTools(components.tools);
-    const toolsTokens = estimateTokens(toolsDescription);
+    const toolsTokens = countText(toolsDescription, provider);
 
     // Calculate examples tokens
-    const examplesTokens = estimateTokens(components.examples || '');
+    const examplesTokens = countText(components.examples || '', provider);
 
     // Calculate memory tokens
-    const memoryTokens = estimateTokens(components.memoryContext || '');
+    const memoryTokens = countText(components.memoryContext || '', provider);
 
     // Calculate summary tokens
-    const summaryTokens = estimateTokens(components.summary || '');
+    const summaryTokens = countText(components.summary || '', provider);
 
     // Calculate conversation tokens with detailed breakdown
-    const conversationBreakdown = this.analyzeConversation(components.messages);
+    const conversationBreakdown = this.analyzeConversation(components.messages, provider);
 
     const breakdown: TokenBreakdown = {
       system: systemTokens,
@@ -161,7 +183,10 @@ export class PromptAnalyzer {
    * Analyze conversation history with detailed breakdown
    * Separates: user messages, assistant text, tool calls, tool results
    */
-  private analyzeConversation(messages?: MessageWithParts[]): {
+  private analyzeConversation(
+    messages?: MessageWithParts[],
+    provider?: string,
+  ): {
     userTokens: number;
     assistantTokens: number;
     toolCallsTokens: number;
@@ -221,10 +246,10 @@ export class PromptAnalyzer {
     }
 
     return {
-      userTokens: estimateTokens(userText),
-      assistantTokens: estimateTokens(assistantText),
-      toolCallsTokens: estimateTokens(toolCallsText),
-      toolResultsTokens: estimateTokens(toolResultsText),
+      userTokens: countText(userText, provider),
+      assistantTokens: countText(assistantText, provider),
+      toolCallsTokens: countText(toolCallsText, provider),
+      toolResultsTokens: countText(toolResultsText, provider),
       userLength: userText.length,
       assistantLength: assistantText.length,
       toolCallsLength: toolCallsText.length,

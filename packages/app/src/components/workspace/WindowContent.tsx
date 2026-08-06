@@ -4,6 +4,7 @@
 
 import { AlertCircle } from '@tamagui/lucide-icons';
 import React, { Suspense } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Text, YStack } from 'tamagui';
 import { windowRegistry } from '../../services/windowRegistry';
 import { FullscreenLoader } from '../../components/ui';
@@ -27,6 +28,7 @@ interface Props {
  * and when doing replaceWindow (same id, different type/props).
  */
 export function WindowContent({ window }: Props) {
+  const { t } = useTranslation();
   const definition = windowRegistry.get(window.type);
 
   if (!definition) {
@@ -41,7 +43,7 @@ export function WindowContent({ window }: Props) {
   return (
     <ErrorBoundary
       resetKey={resetKey}
-      fallback={(error) => <WindowError message="Error loading window content" error={error} />}
+      fallback={(error) => <WindowError message={t('errors.windowContentLoadFailed')} error={error} />}
     >
       <Suspense fallback={<WindowLoading />}>
         <Component {...window.props} windowId={window.id} />

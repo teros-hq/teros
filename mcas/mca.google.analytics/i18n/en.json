@@ -1,0 +1,141 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies OAuth credentials and GA4 API connectivity."
+    },
+    "analytics-list-accounts": {
+      "name": "analytics-list-accounts",
+      "description": "List GA4 accounts accessible to the user. Returns { accounts: [{ accountId, name, displayName, regionCode, createTime }], count }.",
+      "params": {
+        "pageSize": "Max results per page (default 50, max 200)",
+        "pageToken": "Pagination token from previous response"
+      }
+    },
+    "analytics-list-properties": {
+      "name": "analytics-list-properties",
+      "description": "List GA4 properties under an account. Returns { properties: [{ propertyId, displayName, propertyType, currencyCode, timeZone, industryCategory }], count }.",
+      "params": {
+        "accountId": "GA4 account ID (numeric or \"accounts/{id}\")",
+        "pageSize": "Max results per page (default 50, max 200)",
+        "pageToken": "Pagination token from previous response",
+        "showDeleted": "Include soft-deleted properties (default false)"
+      }
+    },
+    "analytics-get-property": {
+      "name": "analytics-get-property",
+      "description": "Get a GA4 property's details. Returns { property: { propertyId, displayName, propertyType, parent, timeZone, currencyCode, industryCategory, serviceLevel, createTime, updateTime } }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")"
+      }
+    },
+    "analytics-list-data-streams": {
+      "name": "analytics-list-data-streams",
+      "description": "List data streams (web/iOS/Android) for a property. Returns { streams: [{ streamId, displayName, type, webStreamData, androidAppStreamData, iosAppStreamData }], count }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "pageSize": "Max results per page (default 50)",
+        "pageToken": "Pagination token from previous response"
+      }
+    },
+    "analytics-get-data-stream": {
+      "name": "analytics-get-data-stream",
+      "description": "Get a single data stream's details. Returns { stream: { streamId, displayName, type, webStreamData?, androidAppStreamData?, iosAppStreamData? } }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "streamId": "Data stream ID (numeric)"
+      }
+    },
+    "analytics-run-report": {
+      "name": "analytics-run-report",
+      "description": "Run a GA4 report. Returns { dimensionHeaders, metricHeaders, rows, rowCount, totals?, metadata, propertyQuota? }. Dates accept ISO (\"2024-01-01\") or relative (\"7daysAgo\", \"yesterday\", \"today\").",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "dimensions": "Dimension API names, e.g. [\"country\", \"deviceCategory\"]",
+        "metrics": "Metric API names, e.g. [\"activeUsers\", \"sessions\"]",
+        "dateRanges": "Date ranges, e.g. [{ \"startDate\": \"7daysAgo\", \"endDate\": \"yesterday\" }]",
+        "dimensionFilter": "GA4 FilterExpression for dimensions (see GA4 Data API docs)",
+        "metricFilter": "GA4 FilterExpression for metrics (applied after aggregation)",
+        "orderBys": "Order by config, e.g. [{ \"metric\": { \"metricName\": \"sessions\" }, \"desc\": true }]",
+        "limit": "Max rows (default 10000, max 250000)",
+        "offset": "Row offset (default 0)",
+        "keepEmptyRows": "Include rows where all metrics are zero",
+        "returnPropertyQuota": "Include quota info in response",
+        "currencyCode": "ISO 4217 currency override (e.g. \"USD\")",
+        "metricAggregations": "Aggregations: TOTAL, MINIMUM, MAXIMUM"
+      }
+    },
+    "analytics-batch-run-reports": {
+      "name": "analytics-batch-run-reports",
+      "description": "Run up to 5 GA4 reports against the same property in one call. Returns { reports: [<RunReportResponse>...] }. Useful for dashboards.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "requests": "Array of report requests (same shape as analytics-run-report parameters minus propertyId)"
+      }
+    },
+    "analytics-run-realtime-report": {
+      "name": "analytics-run-realtime-report",
+      "description": "Run a GA4 realtime report (last 30 minutes of activity). Returns { dimensionHeaders, metricHeaders, rows, rowCount, propertyQuota? }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "dimensions": "Realtime dimension API names, e.g. [\"country\", \"unifiedScreenName\"]",
+        "metrics": "Realtime metric API names, e.g. [\"activeUsers\"]",
+        "dimensionFilter": "FilterExpression for dimensions",
+        "metricFilter": "FilterExpression for metrics",
+        "orderBys": "Order by config",
+        "limit": "Max rows (default 10000)",
+        "returnPropertyQuota": "Include quota info in response"
+      }
+    },
+    "analytics-get-metadata": {
+      "name": "analytics-get-metadata",
+      "description": "Get all dimensions and metrics available for a property, including custom ones. Returns { dimensions: [{ apiName, uiName, description, customDefinition }], metrics: [{ apiName, uiName, description, type, customDefinition }] }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")"
+      }
+    },
+    "analytics-create-property": {
+      "name": "analytics-create-property",
+      "description": "Create a new GA4 property under an account. Returns { property: { propertyId, displayName, parent, timeZone, currencyCode, ... } }.",
+      "params": {
+        "accountId": "GA4 account ID (numeric or \"accounts/{id}\")",
+        "displayName": "Human-readable property name",
+        "timeZone": "IANA time zone, e.g. \"America/Los_Angeles\"",
+        "currencyCode": "ISO 4217 currency, e.g. \"USD\"",
+        "industryCategory": "GA4 industry enum, e.g. \"TECHNOLOGY\", \"RETAIL\", \"FINANCE\""
+      }
+    },
+    "analytics-update-property": {
+      "name": "analytics-update-property",
+      "description": "Update mutable fields of a GA4 property (displayName, timeZone, currencyCode, industryCategory). Returns { property: <updated> }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "displayName": "New display name",
+        "timeZone": "New IANA time zone",
+        "currencyCode": "New ISO 4217 currency code",
+        "industryCategory": "New industry enum"
+      }
+    },
+    "analytics-delete-property": {
+      "name": "analytics-delete-property",
+      "description": "Soft-delete a GA4 property (recoverable for ~7 days from Google Analytics UI). Returns { property: { propertyId, deleteTime, ... } }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")"
+      }
+    },
+    "analytics-create-data-stream": {
+      "name": "analytics-create-data-stream",
+      "description": "Create a web/iOS/Android data stream under a property. Returns { stream: { streamId, displayName, type, webStreamData? } }.",
+      "params": {
+        "propertyId": "GA4 property ID (numeric or \"properties/{id}\")",
+        "displayName": "Human-readable stream name",
+        "type": "Stream type: WEB_DATA_STREAM | ANDROID_APP_DATA_STREAM | IOS_APP_DATA_STREAM",
+        "webStreamData": "Required for WEB_DATA_STREAM: { defaultUri }",
+        "androidAppStreamData": "Required for ANDROID_APP_DATA_STREAM: { packageName }",
+        "iosAppStreamData": "Required for IOS_APP_DATA_STREAM: { bundleId }"
+      }
+    }
+  },
+  "name": "Google Analytics",
+  "description": "Google Analytics 4 (GA4) — run reports, query realtime data, and manage properties and data streams"
+}

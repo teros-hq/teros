@@ -1,0 +1,53 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.odoo",
+  "name": "Odoo",
+  "version": "1.0.0",
+  "description": "Odoo ERP integration — manage partners, products, sales orders, invoices, projects, tasks, employees, leaves and timesheets via the Odoo JSON-RPC API using an API key.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "provider": "odoo",
+      "systemSecrets": [],
+      "userSecrets": ["BASE_URL", "DATABASE", "API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "odoo",
+    "erp",
+    "crm",
+    "sales",
+    "invoicing",
+    "project",
+    "hr",
+    "employees",
+    "timesheet",
+    "inventory"
+  ]
+}

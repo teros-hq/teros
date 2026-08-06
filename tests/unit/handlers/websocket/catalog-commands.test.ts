@@ -12,6 +12,10 @@ describe('CatalogCommands', () => {
   let buildAvatarUrlMock: ReturnType<typeof mock>;
   let wsMock: any;
 
+  // handleListCatalog requires userId and userRole — added in signature drift
+  const userId = 'user_test123';
+  const userRole = 'user';
+
   beforeEach(() => {
     mcaServiceMock = {
       listCatalog: mock(() => Promise.resolve([])),
@@ -49,7 +53,7 @@ describe('CatalogCommands', () => {
       mcaServiceMock.listCatalog = mock(() =>
         Promise.resolve([
           {
-            mcpId: 'mca.test1',
+            mcaId: 'mca.test1',
             name: 'Test MCA 1',
             description: 'Description 1',
             icon: '🔧',
@@ -59,7 +63,7 @@ describe('CatalogCommands', () => {
             availability: { enabled: true, multi: false, system: false, hidden: false },
           },
           {
-            mcpId: 'mca.test2',
+            mcaId: 'mca.test2',
             name: 'Test MCA 2',
             description: 'Description 2',
             availability: { enabled: true },
@@ -68,52 +72,52 @@ describe('CatalogCommands', () => {
       );
 
       const commands = createCommands();
-      await commands.handleListCatalog(wsMock);
+      await commands.handleListCatalog(wsMock, userId, userRole);
 
       expect(sendMessageMock).toHaveBeenCalledTimes(1);
       const response = sendMessageMock.mock.calls[0][1];
       expect(response.type).toBe('catalog_list');
       expect(response.catalog.length).toBe(2);
-      expect(response.catalog[0].mcpId).toBe('mca.test1');
+      expect(response.catalog[0].mcaId).toBe('mca.test1');
     });
 
     it('should filter out disabled MCAs', async () => {
       mcaServiceMock.listCatalog = mock(() =>
         Promise.resolve([
-          { mcpId: 'mca.enabled', availability: { enabled: true } },
-          { mcpId: 'mca.disabled', availability: { enabled: false } },
+          { mcaId: 'mca.enabled', availability: { enabled: true } },
+          { mcaId: 'mca.disabled', availability: { enabled: false } },
         ]),
       );
 
       const commands = createCommands();
-      await commands.handleListCatalog(wsMock);
+      await commands.handleListCatalog(wsMock, userId, userRole);
 
       const response = sendMessageMock.mock.calls[0][1];
       expect(response.catalog.length).toBe(1);
-      expect(response.catalog[0].mcpId).toBe('mca.enabled');
+      expect(response.catalog[0].mcaId).toBe('mca.enabled');
     });
 
     it('should filter out hidden MCAs', async () => {
       mcaServiceMock.listCatalog = mock(() =>
         Promise.resolve([
-          { mcpId: 'mca.visible', availability: { enabled: true, hidden: false } },
-          { mcpId: 'mca.hidden', availability: { enabled: true, hidden: true } },
+          { mcaId: 'mca.visible', availability: { enabled: true, hidden: false } },
+          { mcaId: 'mca.hidden', availability: { enabled: true, hidden: true } },
         ]),
       );
 
       const commands = createCommands();
-      await commands.handleListCatalog(wsMock);
+      await commands.handleListCatalog(wsMock, userId, userRole);
 
       const response = sendMessageMock.mock.calls[0][1];
       expect(response.catalog.length).toBe(1);
-      expect(response.catalog[0].mcpId).toBe('mca.visible');
+      expect(response.catalog[0].mcaId).toBe('mca.visible');
     });
 
     it('should handle errors gracefully', async () => {
       mcaServiceMock.listCatalog = mock(() => Promise.reject(new Error('DB error')));
 
       const commands = createCommands();
-      await commands.handleListCatalog(wsMock);
+      await commands.handleListCatalog(wsMock, userId, userRole);
 
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,

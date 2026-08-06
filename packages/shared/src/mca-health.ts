@@ -10,6 +10,25 @@
 import { z } from "zod"
 
 // ============================================================================
+// RESOLVABILITY WIRE CONSTANTS
+// ============================================================================
+
+/**
+ * Typed `reason` code returned by `app.get-mca-resolvability` (and mirrored by the resolver) when an
+ * MCA has no active installed app for the caller — `{ runnable: false, reason: NOT_INSTALLED_REASON }`.
+ * Single source of truth so the backend resolver and the frontend health dashboard share the exact
+ * wire value instead of each hardcoding the literal and syncing by comment.
+ */
+export const NOT_INSTALLED_REASON = "not-installed" as const
+
+/**
+ * Per-tool health test outcome — the persisted status written by `app.record-mca-health` and read
+ * back by `app.get-mca-health`. Single source of truth for the wire contract shared by the frontend
+ * health dashboard and the backend handler (the backend keeps a deliberate copy that must match this).
+ */
+export type ToolTestStatus = "ok" | "pending" | "fail" | "confirm" | "skip"
+
+// ============================================================================
 // HEALTH CHECK TYPES
 // ============================================================================
 
@@ -86,6 +105,14 @@ export const HealthCheckResultSchema = z.object({
   issues: z.array(HealthIssueSchema).optional(),
   version: z.string().optional(),
   uptime: z.number().optional(), // seconds
+  /**
+   * Informational notes the MCA surfaces in its health response.
+   * Used by MCAs with protocol contracts (e.g. board-runner cooperative
+   * stop protocol) to echo the contract back to the caller agent —
+   * complements the tool description (which the LLM reads pre-call) with
+   * post-call info.
+   */
+  notes: z.array(z.string()).optional(),
 })
 export type HealthCheckResult = z.infer<typeof HealthCheckResultSchema>
 
@@ -355,7 +382,9 @@ export const WsQueryConversationsActionSchema = z.enum([
   "create_channel",
   "send_message",
   "rename_channel",
+  "import_channel_attachment",
   // Board actions
+  "get_my_task",
   "get_tasks_by_agent",
   "get_board_summary",
   "get_task",
@@ -370,11 +399,36 @@ export const WsQueryConversationsActionSchema = z.enum([
   "start_task",
   "link_conversation",
   "delete_task",
+  "archive_task",
+  "complete_my_task",
+  "block_my_task",
+  "cancel_my_task",
   "move_my_task",
   "update_my_task_status",
   "add_my_progress_note",
   "update_task_status",
   "add_progress_note",
+  // Board manager read/write actions added in board-manager MCA
+  "get_project",
+  "update_project",
+  "list_board_agents",
+  "add_dependency",
+  "remove_dependency",
+  // Autoplay v2 + board supervision (Fase 3)
+  "set_agent_slots",
+  "set_agent_play",
+  "subscribe_to_board",
+  "unsubscribe_from_board",
+  "list_board_subscriptions",
+  "get_board_status",
+  "stop_task",
+  // Drift fix (TER-444): these have switch handlers in
+  // mca-connection-manager.queries-* but were missing from the enum, so the
+  // schema rejected them ("Invalid message format" + silent timeout).
+  "archive_project", // queries-board-write.ts
+  "subscribe_to_events", // queries-board-runner.ts
+  "unsubscribe_from_events", // queries-board-runner.ts
+  "list_event_subscriptions", // queries-board-runner.ts
 ])
 export type WsQueryConversationsAction = z.infer<typeof WsQueryConversationsActionSchema>
 

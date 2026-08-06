@@ -1,0 +1,78 @@
+{
+  "tools": {
+    "get-current": {
+      "name": "get-current",
+      "description": "지정된 시간대의 현재 날짜와 시간을 가져옵니다.",
+      "params": {
+        "timezone": "시간대 (예: 'Europe/Madrid', 'America/New_York'). 기본값은 로컬",
+        "format": "출력 형식 (예: 'yyyy-MM-dd HH:mm:ss'). 기본값은 ISO"
+      }
+    },
+    "format": {
+      "name": "format",
+      "description": "날짜/시간 문자열을 형식화합니다.",
+      "params": {
+        "datetime": "형식화할 날짜/시간 문자열",
+        "format": "출력 형식 (예: 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')",
+        "inputFormat": "datetime이 ISO가 아닐 경우 입력 형식 (선택 사항)"
+      }
+    },
+    "parse": {
+      "name": "parse",
+      "description": "날짜/시간 문자열을 파싱합니다.",
+      "params": {
+        "datetime": "파싱할 날짜/시간 문자열",
+        "format": "예상 형식 (예: 'yyyy-MM-dd HH:mm:ss'). ISO일 경우 선택 사항"
+      }
+    },
+    "convert-timezone": {
+      "name": "convert-timezone",
+      "description": "시간대를 변환합니다.",
+      "params": {
+        "datetime": "날짜/시간 문자열",
+        "fromTimezone": "출발 시간대 (예: 'Europe/Madrid')",
+        "toTimezone": "대상 시간대 (예: 'America/New_York')"
+      }
+    },
+    "add": {
+      "name": "add",
+      "description": "날짜/시간에 기간을 추가합니다.",
+      "params": {
+        "datetime": "기본 날짜/시간 문자열",
+        "duration": "추가할 기간 (예: {days: 5, hours: 2})"
+      }
+    },
+    "subtract": {
+      "name": "subtract",
+      "description": "날짜/시간에서 기간을 뺍니다.",
+      "params": {
+        "datetime": "기본 날짜/시간 문자열",
+        "duration": "뺄 기간 (예: {days: 5, hours: 2})"
+      }
+    },
+    "diff": {
+      "name": "diff",
+      "description": "두 날짜 사이의 차이를 계산합니다.",
+      "params": {
+        "start": "시작 날짜/시간",
+        "end": "종료 날짜/시간",
+        "unit": "결과의 단위 (기본값: 밀리초)"
+      }
+    },
+    "is-valid": {
+      "name": "is-valid",
+      "description": "날짜/시간 문자열을 검증합니다.",
+      "params": {
+        "datetime": "검증할 날짜/시간 문자열",
+        "format": "예상 형식 (ISO일 경우 선택 사항)"
+      }
+    }
+  },
+  "name": "DateTime",
+  "description": "시간대 지원이 포함된 날짜 및 시간 유틸리티. 시계, 달력 및 시간 변환 도구를 제공합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 날짜를 형식화, 파싱 및 검증하고, 시간대 간 변환 및 시간을 추가, 빼거나 비교합니다."
+    }
+  ]
+}

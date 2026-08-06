@@ -4,3 +4,4 @@ export { sendHtml } from './send-html';
 export { sendHtmlFile } from './send-html-file';
 export { sendImage } from './send-image';
 export { sendVideo } from './send-video';
+export { notifyByEmail } from './notify-by-email';

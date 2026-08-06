@@ -15,7 +15,8 @@ import {
   ReportBugRenderer,
   ReportSuggestionRenderer,
 } from './feedback/renderers';
-import { Badge, getShortToolName, HeaderRow } from './feedback/shared';
+import { ToolCallCard } from '../primitives';
+import { Badge, getShortToolName } from './feedback/shared';
 
 // ============================================================================
 // Tool Name to Renderer Mapping
@@ -32,7 +33,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // Fallback Renderer
 // ============================================================================
 
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
 
   let badge: React.ReactNode = null;
@@ -43,13 +44,11 @@ function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps)
   }
 
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
-      description={shortName}
-      duration={duration}
+      verb={shortName.replace(/-/g, ' ')}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
+      iconUri={appIcon}
     />
   );
 }

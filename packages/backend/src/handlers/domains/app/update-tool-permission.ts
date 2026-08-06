@@ -5,13 +5,11 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ToolPermission } from '../../../types/database'
+import type { McaManager } from '../../../services/mca-manager'
 import type { McaService } from '../../../services/mca-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import {
-  getPermissionsSummary,
-  isPrivateTool,
-  normalizeToolName,
-} from '../../../types/permissions'
+import { normalizeToolName } from '../../../types/permissions'
+import { buildAppPermissionsView } from './_permissions-view'
 
 interface UpdateToolPermissionData {
   appId: string
@@ -35,7 +33,13 @@ async function canManageApp(
 
 export function createUpdateToolPermissionHandler(
   mcaService: McaService,
+  mcaManager: McaManager | null,
   workspaceService?: WorkspaceService,
+  applyPermissionToPendingRequests?: (
+    appId: string,
+    toolName: string,
+    permission: 'allow' | 'forbid',
+  ) => Promise<number>,
 ) {
   return async function updateToolPermission(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateToolPermissionData
@@ -80,10 +84,29 @@ export function createUpdateToolPermissionHandler(
       throw new HandlerError('UPDATE_FAILED', 'Failed to update permission')
     }
 
-    const publicTools = mca.tools.filter((name) => !isPrivateTool(name))
-    const summary = getPermissionsSummary(updated.permissions, publicTools)
+    const { tools: toolsView, summary } = await buildAppPermissionsView(mcaManager, updated, appId, mca.tools)
 
     console.log(`[app.update-tool-permission] Updated ${toolName} = ${permission}`)
+
+    // "Allow/Deny always" also covers the requests of this tool ALREADY waiting
+    // for an answer — the sibling widgets of a multi-call batch must not keep
+    // asking for something the user just decided. Confirmation-locked tools
+    // (annotations.alwaysAsk) are excluded from auto-grant: the runtime clamps
+    // their configured 'allow' back to 'ask', so auto-granting here would run
+    // them without the confirmation the manifest demands. Auto-deny has no such
+    // clamp — denying is always safe.
+    if (applyPermissionToPendingRequests && (permission === 'allow' || permission === 'forbid')) {
+      const toolView = toolsView.find((t) => normalizeToolName(t.name) === normalizedShortName)
+      const skipAutoGrant = permission === 'allow' && toolView?.alwaysAsk === true
+      if (!skipAutoGrant) {
+        applyPermissionToPendingRequests(appId, toolName, permission).catch((err) => {
+          console.error(
+            `[app.update-tool-permission] Failed to apply ${permission} to pending requests of ${toolName}:`,
+            err,
+          )
+        })
+      }
+    }
 
     return { success: true, appId, toolName, permission, summary }
   }

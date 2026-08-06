@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const listWorkflowRuns: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List workflow runs for a repository',
   parameters: {
     type: 'object',

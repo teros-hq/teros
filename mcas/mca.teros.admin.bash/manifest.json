@@ -5,7 +5,7 @@
   "version": "0.9.0",
   "description": "Execute bash commands directly on the host system. Admin-only access for system administration tasks.",
   "type": "utility",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "development",
   "entrypoint": "src/index.ts",
   "runtime": {
@@ -30,5 +30,12 @@
     "auth": false,
     "agent": false
   },
-  "keywords": ["bash", "shell", "command", "terminal", "system", "admin", "host"]
+  "keywords": ["bash", "shell", "command", "terminal", "system", "admin", "host"],
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — run shell commands on the host server, with timeouts and a chosen working directory"
+    }
+  ]
 }

@@ -6,6 +6,7 @@
  */
 
 import { Folder } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { WorkspacesListWindowContent } from './WorkspacesListWindowContent';
 
@@ -26,10 +27,9 @@ export const workspacesListWindowDefinition: WindowTypeDefinition<WorkspacesList
   defaultSize: { width: 700, height: 500 },
   minSize: { width: 400, height: 300 },
 
-  singleton: true,
   isLauncher: true,
 
-  getTitle: () => 'Workspaces',
+  getTitle: () => i18n.t("windows.workspaces"),
 
   serialize: (props) => ({
     status: props.status,

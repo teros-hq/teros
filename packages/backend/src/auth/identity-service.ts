@@ -101,7 +101,7 @@ export class IdentityService {
 
     const data = identity.data as PasswordIdentityData;
 
-    // Check if account is locked
+    // Check if account is currently locked
     if (data.lockedUntil && data.lockedUntil > new Date()) {
       return {
         success: false,
@@ -110,27 +110,31 @@ export class IdentityService {
       };
     }
 
+    // If a lockout was set but has already elapsed, start a fresh attempt
+    // window. Otherwise the counter stays at MAX and a single mistake by a
+    // legitimate user who waited out the lockout re-locks them immediately.
+    // OWASP: the failed-attempt counter resets once the lockout duration
+    // passes (Authentication Cheat Sheet). (TER-450)
+    const priorFailedAttempts = data.lockedUntil ? 0 : data.failedAttempts;
+
     // Verify password
     const isValid = await bcrypt.compare(password, data.passwordHash);
 
     if (!isValid) {
       // Increment failed attempts
-      const newFailedAttempts = data.failedAttempts + 1;
-      const updates: Partial<PasswordIdentityData> = {
-        failedAttempts: newFailedAttempts,
-      };
-
-      // Lock account if too many failures
-      if (newFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-        updates.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
-      }
+      const newFailedAttempts = priorFailedAttempts + 1;
+      // Lock account if too many failures; otherwise clear any stale lockout.
+      const lockedUntil =
+        newFailedAttempts >= MAX_FAILED_ATTEMPTS
+          ? new Date(Date.now() + LOCKOUT_DURATION_MS)
+          : null;
 
       await this.identities.updateOne(
         { _id: identity._id },
         {
           $set: {
-            'data.failedAttempts': updates.failedAttempts,
-            ...(updates.lockedUntil && { 'data.lockedUntil': updates.lockedUntil }),
+            'data.failedAttempts': newFailedAttempts,
+            'data.lockedUntil': lockedUntil,
             updatedAt: new Date(),
           },
         },
@@ -139,7 +143,7 @@ export class IdentityService {
       return {
         success: false,
         error: 'invalid_credentials',
-        lockedUntil: updates.lockedUntil,
+        lockedUntil: lockedUntil ?? undefined,
       };
     }
 

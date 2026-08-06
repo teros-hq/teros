@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { McaService } from '../../../services/mca-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface InstallWorkspaceAppData {
   workspaceId: string
@@ -17,6 +18,7 @@ interface InstallWorkspaceAppData {
 export function createInstallWorkspaceAppHandler(
   workspaceService: WorkspaceService,
   mcaService: McaService,
+  pubSubService?: PubSubService | null,
 ) {
   return async function installWorkspaceApp(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as InstallWorkspaceAppData
@@ -52,19 +54,29 @@ export function createInstallWorkspaceAppHandler(
 
     console.log(`[workspace.install-app] Installed app ${app.appId} in workspace ${data.workspaceId}`)
 
+    const appPayload = {
+      appId: app.appId,
+      name: app.name,
+      mcaId: app.mcaId,
+      mcaName: mca?.name || app.mcaId,
+      description: mca?.description || '',
+      icon: mca?.icon,
+      category: mca?.category || 'other',
+      status: app.status,
+      volumes: app.volumes,
+    }
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(data.workspaceId, {
+        type: 'app.installed',
+        app: appPayload,
+        ownerId: data.workspaceId,
+      })
+    }
+
     return {
       workspaceId: data.workspaceId,
-      app: {
-        appId: app.appId,
-        name: app.name,
-        mcaId: app.mcaId,
-        mcaName: mca?.name || app.mcaId,
-        description: mca?.description || '',
-        icon: mca?.icon,
-        category: mca?.category || 'other',
-        status: app.status,
-        volumes: app.volumes,
-      },
+      app: appPayload,
     }
   }
 }

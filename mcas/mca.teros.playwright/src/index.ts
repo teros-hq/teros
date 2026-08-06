@@ -7,7 +7,7 @@
  * Uses @teros/mca-sdk McaServer with HTTP transport.
  */
 
-import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
+import { HealthCheckBuilder, McaServer, navigateSafely } from '@teros/mca-sdk';
 import {
   type Browser,
   type BrowserContext,
@@ -23,6 +23,10 @@ import {
 let browser: Browser | null = null;
 let context: BrowserContext | null = null;
 let page: Page | null = null;
+
+// Recording state
+let isRecording = false;
+let videoPath: string | null = null;
 
 // Console messages storage
 const consoleMessages: Array<{ level: string; text: string; timestamp: number }> = [];
@@ -44,18 +48,71 @@ const networkRequests: Array<{
 // BROWSER MANAGEMENT
 // =============================================================================
 
-async function ensureBrowser(): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
+interface BrowserOptions {
+  headless?: boolean;
+  viewport?: { width: number; height: number };
+  recordVideo?: { dir: string; size?: { width: number; height: number } };
+  device?: string;
+  userAgent?: string;
+  isMobile?: boolean;
+  hasTouch?: boolean;
+}
+
+// Device presets for browser-emulate-device
+const DEVICE_PRESETS: Record<string, { viewport: { width: number; height: number }; userAgent: string; isMobile: boolean; hasTouch: boolean }> = {
+  'iphone-13': { viewport: { width: 390, height: 844 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', isMobile: true, hasTouch: true },
+  'iphone-15-pro': { viewport: { width: 393, height: 852 }, userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', isMobile: true, hasTouch: true },
+  'ipad-pro-11': { viewport: { width: 834, height: 1194 }, userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1', isMobile: true, hasTouch: true },
+  'pixel-7': { viewport: { width: 412, height: 915 }, userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36', isMobile: true, hasTouch: true },
+  'galaxy-s23': { viewport: { width: 360, height: 780 }, userAgent: 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36', isMobile: true, hasTouch: true },
+  'desktop-1080p': { viewport: { width: 1920, height: 1080 }, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', isMobile: false, hasTouch: false },
+  'desktop-720p': { viewport: { width: 1280, height: 720 }, userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', isMobile: false, hasTouch: false },
+};
+
+async function ensureBrowser(opts?: BrowserOptions): Promise<{ browser: Browser; context: BrowserContext; page: Page }> {
+  const headless = opts?.headless ?? true;
+
   if (!browser || !browser.isConnected()) {
     browser = await chromium.launch({
-      headless: true,
+      headless,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
   }
 
-  if (!context) {
-    context = await browser.newContext({
-      viewport: { width: 1280, height: 720 },
-    });
+  // Recreate context if options require it (recording, device emulation, or explicit viewport)
+  const needsNewContext = opts && (opts.recordVideo || opts.device || opts.viewport || opts.userAgent || opts.isMobile !== undefined);
+
+  if (!context || needsNewContext) {
+    // If we have an existing context with recording, save the video before replacing
+    if (context && isRecording) {
+      try {
+        await context.close();
+      } catch {}
+      isRecording = false;
+    }
+
+    const contextOptions: any = {
+      viewport: opts?.viewport ?? { width: 1280, height: 720 },
+    };
+
+    if (opts?.recordVideo) {
+      contextOptions.recordVideo = opts.recordVideo;
+    }
+    if (opts?.userAgent) {
+      contextOptions.userAgent = opts.userAgent;
+    }
+    if (opts?.isMobile !== undefined) {
+      contextOptions.isMobile = opts.isMobile;
+    }
+    if (opts?.hasTouch !== undefined) {
+      contextOptions.hasTouch = opts.hasTouch;
+    }
+
+    context = await browser.newContext(contextOptions);
+
+    if (opts?.recordVideo) {
+      isRecording = true;
+    }
   }
 
   if (!page || page.isClosed()) {
@@ -101,6 +158,7 @@ async function closeBrowser(): Promise<void> {
     page = null;
   }
   if (context) {
+    // Closing the context finalizes and saves any active video recording
     await context.close();
     context = null;
   }
@@ -108,6 +166,8 @@ async function closeBrowser(): Promise<void> {
     await browser.close();
     browser = null;
   }
+  isRecording = false;
+  videoPath = null;
   consoleMessages.length = 0;
   networkRequests.length = 0;
 }
@@ -231,7 +291,7 @@ async function findElementByRef(p: Page, ref: string, retries = 2): Promise<Elem
         const locator = p.locator(`aria-ref=${ref}`);
         // Wait briefly for element to be available
         await locator.waitFor({ state: 'attached', timeout: 3000 });
-        const element = await locator.first().elementHandle();
+        const element = await locator.first().elementHandle({ timeout: 2000 });
         if (element) return element;
       } catch (e) {
         // If this is not the last attempt, wait a bit and retry
@@ -250,7 +310,7 @@ async function findElementByRef(p: Page, ref: string, retries = 2): Promise<Elem
 
     // Try as text content
     try {
-      const element = await p.getByText(ref, { exact: false }).first().elementHandle();
+      const element = await p.getByText(ref, { exact: false }).first().elementHandle({ timeout: 2000 });
       if (element) return element;
     } catch {}
 
@@ -262,7 +322,7 @@ async function findElementByRef(p: Page, ref: string, retries = 2): Promise<Elem
         const element = await p
           .getByRole(role as any, { name })
           .first()
-          .elementHandle();
+          .elementHandle({ timeout: 2000 });
         if (element) return element;
       }
     } catch {}
@@ -317,6 +377,7 @@ server.tool('-health-check', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-close', {
+  annotations: { readOnlyHint: false },
   description: 'Close the page',
   parameters: { type: 'object', properties: {} },
   handler: async () => {
@@ -330,6 +391,7 @@ server.tool('browser-close', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-resize', {
+  annotations: { readOnlyHint: false },
   description: 'Resize the browser window',
   parameters: {
     type: 'object',
@@ -354,6 +416,7 @@ server.tool('browser-resize', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-console-messages', {
+  annotations: { readOnlyHint: false },
   description: 'Returns console messages with filtering options',
   parameters: {
     type: 'object',
@@ -463,6 +526,7 @@ server.tool('browser-console-messages', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-console-errors', {
+  annotations: { readOnlyHint: false },
   description: 'Returns only error messages (shortcut for level=error)',
   parameters: {
     type: 'object',
@@ -534,6 +598,7 @@ server.tool('browser-console-errors', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-console-clear', {
+  annotations: { readOnlyHint: false },
   description: 'Clear all captured console messages',
   parameters: { type: 'object', properties: {} },
   handler: async () => {
@@ -550,6 +615,7 @@ server.tool('browser-console-clear', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-handle-dialog', {
+  annotations: { readOnlyHint: false },
   description: 'Handle a dialog',
   parameters: {
     type: 'object',
@@ -582,6 +648,7 @@ server.tool('browser-handle-dialog', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-evaluate', {
+  annotations: { readOnlyHint: false },
   description: 'Evaluate JavaScript expression on page or element',
   parameters: {
     type: 'object',
@@ -622,6 +689,7 @@ server.tool('browser-evaluate', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-file-upload', {
+  annotations: { readOnlyHint: false },
   description: 'Upload one or multiple files',
   parameters: {
     type: 'object',
@@ -656,6 +724,7 @@ server.tool('browser-file-upload', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-fill-form', {
+  annotations: { readOnlyHint: false },
   description: 'Fill multiple form fields',
   parameters: {
     type: 'object',
@@ -757,6 +826,7 @@ server.tool('browser-fill-form', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-install', {
+  annotations: { readOnlyHint: false },
   description:
     'Install the browser specified in the config. Call this if you get an error about the browser not being installed.',
   parameters: { type: 'object', properties: {} },
@@ -776,6 +846,7 @@ server.tool('browser-install', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-press-key', {
+  annotations: { readOnlyHint: false },
   description: 'Press a key on the keyboard',
   parameters: {
     type: 'object',
@@ -800,6 +871,7 @@ server.tool('browser-press-key', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-type', {
+  annotations: { readOnlyHint: false },
   description: 'Type text into editable element',
   parameters: {
     type: 'object',
@@ -852,11 +924,18 @@ server.tool('browser-type', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-navigate', {
+  annotations: { readOnlyHint: false },
   description: 'Navigate to a URL',
   parameters: {
     type: 'object',
     properties: {
       url: { type: 'string', description: 'The URL to navigate to' },
+      waitUntil: {
+        type: 'string',
+        enum: ['load', 'domcontentloaded', 'networkidle'],
+        default: 'domcontentloaded',
+        description: 'When to consider navigation complete: "load" (full page load), "domcontentloaded" (DOM ready, default), "networkidle" (no network activity for 500ms). Use "networkidle" for pages that load content dynamically.',
+      },
     },
     required: ['url'],
   },
@@ -864,7 +943,10 @@ server.tool('browser-navigate', {
     const { page } = await ensureBrowser();
     lastNavigationTime = Date.now();
     lastActionTime = Date.now();
-    await page.goto(args.url as string, { waitUntil: 'domcontentloaded' });
+    const waitUntil = (args.waitUntil as 'load' | 'domcontentloaded' | 'networkidle') || 'domcontentloaded';
+    // SSRF-safe: assert the URL is public + block redirect hops to literal private
+    // IPs before driving the real browser navigation.
+    await navigateSafely(page, args.url as string, { gotoOptions: { waitUntil } });
     return `Navigated to ${args.url}\n\nTitle: ${await page.title()}`;
   },
 });
@@ -874,6 +956,7 @@ server.tool('browser-navigate', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-navigate-back', {
+  annotations: { readOnlyHint: false },
   description: 'Go back to the previous page',
   parameters: { type: 'object', properties: {} },
   handler: async () => {
@@ -890,6 +973,7 @@ server.tool('browser-navigate-back', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-network-requests', {
+  annotations: { readOnlyHint: false },
   description: 'Returns all network requests since loading the page',
   parameters: {
     type: 'object',
@@ -923,6 +1007,7 @@ server.tool('browser-network-requests', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-run-code', {
+  annotations: { readOnlyHint: false },
   description: 'Run Playwright code snippet',
   parameters: {
     type: 'object',
@@ -930,18 +1015,18 @@ server.tool('browser-run-code', {
       code: {
         type: 'string',
         description:
-          "A JavaScript function containing Playwright code to execute. It will be invoked with a single argument, page, which you can use for any page interaction. For example: `async (page) => { await page.getByRole('button', { name: 'Submit' }).click(); return await page.title(); }`",
+          "A JavaScript function containing Playwright code to execute. It will be invoked with a single argument containing { page, context, browser }. For example: `async ({ page, context, browser }) => { await page.getByRole('button', { name: 'Submit' }).click(); return await page.title(); }`",
       },
     },
     required: ['code'],
   },
   handler: async (args) => {
-    const { page } = await ensureBrowser();
+    const { page, context, browser } = await ensureBrowser();
     const code = args.code as string;
 
-    // Create an async function from the code string and execute it with the page
-    const fn = new Function('page', `return (${code})(page)`);
-    const result = await fn(page);
+    // Create an async function from the code string and execute it with full access
+    const fn = new Function('page', 'context', 'browser', `return (${code})({ page, context, browser })`);
+    const result = await fn(page, context, browser);
 
     if (result === undefined) {
       return 'Code executed successfully (no return value)';
@@ -956,6 +1041,7 @@ server.tool('browser-run-code', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-take-screenshot', {
+  annotations: { readOnlyHint: false },
   description:
     "Take a screenshot of the current page. You can't perform actions based on the screenshot, use browser_snapshot for actions. Screenshots are saved to /workspace/ (shared volume).",
   parameters: {
@@ -1011,11 +1097,20 @@ server.tool('browser-take-screenshot', {
     const parentDir = pathModule.dirname(filename);
     await fs.mkdir(parentDir, { recursive: true });
 
+    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+
     if (args.ref) {
       const element = await findElementByRef(page, args.ref as string);
       if (element) {
         await element.screenshot({ path: filename, type: format });
-        return `Screenshot of element saved to ${filename}`;
+        return {
+          output: `Screenshot of element saved to ${filename}`,
+          attachments: [{
+            url: filename,
+            mime: mimeType,
+            filename: pathModule.basename(filename),
+          }],
+        };
       }
     }
 
@@ -1024,7 +1119,14 @@ server.tool('browser-take-screenshot', {
       type: format,
       fullPage: args.fullPage as boolean,
     });
-    return `Screenshot saved to ${filename}`;
+    return {
+      output: `Screenshot saved to ${filename}`,
+      attachments: [{
+        url: filename,
+        mime: mimeType,
+        filename: pathModule.basename(filename),
+      }],
+    };
   },
 });
 
@@ -1033,6 +1135,7 @@ server.tool('browser-take-screenshot', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-snapshot', {
+  annotations: { readOnlyHint: false },
   description: 'Capture accessibility snapshot of the current page, this is better than screenshot',
   parameters: {
     type: 'object',
@@ -1078,6 +1181,7 @@ server.tool('browser-snapshot', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-click', {
+  annotations: { readOnlyHint: false },
   description: 'Perform click on a web page',
   parameters: {
     type: 'object',
@@ -1133,6 +1237,7 @@ server.tool('browser-click', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-drag', {
+  annotations: { readOnlyHint: false },
   description: 'Perform drag and drop between two elements',
   parameters: {
     type: 'object',
@@ -1194,6 +1299,7 @@ server.tool('browser-drag', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-hover', {
+  annotations: { readOnlyHint: false },
   description: 'Hover over element on page',
   parameters: {
     type: 'object',
@@ -1225,6 +1331,7 @@ server.tool('browser-hover', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-select-option', {
+  annotations: { readOnlyHint: false },
   description: 'Select an option in a dropdown',
   parameters: {
     type: 'object',
@@ -1262,6 +1369,7 @@ server.tool('browser-select-option', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-tabs', {
+  annotations: { readOnlyHint: false },
   description: 'List, create, close, or select a browser tab.',
   parameters: {
     type: 'object',
@@ -1324,13 +1432,16 @@ server.tool('browser-tabs', {
 // -----------------------------------------------------------------------------
 
 server.tool('browser-wait-for', {
-  description: 'Wait for text to appear or disappear or a specified time to pass',
+  annotations: { readOnlyHint: false },
+  description: 'Wait for text to appear or disappear, a URL to load, network idle, or a specified time to pass',
   parameters: {
     type: 'object',
     properties: {
       time: { type: 'number', description: 'The time to wait in seconds' },
       text: { type: 'string', description: 'The text to wait for' },
       textGone: { type: 'string', description: 'The text to wait for to disappear' },
+      url: { type: 'string', description: 'Wait for the page URL to contain or match this string (partial match). Useful for OAuth redirects.' },
+      networkIdle: { type: 'boolean', description: 'Wait until there are no network connections for at least 500ms. Useful for SPA content loading.' },
     },
   },
   handler: async (args) => {
@@ -1339,6 +1450,16 @@ server.tool('browser-wait-for', {
     if (args.time) {
       await page.waitForTimeout((args.time as number) * 1000);
       return `Waited ${args.time} seconds`;
+    }
+
+    if (args.url) {
+      await page.waitForURL(args.url as string, { timeout: 30000 });
+      return `URL matched: ${page.url()}`;
+    }
+
+    if (args.networkIdle) {
+      await page.waitForLoadState('networkidle', { timeout: 30000 });
+      return 'Network is idle';
     }
 
     if (args.text) {
@@ -1352,6 +1473,299 @@ server.tool('browser-wait-for', {
     }
 
     return 'Nothing to wait for';
+  },
+});
+
+// =============================================================================
+// VIDEO RECORDING TOOLS
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// browser-start-recording
+// -----------------------------------------------------------------------------
+
+server.tool('browser-start-recording', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Start recording a video of the browser. Creates a new browser context with video recording enabled. Use browser-stop-recording to finalize and save the video file. All navigation and interaction tools will be captured in the recording.',
+  parameters: {
+    type: 'object',
+    properties: {
+      width: {
+        type: 'number',
+        default: 1280,
+        description: 'Video width in pixels (default: 1280)',
+      },
+      height: {
+        type: 'number',
+        default: 720,
+        description: 'Video height in pixels (default: 720)',
+      },
+      outputDir: {
+        type: 'string',
+        default: '/workspace/videos',
+        description: 'Directory to save the video file (default: /workspace/videos)',
+      },
+    },
+  },
+  handler: async (args) => {
+    const fs = await import('fs/promises');
+    const width = (args.width as number) || 1280;
+    const height = (args.height as number) || 720;
+    const outputDir = (args.outputDir as string) || '/workspace/videos';
+
+    // Ensure output directory exists
+    await fs.mkdir(outputDir, { recursive: true });
+
+    // Close existing context if any (this also saves any active recording)
+    if (page && !page.isClosed()) {
+      await page.close();
+      page = null;
+    }
+    if (context) {
+      try {
+        await context.close();
+      } catch {}
+      context = null;
+    }
+
+    // Create new context with video recording
+    const { context: newContext } = await ensureBrowser({
+      recordVideo: { dir: outputDir, size: { width, height } },
+      viewport: { width, height },
+    });
+
+    // Create a new page in the recording context
+    page = await newContext.newPage();
+
+    // Re-attach event listeners
+    page.on('console', (msg) => {
+      consoleMessages.push({
+        level: msg.type(),
+        text: msg.text(),
+        timestamp: Date.now(),
+      });
+      if (consoleMessages.length > 1000) {
+        consoleMessages.shift();
+      }
+    });
+
+    page.on('request', (request) => {
+      networkRequests.push({
+        url: request.url(),
+        method: request.method(),
+        resourceType: request.resourceType(),
+        timestamp: new Date(),
+      });
+    });
+
+    page.on('response', (response) => {
+      const req = networkRequests.find((r) => r.url === response.url() && !r.status);
+      if (req) {
+        req.status = response.status();
+      }
+    });
+
+    isRecording = true;
+
+    return `Video recording started (${width}x${height}). Video will be saved to ${outputDir}/ when you call browser-stop-recording.`;
+  },
+});
+
+// -----------------------------------------------------------------------------
+// browser-stop-recording
+// -----------------------------------------------------------------------------
+
+server.tool('browser-stop-recording', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Stop recording and save the video file. Closes the current browser context (which finalizes the video) and returns the path to the saved .webm file. A new non-recording context is created automatically so the browser remains usable.',
+  parameters: {
+    type: 'object',
+    properties: {
+      filename: {
+        type: 'string',
+        description: 'Optional custom filename for the video (e.g., "gmail-tutorial.webm"). If not provided, Playwright auto-generates a name. Saved to /workspace/.',
+      },
+    },
+  },
+  handler: async (args) => {
+    if (!isRecording || !context) {
+      return 'No active recording to stop.';
+    }
+
+    const fs = await import('fs/promises');
+    const pathModule = await import('path');
+
+    // Get the video path before closing the context
+    const video = page?.video();
+    let savedPath: string | null = null;
+
+    // Close the page first
+    if (page && !page.isClosed()) {
+      await page.close();
+      page = null;
+    }
+
+    // Close the context — this finalizes the video file
+    const tempPath = await video?.path();
+    await context.close();
+    context = null;
+    isRecording = false;
+
+    if (tempPath) {
+      // Move/rename to desired location
+      const targetDir = '/workspace/videos';
+      await fs.mkdir(targetDir, { recursive: true });
+
+      let targetName = (args.filename as string) || pathModule.basename(tempPath);
+      if (!targetName.endsWith('.webm')) {
+        targetName += '.webm';
+      }
+      const targetPath = pathModule.join(targetDir, targetName);
+
+      // Copy the video to the target path
+      await fs.copyFile(tempPath, targetPath);
+      savedPath = targetPath;
+      videoPath = targetPath;
+    }
+
+    // Create a fresh non-recording context so the browser stays usable
+    await ensureBrowser();
+
+    if (savedPath) {
+      return {
+        output: `Video saved to ${savedPath}`,
+        videoPath: savedPath,
+      };
+    }
+
+    return 'Recording stopped but video path could not be determined. Check /workspace/videos/ for the output file.';
+  },
+});
+
+// -----------------------------------------------------------------------------
+// browser-emulate-device
+// -----------------------------------------------------------------------------
+
+server.tool('browser-emulate-device', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Emulate a specific device or custom viewport. Recreates the browser context with the specified device settings. Useful for recording tutorials on mobile vs desktop views.',
+  parameters: {
+    type: 'object',
+    properties: {
+      device: {
+        type: 'string',
+        enum: [
+          'iphone-13',
+          'iphone-15-pro',
+          'ipad-pro-11',
+          'pixel-7',
+          'galaxy-s23',
+          'desktop-1080p',
+          'desktop-720p',
+        ],
+        description: 'Preset device to emulate. Selecting a preset sets viewport, user agent, and touch settings automatically.',
+      },
+      width: {
+        type: 'number',
+        description: 'Custom viewport width (used when device is not specified)',
+      },
+      height: {
+        type: 'number',
+        description: 'Custom viewport height (used when device is not specified)',
+      },
+      userAgent: {
+        type: 'string',
+        description: 'Custom user agent string (used when device is not specified)',
+      },
+      isMobile: {
+        type: 'boolean',
+        description: 'Whether to emulate a mobile device (used when device is not specified)',
+      },
+      hasTouch: {
+        type: 'boolean',
+        description: 'Whether to enable touch events (used when device is not specified)',
+      },
+    },
+  },
+  handler: async (args) => {
+    const device = args.device as string;
+    let opts: BrowserOptions;
+
+    if (device && DEVICE_PRESETS[device]) {
+      const preset = DEVICE_PRESETS[device];
+      opts = {
+        viewport: preset.viewport,
+        userAgent: preset.userAgent,
+        isMobile: preset.isMobile,
+        hasTouch: preset.hasTouch,
+      };
+    } else {
+      opts = {
+        viewport: {
+          width: (args.width as number) || 1280,
+          height: (args.height as number) || 720,
+        },
+        userAgent: args.userAgent as string | undefined,
+        isMobile: args.isMobile as boolean | undefined,
+        hasTouch: args.hasTouch as boolean | undefined,
+      };
+    }
+
+    // Close existing page and context
+    if (page && !page.isClosed()) {
+      await page.close();
+      page = null;
+    }
+    if (context) {
+      try {
+        if (isRecording) {
+          await context.close();
+          isRecording = false;
+        } else {
+          await context.close();
+        }
+      } catch {}
+      context = null;
+    }
+
+    // Create new context with device settings
+    const { context: newContext } = await ensureBrowser(opts);
+    page = await newContext.newPage();
+
+    // Re-attach event listeners
+    page.on('console', (msg) => {
+      consoleMessages.push({
+        level: msg.type(),
+        text: msg.text(),
+        timestamp: Date.now(),
+      });
+      if (consoleMessages.length > 1000) {
+        consoleMessages.shift();
+      }
+    });
+
+    page.on('request', (request) => {
+      networkRequests.push({
+        url: request.url(),
+        method: request.method(),
+        resourceType: request.resourceType(),
+        timestamp: new Date(),
+      });
+    });
+
+    page.on('response', (response) => {
+      const req = networkRequests.find((r) => r.url === response.url() && !r.status);
+      if (req) {
+        req.status = response.status();
+      }
+    });
+
+    const deviceName = device || 'custom';
+    const viewport = opts.viewport!;
+    return `Device emulation set to "${deviceName}" (${viewport.width}x${viewport.height}${opts.isMobile ? ', mobile' : ''}${opts.hasTouch ? ', touch' : ''}).`;
   },
 });
 

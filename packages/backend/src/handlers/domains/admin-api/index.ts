@@ -79,12 +79,16 @@ import {
 } from "./access"
 import {
   createAgentCoresListHandler,
+  createAgentsChangeCoreHandler,
   createAgentsCreateHandler,
   createAgentsDeleteHandler,
   createAgentsGetAppsHandler,
   createAgentsGetHandler,
   createAgentsListHandler,
   createAgentsUpdateHandler,
+  createCoreRolloutApplyHandler,
+  createCoreRolloutCohortHandler,
+  createCoreRolloutPreviewHandler,
 } from "./agents"
 
 import {
@@ -98,6 +102,7 @@ import {
   createAppsUpdatePermissionHandler,
 } from "./apps"
 import { createCatalogListHandler } from "./catalog"
+import { createLatitudeSignalsListHandler } from "./latitude-signals"
 import {
   createMcaCleanupHandler,
   createMcaHealthHandler,
@@ -115,6 +120,19 @@ import {
   createUsageTimelineHandler,
 } from "./usage"
 import {
+  createAgentUsageHealthHandler,
+  createAgentUsageInFlightHandler,
+  createAgentUsageListAccessibleEntitiesHandler,
+  createAgentUsageListSessionsHandler,
+  createAgentUsageModelHealthHandler,
+  createAgentUsageModelHealthTimeseriesHandler,
+  createAgentUsageSessionDetailHandler,
+  createAgentUsageToolExecutionsListHandler,
+  createAgentUsageTokensPerHourHandler,
+  createAgentUsageUpstreamErrorsHandler,
+  type AgentUsageHealthDeps,
+} from "./agent-usage"
+import {
   createWorkspacesArchiveHandler,
   createWorkspacesCreateHandler,
   createWorkspacesGetHandler,
@@ -124,24 +142,55 @@ import {
   createWorkspacesMembersUpdateHandler,
   createWorkspacesUpdateHandler,
 } from "./workspaces"
+import {
+  createFeatureFlagsAuditLogHandler,
+  createFeatureFlagsClearRolloutHandler,
+  createFeatureFlagsDeleteOverrideHandler,
+  createFeatureFlagsGetHandler,
+  createFeatureFlagsGetOverridesHandler,
+  createFeatureFlagsListHandler,
+  createFeatureFlagsResetDefaultHandler,
+  createFeatureFlagsSetOverrideHandler,
+  createFeatureFlagsSetRolloutHandler,
+  createFeatureFlagsUpdateHandler,
+} from "./feature-flags"
 
 export interface AdminApiDomainDeps {
   db: Db
   mcaService: McaService
   mcaManager?: McaManager | null
   workspaceService?: WorkspaceService | null
+  featureFlagService?: import("../../../services/feature-flag-service").FeatureFlagService | null
+  /** Agent usage instrumentation deps. When present, exposes admin-api.agent-usage-* actions. */
+  agentUsageHealthDeps?: AgentUsageHealthDeps | null
+  /** F4·C1 return path. When present, the Session Trace is decorated with a
+   * Latitude "known signal" badge. Absent → no badge (product identical). */
+  latitudeSignalIndex?: import("../../../services/latitude-signal-index").LatitudeSignalIndex | null
+  /** F4·C2 signals dashboard. When present, admin-api.latitude-signals-list reads
+   * Latitude's clustered signals. Absent → the action reports `unconfigured`. */
+  latitudeReadClient?: import("../../../services/latitude-read-client").LatitudeReadClient | null
 }
 
 export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
-  const { db, mcaService, mcaManager, workspaceService } = deps
+  const {
+    db,
+    mcaService,
+    mcaManager,
+    workspaceService,
+    featureFlagService,
+    agentUsageHealthDeps,
+    latitudeSignalIndex,
+    latitudeReadClient,
+  } = deps
 
   // --- Agents ---
   router.register("admin-api.agents-list", createAgentsListHandler(db))
   router.register("admin-api.agents-get", createAgentsGetHandler(db))
-  router.register("admin-api.agents-create", createAgentsCreateHandler(db))
+  router.register("admin-api.agents-create", createAgentsCreateHandler(db, mcaService))
   router.register("admin-api.agents-update", createAgentsUpdateHandler(db))
   router.register("admin-api.agents-delete", createAgentsDeleteHandler(db))
   router.register("admin-api.agents-get-apps", createAgentsGetAppsHandler(db, mcaService))
+  router.register("admin-api.agents-change-core", createAgentsChangeCoreHandler(db, mcaService))
   router.register("admin-api.agent-cores-list", createAgentCoresListHandler(db))
 
   // --- Workspaces ---
@@ -223,4 +272,106 @@ export function register(router: WsRouter, deps: AdminApiDomainDeps): void {
     createUsageExpensiveConversationsHandler(db),
   )
   router.register("admin-api.usage-timeline", createUsageTimelineHandler(db))
+
+  // --- Agent usage instrumentation (new subsystem) ---
+  router.register(
+    "admin-api.agent-usage-tokens-per-hour",
+    createAgentUsageTokensPerHourHandler(db),
+  )
+  router.register("admin-api.agent-usage-list-sessions", createAgentUsageListSessionsHandler(db))
+  router.register(
+    "admin-api.agent-usage-tool-executions-list",
+    createAgentUsageToolExecutionsListHandler(db),
+  )
+  router.register(
+    "admin-api.agent-usage-list-accessible-entities",
+    createAgentUsageListAccessibleEntitiesHandler(db),
+  )
+  router.register(
+    "admin-api.agent-usage-model-health",
+    createAgentUsageModelHealthHandler(db),
+  )
+  router.register(
+    "admin-api.agent-usage-model-health-timeseries",
+    createAgentUsageModelHealthTimeseriesHandler(db),
+  )
+  router.register(
+    "admin-api.agent-usage-upstream-errors",
+    createAgentUsageUpstreamErrorsHandler(db),
+  )
+  router.register("admin-api.agent-usage-in-flight", createAgentUsageInFlightHandler(db))
+  router.register(
+    "admin-api.agent-usage-session-detail",
+    createAgentUsageSessionDetailHandler(db, latitudeSignalIndex ?? null),
+  )
+  // F4·C2 — Latitude signals dashboard (read-only; `unconfigured` when unwired).
+  router.register(
+    "admin-api.latitude-signals-list",
+    createLatitudeSignalsListHandler(db, latitudeReadClient ?? null),
+  )
+  if (agentUsageHealthDeps) {
+    router.register(
+      "admin-api.agent-usage-health",
+      createAgentUsageHealthHandler(db, agentUsageHealthDeps),
+    )
+  }
+
+  // --- Feature Flags ---
+  if (featureFlagService) {
+    router.register(
+      "admin-api.feature-flags-list",
+      createFeatureFlagsListHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-get",
+      createFeatureFlagsGetHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-update",
+      createFeatureFlagsUpdateHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-reset-default",
+      createFeatureFlagsResetDefaultHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-get-overrides",
+      createFeatureFlagsGetOverridesHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-set-override",
+      createFeatureFlagsSetOverrideHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-delete-override",
+      createFeatureFlagsDeleteOverrideHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-set-rollout",
+      createFeatureFlagsSetRolloutHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-clear-rollout",
+      createFeatureFlagsClearRolloutHandler(db, featureFlagService),
+    )
+    router.register(
+      "admin-api.feature-flags-audit-log",
+      createFeatureFlagsAuditLogHandler(db, featureFlagService),
+    )
+    // Apply a coreType's rollout by re-pointing + reprovisioning its agents.
+    router.register(
+      "admin-api.core-rollout-apply",
+      createCoreRolloutApplyHandler(db, mcaService, featureFlagService),
+    )
+    // Dry-run: current distribution + what an Apply would do, without migrating.
+    router.register(
+      "admin-api.core-rollout-preview",
+      createCoreRolloutPreviewHandler(db, mcaService, featureFlagService),
+    )
+    // The per-agent cohort: which users/agents a rollout touches (not just counts).
+    router.register(
+      "admin-api.core-rollout-cohort",
+      createCoreRolloutCohortHandler(db, mcaService, featureFlagService),
+    )
+  }
 }

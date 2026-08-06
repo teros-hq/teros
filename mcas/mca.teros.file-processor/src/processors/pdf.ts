@@ -4,6 +4,7 @@
 
 import { readFileSync, statSync, writeFileSync } from 'fs';
 import { basename } from 'path';
+import { extractText, getDocumentProxy } from 'unpdf';
 import type {
   ClaudeMessage,
   ClaudeResponse,
@@ -21,10 +22,22 @@ import {
 
 const MAX_FILE_SIZE_MB = 3; // Process in chunks if larger than this (lowered to 3MB)
 
+/**
+ * Heuristic: does the locally-extracted text indicate a real text layer?
+ * A scanned/image-only PDF yields little or no extractable text; a digital PDF
+ * yields its actual content. We strip whitespace and require a small minimum so
+ * a stray header on a scan doesn't count as "has text".
+ */
+export function hasMeaningfulText(text: string): boolean {
+  return text.replace(/\s+/g, '').length >= 8;
+}
+
 export class PDFProcessor implements FileProcessor {
   private apiKey: string;
 
-  constructor(apiKey: string) {
+  // apiKey is optional: it is only needed to OCR scanned PDFs via an LLM.
+  // Digital PDFs (the common case) are extracted locally with no LLM at all.
+  constructor(apiKey = '') {
     this.apiKey = apiKey;
   }
 
@@ -33,65 +46,97 @@ export class PDFProcessor implements FileProcessor {
   }
 
   async process(filePath: string, options?: FileProcessorOptions): Promise<ProcessorResult> {
-    if (!this.apiKey) {
-      throw new Error('Anthropic API key is required');
-    }
-
     const startTime = Date.now();
     const fileStats = statSync(filePath);
     const fileSizeMB = fileStats.size / 1024 / 1024;
 
     console.log(`📄 Processing PDF: ${basename(filePath)} (${fileSizeMB.toFixed(2)}MB)`);
 
-    // Decide whether to chunk
+    // 1) Primary path: extract the text layer locally (no LLM, no provider, no
+    //    cost). This handles the vast majority of PDFs and works even when no
+    //    LLM is configured on the platform.
+    const localText = await this.extractLocally(filePath);
+    if (localText && hasMeaningfulText(localText)) {
+      console.log(`✅ Extracted ${localText.length} chars locally (no LLM)`);
+      const outputPath = `${filePath}.md`;
+      writeFileSync(outputPath, localText);
+      return {
+        markdown: localText,
+        outputPath,
+        metadata: {
+          inputFile: filePath,
+          fileType: 'pdf',
+          fileSize: fileStats.size,
+          processingTime: Date.now() - startTime,
+        },
+      };
+    }
+
+    // 2) No text layer → scanned/image-only PDF. This needs vision (OCR via an
+    //    LLM). Only possible if a system LLM key is configured; otherwise fail
+    //    loud with an actionable message instead of pretending it worked.
+    console.log('🔍 No extractable text layer (likely a scanned PDF)');
+    if (!this.apiKey) {
+      throw new Error(
+        `[NO_TEXT_LAYER] "${basename(filePath)}" looks like a scanned/image-only PDF with no extractable text, ` +
+          'and no system LLM is configured to OCR it. ' +
+          'Re-save the PDF with a text layer (run OCR on it) and try again.',
+      );
+    }
+
+    return this.processWithLlm(filePath, fileSizeMB, fileStats.size, startTime, options);
+  }
+
+  /** Fallback: OCR a scanned PDF via the LLM (chunked for large files). */
+  private async processWithLlm(
+    filePath: string,
+    fileSizeMB: number,
+    fileSize: number,
+    startTime: number,
+    options?: FileProcessorOptions,
+  ): Promise<ProcessorResult> {
+    console.log('🤖 Falling back to LLM vision extraction…');
     const shouldChunk = fileSizeMB > MAX_FILE_SIZE_MB;
     const chunkSize = options?.chunkSize || 10;
 
-    let markdown: string;
-    let tokensUsed = { input: 0, output: 0 };
-    let chunksProcessed = 0;
+    const result = shouldChunk
+      ? await this.processInChunks(filePath, chunkSize, options)
+      : { ...(await this.processDirect(filePath, options)), chunksProcessed: 0 };
 
-    if (shouldChunk) {
-      console.log(
-        `⚡ PDF too large (${fileSizeMB.toFixed(2)}MB > ${MAX_FILE_SIZE_MB}MB) - splitting into chunks of ${chunkSize} pages...`,
-      );
-      const result = await this.processInChunks(filePath, chunkSize, options);
-      markdown = result.markdown;
-      tokensUsed = result.tokensUsed;
-      chunksProcessed = result.chunksProcessed;
-    } else {
-      console.log(`📤 Processing directly (file size: ${fileSizeMB.toFixed(2)}MB)...`);
-      const result = await this.processDirect(filePath, options);
-      markdown = result.markdown;
-      tokensUsed = result.tokensUsed;
-    }
-
-    // Save output
     const outputPath = `${filePath}.md`;
-    writeFileSync(outputPath, markdown);
-
-    const processingTime = Date.now() - startTime;
-
-    console.log(`\n✅ PDF processed successfully`);
-    console.log(`📏 Output: ${markdown.length} characters`);
-    console.log(`⏱️  Time: ${(processingTime / 1000).toFixed(1)}s`);
-    console.log(`📊 Tokens: ${tokensUsed.input} in / ${tokensUsed.output} out`);
-    if (chunksProcessed > 0) {
-      console.log(`🧩 Chunks: ${chunksProcessed}`);
-    }
+    writeFileSync(outputPath, result.markdown);
+    console.log(`✅ PDF OCR'd via LLM (${result.markdown.length} chars)`);
 
     return {
-      markdown,
+      markdown: result.markdown,
       outputPath,
       metadata: {
         inputFile: filePath,
         fileType: 'pdf',
-        fileSize: fileStats.size,
-        processingTime,
-        tokensUsed,
-        chunks: chunksProcessed || undefined,
+        fileSize,
+        processingTime: Date.now() - startTime,
+        tokensUsed: result.tokensUsed,
+        chunks: result.chunksProcessed || undefined,
       },
     };
+  }
+
+  /**
+   * Extract the PDF's text layer locally via unpdf (pdf.js). Returns the merged
+   * text, or null if extraction throws (corrupt/encrypted PDF).
+   */
+  private async extractLocally(filePath: string): Promise<string | null> {
+    try {
+      const buffer = readFileSync(filePath);
+      const pdf = await getDocumentProxy(new Uint8Array(buffer));
+      const { text } = await extractText(pdf, { mergePages: true });
+      return text.trim();
+    } catch (err) {
+      console.log(
+        `   ⚠️  Local PDF extraction failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
   }
 
   /**

@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const getAttachment: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get the content of an email attachment by its attachment ID.',
   parameters: {
     type: 'object',

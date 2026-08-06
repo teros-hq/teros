@@ -5,16 +5,19 @@
  */
 
 import { type ComponentType, createContext, useContext } from 'react';
+import type { McaStatusType } from './primitives/colors';
 
 /**
- * Tool execution status
+ * Tool execution status (alias of `McaStatusType` — single source of truth
+ * lives in `primitives/colors.ts`).
+ *
  * - pending: initial state, waiting for permission check or waiting for previous tool to complete
  * - running: currently executing (shown with spinner)
  * - pending_permission: waiting for user approval (shown with approval widget)
  * - completed: finished successfully
  * - failed: finished with error
  */
-export type ToolStatus = 'pending' | 'running' | 'completed' | 'failed' | 'pending_permission';
+export type ToolStatus = McaStatusType;
 
 /**
  * Props passed to custom ToolCall renderers
@@ -26,6 +29,13 @@ export interface ToolCallRendererProps {
   status: ToolStatus;
   output?: string;
   error?: string;
+  /**
+   * @deprecated Renderer UX Guide v2 §7 prohibits showing duration in
+   * the header. Kept for backwards compatibility — the prop still
+   * arrives but `ToolCallCard` / `HeaderRow` ignore it. Do not pass
+   * it from new renderers. Will be removed once the 16 sub-issues of
+   * Follow-up E migrate (target 2026-10-01).
+   */
   duration?: number;
 
   // App info
@@ -35,6 +45,17 @@ export interface ToolCallRendererProps {
   // Permission-related props (when status === 'pending_permission')
   appId?: string;
   permissionRequestId?: string;
+
+  /**
+   * Binary irreversibility marker (Renderer UX Guide v2 §8). Sourced from
+   * `manifest.tools[toolName].annotations.irreversible`. Surfaces an
+   * Irreversibility Indicator badge in the header. Either present or
+   * absent — no risk levels.
+   */
+  irreversible?: boolean;
+
+  /** Attachments from tool execution (images, files, etc.) — rendered inline */
+  attachments?: Array<{ url: string; mime: string; filename?: string }>;
 }
 
 /**

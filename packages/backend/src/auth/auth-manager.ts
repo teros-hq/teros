@@ -47,7 +47,7 @@ export class AuthManager {
   }
 
   /**
-   * Set credentials for a user's app
+   * Set credentials for a user's app (full replace)
    */
   async set(userId: string, appId: string, mcaId: string, data: any): Promise<void> {
     // Encrypt credentials
@@ -74,6 +74,18 @@ export class AuthManager {
       },
       { upsert: true },
     );
+  }
+
+  /**
+   * Merge credentials for a user's app (partial update — preserves existing keys)
+   * Reads current credentials, merges the new fields on top, then saves.
+   */
+  async merge(userId: string, appId: string, mcaId: string, patch: Record<string, any>): Promise<void> {
+    // Get existing credentials (if any)
+    const existing = (await this.get(userId, appId)) || {};
+    // Merge: existing fields + patch (patch wins on conflict)
+    const merged = { ...existing, ...patch };
+    await this.set(userId, appId, mcaId, merged);
   }
 
   /**

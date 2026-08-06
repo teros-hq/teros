@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const searchCode: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search for code across GitHub repositories',
   parameters: {
     type: 'object',

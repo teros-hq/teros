@@ -131,6 +131,58 @@ export function generateColumnId(): string {
 }
 
 /**
+ * Generate a skill ID
+ * Format: sk_<hex16>
+ */
+export function generateSkillId(): string {
+  return `sk_${randomHex()}`;
+}
+
+/**
+ * Generate an agent usage session ID
+ * Format: usess_<hex16>
+ *
+ * Identifies one "session of use" = one full turn of the ConversationManager
+ * (one prompt() call). Persisted in `agent_usage_sessions`.
+ */
+export function generateSessionUsageId(): string {
+  return `usess_${randomHex()}`;
+}
+
+/**
+ * Generate a tool execution ID
+ * Format: tex_<hex16>
+ *
+ * Identifies one tool invocation by the agent within a session. Persisted in
+ * `tool_executions`.
+ */
+export function generateToolExecutionId(): string {
+  return `tex_${randomHex()}`;
+}
+
+/**
+ * Generate a usage event ID
+ * Format: usev_<hex16>
+ *
+ * Idempotency key for the usage instrumentation event sourcing layer.
+ * Persisted in `agent_usage_events` and `agent_usage_event_applications`.
+ */
+export function generateUsageEventId(): string {
+  return `usev_${randomHex()}`;
+}
+
+/**
+ * Generate a usage rollup ID
+ * Format: usro_<hex16>
+ *
+ * Identifies a row in the hourly rollup projections
+ * (`agent_usage_rollups_hourly`, `agent_usage_rollups_user_hourly`).
+ */
+export function generateUsageRollupId(): string {
+  return `usro_${randomHex()}`;
+}
+
+/**
  * Generate a generic ID with custom prefix
  * Format: <prefix>_<hex16>
  */
@@ -157,6 +209,12 @@ export const ID_PREFIXES = {
   BOARD: 'board',
   TASK: 'task',
   COLUMN: 'col',
+  SKILL: 'sk',
+  // Usage instrumentation
+  SESSION_USAGE: 'usess',
+  TOOL_EXECUTION: 'tex',
+  USAGE_EVENT: 'usev',
+  USAGE_ROLLUP: 'usro',
 } as const;
 
 /**

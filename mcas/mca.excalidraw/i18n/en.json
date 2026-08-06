@@ -1,0 +1,214 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Excalidraw API key and connectivity."
+    },
+    "list-scenes": {
+      "name": "list-scenes",
+      "description": "List all Excalidraw scenes in the workspace with their metadata and links. Supports pagination via cursor.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response to get the next page.",
+        "limit": "Maximum number of scenes to return per page (default: 50)."
+      }
+    },
+    "get-scene": {
+      "name": "get-scene",
+      "description": "Get detailed metadata for a specific Excalidraw scene by its ID, including links and sharing settings.",
+      "params": {
+        "sceneId": "The scene ID to retrieve."
+      }
+    },
+    "get-scene-content": {
+      "name": "get-scene-content",
+      "description": "Retrieve the complete drawing content of an Excalidraw scene: all elements (shapes, text, arrows, etc.), app state, and embedded files.",
+      "params": {
+        "sceneId": "The scene ID whose content to retrieve."
+      }
+    },
+    "create-scene": {
+      "name": "create-scene",
+      "description": "Create a new empty Excalidraw scene with specified metadata. Optionally assign it to a collection and pin it. Returns the created scene with its ID and sharing links.",
+      "params": {
+        "name": "Name for the new scene.",
+        "collectionId": "ID of the collection to place the scene in.",
+        "pinned": "Whether to pin the scene (default: false)."
+      }
+    },
+    "update-scene": {
+      "name": "update-scene",
+      "description": "Update the metadata of an existing Excalidraw scene (name, pinned status, collection assignment).",
+      "params": {
+        "sceneId": "The scene ID to update.",
+        "name": "New name for the scene.",
+        "pinned": "Whether to pin the scene.",
+        "collectionId": "Move the scene to a different collection by providing its ID."
+      }
+    },
+    "update-scene-content": {
+      "name": "update-scene-content",
+      "description": "Replace the complete drawing content of an Excalidraw scene with new elements. WARNING: this is a full replace — existing content is overwritten. Pass the full array of elements you want the scene to contain.",
+      "params": {
+        "sceneId": "The scene ID to update.",
+        "elements": "Array of Excalidraw element objects (shapes, text, arrows, etc.). This replaces all existing elements.",
+        "appState": "Optional Excalidraw app state (viewport, theme, etc.).",
+        "files": "Optional embedded files map (e.g. images referenced in the scene)."
+      }
+    },
+    "delete-scene": {
+      "name": "delete-scene",
+      "description": "Soft-delete an Excalidraw scene by moving it to trash. The scene can be recovered from the Excalidraw Plus UI.",
+      "params": {
+        "sceneId": "The scene ID to delete."
+      }
+    },
+    "list-collections": {
+      "name": "list-collections",
+      "description": "List all collections in the Excalidraw Plus workspace. Collections are folders that group related scenes together.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response.",
+        "limit": "Maximum number of collections to return (default: 50)."
+      }
+    },
+    "get-collection": {
+      "name": "get-collection",
+      "description": "Get detailed information about a specific Excalidraw collection by its ID.",
+      "params": {
+        "collectionId": "The collection ID to retrieve."
+      }
+    },
+    "get-collection-scenes": {
+      "name": "get-collection-scenes",
+      "description": "List all scenes that belong to a specific Excalidraw collection.",
+      "params": {
+        "collectionId": "The collection ID to list scenes from."
+      }
+    },
+    "create-collection": {
+      "name": "create-collection",
+      "description": "Create a new collection (folder) in the Excalidraw Plus workspace to group related scenes.",
+      "params": {
+        "name": "Name for the new collection."
+      }
+    },
+    "create-collection-scene": {
+      "name": "create-collection-scene",
+      "description": "Create a new scene directly inside a specific Excalidraw collection.",
+      "params": {
+        "collectionId": "The collection ID to create the scene in.",
+        "name": "Name for the new scene.",
+        "pinned": "Whether to pin the scene (default: false)."
+      }
+    },
+    "update-collection": {
+      "name": "update-collection",
+      "description": "Update the metadata of an existing Excalidraw collection (e.g. rename it).",
+      "params": {
+        "collectionId": "The collection ID to update.",
+        "name": "New name for the collection."
+      }
+    },
+    "delete-collection": {
+      "name": "delete-collection",
+      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside are not deleted.",
+      "params": {
+        "collectionId": "The collection ID to delete."
+      }
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "Retrieve the current Excalidraw Plus workspace's metadata, including name, users, and invites."
+    },
+    "update-workspace": {
+      "name": "update-workspace",
+      "description": "Update the current Excalidraw Plus workspace's metadata (e.g. rename it).",
+      "params": {
+        "name": "New name for the workspace."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "List all users in the Excalidraw Plus workspace with their roles and metadata.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response.",
+        "limit": "Maximum number of users to return (default: 50)."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Get details for a specific user in the Excalidraw Plus workspace by their user ID.",
+      "params": {
+        "userId": "The user ID to retrieve."
+      }
+    },
+    "update-user": {
+      "name": "update-user",
+      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role or name).",
+      "params": {
+        "userId": "The user ID to update.",
+        "role": "New role for the user (e.g. \"admin\", \"member\").",
+        "name": "New display name for the user."
+      }
+    },
+    "remove-user": {
+      "name": "remove-user",
+      "description": "Remove a user from the Excalidraw Plus workspace, revoking their access.",
+      "params": {
+        "userId": "The user ID to remove from the workspace."
+      }
+    },
+    "list-invites": {
+      "name": "list-invites",
+      "description": "List all pending and active invites for the Excalidraw Plus workspace.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response.",
+        "limit": "Maximum number of invites to return (default: 50)."
+      }
+    },
+    "create-invite": {
+      "name": "create-invite",
+      "description": "Invite a user to the Excalidraw Plus workspace by email. Optionally specify their role.",
+      "params": {
+        "email": "Email address of the person to invite.",
+        "role": "Role to assign (e.g. \"admin\", \"member\"). Defaults to workspace default."
+      }
+    },
+    "get-invite": {
+      "name": "get-invite",
+      "description": "Get details for a specific Excalidraw Plus workspace invite by its ID.",
+      "params": {
+        "inviteId": "The invite ID to retrieve."
+      }
+    },
+    "update-invite": {
+      "name": "update-invite",
+      "description": "Update an existing Excalidraw Plus workspace invite (e.g. change the assigned role).",
+      "params": {
+        "inviteId": "The invite ID to update.",
+        "role": "New role to assign to the invitee."
+      }
+    },
+    "delete-invite": {
+      "name": "delete-invite",
+      "description": "Delete a pending Excalidraw Plus workspace invite, revoking the invitation.",
+      "params": {
+        "inviteId": "The invite ID to delete."
+      }
+    },
+    "list-logs": {
+      "name": "list-logs",
+      "description": "Retrieve workspace audit logs from Excalidraw Plus. Useful for tracking activity, changes, and access history.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response.",
+        "limit": "Maximum number of log entries to return (default: 50)."
+      }
+    }
+  },
+  "name": "Excalidraw",
+  "description": "Integrate with Excalidraw Plus to manage scenes, collections, workspaces, users, and invites programmatically. Create and update diagrams, wireframes, and whiteboards via the Excalidraw Plus REST API.",
+  "changelog": [
+    {
+      "notes": "Initial release — create, edit and organize Excalidraw whiteboards in folders, and manage workspace members and invites"
+    }
+  ]
+}

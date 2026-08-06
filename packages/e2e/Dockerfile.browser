@@ -1,0 +1,42 @@
+# syntax=docker/dockerfile:1.7-labs
+# Dockerfile.e2e
+#
+# Playwright + Cucumber container for UI end-to-end tests.
+# Based on the official Playwright image which ships with Chromium pre-installed.
+#
+# Usage (via docker compose):
+#   docker compose -f docker-compose.test.yml exec e2e yarn cucumber:ui
+#   docker compose -f docker-compose.test.yml exec e2e yarn cucumber:all
+
+FROM mcr.microsoft.com/playwright:v1.59.1-jammy
+
+WORKDIR /app
+
+# node-pty requires native compilation (node-gyp) — install build tools.
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+# Layer caching + slim (TER-548): copiar SOLO los manifests → install (+ cache clean del
+# ~4.9GB de descargas, fuera de la imagen) → código. COPY --parents (1.7-labs) preserva dirs.
+COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json ./
+
+# --ignore-engines: the Playwright base image ships Node 20.9.0 but some
+# React Native packages in the monorepo require >= 20.19.4. This container
+# only runs Cucumber/e2e tests — it never executes RN code, so it's safe.
+RUN --mount=type=secret,id=github_token \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
+    yarn install --frozen-lockfile --ignore-engines --network-timeout 600000 && yarn cache clean
+
+# La imagen base trae los browsers de Playwright 1.59.1, pero el repo usa
+# @playwright/test 1.58.0 → el browser no coincide ("Executable doesn't exist at
+# .../chromium_headless_shell-1208"). Instalar el chromium de la versión instalada
+# (en /ms-playwright, ya en PLAYWRIGHT_BROWSERS_PATH de la imagen base). TER-553.
+# Va tras el install (usa @playwright/test de node_modules) y ANTES de COPY . . →
+# un cambio de código no re-descarga el browser (queda cacheado). TER-548.
+RUN npx playwright install chromium
+
+COPY . .
+
+WORKDIR /app/packages/e2e
+
+# Stay alive — tests are run via `docker compose exec`
+CMD ["sleep", "infinity"]

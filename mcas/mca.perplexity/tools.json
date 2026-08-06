@@ -34,6 +34,9 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -80,6 +83,9 @@
         "required": [
           "messages"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

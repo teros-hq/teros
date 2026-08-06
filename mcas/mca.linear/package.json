@@ -1,9 +1,16 @@
 {
-  "name": "mca-linear",
-  "version": "1.0.0",
+  "name": "@teros/mca-linear",
+  "version": "1.1.0",
   "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
   "dependencies": {
-    "@teros/mca-sdk": "0.1.0",
-    "@linear/sdk": "^29.0.0"
+    "@linear/sdk": "^29.0.0",
+    "@teros/mca-sdk": "0.1.0"
   }
 }

@@ -80,6 +80,34 @@ export class InMemorySessionStore {
     this.messages.set(message.id, { ...message });
   }
 
+  async updateUserMessageQueueState(
+    messageId: string,
+    state: 'pending' | 'running' | 'done',
+  ): Promise<void> {
+    const msg = this.messages.get(messageId);
+    if (!msg || msg.role !== 'user') return;
+    this.messages.set(messageId, {
+      ...msg,
+      meta: { ...(msg.meta ?? {}), queueState: state },
+    });
+  }
+
+  async listPendingQueueMessages(channelIds: string[]): Promise<MessageWithParts[]> {
+    if (channelIds.length === 0) return [];
+    const channelSet = new Set(channelIds);
+    const candidates = Array.from(this.messages.values())
+      .filter(
+        (m) =>
+          m.role === 'user' &&
+          channelSet.has(m.sessionID) &&
+          (m.meta?.queueState === 'pending' || m.meta?.queueState === 'running'),
+      )
+      .sort((a, b) => a.time.created - b.time.created);
+    return Promise.all(
+      candidates.map(async (msg) => ({ info: msg, parts: await this.getMessageParts(msg.id) })),
+    );
+  }
+
   async readMessage(messageId: string): Promise<Message | null> {
     return this.messages.get(messageId) || null;
   }

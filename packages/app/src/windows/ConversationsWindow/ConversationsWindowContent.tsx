@@ -2,35 +2,50 @@
  * ConversationsWindowContent - Lista de conversaciones como ventana del workspace
  *
  * Features:
- * - Lista de conversaciones activas, inactivas y archivadas
+ * - Lista de conversaciones activas del workspace actual
  * - Create new conversation with agent selector
  * - Archive/restore conversations
  * - Mark as read
  * - Real-time updates for unread messages
+ * - Sub-conversations are hidden from the list (they live inside their parent)
+ * - Theme-aware (light/dark) via useColors() + semantic tokens
  */
 
 import {
   Archive,
   ArchiveRestore,
   ChevronDown,
-  ChevronUp,
   Lock,
+  MessageCircle,
   MoreVertical,
   Plus,
   Search,
   User,
   X,
 } from '@tamagui/lucide-icons';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView } from 'react-native';
-import { Avatar, Button, Circle, Input, Popover, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Platform, ScrollView } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import { Avatar, Button, Circle, Dialog, Input, Paragraph, Popover, Text, View, XStack, YStack } from 'tamagui';
+import { getTerosClient } from '../../services/terosClientSingleton';
+import { getDateLocale } from '../../i18n';
 import { NewConversationModal } from '../../components/NewConversationModal';
 import { TerosLoading } from '../../components/TerosLoading';
 import { useChatStore } from '../../store/chatStore';
 import { useTilingStore } from '../../store/tilingStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import type { ConversationsWindowProps } from './definition';
 import { AppSpinner } from '../../components/ui';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors as semanticColors } from '../../components/mca/primitives/colors';
+
+// Semantic accents — theme-agnostic (same hex in light and dark)
+const INDIGO = semanticColors.indigo;
+const INDIGO_HOVER = semanticColors.indigoLight;
+const INDIGO_BG = semanticColors.indigoGlow;
+const RED = semanticColors.red;
+const GREEN = semanticColors.green;
+const AMBER = semanticColors.amber;
 
 interface Conversation {
   channelId: string;
@@ -48,6 +63,8 @@ interface Conversation {
   isPrivate?: boolean;
   /** Transport type: 'web' | 'voice' */
   transport?: string;
+  /** If set, this is a sub-conversation delegated from the given parent channel */
+  originChannelId?: string;
 }
 
 interface SearchMatch {
@@ -65,14 +82,13 @@ interface SearchResultChannel {
   matches: SearchMatch[];
 }
 
-// Limits for collapsed view
-const MAX_VISIBLE_ACTIVE = 8;
-const MAX_VISIBLE_INACTIVE = 3;
-
 export function ConversationsWindowContent({
   windowId,
+  workspaceId,
   filter = 'active',
 }: ConversationsWindowProps & { windowId: string }) {
+  const { t } = useTranslation();
+  const c = useColors();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -80,31 +96,21 @@ export function ConversationsWindowContent({
   const [hasMore, setHasMore] = useState(false);
   const [connected, setConnected] = useState(false);
   const [showNewConversationModal, setShowNewConversationModal] = useState(false);
-  const [showAllActive, setShowAllActive] = useState(false);
-  const [showAllInactive, setShowAllInactive] = useState(false);
-
-  // Legacy state for backwards compatibility (filter prop)
-  const [showArchived, setShowArchived] = useState(filter === 'archived' || filter === 'all');
-  const [showInactive, setShowInactive] = useState(filter === 'inactive' || filter === 'all');
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
+  const [pendingArchiveChannelId, setPendingArchiveChannelId] = useState<string | null>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResultChannel[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchPending, setSearchPending] = useState(false); // True while waiting for debounce or request
+  const [searchPending, setSearchPending] = useState(false);
   const [totalMatches, setTotalMatches] = useState(0);
 
   const client = getTerosClient();
   const { openWindow, findWindow, focusWindow } = useTilingStore();
-
-  // Helper: check if conversation is inactive (no messages in last 3 hours)
-  const isInactive = (conv: Conversation) => {
-    if (conv.status === 'closed') return false;
-    const lastActivity = conv.lastMessageAt;
-    if (!lastActivity) return true;
-    const threeHoursAgo = Date.now() - 3 * 60 * 60 * 1000;
-    return new Date(lastActivity).getTime() < threeHoursAgo;
-  };
+  // Always use the active workspace from the store — no prop, no fallback.
+  // This is a platform-wide rule: conversations are always scoped to the active workspace.
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
 
   // Connection status
   useEffect(() => {
@@ -136,13 +142,12 @@ export function ConversationsWindowContent({
       return;
     }
 
-    // Mark as pending immediately when query changes
     setSearchPending(true);
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const result = await client.searchConversations(searchQuery);
+        const result = await (client as any).searchConversations(searchQuery);
         setSearchResults(result.results);
         setTotalMatches(result.totalMatches);
       } catch (err) {
@@ -164,29 +169,28 @@ export function ConversationsWindowContent({
 
     const handleChannelListStatus = (data: any) => {
       const { channelId, action, channel } = data;
-      console.log('[ConversationsWindow] channel_list_status:', action, channelId);
 
       if (action === 'created') {
+        // Skip sub-conversations and headless channels
+        if (channel?.originChannelId || channel?.headless) return;
+
         const newConv: Conversation = {
           channelId,
-          title: channel?.title || 'Nuevo chat',
+          title: channel?.title || t('conversation.newChat'),
           agentId: channel?.agentId,
           agentName: channel?.agentName,
           agentAvatarUrl: channel?.agentAvatarUrl,
           lastMessageAt: channel?.createdAt || new Date().toISOString(),
           status: channel?.status || 'active',
           unreadCount: 0,
+          originChannelId: channel?.originChannelId,
         };
 
         setConversations((prev) => {
-          // Check if already exists (avoid duplicates)
-          if (prev.some((c) => c.channelId === channelId)) {
-            return prev;
-          }
+          if (prev.some((c2) => c2.channelId === channelId)) return prev;
           return [newConv, ...prev];
         });
       } else if (action === 'deleted') {
-        // Move to archived or remove from active list
         setConversations((prev) =>
           prev.map((conv) => {
             if (conv.channelId === channelId) {
@@ -196,7 +200,6 @@ export function ConversationsWindowContent({
           }),
         );
       } else if (action === 'updated') {
-        // Update existing conversation
         setConversations((prev) =>
           prev.map((conv) => {
             if (conv.channelId === channelId) {
@@ -232,7 +235,7 @@ export function ConversationsWindowContent({
     const agent = agentList.find((a: any) => a.agentId === ch.agentId);
     return {
       channelId: ch.channelId,
-      title: ch.metadata?.name || 'Chat',
+      title: ch.metadata?.name || t('nav.chat'),
       agentId: ch.agentId,
       agentName: ch.agentName || agent?.name || agent?.fullName,
       agentAvatarUrl: ch.agentAvatarUrl || agent?.avatarUrl,
@@ -242,6 +245,7 @@ export function ConversationsWindowContent({
       unreadCount: ch.unreadCount || 0,
       isPrivate: ch.isPrivate || false,
       transport: ch.metadata?.transport || 'web',
+      originChannelId: ch.originChannelId,
     };
   };
 
@@ -249,10 +253,13 @@ export function ConversationsWindowContent({
     setIsLoading(true);
     try {
       const [{ channels, nextCursor: cursor, hasMore: more }, { agents: agentList }] =
-        await Promise.all([client.channel.list(), client.agent.listAgents()]);
+        await Promise.all([
+          client.channel.list(activeWorkspaceId ?? undefined),
+          client.agent.listAgents(activeWorkspaceId ?? undefined),
+        ]);
 
       const convs: Conversation[] = channels
-        .filter((ch: any) => !ch.headless)
+        .filter((ch: any) => !ch.headless && !ch.originChannelId)
         .map((ch: any) => mapChannelToConversation(ch, agentList));
 
       setConversations(convs);
@@ -270,15 +277,18 @@ export function ConversationsWindowContent({
     setIsLoadingMore(true);
     try {
       const [{ channels, nextCursor: cursor, hasMore: more }, { agents: agentList }] =
-        await Promise.all([client.channel.list(undefined, undefined, 30, nextCursor), client.agent.listAgents()]);
+        await Promise.all([
+          client.channel.list(activeWorkspaceId ?? undefined, undefined, 30, nextCursor),
+          client.agent.listAgents(activeWorkspaceId ?? undefined),
+        ]);
 
       const newConvs: Conversation[] = channels
-        .filter((ch: any) => !ch.headless)
+        .filter((ch: any) => !ch.headless && !ch.originChannelId)
         .map((ch: any) => mapChannelToConversation(ch, agentList));
 
       setConversations((prev) => {
-        const existingIds = new Set(prev.map((c) => c.channelId));
-        const unique = newConvs.filter((c) => !existingIds.has(c.channelId));
+        const existingIds = new Set(prev.map((c2) => c2.channelId));
+        const unique = newConvs.filter((c2) => !existingIds.has(c2.channelId));
         return [...prev, ...unique];
       });
       setNextCursor(cursor ?? null);
@@ -288,47 +298,30 @@ export function ConversationsWindowContent({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMore, nextCursor]);
+  }, [isLoadingMore, hasMore, nextCursor, activeWorkspaceId]);
 
   const handleSelectConversation = async (conv: Conversation) => {
-    // Mark as read if there are unread messages
     if (conv.unreadCount && conv.unreadCount > 0) {
       try {
         await client.channel.markRead(conv.channelId);
         setConversations((prev) =>
-          prev.map((c) => (c.channelId === conv.channelId ? { ...c, unreadCount: 0 } : c)),
+          prev.map((c2) => (c2.channelId === conv.channelId ? { ...c2, unreadCount: 0 } : c2)),
         );
       } catch (err) {
         console.error('Error marking channel as read:', err);
       }
     }
 
-    const isVoice = conv.transport === 'voice';
-
-    if (isVoice) {
-      // Voice channels open as chat windows but with transport flag so they show VoiceTranscriptView
-      const existingWindow = findWindow('chat', (props) => props.channelId === conv.channelId);
-      if (existingWindow) {
-        focusWindow(existingWindow.id);
-      } else {
-        openWindow('chat', {
-          channelId: conv.channelId,
-          agentId: conv.agentId,
-          agentName: conv.agentName,
-          transport: 'voice',
-        }, false, windowId);
-      }
+    const existingWindow = findWindow('chat', (props) => props.channelId === conv.channelId);
+    if (existingWindow) {
+      focusWindow(existingWindow.id);
     } else {
-      const existingWindow = findWindow('chat', (props) => props.channelId === conv.channelId);
-      if (existingWindow) {
-        focusWindow(existingWindow.id);
-      } else {
-        openWindow('chat', {
-          channelId: conv.channelId,
-          agentId: conv.agentId,
-          agentName: conv.agentName,
-        }, false, windowId);
-      }
+      openWindow('chat', {
+        channelId: conv.channelId,
+        agentId: conv.agentId,
+        agentName: conv.agentName,
+        workspaceId: activeWorkspaceId,
+      }, false, windowId);
     }
   };
 
@@ -341,17 +334,27 @@ export function ConversationsWindowContent({
     openWindow('chat', {
       agentId: agent.agentId,
       agentName: agent.name || agent.fullName,
+      workspaceId: activeWorkspaceId,
     }, false, windowId);
   };
 
-  const handleArchiveConversation = async (channelId: string) => {
+  const handleArchiveConversation = (channelId: string) => {
+    setPendingArchiveChannelId(channelId);
+    setShowArchiveConfirm(true);
+  };
+
+  const confirmArchiveConversation = async () => {
+    if (!pendingArchiveChannelId) return;
     try {
-      await client.channel.close(channelId);
+      await client.channel.close(pendingArchiveChannelId);
       setConversations((prev) =>
-        prev.map((c) => (c.channelId === channelId ? { ...c, status: 'closed' as const } : c)),
+        prev.map((c2) => (c2.channelId === pendingArchiveChannelId ? { ...c2, status: 'closed' as const } : c2)),
       );
     } catch (err) {
       console.error('Error archiving conversation:', err);
+    } finally {
+      setShowArchiveConfirm(false);
+      setPendingArchiveChannelId(null);
     }
   };
 
@@ -359,7 +362,7 @@ export function ConversationsWindowContent({
     try {
       await client.channel.reopen(channelId);
       setConversations((prev) =>
-        prev.map((c) => (c.channelId === channelId ? { ...c, status: 'active' as const } : c)),
+        prev.map((c2) => (c2.channelId === channelId ? { ...c2, status: 'active' as const } : c2)),
       );
     } catch (err) {
       console.error('Error restoring conversation:', err);
@@ -370,7 +373,7 @@ export function ConversationsWindowContent({
     try {
       await client.channel.markRead(channelId);
       setConversations((prev) =>
-        prev.map((c) => (c.channelId === channelId ? { ...c, unreadCount: 0 } : c)),
+        prev.map((c2) => (c2.channelId === channelId ? { ...c2, unreadCount: 0 } : c2)),
       );
     } catch (err) {
       console.error('Error marking as read:', err);
@@ -378,7 +381,6 @@ export function ConversationsWindowContent({
   };
 
   const handleSearchResultClick = (channelId: string, messageId: string, agentName?: string) => {
-    // Clear search
     setSearchQuery('');
     setSearchResults([]);
 
@@ -386,12 +388,11 @@ export function ConversationsWindowContent({
 
     if (existingWindow) {
       focusWindow(existingWindow.id);
-      // TODO: scroll to messageId
     } else {
       openWindow('chat', {
         channelId,
         agentName,
-        // TODO: pass messageId to scroll to
+        workspaceId: activeWorkspaceId,
       }, false, windowId);
     }
   };
@@ -405,20 +406,19 @@ export function ConversationsWindowContent({
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Ahora';
+    if (diffMins < 1) return t('conversation.now');
     if (diffMins < 60) return `${diffMins}m`;
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
-    return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
+    return date.toLocaleDateString(getDateLocale(), { day: 'numeric', month: 'short' });
   };
 
-  // Filter conversations
-  const activeConvs = conversations.filter((c) => c.status !== 'closed' && !isInactive(c));
-  const inactiveConvs = conversations.filter((c) => c.status !== 'closed' && isInactive(c));
-  const archivedConvs = conversations.filter((c) => c.status === 'closed');
+  // All non-archived conversations in a single flat list (no inactive section)
+  const activeConvs = conversations.filter((conv) => conv.status !== 'closed');
+  const archivedConvs = conversations.filter((conv) => conv.status === 'closed');
 
   return (
-    <YStack flex={1}>
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* Header with actions */}
       <XStack
         height={40}
@@ -426,23 +426,28 @@ export function ConversationsWindowContent({
         alignItems="center"
         justifyContent="space-between"
         borderBottomWidth={1}
-        borderBottomColor="#1a1a1a"
+        borderBottomColor={c.border}
       >
-        <Text fontSize={11} fontWeight="600" color="#888">
-          Chats
+        <Text fontSize={11} fontWeight="600" color={c.text2}>
+          {t('conversation.chats')}
         </Text>
 
-        <Button
-          size="$1"
-          width={22}
-          height={22}
-          padding={0}
-          borderRadius={4}
-          backgroundColor="#0891B2"
-          hoverStyle={{ backgroundColor: '#06B6D4' }}
-          onPress={handleNewConversation}
-          icon={<Plus size={14} color="white" />}
-        />
+        <View
+          accessibilityLabel={t('conversations.newConversationTooltip')}
+          {...(Platform.OS === 'web' ? { title: t('conversations.newConversationTooltip') } as any : {})}
+        >
+          <Button
+            size="$1"
+            width={22}
+            height={22}
+            padding={0}
+            borderRadius={4}
+            backgroundColor={INDIGO}
+            hoverStyle={{ backgroundColor: INDIGO_HOVER }}
+            onPress={handleNewConversation}
+            icon={<Plus size={14} color="white" />}
+          />
+        </View>
       </XStack>
 
       {/* Search bar */}
@@ -450,22 +455,22 @@ export function ConversationsWindowContent({
         paddingHorizontal={8}
         paddingVertical={6}
         borderBottomWidth={1}
-        borderBottomColor="#1a1a1a"
+        borderBottomColor={c.border}
         alignItems="center"
         gap={6}
       >
-        <Search size={14} color="#555" />
+        <Search size={14} color={c.text3} />
         <Input
           flex={1}
           size="$2"
-          placeholder="Buscar en conversaciones..."
-          placeholderTextColor="#444"
+          placeholder={t('conversations.searchPlaceholder')}
+          placeholderTextColor={c.text3}
           backgroundColor="transparent"
           borderWidth={0}
           borderColor="transparent"
           outlineWidth={0}
           outlineColor="transparent"
-          color="#ccc"
+          color={c.text}
           fontSize={12}
           paddingHorizontal={0}
           paddingVertical={0}
@@ -482,10 +487,10 @@ export function ConversationsWindowContent({
             alignItems="center"
             borderRadius={10}
             cursor="pointer"
-            hoverStyle={{ backgroundColor: '#222' }}
+            hoverStyle={{ backgroundColor: c.bgCardHover }}
             onPress={() => setSearchQuery('')}
           >
-            <X size={12} color="#666" />
+            <X size={12} color={c.text3} />
           </XStack>
         )}
       </XStack>
@@ -502,23 +507,22 @@ export function ConversationsWindowContent({
             {isSearching || searchPending ? (
               <YStack padding={16} alignItems="center" gap={8}>
                 <AppSpinner size="sm" variant="brand" />
-                <Text fontSize={11} color="#555">
-                  Buscando...
+                <Text fontSize={11} color={c.text3}>
+                  {t('conversations.searching')}
                 </Text>
               </YStack>
             ) : searchResults.length === 0 ? (
               <YStack padding={16} alignItems="center">
-                <Text fontSize={12} color="#555">
-                  No se encontraron resultados para "{searchQuery}"
+                <Text fontSize={12} color={c.text3}>
+                  {t('conversations.noResultsFor', { query: searchQuery })}
                 </Text>
               </YStack>
             ) : (
               <>
                 {/* Results count */}
                 <XStack padding={8}>
-                  <Text fontSize={10} color="#555">
-                    {totalMatches} resultado{totalMatches !== 1 ? 's' : ''} en{' '}
-                    {searchResults.length} conversation{searchResults.length !== 1 ? 's' : ''}
+                  <Text fontSize={10} color={c.text3}>
+                    {t('conversations.searchResultsSummary', { matches: totalMatches, channels: searchResults.length })}
                   </Text>
                 </XStack>
 
@@ -530,22 +534,22 @@ export function ConversationsWindowContent({
                       padding={8}
                       gap={8}
                       alignItems="center"
-                      backgroundColor="#111"
+                      backgroundColor={c.bgCard}
                       borderRadius={4}
                     >
-                      <Circle size={24} backgroundColor="#1a1a1a">
-                        <User size={12} color="#555" />
+                      <Circle size={24} backgroundColor={c.bgInner}>
+                        <User size={12} color={c.text3} />
                       </Circle>
                       <YStack flex={1}>
-                        <Text fontSize={11} fontWeight="600" color="#06B6D4">
+                        <Text fontSize={11} fontWeight="600" color={INDIGO}>
                           {channel.agentName}
                         </Text>
-                        <Text fontSize={10} color="#666">
+                        <Text fontSize={10} color={c.text3}>
                           {channel.channelName}
                         </Text>
                       </YStack>
-                      <Text fontSize={9} color="#444">
-                        {channel.matches.length} match{channel.matches.length !== 1 ? 'es' : ''}
+                      <Text fontSize={9} color={c.text3}>
+                        {t('conversations.matchCount', { count: channel.matches.length })}
                       </Text>
                     </XStack>
 
@@ -558,8 +562,8 @@ export function ConversationsWindowContent({
                         gap={8}
                         alignItems="flex-start"
                         cursor="pointer"
-                        hoverStyle={{ backgroundColor: '#151515' }}
-                        pressStyle={{ backgroundColor: '#1a1a1a' }}
+                        hoverStyle={{ backgroundColor: c.bgCardHover }}
+                        pressStyle={{ backgroundColor: c.bgCard }}
                         onPress={() =>
                           handleSearchResultClick(
                             channel.channelId,
@@ -572,17 +576,17 @@ export function ConversationsWindowContent({
                           <XStack gap={6} alignItems="center">
                             <Text
                               fontSize={9}
-                              color={match.role === 'user' ? '#888' : '#06B6D4'}
+                              color={match.role === 'user' ? c.text2 : INDIGO}
                               fontWeight="500"
                             >
-                              {match.role === 'user' ? 'You' : channel.agentName}
+                              {match.role === 'user' ? t('conversations.you') : channel.agentName}
                             </Text>
-                            <Text fontSize={9} color="#444">
+                            <Text fontSize={9} color={c.text3}>
                               {formatDate(match.timestamp)}
                             </Text>
                           </XStack>
-                          <Text fontSize={11} color="#999" numberOfLines={2}>
-                            <HighlightedText text={match.snippet} query={searchQuery} />
+                          <Text fontSize={11} color={c.text2} numberOfLines={2}>
+                            <HighlightedText text={match.snippet} query={searchQuery} highlightColor={INDIGO} />
                           </Text>
                         </YStack>
                       </XStack>
@@ -593,94 +597,37 @@ export function ConversationsWindowContent({
             )}
           </YStack>
         </ScrollView>
+      ) : activeConvs.length === 0 ? (
+        /* Empty state */
+        <YStack flex={1} justifyContent="center" alignItems="center" gap="$3" padding={24}>
+          <MessageCircle size={48} color={c.text3} />
+          <Text fontSize={13} color={c.text3} textAlign="center">
+            {t('conversations.empty')}
+          </Text>
+          <Button
+            size="$2"
+            backgroundColor={INDIGO_BG}
+            color={INDIGO}
+            onPress={handleNewConversation}
+            icon={<Plus size={14} color={INDIGO} />}
+          >
+            {t('conversation.newChat')}
+          </Button>
+        </YStack>
       ) : (
-        /* Normal conversation list */
+        /* Normal conversation list — all active conversations in a single flat list */
         <ScrollView style={{ flex: 1 }}>
           <YStack padding={4} gap={1}>
-            {/* Active conversations */}
-            {(showAllActive ? activeConvs : activeConvs.slice(0, MAX_VISIBLE_ACTIVE)).map(
-              (conv) => (
-                <ConversationItem
-                  key={conv.channelId}
-                  conv={conv}
-                  formatDate={formatDate}
-                  onSelect={handleSelectConversation}
-                  onArchive={handleArchiveConversation}
-                  onMarkAsRead={handleMarkAsRead}
-                />
-              ),
-            )}
-
-            {/* Show more active button */}
-            {!showAllActive && activeConvs.length > MAX_VISIBLE_ACTIVE && (
-              <XStack
-                padding={8}
-                paddingLeft={48}
-                cursor="pointer"
-                hoverStyle={{ backgroundColor: '#151515' }}
-                onPress={() => setShowAllActive(true)}
-              >
-                <Text fontSize={11} color="#06B6D4">
-                  +{activeConvs.length - MAX_VISIBLE_ACTIVE} more active...
-                </Text>
-              </XStack>
-            )}
-
-            {/* Inactive section */}
-            {inactiveConvs.length > 0 && (
-              <YStack marginTop={8}>
-                <XStack
-                  padding={8}
-                  alignItems="center"
-                  gap={6}
-                  cursor="pointer"
-                  onPress={() => setShowInactive(!showInactive)}
-                >
-                  {showInactive ? (
-                    <ChevronUp size={12} color="#555" />
-                  ) : (
-                    <ChevronDown size={12} color="#555" />
-                  )}
-                  <Text fontSize={10} color="#555">
-                    Inactivas ({inactiveConvs.length})
-                  </Text>
-                </XStack>
-
-                {showInactive && (
-                  <>
-                    {(showAllInactive
-                      ? inactiveConvs
-                      : inactiveConvs.slice(0, MAX_VISIBLE_INACTIVE)
-                    ).map((conv) => (
-                      <ConversationItem
-                        key={conv.channelId}
-                        conv={conv}
-                        formatDate={formatDate}
-                        onSelect={handleSelectConversation}
-                        onArchive={handleArchiveConversation}
-                        onMarkAsRead={handleMarkAsRead}
-                        dimmed
-                      />
-                    ))}
-
-                    {/* Show more button */}
-                    {!showAllInactive && inactiveConvs.length > MAX_VISIBLE_INACTIVE && (
-                      <XStack
-                        padding={8}
-                        paddingLeft={48}
-                        cursor="pointer"
-                        hoverStyle={{ backgroundColor: '#151515' }}
-                        onPress={() => setShowAllInactive(true)}
-                      >
-                        <Text fontSize={11} color="#06B6D4">
-                          +{inactiveConvs.length - MAX_VISIBLE_INACTIVE} more...
-                        </Text>
-                      </XStack>
-                    )}
-                  </>
-                )}
-              </YStack>
-            )}
+            {activeConvs.map((conv) => (
+              <ConversationItem
+                key={conv.channelId}
+                conv={conv}
+                formatDate={formatDate}
+                onSelect={handleSelectConversation}
+                onArchive={handleArchiveConversation}
+                onMarkAsRead={handleMarkAsRead}
+              />
+            ))}
 
             {/* Archived section - link to dedicated window */}
             {archivedConvs.length > 0 && (
@@ -691,20 +638,20 @@ export function ConversationsWindowContent({
                 alignItems="center"
                 borderRadius={6}
                 borderWidth={1}
-                borderColor="#1a1a1a"
-                backgroundColor="#0a0a0a"
+                borderColor={c.border}
+                backgroundColor={c.bgInner}
                 cursor="pointer"
-                hoverStyle={{ backgroundColor: '#111', borderColor: '#222' }}
+                hoverStyle={{ backgroundColor: c.bgCardHover, borderColor: c.borderStrong }}
                 onPress={() => openWindow('archived-conversations', {}, false, windowId)}
               >
-                <Archive size={14} color="#555" />
-                <Text fontSize={11} color="#888" flex={1}>
-                  Archivadas
+                <Archive size={14} color={c.text3} />
+                <Text fontSize={11} color={c.text2} flex={1}>
+                  {t('conversation.archived')}
                 </Text>
-                <Text fontSize={11} color="#555">
+                <Text fontSize={11} color={c.text3}>
                   {archivedConvs.length}
                 </Text>
-                <ChevronDown size={12} color="#444" style={{ transform: [{ rotate: '-90deg' }] }} />
+                <ChevronDown size={12} color={c.text3} style={{ transform: [{ rotate: '-90deg' }] }} />
               </XStack>
             )}
 
@@ -719,14 +666,14 @@ export function ConversationsWindowContent({
                 borderRadius={6}
                 cursor={isLoadingMore ? 'default' : 'pointer'}
                 opacity={isLoadingMore ? 0.5 : 1}
-                hoverStyle={isLoadingMore ? {} : { backgroundColor: '#151515' }}
+                hoverStyle={isLoadingMore ? {} : { backgroundColor: c.bgCardHover }}
                 onPress={loadMore}
               >
                 {isLoadingMore ? (
                   <AppSpinner size="sm" variant="brand" />
                 ) : (
-                  <Text fontSize={11} color="#06B6D4">
-                    Cargar más conversaciones...
+                  <Text fontSize={11} color={INDIGO}>
+                    {t('conversations.loadMoreConversations')}
                   </Text>
                 )}
               </XStack>
@@ -741,6 +688,60 @@ export function ConversationsWindowContent({
         onClose={() => setShowNewConversationModal(false)}
         onSelectAgent={handleSelectAgent}
       />
+
+      {/* Archive Confirmation Dialog */}
+      <Dialog modal open={showArchiveConfirm} onOpenChange={(o) => {
+        if (!o) {
+          setShowArchiveConfirm(false);
+          setPendingArchiveChannelId(null);
+        }
+      }}>
+        <Dialog.Portal>
+          <Dialog.Overlay
+            key="overlay"
+            animation="card"
+            opacity={0.5}
+            enterStyle={{ opacity: 0 }}
+            exitStyle={{ opacity: 0 }}
+          />
+          <Dialog.Content
+            key="content"
+            bordered
+            elevate
+            animation="card"
+            enterStyle={{ opacity: 0, scale: 0.96 }}
+            exitStyle={{ opacity: 0, scale: 0.96 }}
+            transformOrigin="top"
+            width={420}
+            padding="$5"
+            gap="$4"
+          >
+            <Dialog.Title fontWeight="600" fontSize="$6">
+              {t('conversations.archiveConfirmTitle')}
+            </Dialog.Title>
+            <Paragraph fontSize="$3" lineHeight="$2" color="$gray10">
+              {t('conversations.archiveConfirmBody')}
+            </Paragraph>
+            <XStack gap="$3" justifyContent="flex-end">
+              <Dialog.Close asChild>
+                <Button size="$3" onPress={() => {
+                  setShowArchiveConfirm(false);
+                  setPendingArchiveChannelId(null);
+                }}>
+                  {t('conversations.archiveCancel')}
+                </Button>
+              </Dialog.Close>
+              <Button
+                size="$3"
+                theme="orange"
+                onPress={confirmArchiveConversation}
+              >
+                {t('conversations.archiveConfirm')}
+              </Button>
+            </XStack>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog>
     </YStack>
   );
 }
@@ -756,7 +757,6 @@ function ConversationItem({
   onArchive,
   onRestore,
   onMarkAsRead,
-  dimmed = false,
   archived = false,
 }: {
   conv: Conversation;
@@ -765,10 +765,10 @@ function ConversationItem({
   onArchive?: (channelId: string) => void;
   onRestore?: (channelId: string) => void;
   onMarkAsRead?: (channelId: string) => void;
-  dimmed?: boolean;
   archived?: boolean;
 }) {
-  // Get isTyping from chatStore (updated via global listener)
+  const { t } = useTranslation();
+  const c = useColors();
   const channel = useChatStore((state) => state.channels[conv.channelId]);
   const isTyping = channel?.isTyping ?? false;
 
@@ -785,42 +785,49 @@ function ConversationItem({
       borderRadius={6}
       cursor="pointer"
       backgroundColor="transparent"
-      opacity={dimmed ? 0.7 : 1}
-      hoverStyle={{ backgroundColor: '#151515', opacity: 1 }}
-      pressStyle={{ backgroundColor: '#1a1a1a' }}
+      hoverStyle={{ backgroundColor: c.bgCardHover }}
+      pressStyle={{ backgroundColor: c.bgCard }}
       onPress={() => onSelect(conv)}
     >
       {/* Avatar */}
-      <Circle size={32} backgroundColor="#1a1a1a" overflow="hidden">
+      <Circle size={32} backgroundColor={c.bgInner} overflow="hidden">
         {conv.agentAvatarUrl ? (
           <Avatar circular size={32}>
             <Avatar.Image src={conv.agentAvatarUrl} />
           </Avatar>
         ) : (
-          <User size={16} color="#555" />
+          <User size={16} color={c.text3} />
         )}
       </Circle>
 
       {/* Content */}
       <YStack flex={1} gap={2}>
-        {/* Agent name */}
-        <Text
-          fontSize={11}
-          fontWeight="600"
-          color={archived ? '#666' : '#06B6D4'}
-          numberOfLines={1}
-        >
-          {conv.agentName || 'Agente'}
-        </Text>
-
-        {/* Conversation title */}
-        <Text fontSize={12} fontWeight="500" color={archived ? '#888' : '#ccc'} numberOfLines={1}>
+        {/* Conversation title — first, it's what identifies the conversation */}
+        <Text fontSize={12} fontWeight="400" color={archived ? c.text3 : c.text} numberOfLines={1}>
           {conv.title}
         </Text>
 
+        {/* Agent name + preview on one line: name is fixed-width, preview truncates */}
+        <XStack alignItems="center" gap={4}>
+          <Text
+            fontSize={10}
+            fontWeight="500"
+            color={archived ? c.text3 : INDIGO}
+            numberOfLines={1}
+            flexShrink={0}
+          >
+            {conv.agentName || t('conversation.agent')}
+          </Text>
+          {conv.lastMessageContent && !archived && (
+            <Text fontSize={10} color={c.text3} numberOfLines={1} ellipsizeMode="tail" flex={1} flexShrink={1}>
+              {' · '}{conv.lastMessageContent}
+            </Text>
+          )}
+        </XStack>
+
         {/* Time */}
         {!archived && (
-          <Text fontSize={9} color="#555">
+          <Text fontSize={9} color={c.text3}>
             {formatDate(conv.lastMessageAt)}
           </Text>
         )}
@@ -828,20 +835,13 @@ function ConversationItem({
 
       {/* Status indicators */}
       <XStack gap={6} alignItems="center">
-        {/* Lock: private conversation */}
-        {isPrivate && <Lock size={12} color="#666" />}
-
-        {/* Spinner: agent is working */}
-        {isTyping && <TerosLoading size={14} color="#06B6D4" />}
-
-        {/* Red dot: external action requested (awaiting human or other agent) */}
-        {!isTyping && externalActionRequested && <Circle size={8} backgroundColor="#ef4444" />}
-
-        {/* Blue dot: has unread content */}
+        {isPrivate && <Lock size={12} color={c.text3} />}
+        {isTyping && <TerosLoading size={14} color={INDIGO} />}
+        {!isTyping && externalActionRequested && <Circle size={8} backgroundColor={RED} />}
         {!isTyping && !externalActionRequested && hasUnread && (
           <Circle
             size={8}
-            backgroundColor="#06B6D4"
+            backgroundColor={INDIGO}
             cursor="pointer"
             hoverStyle={{ scale: 1.2 }}
             onPress={(e: any) => {
@@ -861,17 +861,17 @@ function ConversationItem({
           alignItems="center"
           borderRadius={4}
           cursor="pointer"
-          hoverStyle={{ backgroundColor: 'rgba(16, 185, 129, 0.15)' }}
+          hoverStyle={{ backgroundColor: `rgba(${34}, ${197}, ${94}, 0.15)` }}
           onPress={(e: any) => {
             e.stopPropagation();
             onRestore(conv.channelId);
           }}
         >
-          <ArchiveRestore size={14} color="#10B981" />
+          <ArchiveRestore size={14} color={GREEN} />
         </XStack>
       )}
 
-      {/* Menu for active/inactive conversations */}
+      {/* Menu for active conversations */}
       {!archived && onArchive && (
         <Popover placement="bottom-end">
           <Popover.Trigger asChild>
@@ -883,17 +883,17 @@ function ConversationItem({
               borderRadius={4}
               cursor="pointer"
               opacity={0.5}
-              hoverStyle={{ backgroundColor: '#1a1a1a', opacity: 1 }}
+              hoverStyle={{ backgroundColor: c.bgCard, opacity: 1 }}
               onPress={(e: any) => e.stopPropagation()}
             >
-              <MoreVertical size={14} color="#666" />
+              <MoreVertical size={14} color={c.text3} />
             </XStack>
           </Popover.Trigger>
 
           <Popover.Content
-            backgroundColor="#151515"
+            backgroundColor={c.bgCard}
             borderWidth={1}
-            borderColor="#2a2a2a"
+            borderColor={c.borderStrong}
             borderRadius={8}
             padding={4}
             elevate
@@ -908,15 +908,15 @@ function ConversationItem({
               alignItems="center"
               borderRadius={4}
               cursor="pointer"
-              hoverStyle={{ backgroundColor: 'rgba(255, 152, 0, 0.15)' }}
+              hoverStyle={{ backgroundColor: `rgba(${245}, ${158}, ${11}, 0.15)` }}
               onPress={(e: any) => {
                 e.stopPropagation();
                 onArchive(conv.channelId);
               }}
             >
-              <Archive size={14} color="#FF9800" />
-              <Text fontSize={12} color="#ccc">
-                Archivar
+              <Archive size={14} color={AMBER} />
+              <Text fontSize={12} color={c.text}>
+                {t('conversations.archive')}
               </Text>
             </XStack>
           </Popover.Content>
@@ -930,7 +930,7 @@ function ConversationItem({
 // HIGHLIGHTED TEXT (for search results)
 // ========================================
 
-function HighlightedText({ text, query }: { text: string; query: string }) {
+function HighlightedText({ text, query, highlightColor }: { text: string; query: string; highlightColor: string }) {
   if (!query || query.length < 2) {
     return <>{text}</>;
   }
@@ -941,7 +941,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
     <>
       {parts.map((part, i) =>
         part.toLowerCase() === query.toLowerCase() ? (
-          <Text key={i} color="#06B6D4" fontWeight="600">
+          <Text key={i} color={highlightColor} fontWeight="600">
             {part}
           </Text>
         ) : (

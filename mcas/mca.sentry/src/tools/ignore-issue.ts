@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getCredentials, type SentryIssue, sentryRequest } from '../lib/index.js';
 
 export const ignoreIssue: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Ignore an issue (stop notifications)',
   parameters: {
     type: 'object',

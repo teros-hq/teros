@@ -1,0 +1,193 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba el token de la API de Railway y la conectividad."
+    },
+    "railway-get-user": {
+      "name": "railway-get-user",
+      "description": "Obtiene la información del usuario actual de Railway incluyendo los workspaces disponibles."
+    },
+    "railway-list-workspaces": {
+      "name": "railway-list-workspaces",
+      "description": "Lista todos los workspaces de Railway disponibles para el usuario actual."
+    },
+    "railway-list-projects": {
+      "name": "railway-list-projects",
+      "description": "Lista todos los proyectos de Railway en la cuenta conectada."
+    },
+    "railway-get-project": {
+      "name": "railway-get-project",
+      "description": "Obtiene información detallada sobre un proyecto de Railway incluyendo servicios y entornos.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway"
+      }
+    },
+    "railway-create-project": {
+      "name": "railway-create-project",
+      "description": "Crea un nuevo proyecto de Railway. Requiere un workspaceId — usa railway-list-workspaces para obtener los workspaces disponibles.",
+      "params": {
+        "name": "Nombre del proyecto",
+        "workspaceId": "ID del workspace donde crear el proyecto (usa railway-list-workspaces para obtener los IDs)",
+        "description": "Descripción opcional del proyecto"
+      }
+    },
+    "railway-delete-project": {
+      "name": "railway-delete-project",
+      "description": "Elimina un proyecto de Railway. ¡Esta acción es irreversible!",
+      "params": {
+        "projectId": "El ID del proyecto de Railway a eliminar"
+      }
+    },
+    "railway-list-environments": {
+      "name": "railway-list-environments",
+      "description": "Lista todos los entornos de un proyecto de Railway.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway"
+      }
+    },
+    "railway-create-environment": {
+      "name": "railway-create-environment",
+      "description": "Crea un nuevo entorno en un proyecto de Railway (p. ej., staging, production).",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "name": "Nombre del entorno (p. ej., \"staging\", \"production\")"
+      }
+    },
+    "railway-list-services": {
+      "name": "railway-list-services",
+      "description": "Lista todos los servicios de un proyecto de Railway.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway"
+      }
+    },
+    "railway-create-service": {
+      "name": "railway-create-service",
+      "description": "Crea un nuevo servicio en un proyecto de Railway.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "name": "Nombre del servicio (p. ej., \"web\", \"api\", \"worker\")"
+      }
+    },
+    "railway-delete-service": {
+      "name": "railway-delete-service",
+      "description": "Elimina un servicio de un proyecto de Railway.",
+      "params": {
+        "serviceId": "El ID del servicio de Railway a eliminar"
+      }
+    },
+    "railway-list-variables": {
+      "name": "railway-list-variables",
+      "description": "Lista las variables de entorno de un servicio.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway"
+      }
+    },
+    "railway-set-variables": {
+      "name": "railway-set-variables",
+      "description": "Establece las variables de entorno de un servicio.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway",
+        "variables": "Pares clave-valor de variables de entorno a establecer"
+      }
+    },
+    "railway-list-deployments": {
+      "name": "railway-list-deployments",
+      "description": "Lista los deployments recientes de un servicio.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway"
+      }
+    },
+    "railway-get-deployment": {
+      "name": "railway-get-deployment",
+      "description": "Obtiene el estado de un deployment específico.",
+      "params": {
+        "deploymentId": "El ID del deployment de Railway"
+      }
+    },
+    "railway-redeploy": {
+      "name": "railway-redeploy",
+      "description": "Dispara un redeploy de un deployment existente.",
+      "params": {
+        "deploymentId": "El ID del deployment de Railway a redesplegar"
+      }
+    },
+    "railway-list-domains": {
+      "name": "railway-list-domains",
+      "description": "Lista los dominios de un servicio.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway"
+      }
+    },
+    "railway-create-domain": {
+      "name": "railway-create-domain",
+      "description": "Crea un dominio generado por Railway para un servicio (p. ej., myapp.up.railway.app).",
+      "params": {
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway"
+      }
+    },
+    "railway-connect-repo": {
+      "name": "railway-connect-repo",
+      "description": "Conecta un repositorio de GitHub a un servicio de Railway. Funciona tanto con repositorios públicos como privados (si GitHub está conectado en tu cuenta de Railway). Dispara automáticamente un deployment.",
+      "params": {
+        "serviceId": "El ID del servicio de Railway",
+        "repo": "Repositorio de GitHub en formato \"owner/repo\" (p. ej., \"myuser/myapp\")",
+        "branch": "Branch desde la que desplegar (por defecto: \"main\")"
+      }
+    },
+    "railway-deploy-public-repo": {
+      "name": "railway-deploy-public-repo",
+      "description": "Despliega un repositorio público de GitHub en Railway. Crea un nuevo servicio a partir del repositorio. Solo funciona con repositorios PÚBLICOS. Para repositorios privados, usa railway-connect-repo en su lugar.",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "repo": "Repositorio público de GitHub en formato \"owner/repo\" (p. ej., \"myuser/myapp\")",
+        "branch": "Branch desde la que desplegar (por defecto: \"main\")",
+        "environmentId": "El ID del entorno de Railway (opcional)"
+      }
+    },
+    "railway-create-volume": {
+      "name": "railway-create-volume",
+      "description": "Crea un volumen persistente para un servicio (útil para bases de datos).",
+      "params": {
+        "projectId": "El ID del proyecto de Railway",
+        "serviceId": "El ID del servicio de Railway",
+        "environmentId": "El ID del entorno de Railway",
+        "mountPath": "Ruta donde montar el volumen (p. ej., \"/data/db\" para MongoDB)"
+      }
+    },
+    "railway-get-build-logs": {
+      "name": "railway-get-build-logs",
+      "description": "Obtiene los logs de build de un deployment. Muestra lo que ocurrió durante la fase de build/compilación.",
+      "params": {
+        "deploymentId": "El ID del deployment para obtener los logs de build",
+        "limit": "Número máximo de líneas de log a devolver (por defecto: 100, máximo: 500)",
+        "filter": "Filtro de texto opcional para buscar dentro de los logs"
+      }
+    },
+    "railway-get-deploy-logs": {
+      "name": "railway-get-deploy-logs",
+      "description": "Obtiene los logs de runtime/deployment de un deployment. Muestra la salida de la aplicación, errores y logs de inicio.",
+      "params": {
+        "deploymentId": "El ID del deployment para obtener los logs de runtime",
+        "limit": "Número máximo de líneas de log a devolver (por defecto: 100, máximo: 500)",
+        "filter": "Filtro de texto opcional para buscar dentro de los logs"
+      }
+    }
+  },
+  "name": "Railway",
+  "description": "Despliega proyectos en Railway directamente desde workspaces de Teros. Soporta deployments automáticos, gestión de entornos y aprovisionamiento de bases de datos.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear y desplegar proyectos, gestionar servicios, entornos, variables, dominios y volúmenes, y ver logs de deployment"
+    }
+  ]
+}

@@ -9,12 +9,14 @@
  * - All real-time message event listeners
  */
 
-import type { TokenBudget } from "@teros/shared"
+import { normalizeError, type TokenBudget } from "@teros/shared"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { getTerosClient } from "../../../app/_layout"
-import { STORAGE_KEYS, storage } from "../../services/storage"
+import i18n from "../../i18n"
+import { getTerosClient } from "../../services/terosClientSingleton"
 import { useChatStore } from "../../store/chatStore"
-import type { Message, ToolCall } from "../../components/MessageBubble"
+import { useAuthStore } from "../../store/authStore"
+import type { Message } from "../../store/chatStore"
+import type { ToolCall } from "../../components/chat/bubbles/types"
 
 // ============================================
 // TYPES
@@ -37,7 +39,9 @@ export interface ChatChannelState {
   conversation: Conversation | null
   connected: boolean
   isLoading: boolean
+  notFound: boolean
   agentName: string
+  agentRole: string | undefined
   agentAvatarUrl: string | null
   modelString: string | undefined
   modelName: string | undefined
@@ -48,7 +52,7 @@ export interface ChatChannelState {
   hasMoreMessages: boolean
   isLoadingMore: boolean
   conversationInitialized: React.MutableRefObject<boolean>
-  typingHeartbeatTimeout: React.MutableRefObject<NodeJS.Timeout | null>
+  typingHeartbeatTimeout: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   justSentMessage: React.MutableRefObject<boolean>
   setConversation: (conv: Conversation | null | ((prev: Conversation | null) => Conversation | null)) => void
   setIsChatReady: (v: boolean | ((prev: boolean) => boolean)) => void
@@ -85,11 +89,13 @@ export function useChatChannel(
   // ----------------------------------------
   // State
   // ----------------------------------------
-  const [user, setUser] = useState<any>(null)
+  const user = useAuthStore((state) => state.user)
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [connected, setConnected] = useState(false)
   const [isLoading, setIsLoading] = useState(() => !isNewChat && !getHasCachedMessages())
+  const [notFound, setNotFound] = useState(false)
   const [agentName, setAgentName] = useState<string>("")
+  const [agentRole, setAgentRole] = useState<string | undefined>(undefined)
   const [agentAvatarUrl, setAgentAvatarUrl] = useState<string | null>(null)
   const [modelString, setModelString] = useState<string | undefined>(undefined)
   const [modelName, setModelName] = useState<string | undefined>(undefined)
@@ -108,25 +114,13 @@ export function useChatChannel(
   // Refs
   // ----------------------------------------
   const conversationInitialized = useRef(false)
-  const typingHeartbeatTimeout = useRef<NodeJS.Timeout | null>(null)
+  const typingHeartbeatTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
   const justSentMessage = useRef(false)
 
   // ----------------------------------------
   // EFFECT: User & Connection
   // ----------------------------------------
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const savedUser = await storage.getItem(STORAGE_KEYS.USER)
-        if (savedUser) {
-          setUser(JSON.parse(savedUser))
-        }
-      } catch (e) {
-        console.error("Failed to load user from storage:", e)
-      }
-    }
-    loadUser()
-
     const handleConnected = () => setConnected(true)
     const handleDisconnected = () => {
       setConnected(false)
@@ -153,28 +147,36 @@ export function useChatChannel(
       // For new chats, just load agent info
       if (isNewChat && initialAgentId) {
         try {
+          // listAgents(workspaceId) now returns workspace agents + superagents from backend
           const agents = await client.agent.listAgents(workspaceId).then((r: any) => r.agents)
-          const agent = agents.find((a: any) => a.agentId === initialAgentId)
+          let agent = agents.find((a: any) => a.agentId === initialAgentId)
+
           if (agent) {
             setAgentName(agent.name || agent.fullName || "")
+            setAgentRole(agent.role || undefined)
             setAgentAvatarUrl(agent.avatarUrl || null)
-            const draftConv: Conversation = {
-              sessionId: "draft",
-              channelId: "draft",
-              title: `Nuevo chat con ${agent.name || agent.fullName || "Agente"}`,
-              transport: "web",
-              sessionImage: null,
-              participants: [{ agentId: initialAgentId, role: "agent" }],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-              lastMessageAt: null,
-            }
-            setConversation(draftConv)
           }
+
+          // Crear draftConv siempre, aunque no se encuentre el agente,
+          // para evitar que conversation quede null y cause loader infinito
+          const draftConv: Conversation = {
+            sessionId: "draft",
+            channelId: "draft",
+            title: agent
+              ? i18n.t('conversation.newChatWith', { name: agent.name || agent.fullName || i18n.t('conversation.agent') })
+              : i18n.t('conversation.newChat'),
+            transport: "web",
+            sessionImage: null,
+            participants: [{ agentId: initialAgentId, role: "agent" }],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            lastMessageAt: null,
+          }
+          setConversation(draftConv)
 
           if (workspaceId) {
             try {
-              const workspaces = await client.listWorkspaces()
+              const { workspaces } = await client.workspace.listWorkspaces()
               const ws = workspaces.find((w: any) => w.workspaceId === workspaceId)
               if (ws) {
                 setWorkspaceInfo({
@@ -204,7 +206,7 @@ export function useChatChannel(
         const conv: Conversation = {
           sessionId: channelId,
           channelId: channelId,
-          title: cachedChannel.title || "Chat",
+          title: cachedChannel.title || i18n.t('nav.chat'),
           transport: "web",
           sessionImage: null,
           participants: cachedChannel.agentId
@@ -227,12 +229,13 @@ export function useChatChannel(
       }
 
       try {
-        const { channels } = await client.channel.list()
-        const ch = channels.find((c: any) => c.channelId === channelId)
+        // Use channel.get() to fetch a specific channel by ID — more direct than listing.
+        const ch = await client.channel.get(channelId) as any
 
         if (!ch) {
           console.error("[useChatChannel] Channel not found:", channelId)
           setIsLoading(false)
+          setNotFound(true)
           return
         }
 
@@ -243,12 +246,13 @@ export function useChatChannel(
             const agent = agents.find((a: any) => a.agentId === ch.agentId)
             if (agent) {
               setAgentName(agent.name || agent.fullName || "")
+              setAgentRole(agent.role || undefined)
               setAgentAvatarUrl(agent.avatarUrl || null)
             }
 
             if (channelWorkspaceId) {
               try {
-                const workspaces = await client.listWorkspaces()
+                const { workspaces } = await client.workspace.listWorkspaces()
                 const ws = workspaces.find((w: any) => w.workspaceId === channelWorkspaceId)
                 if (ws) {
                   setWorkspaceInfo({
@@ -272,7 +276,7 @@ export function useChatChannel(
         const conv: Conversation = {
           sessionId: ch.channelId,
           channelId: ch.channelId,
-          title: chAny.metadata?.name || "Chat con " + (ch.agentId || "Agente"),
+          title: chAny.metadata?.name || i18n.t('conversation.chatWith', { name: ch.agentId || i18n.t('conversation.agent') }),
           transport: chAny.metadata?.transport || "web",
           sessionImage: null,
           participants: ch.agentId ? [{ agentId: ch.agentId, role: "agent" }] : [],
@@ -322,7 +326,31 @@ export function useChatChannel(
       }
 
       try {
-        await client.channel.subscribe(channelId as string)
+        const subscribeResp: any = await client.channel.subscribe(channelId as string)
+
+        // Hydration snapshot — fresh tab / post-reconnect needs this before the next push arrives.
+        if (subscribeResp && typeof subscribeResp === "object") {
+          const phase = subscribeResp.agentPhase as
+            | "idle"
+            | "thinking"
+            | "streaming_text"
+            | "executing_tool"
+            | undefined
+          if (phase) {
+            useChatStore.getState().setAgentPhase(channelId as string, phase)
+          }
+          // Applied AFTER history load below so the statuses survive the upsert.
+          const pendingIds = Array.isArray(subscribeResp.pendingUserMessageIds)
+            ? (subscribeResp.pendingUserMessageIds as string[])
+            : []
+          const runningId = typeof subscribeResp.runningUserMessageId === 'string'
+            ? subscribeResp.runningUserMessageId
+            : undefined
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(subscribeResp as any).__appliedPendingIds = pendingIds
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(subscribeResp as any).__appliedRunningId = runningId
+        }
 
         const {
           messages: history,
@@ -336,37 +364,62 @@ export function useChatChannel(
         }
 
         const historicalMessages: Message[] = history
-          .map((msg: any) => ({
-            id: msg.messageId || msg.id,
-            channelId: channelId as string,
-            content: msg.content,
-            sender:
+          .map((msg: any) => {
+            const role: "user" | "agent" | "system" =
               msg.sender === "system" || msg.content?.type === "event"
-                ? ("system" as const)
+                ? "system"
                 : msg.role === "user"
-                  ? ("user" as const)
-                  : ("agent" as const),
-            senderInfo: msg.sender
-              ? {
-                  type: msg.sender.type,
-                  id: msg.sender.id,
-                  name: msg.sender.name,
-                  avatarUrl: msg.sender.avatarUrl,
-                }
-              : undefined,
-            timestamp: new Date(msg.timestamp),
-            isStreaming: false,
-          }))
+                  ? "user"
+                  : "agent"
+            const persistedQueueState: 'pending' | 'running' | 'done' | undefined =
+              msg.meta?.queueState
+            const status: Message['status'] =
+              role === 'user' && persistedQueueState === 'pending'
+                ? 'queued'
+                : role === 'user'
+                  ? 'sent'
+                  : undefined
+            return {
+              id: msg.messageId || msg.id,
+              channelId: channelId as string,
+              content: msg.content,
+              sender: role,
+              senderInfo: msg.sender
+                ? {
+                    type: msg.sender.type,
+                    id: msg.sender.id,
+                    name: msg.sender.name,
+                    avatarUrl: msg.sender.avatarUrl,
+                  }
+                : undefined,
+              source: msg.source,
+              timestamp: new Date(msg.timestamp),
+              isStreaming: false,
+              ...(status ? { status } : {}),
+            } as Message
+          })
           .sort((a: Message, b: Message) => a.timestamp.getTime() - b.timestamp.getTime())
 
         historicalMessages.forEach((msg) => {
           useChatStore.getState().upsertMessage(msg, true)
         })
 
-        if (!hasCached) {
-          if (historicalMessages.length === 0) {
-            setIsChatReady(true)
+        // `channel_messages` (read by `getMessages`) doesn't carry `meta.queueState` — that lives in `session_messages`.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const appliedPendingIds = (subscribeResp as any)?.__appliedPendingIds as
+          | string[]
+          | undefined
+        if (appliedPendingIds?.length) {
+          const store = useChatStore.getState()
+          for (const id of appliedPendingIds) {
+            if (store.messages[id]) {
+              store.updateMessage(id, { status: 'queued' })
+            }
           }
+        }
+
+        if (!hasCached) {
+          setIsChatReady(true)
         }
       } catch (error: any) {
         console.error("[useChatChannel] Error initializing chat:", error)
@@ -391,13 +444,16 @@ export function useChatChannel(
       const store = useChatStore.getState()
       const messageId = data.message.messageId
       const isUserMessage = data.message.role === "user"
+      const isSystemMessage = data.message.role === "system"
 
       const existingMessage = store.messages[messageId]
 
       if (existingMessage) {
+        // Explicitly close the stream — `text_complete` doesn't fire on tool_call or end_turn without an explicit text close.
         store.updateMessage(messageId, {
           content: data.message.content,
           timestamp: new Date(data.message.timestamp),
+          isStreaming: false,
         })
         return
       }
@@ -420,7 +476,7 @@ export function useChatChannel(
         id: messageId,
         channelId: data.channelId,
         content: data.message.content,
-        sender: isUserMessage ? "user" : "agent",
+        sender: isUserMessage ? "user" : isSystemMessage ? "system" : "agent",
         senderInfo: data.message.sender
           ? {
               type: data.message.sender.type,
@@ -429,11 +485,65 @@ export function useChatChannel(
               avatarUrl: data.message.sender.avatarUrl,
             }
           : undefined,
+        source: data.message.source,
         timestamp: new Date(data.message.timestamp),
         isStreaming: false,
       }
 
       store.upsertMessage(message)
+    }
+
+    const applyQueueState = (
+      messageId: string,
+      state: 'pending' | 'running' | 'done',
+      assistantId: string | undefined,
+    ) => {
+      const store = useChatStore.getState()
+      if (state === 'pending') {
+        // El selector `displayedMessageIds` en ChatView flota los queued
+        // al final visualmente — no hace falta reorder aquí.
+        store.updateMessage(messageId, { status: 'queued' })
+        return
+      }
+      if (state === 'running') {
+        store.updateMessage(messageId, { status: 'sent' })
+        store.reorderMessageToEnd(channelId, messageId)
+        return
+      }
+      // state === 'done'
+      store.updateMessage(messageId, { status: 'sent' })
+      if (assistantId && store.messages[assistantId]) {
+        store.reorderMessageBefore(channelId, messageId, assistantId)
+      }
+    }
+
+    const handleQueueState = (data: any) => {
+      if (data.channelId !== channelId) return
+      const messageId: string | undefined = data.messageId
+      const state: 'pending' | 'running' | 'done' | undefined = data.state
+      const assistantId: string | undefined = data.assistantId
+      if (!messageId || !state) return
+      // Retry: this event can land before the temp_id has been swapped via the `message_sent` ack.
+      const tryApply = (attempt: number) => {
+        if (useChatStore.getState().messages[messageId]) {
+          applyQueueState(messageId, state, assistantId)
+          return
+        }
+        if (attempt >= 3) {
+          console.warn('[useChatChannel] handleQueueState abandoned after 3 retries', { messageId, state })
+          return
+        }
+        const delay = attempt === 0 ? 200 : attempt === 1 ? 500 : 1500
+        setTimeout(() => tryApply(attempt + 1), delay)
+      }
+      tryApply(0)
+    }
+
+    const handleAgentPhase = (data: any) => {
+      if (data.channelId !== channelId) return
+      const phase: 'idle' | 'thinking' | 'streaming_text' | 'executing_tool' | undefined = data.phase
+      if (!phase) return
+      useChatStore.getState().setAgentPhase(channelId, phase)
     }
 
     const handleMessageChunk = (data: any) => {
@@ -447,21 +557,43 @@ export function useChatChannel(
       } else if (chunkType === "text_complete") {
         useChatStore.getState().markMessageComplete(data.messageId)
       } else if (chunkType === "tool_call_start") {
-        const toolCall: ToolCall = {
+        useChatStore.getState().upsertToolMessage(data.messageId, channelId, {
           toolCallId: data.toolCallId,
           toolName: data.toolName,
           mcaId: data.mcaId,
           input: data.toolInput,
           status: "running",
-        }
-        useChatStore.getState().addToolCall(data.messageId, channelId, toolCall)
+        })
       } else if (chunkType === "tool_call_complete") {
-        const status = data.toolStatus === "completed" ? "completed" : "failed"
-        useChatStore.getState().updateToolCall(data.messageId, data.toolCallId, {
-          status: status as "completed" | "failed",
+        useChatStore.getState().upsertToolMessage(data.messageId, channelId, {
+          toolCallId: data.toolCallId,
+          status: data.toolStatus === "completed" ? "completed" : "failed",
           output: data.toolOutput,
           error: data.toolError,
           duration: data.toolDuration,
+          attachments: data.attachments,
+          // Clear permission/form flow fields on completion.
+          permissionRequestId: undefined,
+          formRequestId: undefined,
+        })
+      } else if (chunkType === "tool_status_update") {
+        // Intermediate state during the permission/form flows:
+        //   pending → pending_permission | pending_user_input → running → completed/failed
+        // When transitioning OUT of the waiting state, clear its requestId so
+        // the widget (ControlsBar / FormWidget) disappears immediately.
+        useChatStore.getState().upsertToolMessage(data.messageId, channelId, {
+          toolCallId: data.toolCallId,
+          status: data.toolStatus,
+          ...(data.toolStatus === "pending_permission" && data.permissionRequestId
+            ? {
+                permissionRequestId: data.permissionRequestId,
+                appId: data.appId,
+                ...(data.irreversible ? { irreversible: true } : {}),
+              }
+            : { permissionRequestId: undefined }),
+          ...(data.toolStatus === "pending_user_input" && data.formRequestId
+            ? { formRequestId: data.formRequestId }
+            : { formRequestId: undefined }),
         })
       }
     }
@@ -483,15 +615,18 @@ export function useChatChannel(
             },
           })
         }
+        // Preserve "queued" — the optimistic message may have already been flagged as waiting in the FIFO.
+        const wasQueued = tempMessage?.status === "queued"
         store.updateMessageId(tempId, data.messageId, channelId)
         store.updateMessage(data.messageId, {
-          status: "sent",
+          status: wasQueued ? "queued" : "sent",
           retryData: undefined,
         })
       }
     }
 
-    const TYPING_HEARTBEAT_TIMEOUT = 15000
+    // Must exceed the 10s backend heartbeat by a wide margin so a single dropped/late event doesn't ghost the indicator mid-turn.
+    const TYPING_HEARTBEAT_TIMEOUT = 30000
 
     const handleTyping = (data: any) => {
       if (data.channelId === channelId) {
@@ -522,7 +657,7 @@ export function useChatChannel(
     const handleSystemEvent = (data: any) => {
       if (data.channelId === channelId && data.event) {
         const eventMessage: Message = {
-          id: data.event.id,
+          id: data.event.messageId || data.event.id,
           channelId: channelId as string,
           content: {
             type: "event",
@@ -552,6 +687,10 @@ export function useChatChannel(
       if (error.raw && error.raw !== "{}") technicalParts.push(`Raw: ${error.raw}`)
       if (error.type) technicalParts.push(`Type: ${error.type}`)
 
+      const normalized = normalizeError(error)
+
+      const resolvedI18n = i18n.exists(normalized.i18nKey) ? i18n.t(normalized.i18nKey) : null
+
       const errorMessage: Message = {
         id: `error-${Date.now()}`,
         channelId,
@@ -566,11 +705,15 @@ export function useChatChannel(
                   ? "validation"
                   : error.code === "NETWORK_ERROR"
                     ? "network"
-                    : "unknown",
-          userMessage: error.message || "Ha ocurrido un error inesperado",
+                    : normalized.errorType,
+          userMessage: resolvedI18n || normalized.userMessage,
           technicalMessage:
-            technicalParts.length > 0 ? technicalParts.join(" | ") : JSON.stringify(error),
-          context: error.context,
+            technicalParts.length > 0 ? technicalParts.join(" | ") : normalized.technicalMessage,
+          context: {
+            ...error.context,
+            recoverable: normalized.recoverable,
+            i18nKey: normalized.i18nKey,
+          },
         },
         sender: "system",
         timestamp: new Date(),
@@ -603,25 +746,60 @@ export function useChatChannel(
       }
     }
 
+    const handleMessageFeedbackCreated = (data: any) => {
+      if (data.channelId !== channelId) return
+      if (data.userId !== user?.userId) return
+      useChatStore.getState().setMessageFeedback(data.messageId, {
+        rating: data.rating,
+        reasons: data.reasons,
+        hasComment: data.hasComment,
+        createdAt: data.createdAt,
+      })
+    }
+
+    const handleMessageActionExecuted = (data: any) => {
+      if (data.channelId !== channelId) return
+      if (data.userId !== user?.userId) return
+      if (data.action === 'report') {
+        useChatStore.getState().updateMessage(data.messageId, { reportedAt: data.createdAt })
+      } else if (data.action === 'copy') {
+        useChatStore.getState().updateMessage(data.messageId, { copiedAt: data.createdAt })
+      }
+    }
+
     client.on("message", handleMessage)
     client.on("message_chunk", handleMessageChunk)
     client.on("message_sent", handleMessageSent)
+    client.on("queue_state", handleQueueState)
+    client.on("agent_phase", handleAgentPhase)
     client.on("typing", handleTyping)
     client.on("token_budget", handleTokenBudget)
     client.on("system_event", handleSystemEvent)
     client.on("channel_status", handleChannelStatus)
     client.on("channel_private_updated", handleChannelPrivateUpdated)
+    client.on("conversation.message.feedback.created", handleMessageFeedbackCreated)
+    client.on("conversation.message.action.executed", handleMessageActionExecuted)
     client.on("error", handleError)
 
     return () => {
       client.off("message", handleMessage)
       client.off("message_chunk", handleMessageChunk)
       client.off("message_sent", handleMessageSent)
+      client.off("queue_state", handleQueueState)
+      client.off("agent_phase", handleAgentPhase)
       client.off("typing", handleTyping)
       client.off("token_budget", handleTokenBudget)
       client.off("system_event", handleSystemEvent)
       client.off("channel_status", handleChannelStatus)
+      client.off("channel_private_updated", handleChannelPrivateUpdated)
+      client.off("conversation.message.feedback.created", handleMessageFeedbackCreated)
+      client.off("conversation.message.action.executed", handleMessageActionExecuted)
       client.off("error", handleError)
+
+      // Reset before unmount so re-entry doesn't flash a stale phase from the previous session.
+      if (channelId) {
+        useChatStore.getState().setAgentPhase(channelId, "idle")
+      }
 
       if (typingHeartbeatTimeout.current) {
         clearTimeout(typingHeartbeatTimeout.current)
@@ -638,6 +816,7 @@ export function useChatChannel(
 
     setIsChatReady(isNewChat || hasCached)
     setHasMoreMessages(false)
+    setNotFound(false)
     conversationInitialized.current = false
     justSentMessage.current = false
 
@@ -698,6 +877,7 @@ export function useChatChannel(
               avatarUrl: msg.sender.avatarUrl,
             }
           : undefined,
+        source: msg.source,
         timestamp: new Date(msg.timestamp),
         isStreaming: false as const,
       }))
@@ -714,7 +894,9 @@ export function useChatChannel(
     conversation,
     connected,
     isLoading,
+    notFound,
     agentName,
+    agentRole,
     agentAvatarUrl,
     modelString,
     modelName,

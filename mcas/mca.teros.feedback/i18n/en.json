@@ -1,0 +1,28 @@
+{
+  "tools": {
+    "report-bug": {
+      "name": "report-bug",
+      "description": "Report a bug or technical issue with the platform",
+      "params": {
+        "title": "Short summary of the bug",
+        "description": "Detailed description, steps to reproduce, expected vs actual behavior",
+        "severity": "How severe is this bug? (optional)"
+      }
+    },
+    "report-suggestion": {
+      "name": "report-suggestion",
+      "description": "Submit a suggestion or feature request to improve the platform",
+      "params": {
+        "title": "Your idea in one sentence",
+        "description": "Detailed description of your suggestion"
+      }
+    }
+  },
+  "name": "Feedback",
+  "description": "Report bugs and suggestions to improve Teros. Track the status of your reports and receive updates from the team.",
+  "changelog": [
+    {
+      "notes": "Report bugs and feature suggestions, browse your past reports, and track their status with team updates"
+    }
+  ]
+}

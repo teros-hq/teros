@@ -1,0 +1,241 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales de Zendesk y la conectividad."
+    },
+    "list-tickets": {
+      "name": "list-tickets",
+      "description": "Lista tickets de Zendesk con filtros opcionales. Devuelve filas curadas { id, subject, status, priority, requester, assignee, createdAt, updatedAt }. Parámetros: status?, priority?, assigneeId?, requesterId?, organizationId?, limit (1-100, por defecto 30), page.",
+      "params": {
+        "status": "Filtrar por estado del ticket.",
+        "priority": "Filtrar por prioridad del ticket.",
+        "assigneeId": "Filtrar por ID de usuario asignado.",
+        "requesterId": "Filtrar por ID de usuario solicitante.",
+        "organizationId": "Filtrar por ID de organización.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "get-ticket": {
+      "name": "get-ticket",
+      "description": "Obtiene un único ticket de Zendesk por ID con todos los detalles, incluyendo descripción, campos personalizados y etiquetas.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk."
+      }
+    },
+    "create-ticket": {
+      "name": "create-ticket",
+      "description": "Crea un nuevo ticket de Zendesk. Devuelve el ticket creado. No reintentable (sin clave de idempotencia). Parámetros: subject, description, requesterEmail?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "params": {
+        "subject": "Asunto del ticket.",
+        "description": "Cuerpo/descripción del ticket.",
+        "requesterEmail": "Correo electrónico del solicitante. Si se omite, usa el usuario autenticado.",
+        "priority": "Prioridad del ticket.",
+        "status": "Estado inicial del ticket. Por defecto: open.",
+        "assigneeId": "ID de usuario al que asignar el ticket.",
+        "tags": "Etiquetas a adjuntar al ticket.",
+        "customFields": "Valores de campos personalizados [{id, value}]."
+      }
+    },
+    "update-ticket": {
+      "name": "update-ticket",
+      "description": "Actualiza un ticket de Zendesk existente. Solo se modifican los campos proporcionados. Devuelve el ticket actualizado. Parámetros: ticketId, subject?, description?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk a actualizar.",
+        "subject": "Nuevo asunto.",
+        "description": "Nuevo comentario/descripción a añadir.",
+        "priority": "Nueva prioridad.",
+        "status": "Nuevo estado.",
+        "assigneeId": "ID de usuario al que asignar el ticket.",
+        "tags": "Reemplazar las etiquetas existentes por estas.",
+        "customFields": "Valores de campos personalizados [{id, value}]."
+      }
+    },
+    "delete-ticket": {
+      "name": "delete-ticket",
+      "description": "Elimina (borrado suave) un ticket de Zendesk por ID. Devuelve { success, ticketId }.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk a eliminar."
+      }
+    },
+    "search-tickets": {
+      "name": "search-tickets",
+      "description": "Busca tickets de Zendesk usando la API de búsqueda de Zendesk. Soporta sintaxis de consulta (p. ej. \"status:open type:ticket\", \"assignee:me\", \"tags:urgent\"). Devuelve resultados curados. Parámetros: query, limit (1-100, por defecto 30), page.",
+      "params": {
+        "query": "Cadena de consulta de búsqueda de Zendesk.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "list-ticket-comments": {
+      "name": "list-ticket-comments",
+      "description": "Lista todos los comentarios (públicos y notas internas) de un ticket de Zendesk. Devuelve filas curadas { id, authorId, body, public, createdAt }. Parámetros: ticketId.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk."
+      }
+    },
+    "add-ticket-comment": {
+      "name": "add-ticket-comment",
+      "description": "Añade un comentario a un ticket de Zendesk. Puede ser público (visible para el cliente) o nota interna. Devuelve el ticket actualizado. Parámetros: ticketId, body, public?.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk.",
+        "body": "Texto/cuerpo del comentario.",
+        "public": "Si el comentario es público (visible para el cliente). Por defecto true."
+      }
+    },
+    "add-comment-with-attachment": {
+      "name": "add-comment-with-attachment",
+      "description": "Añade un comentario a un ticket de Zendesk con archivos adjuntos. Usa tokens de subida de upload-attachment. Devuelve el ticket actualizado. Parámetros: ticketId, body, uploadTokens?, public?.",
+      "params": {
+        "ticketId": "ID del ticket de Zendesk.",
+        "body": "Texto/cuerpo del comentario.",
+        "uploadTokens": "Tokens de subida de la herramienta upload-attachment.",
+        "public": "Si el comentario es público (visible para el cliente). Por defecto true."
+      }
+    },
+    "upload-attachment": {
+      "name": "upload-attachment",
+      "description": "Sube un archivo adjunto a Zendesk para usarlo en comentarios de tickets. Devuelve un token de subida. Parámetros: filePath, fileName?.",
+      "params": {
+        "filePath": "Ruta al archivo a subir.",
+        "fileName": "Nombre de archivo deseado para el adjunto. Por defecto, el basename de filePath."
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "Obtiene los detalles de un adjunto de Zendesk por ID. Devuelve { id, fileName, contentUrl, size, contentType, createdAt }.",
+      "params": {
+        "attachmentId": "ID del adjunto de Zendesk."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "Lista usuarios de Zendesk con filtros opcionales. Devuelve filas curadas { id, name, email, role, active, createdAt }. Parámetros: role?, query?, limit (1-100, por defecto 30), page.",
+      "params": {
+        "role": "Filtrar por rol de usuario.",
+        "query": "Consulta de búsqueda por nombre o correo electrónico de usuario.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtiene un único usuario de Zendesk por ID con todos los detalles.",
+      "params": {
+        "userId": "ID de usuario de Zendesk."
+      }
+    },
+    "create-user": {
+      "name": "create-user",
+      "description": "Crea un nuevo usuario de Zendesk (usuario final, agente o administrador). Devuelve el usuario creado. No reintentable. Parámetros: name, email, role?, phone?, organizationId?, tags?.",
+      "params": {
+        "name": "Nombre completo del usuario.",
+        "email": "Correo electrónico (debe ser único).",
+        "role": "Rol de usuario. Por defecto: end-user.",
+        "phone": "Número de teléfono.",
+        "organizationId": "ID de organización con la que asociar al usuario.",
+        "tags": "Etiquetas a adjuntar al usuario.",
+        "verified": "Si el usuario está verificado. Por defecto true para agentes/administradores."
+      }
+    },
+    "update-user": {
+      "name": "update-user",
+      "description": "Actualiza un usuario de Zendesk existente. Solo se modifican los campos proporcionados. Devuelve el usuario actualizado. Parámetros: userId, name?, email?, role?, phone?, organizationId?, tags?, active?.",
+      "params": {
+        "userId": "ID de usuario de Zendesk a actualizar.",
+        "name": "Nuevo nombre completo.",
+        "email": "Nuevo correo electrónico (debe ser único).",
+        "role": "Nuevo rol de usuario.",
+        "phone": "Nuevo número de teléfono.",
+        "organizationId": "ID de organización con la que asociar al usuario.",
+        "tags": "Reemplazar las etiquetas existentes por estas.",
+        "active": "Activar o desactivar al usuario."
+      }
+    },
+    "list-organizations": {
+      "name": "list-organizations",
+      "description": "Lista organizaciones de Zendesk. Devuelve filas curadas { id, name, domainNames, tags, createdAt }. Parámetros: limit (1-100, por defecto 30), page.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "get-organization": {
+      "name": "get-organization",
+      "description": "Obtiene una única organización de Zendesk por ID con todos los detalles, incluyendo nombres de dominio y etiquetas.",
+      "params": {
+        "organizationId": "ID de organización de Zendesk."
+      }
+    },
+    "create-organization": {
+      "name": "create-organization",
+      "description": "Crea una nueva organización de Zendesk. Devuelve la organización creada. No reintentable. Parámetros: name, domainNames?, tags?.",
+      "params": {
+        "name": "Nombre de la organización (debe ser único).",
+        "domainNames": "Dominios de correo electrónico para auto-asociar usuarios (p. ej. [\"example.com\"]).",
+        "tags": "Etiquetas a adjuntar a la organización."
+      }
+    },
+    "list-views": {
+      "name": "list-views",
+      "description": "Lista vistas de Zendesk (filtros de tickets). Devuelve filas curadas { id, title, active, position, createdAt }."
+    },
+    "get-view-tickets": {
+      "name": "get-view-tickets",
+      "description": "Obtiene los tickets de una vista específica de Zendesk. Devuelve filas curadas de tickets. Parámetros: viewId, limit (1-100, por defecto 30), page.",
+      "params": {
+        "viewId": "ID de vista de Zendesk.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "list-groups": {
+      "name": "list-groups",
+      "description": "Lista grupos de Zendesk (grupos de asignación de tickets). Devuelve filas curadas { id, name, default, createdAt }."
+    },
+    "list-triggers": {
+      "name": "list-triggers",
+      "description": "Lista disparadores de Zendesk (reglas de negocio que se ejecutan en eventos de tickets). Solo lectura para agentes. Devuelve filas curadas { id, title, active, position, createdAt }.",
+      "params": {
+        "active": "Filtrar por estado activo.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "list-automations": {
+      "name": "list-automations",
+      "description": "Lista automatizaciones de Zendesk (reglas de negocio basadas en tiempo). Solo lectura para agentes. Devuelve filas curadas { id, title, active, position, createdAt }.",
+      "params": {
+        "active": "Filtrar por estado activo.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "list-webhooks": {
+      "name": "list-webhooks",
+      "description": "Lista webhooks de Zendesk (endpoints HTTP que reciben notificaciones de eventos en tiempo real). Devuelve filas curadas { id, name, status, endpoint, createdAt }.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    },
+    "list-satisfaction-ratings": {
+      "name": "list-satisfaction-ratings",
+      "description": "Lista valoraciones de satisfacción de Zendesk (puntuaciones CSAT). Devuelve filas curadas { id, score, comment, ticketId, requesterId, createdAt }. Parámetros: score?, limit (1-100, por defecto 30), page.",
+      "params": {
+        "score": "Filtrar por puntuación de satisfacción.",
+        "ticketId": "Filtrar por ID de ticket específico.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 30.",
+        "page": "Número de página para paginación. Por defecto 1."
+      }
+    }
+  },
+  "name": "Zendesk",
+  "description": "Integración de soporte de Zendesk — gestiona tickets, usuarios, organizaciones, vistas, grupos, disparadores, automatizaciones, adjuntos, webhooks y valoraciones de satisfacción mediante la API REST v2 de Zendesk con limitación de tasa.",
+  "changelog": [
+    {
+      "notes": "Crear, buscar y responder a tickets de soporte, gestionar usuarios, organizaciones y vistas, y hacer seguimiento de valoraciones de satisfacción"
+    }
+  ]
+}

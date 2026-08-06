@@ -1,0 +1,141 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. OAuth 자격 증명 및 GA4 API 연결을 확인합니다."
+    },
+    "analytics-list-accounts": {
+      "name": "analytics-list-accounts",
+      "description": "사용자가 접근할 수 있는 GA4 계정을 나열합니다. { accounts: [{ accountId, name, displayName, regionCode, createTime }], count }를 반환합니다.",
+      "params": {
+        "pageSize": "페이지당 최대 결과 수 (기본 50, 최대 200)",
+        "pageToken": "이전 응답의 페이지 토큰"
+      }
+    },
+    "analytics-list-properties": {
+      "name": "analytics-list-properties",
+      "description": "계정 아래의 GA4 속성을 나열합니다. { properties: [{ propertyId, displayName, propertyType, currencyCode, timeZone, industryCategory }], count }를 반환합니다.",
+      "params": {
+        "accountId": "GA4 계정 ID (숫자 또는 \"accounts/{id}\")",
+        "pageSize": "페이지당 최대 결과 수 (기본 50, 최대 200)",
+        "pageToken": "이전 응답의 페이지 토큰",
+        "showDeleted": "소프트 삭제된 속성 포함 (기본값 false)"
+      }
+    },
+    "analytics-get-property": {
+      "name": "analytics-get-property",
+      "description": "GA4 속성의 세부 정보를 가져옵니다. { property: { propertyId, displayName, propertyType, parent, timeZone, currencyCode, industryCategory, serviceLevel, createTime, updateTime } }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")"
+      }
+    },
+    "analytics-list-data-streams": {
+      "name": "analytics-list-data-streams",
+      "description": "속성에 대한 데이터 스트림(웹/iOS/Android)을 나열합니다. { streams: [{ streamId, displayName, type, webStreamData, androidAppStreamData, iosAppStreamData }], count }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "pageSize": "페이지당 최대 결과 수 (기본 50)",
+        "pageToken": "이전 응답의 페이지 토큰"
+      }
+    },
+    "analytics-get-data-stream": {
+      "name": "analytics-get-data-stream",
+      "description": "단일 데이터 스트림의 세부 정보를 가져옵니다. { stream: { streamId, displayName, type, webStreamData?, androidAppStreamData?, iosAppStreamData? } }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "streamId": "데이터 스트림 ID (숫자)"
+      }
+    },
+    "analytics-run-report": {
+      "name": "analytics-run-report",
+      "description": "GA4 보고서를 실행합니다. { dimensionHeaders, metricHeaders, rows, rowCount, totals?, metadata, propertyQuota? }를 반환합니다. 날짜는 ISO (\"2024-01-01\") 또는 상대적 (\"7daysAgo\", \"yesterday\", \"today\") 형식을 허용합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "dimensions": "차원 API 이름, 예: [\"country\", \"deviceCategory\"]",
+        "metrics": "메트릭 API 이름, 예: [\"activeUsers\", \"sessions\"]",
+        "dateRanges": "날짜 범위, 예: [{ \"startDate\": \"7daysAgo\", \"endDate\": \"yesterday\" }]",
+        "dimensionFilter": "차원에 대한 GA4 FilterExpression (GA4 데이터 API 문서 참조)",
+        "metricFilter": "메트릭에 대한 GA4 FilterExpression (집계 후 적용)",
+        "orderBys": "정렬 구성, 예: [{ \"metric\": { \"metricName\": \"sessions\" }, \"desc\": true }]",
+        "limit": "최대 행 수 (기본 10000, 최대 250000)",
+        "offset": "행 오프셋 (기본 0)",
+        "keepEmptyRows": "모든 메트릭이 0인 행 포함",
+        "returnPropertyQuota": "응답에 쿼타 정보 포함",
+        "currencyCode": "ISO 4217 통화 재정의 (예: \"USD\")",
+        "metricAggregations": "집계: TOTAL, MINIMUM, MAXIMUM"
+      }
+    },
+    "analytics-batch-run-reports": {
+      "name": "analytics-batch-run-reports",
+      "description": "한 번의 호출로 동일한 속성에 대해 최대 5개의 GA4 보고서를 실행합니다. { reports: [<RunReportResponse>...] }를 반환합니다. 대시보드에 유용합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "requests": "보고서 요청 배열 (analytics-run-report 매개변수와 동일한 형식, propertyId 제외)"
+      }
+    },
+    "analytics-run-realtime-report": {
+      "name": "analytics-run-realtime-report",
+      "description": "GA4 실시간 보고서를 실행합니다 (최근 30분의 활동). { dimensionHeaders, metricHeaders, rows, rowCount, propertyQuota? }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "dimensions": "실시간 차원 API 이름, 예: [\"country\", \"unifiedScreenName\"]",
+        "metrics": "실시간 메트릭 API 이름, 예: [\"activeUsers\"]",
+        "dimensionFilter": "차원에 대한 FilterExpression",
+        "metricFilter": "메트릭에 대한 FilterExpression",
+        "orderBys": "정렬 구성",
+        "limit": "최대 행 수 (기본 10000)",
+        "returnPropertyQuota": "응답에 쿼타 정보 포함"
+      }
+    },
+    "analytics-get-metadata": {
+      "name": "analytics-get-metadata",
+      "description": "속성에 대해 사용 가능한 모든 차원 및 메트릭을 가져옵니다. 사용자 정의 항목도 포함됩니다. { dimensions: [{ apiName, uiName, description, customDefinition }], metrics: [{ apiName, uiName, description, type, customDefinition }] }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")"
+      }
+    },
+    "analytics-create-property": {
+      "name": "analytics-create-property",
+      "description": "계정 아래에 새 GA4 속성을 생성합니다. { property: { propertyId, displayName, parent, timeZone, currencyCode, ... } }를 반환합니다.",
+      "params": {
+        "accountId": "GA4 계정 ID (숫자 또는 \"accounts/{id}\")",
+        "displayName": "사용자 친화적인 속성 이름",
+        "timeZone": "IANA 시간대, 예: \"America/Los_Angeles\"",
+        "currencyCode": "ISO 4217 통화, 예: \"USD\"",
+        "industryCategory": "GA4 산업 열거형, 예: \"TECHNOLOGY\", \"RETAIL\", \"FINANCE\""
+      }
+    },
+    "analytics-update-property": {
+      "name": "analytics-update-property",
+      "description": "GA4 속성의 변경 가능한 필드(displayName, timeZone, currencyCode, industryCategory)를 업데이트합니다. { property: <updated> }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "displayName": "새 표시 이름",
+        "timeZone": "새 IANA 시간대",
+        "currencyCode": "새 ISO 4217 통화 코드",
+        "industryCategory": "새 산업 열거형"
+      }
+    },
+    "analytics-delete-property": {
+      "name": "analytics-delete-property",
+      "description": "GA4 속성을 소프트 삭제합니다 (Google Analytics UI에서 약 7일 동안 복구 가능). { property: { propertyId, deleteTime, ... } }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")"
+      }
+    },
+    "analytics-create-data-stream": {
+      "name": "analytics-create-data-stream",
+      "description": "속성 아래에 웹/iOS/Android 데이터 스트림을 생성합니다. { stream: { streamId, displayName, type, webStreamData? } }를 반환합니다.",
+      "params": {
+        "propertyId": "GA4 속성 ID (숫자 또는 \"properties/{id}\")",
+        "displayName": "사용자 친화적인 스트림 이름",
+        "type": "스트림 유형: WEB_DATA_STREAM | ANDROID_APP_DATA_STREAM | IOS_APP_DATA_STREAM",
+        "webStreamData": "WEB_DATA_STREAM에 필요: { defaultUri }",
+        "androidAppStreamData": "ANDROID_APP_DATA_STREAM에 필요: { packageName }",
+        "iosAppStreamData": "IOS_APP_DATA_STREAM에 필요: { bundleId }"
+      }
+    }
+  },
+  "name": "Google Analytics",
+  "description": "Google Analytics 4 (GA4) — 보고서 실행, 실시간 데이터 쿼리 및 속성 및 데이터 스트림 관리"
+}

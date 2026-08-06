@@ -2,8 +2,8 @@ import { AlertCircle, ArrowLeft, ArrowRight, Eye, EyeOff, Lock, Mail } from "@ta
 import { LinearGradient } from "expo-linear-gradient"
 import { useRouter } from "expo-router"
 import React, { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -14,16 +14,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { Button, Text, XStack, YStack } from "tamagui"
 import { TerosLogo } from "../../../src/components/TerosLogo"
 import { useToast } from "../../../src/components/Toast"
-import { STORAGE_KEYS, storage } from "../../../src/services/storage"
-import { useAuthStore } from "../../../src/store/authStore"
-import { getTerosClient } from "../../_layout"
+import { normalizeAuthUser, useAuthStore } from "../../../src/store/authStore"
+import { setUser as setSentryUser } from "../../../src/lib/sentry"
+import { identifyUser } from "../../../src/lib/analytics"
+import { getTerosClient } from "../../../src/services/terosClientSingleton"
+import { AppSpinner } from "../../../src/components/ui/AppSpinner"
+import { useColors } from "../../../src/components/mca/primitives/useColors"
+import { colors as semanticColors } from "../../../src/components/mca/primitives/colors"
 
-// Styles for native TextInput to handle autofill properly
 const inputStyles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: "#E4E4E7",
     backgroundColor: "transparent",
     paddingVertical: 0,
     paddingHorizontal: 0,
@@ -38,49 +40,30 @@ export default function EmailLogin() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [checkingAuth, setCheckingAuth] = useState(true)
 
   const router = useRouter()
   const client = getTerosClient()
   const toast = useToast()
   const insets = useSafeAreaInsets()
-  const { login: authLogin } = useAuthStore()
+  const { login: authLogin, isAuthenticated } = useAuthStore()
+  const { t } = useTranslation()
+  const c = useColors()
 
-  // Check if already authenticated and redirect
+  // If already authenticated, go to workspace
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const userData = await storage.getItem(STORAGE_KEYS.USER)
-        if (userData) {
-          const user = JSON.parse(userData)
-          if (user.sessionToken) {
-            router.replace("/")
-            return
-          }
-        }
-      } catch (e) {
-        // Ignore auth check errors
-      }
-      setCheckingAuth(false)
-    }
-    checkAuth()
-  }, [])
+    if (isAuthenticated) router.replace("/")
+  }, [isAuthenticated])
 
-  // Ensure WebSocket is connected
   useEffect(() => {
-    if (checkingAuth) return
-
     if (!client.isConnectedOrConnecting()) {
       const serverUrl = process.env.EXPO_PUBLIC_WS_URL
-      if (serverUrl) {
-        client.connect(serverUrl)
-      }
+      if (serverUrl) client.connect(serverUrl)
     }
-  }, [client, checkingAuth])
+  }, [client])
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      setError("Por favor ingresa email y contrasena")
+      setError(t("auth.pleaseEnterEmailPassword"))
       return
     }
 
@@ -88,91 +71,50 @@ export default function EmailLogin() {
     setError("")
 
     try {
-      // Timeout to detect if events never fire
       const timeoutId = setTimeout(() => {
-        setError("Timeout: servidor no responde")
+        setError(t("auth.requestTimedOut"))
         setIsLoading(false)
       }, 10000)
 
-      // Listen for auth success BEFORE authenticating
-      const authSuccessHandler = async (data: any) => {
+      const authSuccessHandler = (data: any) => {
         clearTimeout(timeoutId)
         client.off("authenticated", authSuccessHandler)
         client.off("auth_error", authErrorHandler)
 
-        // Save to storage (works on both web and native)
-        const userData = {
-          id: data.userId,
+        // login() persists to storage internally
+        const { user, sessionToken } = normalizeAuthUser(data, {
           email: email.trim(),
-          displayName: email.trim().split("@")[0],
-          sessionToken: data.token || data.sessionToken,
-          role: data.role || "user",
-        }
+          name: email.trim().split("@")[0],
+        })
+        authLogin(user, sessionToken)
+        setSentryUser({ id: user.userId, email: user.email, username: user.name })
+        identifyUser({ userId: user.userId, email: user.email, name: user.name })
+        client.setSessionToken(sessionToken)
 
-        try {
-          await storage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData))
-        } catch (e) {
-          // Ignore storage errors
-        }
-
-        // Sync to auth store
-        authLogin(
-          {
-            userId: data.userId,
-            email: email.trim(),
-            name: email.trim().split("@")[0],
-          },
-          data.token || data.sessionToken,
-        )
-
-        // Navigate to main screen
         router.replace("/")
         setIsLoading(false)
       }
 
-      const authErrorHandler = (error: string) => {
+      const authErrorHandler = (err: unknown) => {
         clearTimeout(timeoutId)
         client.off("authenticated", authSuccessHandler)
         client.off("auth_error", authErrorHandler)
-        setError(error || "Email o contrasena incorrectos")
+        setError(String(err || '') || t("auth.incorrectCredentials"))
         setIsLoading(false)
       }
 
-      // Register handlers BEFORE authenticating
       client.on("authenticated", authSuccessHandler)
       client.on("auth_error", authErrorHandler)
-
-      // Now authenticate
       await client.authenticateWithCredentials(email.trim(), password)
     } catch (err: any) {
-      setError(err.message || "Error al iniciar sesion")
+      setError(err.message || t("auth.signInFailed"))
       setIsLoading(false)
     }
   }
 
-  const handleBack = () => {
-    router.back()
-  }
-
-  const handleForgotPassword = () => {
-    // TODO: Implement forgot password
-    toast.info("Proximamente", "Recuperacion de contrasena estara disponible pronto")
-  }
-
-  // Show nothing while checking auth
-  if (checkingAuth) {
-    return (
-      <LinearGradient
-        colors={["#000000", "#050508", "#0a0a0f"]}
-        locations={[0, 0.5, 1]}
-        style={{ flex: 1 }}
-      />
-    )
-  }
-
   return (
     <LinearGradient
-      colors={["#000000", "#050508", "#0a0a0f"]}
+      colors={[c.bgPage, c.bgCard, c.bgPage]}
       locations={[0, 0.5, 1]}
       style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
@@ -193,28 +135,25 @@ export default function EmailLogin() {
             <Button
               chromeless
               alignSelf="flex-start"
-              onPress={handleBack}
+              onPress={() => router.back()}
               pressStyle={{ opacity: 0.7 }}
               paddingLeft={0}
             >
               <XStack gap="$2" alignItems="center">
-                <ArrowLeft size={18} color="#71717A" />
-                <Text color="#71717A" fontSize="$3">
-                  Volver
-                </Text>
+                <ArrowLeft size={18} color={c.text2} />
+                <Text color={c.text2} fontSize="$3">{t("common.back")}</Text>
               </XStack>
             </Button>
 
             {/* Logo & Title */}
             <YStack alignItems="center" marginTop="$6" marginBottom="$8" gap="$4">
               <TerosLogo size={80} animated={false} />
-
-              <Text fontSize={36} fontWeight="200" color="#E4E4E7" letterSpacing={8} marginTop="$4">
+              <Text fontSize={36} fontWeight="200" color={c.text} letterSpacing={8} marginTop="$4">
                 TEROS
               </Text>
             </YStack>
 
-            {/* Email/Password Form */}
+            {/* Form */}
             <YStack width="100%" gap="$4">
               {/* Email */}
               <XStack
@@ -223,14 +162,14 @@ export default function EmailLogin() {
                 borderRadius="$3"
                 paddingHorizontal="$4"
                 height={52}
-                backgroundColor="rgba(255, 255, 255, 0.03)"
-                borderColor="rgba(255, 255, 255, 0.1)"
+                backgroundColor={c.bgInner}
+                borderColor={c.borderStrong}
               >
-                <Mail size={18} color="#71717A" />
+                <Mail size={18} color={c.text2} />
                 <TextInput
-                  style={inputStyles.input}
-                  placeholder="Email"
-                  placeholderTextColor="#52525B"
+                  style={[inputStyles.input, { color: c.text }]}
+                  placeholder={t("auth.emailPlaceholder")}
+                  placeholderTextColor={c.text3}
                   value={email}
                   onChangeText={setEmail}
                   autoCapitalize="none"
@@ -248,14 +187,14 @@ export default function EmailLogin() {
                 borderRadius="$3"
                 paddingHorizontal="$4"
                 height={52}
-                backgroundColor="rgba(255, 255, 255, 0.03)"
-                borderColor="rgba(255, 255, 255, 0.1)"
+                backgroundColor={c.bgInner}
+                borderColor={c.borderStrong}
               >
-                <Lock size={18} color="#71717A" />
+                <Lock size={18} color={c.text2} />
                 <TextInput
-                  style={inputStyles.input}
-                  placeholder="Contrasena"
-                  placeholderTextColor="#52525B"
+                  style={[inputStyles.input, { color: c.text }]}
+                  placeholder={t("auth.passwordPlaceholder")}
+                  placeholderTextColor={c.text3}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
@@ -272,31 +211,29 @@ export default function EmailLogin() {
                   disabled={isLoading}
                   icon={
                     showPassword ? (
-                      <Eye size={18} color="#71717A" />
+                      <Eye size={18} color={c.text2} />
                     ) : (
-                      <EyeOff size={18} color="#71717A" />
+                      <EyeOff size={18} color={c.text2} />
                     )
                   }
                 />
               </XStack>
 
-              {/* Error Message */}
+              {/* Error */}
               {error ? (
                 <XStack
                   alignItems="center"
                   padding="$3"
                   borderRadius="$2"
-                  backgroundColor="rgba(239, 68, 68, 0.1)"
+                  backgroundColor={c.badges.err.bg}
                   gap="$2"
                 >
-                  <AlertCircle size={16} color="#EF4444" />
-                  <Text fontSize="$3" color="#EF4444" flex={1}>
-                    {error}
-                  </Text>
+                  <AlertCircle size={16} color={semanticColors.red} />
+                  <Text fontSize="$3" color={semanticColors.red} flex={1}>{error}</Text>
                 </XStack>
               ) : null}
 
-              {/* Login Button */}
+              {/* Sign In Button */}
               <Button
                 height={48}
                 borderRadius="$3"
@@ -309,32 +246,40 @@ export default function EmailLogin() {
               >
                 <XStack gap="$2" alignItems="center">
                   {isLoading ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
+                    <AppSpinner size="sm" color="#FFFFFF" />
                   ) : (
                     <>
-                      <Text color="#FFFFFF" fontSize="$4" fontWeight="600">
-                        Iniciar sesion
-                      </Text>
+                      <Text color="#FFFFFF" fontSize="$4" fontWeight="600">{t("auth.signIn")}</Text>
                       <ArrowRight size={18} color="#FFFFFF" />
                     </>
                   )}
                 </XStack>
               </Button>
 
-              {/* Forgot Password Link */}
+              {/* Forgot password */}
               <Button
                 chromeless
                 alignSelf="center"
-                marginTop="$4"
-                onPress={handleForgotPassword}
+                marginTop="$2"
+                onPress={() => toast.info(t("auth.comingSoon"), t("auth.comingSoonPassword"))}
                 pressStyle={{ opacity: 0.7 }}
               >
-                <Text color="#71717A" fontSize="$3">
-                  Olvidaste tu contrasena?
-                </Text>
+                <Text color={c.text2} fontSize="$3">{t("auth.forgotPassword")}</Text>
               </Button>
 
-
+              {/* Sign up link */}
+              <XStack gap="$2" alignItems="center" justifyContent="center" marginTop="$2">
+                <Text color={c.text3} fontSize="$3">{t("auth.dontHaveAccount")}</Text>
+                <Button
+                  chromeless
+                  onPress={() => router.push("/(auth)/login/signup")}
+                  pressStyle={{ opacity: 0.7 }}
+                  padding={0}
+                  height="auto"
+                >
+                  <Text color="#06B6D4" fontSize="$3" fontWeight="500">{t("auth.signUp")}</Text>
+                </Button>
+              </XStack>
             </YStack>
           </YStack>
         </ScrollView>

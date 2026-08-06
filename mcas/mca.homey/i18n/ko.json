@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Homey API 자격 증명 및 연결성을 확인합니다."
+    },
+    "homey-get-user": {
+      "name": "homey-get-user",
+      "description": "Homey에서 인증된 사용자 정보를 가져옵니다."
+    },
+    "homey-list-devices": {
+      "name": "homey-list-devices",
+      "description": "Homey에 연결된 모든 장치의 영역, 클래스, 기능 및 가용성 상태를 나열합니다."
+    },
+    "homey-get-device": {
+      "name": "homey-get-device",
+      "description": "ID로 특정 Homey 장치의 자세한 정보와 현재 상태를 가져옵니다.",
+      "params": {
+        "device_id": "장치 ID"
+      }
+    },
+    "homey-set-capability": {
+      "name": "homey-set-capability",
+      "description": "장치 기능 값을 설정합니다(예: 켜기/끄기, 밝기 설정, 온도). homey-list-devices를 사용하여 장치 ID와 기능을 찾습니다.",
+      "params": {
+        "device_id": "장치 ID",
+        "capability": "기능 이름(예: 'onoff', 'dim', 'target_temperature')",
+        "value": "설정할 값(켜기/끄기에는 불리언, dim에는 0-1의 숫자, 온도에는 숫자)"
+      }
+    },
+    "homey-list-flows": {
+      "name": "homey-list-flows",
+      "description": "Homey에 구성된 모든 흐름(자동화)을 나열합니다."
+    },
+    "homey-trigger-flow": {
+      "name": "homey-trigger-flow",
+      "description": "ID로 Homey 흐름을 트리거(실행)합니다.",
+      "params": {
+        "flow_id": "트리거할 흐름 ID"
+      }
+    },
+    "homey-list-zones": {
+      "name": "homey-list-zones",
+      "description": "Homey에 구성된 모든 영역(방/구역)을 나열합니다."
+    },
+    "homey-get-system-info": {
+      "name": "homey-get-system-info",
+      "description": "펌웨어 버전, 모델, 가동 시간, Wi-Fi 상태 등을 포함한 Homey 시스템 정보를 가져옵니다."
+    },
+    "homey-list-notifications": {
+      "name": "homey-list-notifications",
+      "description": "Homey의 알림(경고, 경고 메시지, 시스템 메시지)을 나열합니다."
+    },
+    "homey-get-variables": {
+      "name": "homey-get-variables",
+      "description": "Homey에 구성된 모든 논리 변수를 나열합니다. 논리 변수는 상태 추적을 위한 흐름/자동화에서 사용됩니다."
+    },
+    "homey-set-variable": {
+      "name": "homey-set-variable",
+      "description": "ID로 Homey 논리 변수의 값을 설정합니다. homey-get-variables를 사용하여 변수 ID를 찾습니다.",
+      "params": {
+        "variable_id": "변수 ID (UUID)",
+        "value": "변수의 새 값(문자열, 숫자 또는 불리언 — 변수 유형과 일치해야 함)"
+      }
+    },
+    "homey-list-apps": {
+      "name": "homey-list-apps",
+      "description": "Homey에 설치된 모든 앱을 나열합니다. 진단 및 활성화된 통합을 확인하는 데 유용합니다."
+    },
+    "homey-get-energy": {
+      "name": "homey-get-energy",
+      "description": "Homey에서 현재 전력 사용량 및 가정 내 발전을 포함한 실시간 에너지 보고서를 가져옵니다.",
+      "params": {
+        "zone": "특정 영역의 에너지 데이터를 필터링하기 위한 선택적 영역 ID"
+      }
+    }
+  },
+  "name": "Homey",
+  "description": "Homey 스마트 홈 컨트롤러 - 장치를 제어하고, 흐름을 관리하며, Athom Cloud API를 통해 집을 모니터링합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 스마트 홈 장치를 제어하고, 자동화 흐름을 실행하며, 방과 변수를 관리하고, 실시간 에너지를 모니터링합니다."
+    }
+  ]
+}

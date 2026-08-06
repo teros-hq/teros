@@ -5,6 +5,7 @@ import { ensureQdrantInitialized } from '../qdrant-init';
 
 export const memoryStats: HttpToolConfig = {
   description: 'Get memory statistics for the current agent (collection sizes, point counts)',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {},

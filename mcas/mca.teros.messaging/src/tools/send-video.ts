@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { resolveUrl } from '../lib';
 
 export const sendVideo: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send a video to the user. The video will be playable in the chat. Supports public URLs or local file paths.',
   parameters: {

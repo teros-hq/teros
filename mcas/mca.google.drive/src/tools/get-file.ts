@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const getFile: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific file or folder.',
   parameters: {
     type: 'object',
@@ -23,9 +24,10 @@ export const getFile: ToolConfig = {
       context,
       async () => {
         const response = await clients.drive.files.get({
+          ...ALL_DRIVES,
           fileId,
           fields:
-            'id, name, mimeType, size, createdTime, modifiedTime, parents, webViewLink, webContentLink, description, owners',
+            'id, name, mimeType, size, createdTime, modifiedTime, parents, webViewLink, webContentLink, description, owners, driveId',
         });
 
         return response.data;

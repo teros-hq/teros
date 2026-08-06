@@ -1,0 +1,107 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies MinIO credentials and connectivity."
+    },
+    "list-buckets": {
+      "name": "list-buckets",
+      "description": "List all buckets in the MinIO server"
+    },
+    "create-bucket": {
+      "name": "create-bucket",
+      "description": "Create a new bucket",
+      "params": {
+        "bucket": "Name of the bucket to create (lowercase, 3-63 chars)",
+        "region": "Region for the bucket (optional, default: us-east-1)"
+      }
+    },
+    "delete-bucket": {
+      "name": "delete-bucket",
+      "description": "Delete a bucket (must be empty)",
+      "params": {
+        "bucket": "Name of the bucket to delete"
+      }
+    },
+    "bucket-exists": {
+      "name": "bucket-exists",
+      "description": "Check if a bucket exists",
+      "params": {
+        "bucket": "Name of the bucket to check"
+      }
+    },
+    "list-objects": {
+      "name": "list-objects",
+      "description": "List objects in a bucket with optional prefix filter",
+      "params": {
+        "bucket": "Name of the bucket",
+        "prefix": "Filter objects by prefix/folder (optional)",
+        "recursive": "List recursively (default: true)",
+        "limit": "Maximum number of objects to return (default: 100)"
+      }
+    },
+    "upload-object": {
+      "name": "upload-object",
+      "description": "Upload a file or content to a bucket",
+      "params": {
+        "bucket": "Name of the bucket",
+        "objectName": "Name/path for the object in the bucket",
+        "filePath": "Local file path to upload (use this OR content)",
+        "content": "String content to upload (use this OR filePath)",
+        "contentType": "MIME type (optional, auto-detected if possible)"
+      }
+    },
+    "download-object": {
+      "name": "download-object",
+      "description": "Download an object from a bucket",
+      "params": {
+        "bucket": "Name of the bucket",
+        "objectName": "Name/path of the object to download",
+        "destPath": "Local destination path (optional, defaults to ~/Downloads/minio/)"
+      }
+    },
+    "delete-object": {
+      "name": "delete-object",
+      "description": "Delete an object from a bucket",
+      "params": {
+        "bucket": "Name of the bucket",
+        "objectName": "Name/path of the object to delete"
+      }
+    },
+    "copy-object": {
+      "name": "copy-object",
+      "description": "Copy an object within or between buckets",
+      "params": {
+        "sourceBucket": "Source bucket name",
+        "sourceObject": "Source object name/path",
+        "destBucket": "Destination bucket name",
+        "destObject": "Destination object name/path"
+      }
+    },
+    "get-presigned-url": {
+      "name": "get-presigned-url",
+      "description": "Generate a presigned URL for temporary access to an object",
+      "params": {
+        "bucket": "Name of the bucket",
+        "objectName": "Name/path of the object",
+        "expiry": "URL expiry time in seconds (default: 3600 = 1 hour, max: 604800 = 7 days)",
+        "method": "HTTP method: GET (download) or PUT (upload)"
+      }
+    },
+    "get-object-info": {
+      "name": "get-object-info",
+      "description": "Get metadata/info about an object (size, type, etag, etc.)",
+      "params": {
+        "bucket": "Name of the bucket",
+        "objectName": "Name/path of the object"
+      }
+    }
+  },
+  "name": "MinIO",
+  "description": "MinIO S3-compatible object storage - manage buckets, upload/download objects, generate presigned URLs",
+  "changelog": [
+    {
+      "notes": "Initial release — manage buckets, upload, download, copy and delete files, and create temporary shareable links"
+    }
+  ]
+}

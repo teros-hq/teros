@@ -1,0 +1,190 @@
+{
+  "name": "Gmail",
+  "description": "Gestión de correo con Gmail: enviar, leer, buscar, etiquetar y filtrar emails vía la API de Google Gmail",
+  "changelog": [
+    {
+      "notes": "Versión inicial — enviar, leer, buscar y responder emails, gestionar borradores, etiquetas, filtros, adjuntos y vigilar correo nuevo"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de Google y la conectividad con la API de Gmail."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "Lista mensajes de correo de la bandeja de entrada o de etiquetas específicas. Soporta filtrado por no leídos, destacados, etc.",
+      "params": {
+        "maxResults": "Número máximo de mensajes a devolver (por defecto: 10, máximo: 100)",
+        "labelIds": "IDs de etiquetas para filtrar",
+        "query": "Consulta de búsqueda de Gmail"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "Obtiene los detalles completos de un mensaje de correo específico por ID.",
+      "params": {
+        "messageId": "El ID del mensaje a recuperar"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Envía un mensaje de correo desde la cuenta especificada.",
+      "params": {
+        "to": "Dirección de email del destinatario",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email (texto plano o HTML)",
+        "bodyFile": "Ruta a un archivo para usar como cuerpo del email (.html/.htm → HTML, .md/.markdown → Markdown auto-convertido a HTML, .txt → texto plano). Usar en lugar de body para evitar pasar contenido grande como string.",
+        "cc": "Destinatarios en copia (separados por comas)",
+        "bcc": "Destinatarios en copia oculta (separados por comas)",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)",
+        "attachments": "Array de adjuntos a incluir"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "Responde a un mensaje de correo existente.",
+      "params": {
+        "messageId": "El ID del mensaje al que responder",
+        "body": "Cuerpo de la respuesta",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Busca mensajes de correo usando la sintaxis de búsqueda de Gmail.",
+      "params": {
+        "query": "Consulta de búsqueda de Gmail",
+        "maxResults": "Número máximo de resultados (por defecto: 10)"
+      }
+    },
+    "modify-labels": {
+      "name": "modify-labels",
+      "description": "Añade o elimina etiquetas de un mensaje (ej. marcar como leído/no leído, archivar, destacar).",
+      "params": {
+        "messageId": "El ID del mensaje a modificar",
+        "addLabelIds": "Etiquetas a añadir",
+        "removeLabelIds": "Etiquetas a eliminar"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "Lista todos los borradores de correo de la cuenta.",
+      "params": {
+        "maxResults": "Número máximo de borradores a devolver (por defecto: 10, máximo: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "Crea un borrador de correo.",
+      "params": {
+        "to": "Dirección de email del destinatario",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email",
+        "bodyFile": "Ruta a un archivo para usar como cuerpo del email (.html/.htm → HTML, .md/.markdown → Markdown auto-convertido a HTML, .txt → texto plano). Usar en lugar de body para evitar pasar contenido grande como string.",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "Elimina un borrador de correo por su ID de borrador.",
+      "params": {
+        "draftId": "El ID del borrador a eliminar"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "Actualiza un borrador existente reemplazando su contenido.",
+      "params": {
+        "draftId": "El ID del borrador a actualizar",
+        "to": "Dirección de email del destinatario",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email",
+        "bodyFile": "Ruta a un archivo para usar como cuerpo del email (.html/.htm → HTML, .md/.markdown → Markdown auto-convertido a HTML, .txt → texto plano). Usar en lugar de body para evitar pasar contenido grande como string.",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "Obtiene el contenido de un adjunto de correo por su ID de adjunto.",
+      "params": {
+        "messageId": "El ID del mensaje que contiene el adjunto",
+        "attachmentId": "El ID del adjunto a recuperar",
+        "saveToFile": "Si es true, guarda en ~/Downloads/email-attachments/"
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "Descarga y almacena un adjunto de correo en el sistema de archivos local.",
+      "params": {
+        "messageId": "El ID del mensaje que contiene el adjunto",
+        "attachmentId": "El ID del adjunto a almacenar",
+        "outputPath": "Ruta opcional del directorio de salida"
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "Lista todas las etiquetas de Gmail (tanto del sistema como personalizadas) de la cuenta."
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "Crea una nueva etiqueta de Gmail.",
+      "params": {
+        "name": "Nombre de la etiqueta",
+        "backgroundColor": "Color de fondo en formato hex",
+        "textColor": "Color de texto en formato hex"
+      }
+    },
+    "update-label": {
+      "name": "update-label",
+      "description": "Actualiza una etiqueta de Gmail existente (nombre, colores, visibilidad).",
+      "params": {
+        "labelId": "ID de la etiqueta a actualizar",
+        "name": "Nuevo nombre para la etiqueta",
+        "backgroundColor": "Color de fondo en formato hex",
+        "textColor": "Color de texto en formato hex"
+      }
+    },
+    "delete-label": {
+      "name": "delete-label",
+      "description": "Elimina una etiqueta de Gmail. Esto NO elimina los emails con esta etiqueta.",
+      "params": {
+        "labelId": "ID de la etiqueta a eliminar"
+      }
+    },
+    "list-filters": {
+      "name": "list-filters",
+      "description": "Lista todos los filtros de Gmail de la cuenta."
+    },
+    "create-filter": {
+      "name": "create-filter",
+      "description": "Crea un nuevo filtro de Gmail para organizar emails automáticamente.",
+      "params": {
+        "criteria": "Criterios del filtro",
+        "action": "Acciones a realizar cuando el filtro coincide"
+      }
+    },
+    "delete-filter": {
+      "name": "delete-filter",
+      "description": "Elimina un filtro de Gmail por su ID.",
+      "params": {
+        "filterId": "ID del filtro a eliminar"
+      }
+    },
+    "start-email-watcher": {
+      "name": "start-email-watcher",
+      "description": "Inicia un bucle de sondeo en segundo plano que detecta nuevos emails no leídos y emite eventos `gmail.email.received` al backend. El watcher sondea la API de Gmail en un intervalo configurable (por defecto: 5 minutos). Solo puede haber un watcher activo por proceso MCA.",
+      "params": {
+        "intervalMinutes": "Intervalo de sondeo en minutos (por defecto: 5, mínimo: 1). Valores más bajos consumen más cuota de la API de Gmail."
+      }
+    },
+    "stop-email-watcher": {
+      "name": "stop-email-watcher",
+      "description": "Detiene el bucle de sondeo de correo en segundo plano. No se emitirán más eventos."
+    },
+    "get-watcher-status": {
+      "name": "get-watcher-status",
+      "description": "Obtiene el estado actual del watcher de correo: si está activo, cuándo fue la última comprobación, cuántos IDs de mensaje se rastrean y el intervalo de sondeo."
+    }
+  }
+}

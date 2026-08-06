@@ -37,5 +37,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["trello", "boards", "cards", "project-management", "kanban"]
+  "keywords": ["trello", "boards", "cards", "project-management", "kanban"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — manage boards, lists and cards, add comments and labels, and search across your Trello workspace"
+    }
+  ]
 }

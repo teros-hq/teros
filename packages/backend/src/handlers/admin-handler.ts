@@ -14,8 +14,9 @@ export class AdminHandler {
   constructor(
     private db: Db,
     private mcaManager: McaManager | null,
+    mcaService?: McaService,
   ) {
-    this.mcaService = new McaService(db);
+    this.mcaService = mcaService ?? new McaService(db);
   }
 
   /**

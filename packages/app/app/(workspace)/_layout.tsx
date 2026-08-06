@@ -1,126 +1,132 @@
 /**
  * Workspace Layout - Tiling Window Manager
  *
- * Este layout envuelve todas las rutas del workspace.
- * Renderiza el TilingLayout y maneja:
- * - Autenticación
- * - Auto-guardado del estado
- * - Listeners globales (channel status, typing)
- * - Sincronización de URL con ventana activa
+ * Wraps all workspace routes. Renders the TilingLayout and handles:
+ * - Authentication guard (reads from authStore, never from storage directly)
+ * - Auto-save of workspace state
+ * - Global listeners (channel status, typing)
+ * - URL sync with active window
  *
- * Las rutas hijas (chat/[channelId], apps, etc.) solo disparan
- * la apertura/enfoque de ventanas, no renderizan nada.
+ * Child routes (chat/[channelId], apps, etc.) only trigger window open/focus,
+ * they don't render content themselves.
  */
 
 import { Slot, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { AppSpinner } from '../../src/components/ui/AppSpinner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { YStack } from 'tamagui';
 import { AccessGate } from '../../src/components/AccessGate';
+import { BillingWarningBanner } from '../../src/components/billing/BillingWarningBanner';
+import { ImpersonationBanner } from '../../src/components/ImpersonationBanner';
 import { Navbar } from '../../src/components/Navbar';
+import { WhatsNewModal } from '../../src/components/WhatsNewModal';
+import { useWhatsNewModal } from '../../src/hooks/useWhatsNewModal';
+import { useBillingRealtimeSync } from '../../src/hooks/billing/useBillingRealtimeSync';
+import { shouldRedirectToOnboarding } from '../../src/lib/onboarding-redirect';
 import { TilingLayout } from '../../src/components/workspace/TilingLayout';
+import { useColors } from '../../src/components/mca/primitives/useColors';
 import { useUrlSync } from '../../src/hooks';
-import { STORAGE_KEYS, storage } from '../../src/services/storage';
+import { useAuthStore } from '../../src/store/authStore';
 import { useChatStore } from '../../src/store/chatStore';
+import { useFeatureFlagsStore } from '../../src/store/featureFlagsStore';
 import { useNavbarStore } from '../../src/store/navbarStore';
 import { useTilingStore } from '../../src/store/tilingStore';
 import { VoiceSessionProvider } from '../../src/contexts/VoiceSessionContext';
-import { getTerosClient } from '../_layout';
+import { getTerosClient } from '../../src/services/terosClientSingleton';
 import { useWorkspaceReady as useWorkspaceReadyHook, WorkspaceContext } from './workspaceContext';
 
-// Re-export for backward compatibility
 export { useWorkspaceReadyHook as useWorkspaceReady };
 
-/** Debounce delay for auto-save (ms) */
 const AUTO_SAVE_DELAY = 1000;
 
 export default function WorkspaceLayout() {
-  const [user, setUser] = useState<any>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
 
   const router = useRouter();
   const client = getTerosClient();
   const insets = useSafeAreaInsets();
+  const c = useColors();
 
-  // Workspace state for auto-save
+  // Auth state — single source of truth, no direct storage reads here
+  const { user, isHydrated, isProfileSynced, impersonation, logout } = useAuthStore();
+
   const desktops = useTilingStore((state) => state.desktops);
   const windows = useTilingStore((state) => state.windows);
-  const loadState = useTilingStore((state) => state.loadState);
-  const saveState = useTilingStore((state) => state.saveState);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const persistToStorage = useTilingStore((state) => state.persistToStorage);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstRender = useRef(true);
 
-  // Sync URL with active window
   useUrlSync(workspaceLoaded);
 
-  // Load user
+  // Billing UX realtime (FASE 6): feeds the 80% warning banner + admin badge.
+  useBillingRealtimeSync();
+
+  // "What's New" changelog modal — auto-shows on load if there are unseen entries
+  const whatsNew = useWhatsNewModal();
+
   useEffect(() => {
-    const loadUser = async () => {
-      try {
-        const savedUser = await storage.getItem(STORAGE_KEYS.USER);
-        if (savedUser) {
-          setUser(JSON.parse(savedUser));
-        } else {
-          router.replace('/(auth)/login');
-        }
-      } catch (e) {
-        console.error('Failed to load user:', e);
-        router.replace('/(auth)/login');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadUser();
+    if (!isHydrated) return;
+
+    if (!user) {
+      router.replace('/(auth)/login');
+      return;
+    }
+
+    // Only show terms screen if user already has platform access
+    if (user.accessGranted && !user.termsAcceptedAt) {
+      router.replace('/(auth)/login/welcome');
+      return;
+    }
+
+    // Onboarding gate (TER-596 I2): users who accepted terms but haven't finished
+    // onboarding go to the wizard (which now includes the mandatory plan + checkout).
+    // Wait for the backend profile sync first — onboardingCompletedAt may be absent
+    // from localStorage yet set on the server. Skip while impersonating (the guard
+    // lives in shouldRedirectToOnboarding; see its docstring). Review finding M4.
+    if (
+      shouldRedirectToOnboarding({
+        isProfileSynced,
+        isImpersonating: !!impersonation?.isImpersonating,
+        accessGranted: user.accessGranted,
+        termsAcceptedAt: user.termsAcceptedAt,
+        onboardingCompletedAt: user.onboardingCompletedAt,
+      })
+    ) {
+      router.replace('/(auth)/login/onboarding');
+      return;
+    }
+  }, [isHydrated, isProfileSynced, impersonation, user]);
+
+  // Mark workspace as loaded on mount (state is restored by workspaceStore.setActiveWorkspace)
+  useEffect(() => {
+    setWorkspaceLoaded(true);
   }, []);
 
-  // TODO: Implement /api/users/me endpoint to refresh user role from backend
-  // For now, user role is set during login and persisted in storage
-
-  // Load workspace state on mount
+  // Auto-save workspace layout to PersistedDriver (debounced)
   useEffect(() => {
-    const loadWorkspace = async () => {
-      await loadState();
-      setWorkspaceLoaded(true);
-    };
-    loadWorkspace();
-  }, []);
-
-  // Auto-save workspace state when it changes (debounced)
-  useEffect(() => {
-    // Skip first render and wait until workspace is loaded
     if (isFirstRender.current || !workspaceLoaded) {
       isFirstRender.current = false;
       return;
     }
 
-    // Clear previous timeout
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    // Schedule save
     saveTimeoutRef.current = setTimeout(() => {
-      saveState();
+      persistToStorage();
     }, AUTO_SAVE_DELAY);
 
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, [desktops, windows, workspaceLoaded]);
 
-  // Global listener for channel_list_status to update chatStore
-  // This ensures all tabs (even inactive ones) get updated states
+  // Global listeners for channel status and typing events
   useEffect(() => {
     const handleChannelListStatus = (data: any) => {
       const { channelId, action, channel } = data;
-
       if (!channelId) return;
 
-      // Update chatStore with channel status changes
       if (action === 'updated' && channel) {
         const updates: any = {};
         if (channel.title !== undefined) updates.title = channel.title;
@@ -132,10 +138,9 @@ export default function WorkspaceLayout() {
           useChatStore.getState().updateChannel(channelId, updates);
         }
       } else if (action === 'created' && channel) {
-        // New channel - add to store
         useChatStore.getState().setChannel({
           channelId,
-          title: channel.title || 'Nuevo chat',
+          title: channel.title || 'New chat',
           agentId: channel.agentId || '',
           agentName: '',
           agentAvatarUrl: null,
@@ -150,7 +155,6 @@ export default function WorkspaceLayout() {
       }
     };
 
-    // Also listen for typing events globally
     const handleTyping = (data: any) => {
       if (data.channelId) {
         useChatStore.getState().setTyping(data.channelId, data.isTyping ?? false);
@@ -167,35 +171,48 @@ export default function WorkspaceLayout() {
   }, [client]);
 
   const handleLogout = async () => {
-    await storage.removeItem(STORAGE_KEYS.USER);
+    useFeatureFlagsStore.getState().clear();
+    await logout();
     client.setSessionToken('');
+    client.disconnect();
     useNavbarStore.getState().reset();
     router.replace('/(auth)/login');
   };
 
-  if (isLoading) {
+  // Show spinner while hydrating. If there's no user, the useEffect above will
+  // redirect to login — show spinner meanwhile.
+  if (!isHydrated || !user) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor="#000">
-        <ActivityIndicator size="large" color="#06B6D4" />
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={c.bgPage}>
+        <AppSpinner size="lg" variant="brand" />
       </YStack>
     );
-  }
-
-  if (!user) {
-    return null;
   }
 
   return (
     <AccessGate client={client}>
       <WorkspaceContext.Provider value={{ isReady: workspaceLoaded }}>
         <VoiceSessionProvider>
-          <Navbar userName={user.displayName} userRole={user.role} onLogout={handleLogout}>
-            <YStack flex={1} backgroundColor="#000" paddingBottom={insets.bottom}>
+          <ImpersonationBanner />
+          <BillingWarningBanner />
+          <Navbar userName={user.name} userRole={user.role} onLogout={handleLogout} onWhatsNew={whatsNew.showWhatsNew}>
+            {/* c.bgPage: this color shows through the bottom safe-zone band
+                (paddingBottom) and matches the root background of both
+                MobileTilingLayout and TilingLayout, so the band
+                reads as a continuation of the canvas, not a distinct strip. */}
+            <YStack flex={1} backgroundColor={c.bgPage} paddingBottom={insets.bottom}>
               <TilingLayout />
-              {/* Slot renderiza la ruta hija, que solo dispara openWindow */}
               <Slot />
             </YStack>
           </Navbar>
+          {/* "What's New" changelog modal — overlay, not part of the tiling system */}
+          {whatsNew.isModalVisible && whatsNew.modalEntries.length > 0 && (
+            <WhatsNewModal
+              entries={whatsNew.modalEntries}
+              onDismiss={whatsNew.handleDismiss}
+              isManualReopen={whatsNew.isManualReopen}
+            />
+          )}
         </VoiceSessionProvider>
       </WorkspaceContext.Provider>
     </AccessGate>

@@ -26,11 +26,14 @@ import {
 } from '@tamagui/lucide-icons';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Button, ScrollView, Separator, Sheet, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { AppSpinner, FullscreenLoader } from '../../components/ui';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors as semanticColors, controlsBar } from '../../components/mca/primitives/colors';
 
 interface Mca {
   mcaId: string;
@@ -57,9 +60,9 @@ interface Mca {
 }
 
 const ROLE_COLORS: Record<string, string> = {
-  user: '#22C55E',
-  admin: '#F59E0B',
-  super: '#EF4444',
+  user: semanticColors.green,
+  admin: semanticColors.amber,
+  super: semanticColors.red,
 };
 
 function Badge({
@@ -97,6 +100,7 @@ function isValidIconUrl(icon?: string): boolean {
 
 /** MCA Icon component - shows HTTP image or fallback */
 function McaIcon({ icon, size = 20 }: { icon?: string; size?: number }) {
+  const c = useColors();
   const [hasError, setHasError] = useState(false);
 
   if (isValidIconUrl(icon) && !hasError) {
@@ -111,7 +115,7 @@ function McaIcon({ icon, size = 20 }: { icon?: string; size?: number }) {
   }
 
   // Fallback: generic package icon
-  return <Package size={size} color="#71717A" />;
+  return <Package size={size} color={c.text3} />;
 }
 
 interface McaCardProps {
@@ -122,6 +126,7 @@ interface McaCardProps {
 }
 
 function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
+  const c = useColors();
   const roleColor = ROLE_COLORS[mca.availability.role] || ROLE_COLORS['user'];
   const isDisabled = !mca.availability.enabled;
 
@@ -130,10 +135,10 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
       flexBasis="30%"
       flexGrow={1}
       minWidth={320}
-      backgroundColor="rgba(20, 20, 22, 0.9)"
+      backgroundColor={c.bgCard}
       borderRadius="$3"
       borderWidth={1}
-      borderColor={isDisabled ? 'rgba(239, 68, 68, 0.3)' : 'rgba(39, 39, 42, 0.5)'}
+      borderColor={isDisabled ? controlsBar.deny.border : c.borderStrong}
       overflow="hidden"
       opacity={isDisabled ? 0.7 : 1}
     >
@@ -143,7 +148,7 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
         alignItems="center"
         gap="$3"
         cursor="pointer"
-        hoverStyle={{ backgroundColor: 'rgba(39, 39, 42, 0.3)' }}
+        hoverStyle={{ backgroundColor: c.bgInner }}
         pressStyle={{ opacity: 0.8 }}
         onPress={onToggle}
       >
@@ -152,7 +157,7 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
           width={40}
           height={40}
           borderRadius={8}
-          backgroundColor="rgba(39, 39, 42, 0.5)"
+          backgroundColor={c.bgCardHover}
           justifyContent="center"
           alignItems="center"
         >
@@ -165,43 +170,43 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
               {mca.name}
             </Text>
             {isDisabled && (
-              <Badge color="#EF4444" icon={<Lock size={10} color="#EF4444" />}>
+              <Badge color={semanticColors.red} icon={<Lock size={10} color={semanticColors.red} />}>
                 disabled
               </Badge>
             )}
             {mca.availability.system && (
-              <Badge color="#8B5CF6" icon={<Shield size={10} color="#8B5CF6" />}>
+              <Badge color={semanticColors.violet} icon={<Shield size={10} color={semanticColors.violet} />}>
                 system
               </Badge>
             )}
             {mca.availability.hidden && (
-              <Badge color="#71717A" icon={<EyeOff size={10} color="#71717A" />}>
+              <Badge color={c.text3} icon={<EyeOff size={10} color={c.text3} />}>
                 hidden
               </Badge>
             )}
           </XStack>
           <XStack alignItems="center" gap="$2">
-            <Text fontSize="$2" color="$gray11">
+            <Text fontSize="$2" color={c.text2}>
               {mca.category}
             </Text>
-            <Text fontSize="$2" color="$gray10">
+            <Text fontSize="$2" color={c.text3}>
               •
             </Text>
             <Text fontSize="$2" color={roleColor}>
               {mca.availability.role}
             </Text>
-            <Text fontSize="$2" color="$gray10">
+            <Text fontSize="$2" color={c.text3}>
               •
             </Text>
-            <Text fontSize="$2" color="$gray11">
+            <Text fontSize="$2" color={c.text2}>
               {mca.tools.length} tools
             </Text>
             {mca.availability.multi && (
               <>
-                <Text fontSize="$2" color="$gray10">
+                <Text fontSize="$2" color={c.text3}>
                   •
                 </Text>
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   multi
                 </Text>
               </>
@@ -210,38 +215,38 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
         </YStack>
 
         {expanded ? (
-          <ChevronUp size={18} color="#71717A" />
+          <ChevronUp size={18} color={c.text3} />
         ) : (
-          <ChevronDown size={18} color="#71717A" />
+          <ChevronDown size={18} color={c.text3} />
         )}
       </XStack>
 
       {/* Expanded Content */}
       {expanded && (
         <YStack padding="$3" paddingTop={0} gap="$3">
-          <Separator backgroundColor="rgba(39, 39, 42, 0.5)" />
+          <Separator backgroundColor={c.borderStrong} />
 
           {/* Description */}
-          <Text fontSize="$2" color="$gray11">
+          <Text fontSize="$2" color={c.text2}>
             {mca.description}
           </Text>
 
           {/* Availability Settings (Read-only with Edit button) */}
           <YStack gap="$2">
             <XStack alignItems="center" justifyContent="space-between">
-              <Text fontSize="$2" fontWeight="500" color="$gray11">
+              <Text fontSize="$2" fontWeight="500" color={c.text2}>
                 Availability
               </Text>
               <Button
                 size="$2"
-                backgroundColor="rgba(59, 130, 246, 0.15)"
+                backgroundColor={semanticColors.indigoGlow}
                 borderWidth={1}
-                borderColor="rgba(59, 130, 246, 0.3)"
-                icon={<Edit3 size={14} color="#3B82F6" />}
+                borderColor={semanticColors.indigo}
+                icon={<Edit3 size={14} color={semanticColors.indigo} />}
                 onPress={onEdit}
-                hoverStyle={{ backgroundColor: 'rgba(59, 130, 246, 0.25)' }}
+                hoverStyle={{ backgroundColor: semanticColors.indigoGlow }}
               >
-                <Text color="#3B82F6" fontSize="$2">
+                <Text color={semanticColors.indigo} fontSize="$2">
                   Edit
                 </Text>
               </Button>
@@ -250,15 +255,15 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
             <XStack flexWrap="wrap" gap="$2">
               <XStack alignItems="center" gap="$1">
                 {mca.availability.enabled ? (
-                  <Unlock size={12} color="#22C55E" />
+                  <Unlock size={12} color={semanticColors.green} />
                 ) : (
-                  <Lock size={12} color="#EF4444" />
+                  <Lock size={12} color={semanticColors.red} />
                 )}
-                <Text fontSize="$2" color={mca.availability.enabled ? '#22C55E' : '#EF4444'}>
+                <Text fontSize="$2" color={mca.availability.enabled ? semanticColors.green : semanticColors.red}>
                   {mca.availability.enabled ? 'Enabled' : 'Disabled'}
                 </Text>
               </XStack>
-              <Text color="$gray8">•</Text>
+              <Text color={c.text3}>•</Text>
               <XStack alignItems="center" gap="$1">
                 <Users size={12} color={roleColor} />
                 <Text fontSize="$2" color={roleColor}>
@@ -267,10 +272,10 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
               </XStack>
               {mca.availability.system && (
                 <>
-                  <Text color="$gray8">•</Text>
+                  <Text color={c.text3}>•</Text>
                   <XStack alignItems="center" gap="$1">
-                    <Shield size={12} color="#8B5CF6" />
-                    <Text fontSize="$2" color="#8B5CF6">
+                    <Shield size={12} color={semanticColors.violet} />
+                    <Text fontSize="$2" color={semanticColors.violet}>
                       System
                     </Text>
                   </XStack>
@@ -278,10 +283,10 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
               )}
               {mca.availability.hidden && (
                 <>
-                  <Text color="$gray8">•</Text>
+                  <Text color={c.text3}>•</Text>
                   <XStack alignItems="center" gap="$1">
-                    <EyeOff size={12} color="#71717A" />
-                    <Text fontSize="$2" color="#71717A">
+                    <EyeOff size={12} color={c.text3} />
+                    <Text fontSize="$2" color={c.text3}>
                       Hidden
                     </Text>
                   </XStack>
@@ -289,10 +294,10 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
               )}
               {mca.availability.multi && (
                 <>
-                  <Text color="$gray8">•</Text>
+                  <Text color={c.text3}>•</Text>
                   <XStack alignItems="center" gap="$1">
-                    <Users size={12} color="#06B6D4" />
-                    <Text fontSize="$2" color="#06B6D4">
+                    <Users size={12} color={semanticColors.kindText} />
+                    <Text fontSize="$2" color={semanticColors.kindText}>
                       Multi
                     </Text>
                   </XStack>
@@ -304,8 +309,8 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
           {/* Tools */}
           <YStack gap="$2">
             <XStack alignItems="center" gap="$2">
-              <Wrench size={14} color="#71717A" />
-              <Text fontSize="$2" fontWeight="500" color="$gray11">
+              <Wrench size={14} color={c.text3} />
+              <Text fontSize="$2" fontWeight="500" color={c.text2}>
                 Tools ({mca.tools.length})
               </Text>
             </XStack>
@@ -314,8 +319,8 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
                 <Text
                   key={i}
                   fontSize="$1"
-                  color="$gray11"
-                  backgroundColor="rgba(39, 39, 42, 0.5)"
+                  color={c.text2}
+                  backgroundColor={c.bgCardHover}
                   paddingHorizontal="$2"
                   paddingVertical="$1"
                   borderRadius="$1"
@@ -331,14 +336,14 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
           {(mca.systemSecrets.length > 0 || mca.userSecrets.length > 0) && (
             <YStack gap="$2">
               <XStack alignItems="center" gap="$2">
-                <Key size={14} color="#71717A" />
-                <Text fontSize="$2" fontWeight="500" color="$gray11">
+                <Key size={14} color={c.text3} />
+                <Text fontSize="$2" fontWeight="500" color={c.text2}>
                   Secrets
                 </Text>
               </XStack>
               {mca.systemSecrets.length > 0 && (
                 <YStack gap="$1">
-                  <Text fontSize="$1" color="$gray10">
+                  <Text fontSize="$1" color={c.text3}>
                     System secrets:
                   </Text>
                   <XStack flexWrap="wrap" gap="$1">
@@ -346,8 +351,8 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
                       <Text
                         key={i}
                         fontSize="$1"
-                        color="$gray11"
-                        backgroundColor="rgba(39, 39, 42, 0.5)"
+                        color={c.text2}
+                        backgroundColor={c.bgCardHover}
                         paddingHorizontal="$2"
                         paddingVertical="$1"
                         borderRadius="$1"
@@ -361,7 +366,7 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
               )}
               {mca.userSecrets.length > 0 && (
                 <YStack gap="$1">
-                  <Text fontSize="$1" color="$gray10">
+                  <Text fontSize="$1" color={c.text3}>
                     User secrets:
                   </Text>
                   <XStack flexWrap="wrap" gap="$1">
@@ -369,8 +374,8 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
                       <Text
                         key={i}
                         fontSize="$1"
-                        color="$gray11"
-                        backgroundColor="rgba(39, 39, 42, 0.5)"
+                        color={c.text2}
+                        backgroundColor={c.bgCardHover}
                         paddingHorizontal="$2"
                         paddingVertical="$1"
                         borderRadius="$1"
@@ -389,13 +394,13 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
           {mca.auth && (
             <YStack gap="$2">
               <XStack alignItems="center" gap="$2">
-                <Shield size={14} color="#71717A" />
-                <Text fontSize="$2" fontWeight="500" color="$gray11">
+                <Shield size={14} color={c.text3} />
+                <Text fontSize="$2" fontWeight="500" color={c.text2}>
                   Authentication
                 </Text>
               </XStack>
               <XStack gap="$2">
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   type: {mca.auth.type}
                   {mca.auth.provider && ` • provider: ${mca.auth.provider}`}
                 </Text>
@@ -404,7 +409,7 @@ function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
           )}
 
           {/* MCP ID */}
-          <Text fontSize="$1" color="$gray10" fontFamily="$mono">
+          <Text fontSize="$1" color={c.text3} fontFamily="$mono">
             {mca.mcaId}
           </Text>
         </YStack>
@@ -418,6 +423,8 @@ export interface McasWindowContentProps {
 }
 
 export function McasWindowContent({ windowId }: McasWindowContentProps) {
+  const { t } = useTranslation();
+  const c = useColors();
   const client = getTerosClient();
   const insets = useSafeAreaInsets();
 
@@ -457,7 +464,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
       setMcas(mcasList as Mca[]);
     } catch (err) {
       console.error('Failed to load MCAs:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load MCAs');
+      setError(err instanceof Error ? err.message : t('errors.mcas.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -492,7 +499,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
       setEditingMca(null);
     } catch (err) {
       console.error('❌ Failed to update MCA:', err);
-      alert(`Failed to update MCA: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      alert(t('errors.mcas.updateFailed', { error: err instanceof Error ? err.message : t('errors.unknownError') }));
     } finally {
       setSaving(false);
     }
@@ -516,7 +523,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
 
   if (loading) {
     return (
-      <FullscreenLoader variant="default" label="Loading MCAs..." />
+      <FullscreenLoader variant="default" label={t('common.loading')} />
     );
   }
 
@@ -529,7 +536,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
         alignItems="center"
         padding="$4"
       >
-        <Text color="$red10" textAlign="center">
+        <Text color={semanticColors.red} textAlign="center">
           {error}
         </Text>
       </YStack>
@@ -569,12 +576,12 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
         <YStack padding="$4" gap="$4">
           {/* Summary */}
           <XStack
-            backgroundColor="rgba(39, 39, 42, 0.3)"
+            backgroundColor={c.bgInner}
             borderRadius="$4"
             padding="$4"
             gap="$4"
             borderWidth={1}
-            borderColor="rgba(63, 63, 70, 0.3)"
+            borderColor={c.border}
             flexWrap="wrap"
             justifyContent="space-between"
             alignItems="center"
@@ -584,7 +591,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <Text fontSize="$6" fontWeight="700" color="$color">
                   {mcas.length}
                 </Text>
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   Total
                 </Text>
               </YStack>
@@ -592,7 +599,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <Text fontSize="$6" fontWeight="700" color="$color">
                   {enabledCount}
                 </Text>
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   Enabled
                 </Text>
               </YStack>
@@ -600,7 +607,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <Text fontSize="$6" fontWeight="700" color="$color">
                   {systemCount}
                 </Text>
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   System
                 </Text>
               </YStack>
@@ -608,7 +615,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <Text fontSize="$6" fontWeight="700" color="$color">
                   {totalTools}
                 </Text>
-                <Text fontSize="$2" color="$gray11">
+                <Text fontSize="$2" color={c.text2}>
                   Tools
                 </Text>
               </YStack>
@@ -617,9 +624,9 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
             <Button
               size="$3"
               icon={<RefreshCw size={16} />}
-              backgroundColor="rgba(39, 39, 42, 0.5)"
-              borderColor="rgba(63, 63, 70, 0.5)"
-              color="$gray11"
+              backgroundColor={c.bgCardHover}
+              borderColor={c.borderStrong}
+              color={c.text2}
               onPress={loadMcas}
             >
               Refresh
@@ -633,10 +640,10 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
               <Button
                 size="$2"
                 backgroundColor={
-                  filterCategory === null ? 'rgba(63, 63, 70, 0.5)' : 'rgba(39, 39, 42, 0.3)'
+                  filterCategory === null ? c.bgCardHover : c.bgInner
                 }
-                borderColor="rgba(63, 63, 70, 0.5)"
-                color="$gray11"
+                borderColor={c.borderStrong}
+                color={c.text2}
                 onPress={() => setFilterCategory(null)}
               >
                 All ({mcas.length})
@@ -649,11 +656,11 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                     size="$2"
                     backgroundColor={
                       filterCategory === category
-                        ? 'rgba(63, 63, 70, 0.5)'
-                        : 'rgba(39, 39, 42, 0.3)'
+                        ? c.bgCardHover
+                        : c.bgInner
                     }
-                    borderColor="rgba(63, 63, 70, 0.5)"
-                    color="$gray11"
+                    borderColor={c.borderStrong}
+                    color={c.text2}
                     onPress={() => setFilterCategory(category)}
                   >
                     {category} ({count})
@@ -667,9 +674,9 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
               <Button
                 size="$2"
                 icon={showDisabled ? <Eye size={14} /> : <EyeOff size={14} />}
-                backgroundColor={showDisabled ? 'rgba(39, 39, 42, 0.5)' : 'rgba(39, 39, 42, 0.3)'}
-                borderColor="rgba(63, 63, 70, 0.5)"
-                color="$gray11"
+                backgroundColor={showDisabled ? c.bgCardHover : c.bgInner}
+                borderColor={c.borderStrong}
+                color={c.text2}
                 onPress={() => setShowDisabled(!showDisabled)}
               >
                 Disabled ({mcas.filter((m) => !m.availability.enabled).length})
@@ -677,9 +684,9 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
               <Button
                 size="$2"
                 icon={<Shield size={14} />}
-                backgroundColor={showSystem ? 'rgba(39, 39, 42, 0.5)' : 'rgba(39, 39, 42, 0.3)'}
-                borderColor="rgba(63, 63, 70, 0.5)"
-                color="$gray11"
+                backgroundColor={showSystem ? c.bgCardHover : c.bgInner}
+                borderColor={c.borderStrong}
+                color={c.text2}
                 onPress={() => setShowSystem(!showSystem)}
               >
                 System ({systemCount})
@@ -687,9 +694,9 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
               <Button
                 size="$2"
                 icon={<EyeOff size={14} />}
-                backgroundColor={showHidden ? 'rgba(39, 39, 42, 0.5)' : 'rgba(39, 39, 42, 0.3)'}
-                borderColor="rgba(63, 63, 70, 0.5)"
-                color="$gray11"
+                backgroundColor={showHidden ? c.bgCardHover : c.bgInner}
+                borderColor={c.borderStrong}
+                color={c.text2}
                 onPress={() => setShowHidden(!showHidden)}
               >
                 Hidden ({hiddenCount})
@@ -727,36 +734,36 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 {
                   key: 'system',
                   label: 'System',
-                  icon: <Shield size={14} color="#8B5CF6" />,
-                  color: '#8B5CF6',
+                  icon: <Shield size={14} color={semanticColors.violet} />,
+                  color: semanticColors.violet,
                   mcas: groups.system,
                 },
                 {
                   key: 'admin',
                   label: 'Admin Only',
-                  icon: <Users size={14} color="#F59E0B" />,
-                  color: '#F59E0B',
+                  icon: <Users size={14} color={semanticColors.amber} />,
+                  color: semanticColors.amber,
                   mcas: groups.admin,
                 },
                 {
                   key: 'user',
                   label: 'User',
-                  icon: <Users size={14} color="#22C55E" />,
-                  color: '#22C55E',
+                  icon: <Users size={14} color={semanticColors.green} />,
+                  color: semanticColors.green,
                   mcas: groups.user,
                 },
                 {
                   key: 'hidden',
                   label: 'Hidden',
-                  icon: <EyeOff size={14} color="#71717A" />,
-                  color: '#71717A',
+                  icon: <EyeOff size={14} color={c.text3} />,
+                  color: c.text3,
                   mcas: groups.hidden,
                 },
                 {
                   key: 'disabled',
                   label: 'Disabled',
-                  icon: <Lock size={14} color="#EF4444" />,
-                  color: '#EF4444',
+                  icon: <Lock size={14} color={semanticColors.red} />,
+                  color: semanticColors.red,
                   mcas: groups.disabled,
                 },
               ];
@@ -766,8 +773,8 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
               if (nonEmptyGroups.length === 0) {
                 return (
                   <YStack padding="$6" alignItems="center">
-                    <Package size={48} color="$gray8" />
-                    <Text color="$gray10" marginTop="$3" textAlign="center">
+                    <Package size={48} color={c.text3} />
+                    <Text color={c.text3} marginTop="$3" textAlign="center">
                       No MCAs match the current filters
                     </Text>
                   </YStack>
@@ -782,7 +789,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                     <Text fontSize="$3" fontWeight="600" color={group.color}>
                       {group.label}
                     </Text>
-                    <Text fontSize="$2" color="$gray10">
+                    <Text fontSize="$2" color={c.text3}>
                       ({group.mcas.length})
                     </Text>
                   </XStack>
@@ -810,26 +817,26 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
       <Sheet
         modal
         open={!!editingMca}
-        onOpenChange={(open) => !open && closeEditSheet()}
+        onOpenChange={(open: boolean) => !open && closeEditSheet()}
         snapPoints={[70]}
         dismissOnSnapToBottom
         zIndex={100000}
       >
         <Sheet.Overlay
-          animation="lazy"
+          animation={"lazy" as any}
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
           backgroundColor="rgba(0, 0, 0, 0.5)"
         />
         <Sheet.Frame
-          backgroundColor="#18181B"
+          backgroundColor={c.bgCard}
           borderTopLeftRadius="$5"
           borderTopRightRadius="$5"
           padding="$4"
           paddingBottom={Math.max(insets.bottom, 40)}
           gap="$4"
         >
-          <Sheet.Handle backgroundColor="rgba(113, 113, 122, 0.5)" />
+          <Sheet.Handle backgroundColor={c.borderStrong} />
 
           {editingMca && (
             <YStack gap="$4">
@@ -839,7 +846,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                   <Text fontSize="$5" fontWeight="600" color="$color">
                     Edit Availability
                   </Text>
-                  <Text fontSize="$2" color="$gray11">
+                  <Text fontSize="$2" color={c.text2}>
                     {editingMca.name}
                   </Text>
                 </YStack>
@@ -847,7 +854,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                   size="$2"
                   circular
                   backgroundColor="transparent"
-                  icon={<X size={18} color="$gray11" />}
+                  icon={<X size={18} color={c.text2} />}
                   onPress={closeEditSheet}
                 />
               </XStack>
@@ -858,22 +865,22 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
                   <XStack alignItems="center" gap="$2">
                     {editForm.enabled ? (
-                      <Unlock size={16} color="#22C55E" />
+                      <Unlock size={16} color={semanticColors.green} />
                     ) : (
-                      <Lock size={16} color="#EF4444" />
+                      <Lock size={16} color={semanticColors.red} />
                     )}
                     <YStack>
                       <Text fontSize="$3" color="$color">
                         Enabled
                       </Text>
-                      <Text fontSize="$1" color="$gray10">
+                      <Text fontSize="$1" color={c.text3}>
                         Allow this MCA to be installed
                       </Text>
                     </YStack>
                   </XStack>
                   <Button
                     size="$3"
-                    backgroundColor={editForm.enabled ? '#22C55E' : 'rgba(63, 63, 70, 0.5)'}
+                    backgroundColor={editForm.enabled ? semanticColors.green : c.bgCardHover}
                     borderRadius="$4"
                     paddingHorizontal="$4"
                     onPress={() => setEditForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
@@ -887,19 +894,19 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 {/* System */}
                 <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
                   <XStack alignItems="center" gap="$2">
-                    <Shield size={16} color={editForm.system ? '#8B5CF6' : '#71717A'} />
+                    <Shield size={16} color={editForm.system ? semanticColors.violet : c.text3} />
                     <YStack>
                       <Text fontSize="$3" color="$color">
                         System MCA
                       </Text>
-                      <Text fontSize="$1" color="$gray10">
+                      <Text fontSize="$1" color={c.text3}>
                         Auto-install for all agents
                       </Text>
                     </YStack>
                   </XStack>
                   <Button
                     size="$3"
-                    backgroundColor={editForm.system ? '#8B5CF6' : 'rgba(63, 63, 70, 0.5)'}
+                    backgroundColor={editForm.system ? semanticColors.violet : c.bgCardHover}
                     borderRadius="$4"
                     paddingHorizontal="$4"
                     onPress={() => setEditForm((prev) => ({ ...prev, system: !prev.system }))}
@@ -914,22 +921,22 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                 <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
                   <XStack alignItems="center" gap="$2">
                     {editForm.hidden ? (
-                      <EyeOff size={16} color="#71717A" />
+                      <EyeOff size={16} color={c.text3} />
                     ) : (
-                      <Eye size={16} color="#22C55E" />
+                      <Eye size={16} color={semanticColors.green} />
                     )}
                     <YStack>
                       <Text fontSize="$3" color="$color">
                         Hidden
                       </Text>
-                      <Text fontSize="$1" color="$gray10">
+                      <Text fontSize="$1" color={c.text3}>
                         Hide from catalog listing
                       </Text>
                     </YStack>
                   </XStack>
                   <Button
                     size="$3"
-                    backgroundColor={editForm.hidden ? '#71717A' : 'rgba(63, 63, 70, 0.5)'}
+                    backgroundColor={editForm.hidden ? c.text3 : c.bgCardHover}
                     borderRadius="$4"
                     paddingHorizontal="$4"
                     onPress={() => setEditForm((prev) => ({ ...prev, hidden: !prev.hidden }))}
@@ -948,7 +955,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                       <Text fontSize="$3" color="$color">
                         Required Role
                       </Text>
-                      <Text fontSize="$1" color="$gray10">
+                      <Text fontSize="$1" color={c.text3}>
                         Minimum role to install this MCA
                       </Text>
                     </YStack>
@@ -960,7 +967,7 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                         flex={1}
                         size="$3"
                         backgroundColor={
-                          editForm.role === role ? ROLE_COLORS[role] : 'rgba(63, 63, 70, 0.5)'
+                          editForm.role === role ? ROLE_COLORS[role] : c.bgCardHover
                         }
                         borderRadius="$3"
                         onPress={() => setEditForm((prev) => ({ ...prev, role }))}
@@ -981,23 +988,23 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                   size="$4"
                   onPress={closeEditSheet}
                   disabled={saving}
-                  backgroundColor="rgba(39, 39, 42, 0.5)"
+                  backgroundColor={c.bgCardHover}
                   borderWidth={1}
-                  borderColor="rgba(63, 63, 70, 0.5)"
+                  borderColor={c.borderStrong}
                 >
-                  <Text color="$gray11">Cancel</Text>
+                  <Text color={c.text2}>Cancel</Text>
                 </Button>
                 <Button
                   flex={1}
                   size="$4"
                   onPress={saveAvailability}
                   disabled={saving}
-                  backgroundColor="rgba(34, 197, 94, 0.2)"
+                  backgroundColor={controlsBar.allow.bg}
                   borderWidth={1}
-                  borderColor="rgba(34, 197, 94, 0.4)"
-                  icon={saving ? <AppSpinner size="sm" /> : <Save size={16} color="#22C55E" />}
+                  borderColor={controlsBar.allow.border}
+                  icon={saving ? <AppSpinner size="sm" /> : <Save size={16} color={semanticColors.green} />}
                 >
-                  <Text color="#22C55E">{saving ? 'Saving...' : 'Save'}</Text>
+                  <Text color={semanticColors.green}>{saving ? 'Saving...' : 'Save'}</Text>
                 </Button>
               </XStack>
             </YStack>

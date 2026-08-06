@@ -96,19 +96,28 @@ export class RecordingLLMAdapter implements ILLMClient {
     const inputHash = hashInput(options);
     const events: RecordedEvent[] = [];
 
-    // Wrap callbacks to record events
+    // Wrap callbacks to record events. Capturamos el delay (ms desde el evento anterior) para que
+    // el replay reproduzca el RITMO del streaming — necesario para tests de timing como cortar un
+    // turno en curso (Stop): sin pausas el turno terminaría al instante y no habría qué cortar.
     const originalCallbacks = options.callbacks;
+    let lastEventAt = Date.now();
+    const sinceLast = () => {
+      const now = Date.now();
+      const d = now - lastEventAt;
+      lastEventAt = now;
+      return d;
+    };
     const wrappedCallbacks = {
       onText: async (chunk: string) => {
-        events.push({ type: 'text', chunk });
+        events.push({ type: 'text', chunk, delay: sinceLast() });
         await originalCallbacks?.onText?.(chunk);
       },
       onTextEnd: async () => {
-        events.push({ type: 'text_end' });
+        events.push({ type: 'text_end', delay: sinceLast() });
         await originalCallbacks?.onTextEnd?.();
       },
       onToolCall: async (toolCall: ToolCall) => {
-        events.push({ type: 'tool_call', toolCall });
+        events.push({ type: 'tool_call', toolCall, delay: sinceLast() });
         await originalCallbacks?.onToolCall?.(toolCall);
       },
       onThinking: originalCallbacks?.onThinking,
@@ -141,6 +150,16 @@ export class RecordingLLMAdapter implements ILLMClient {
 
     this.calls.push(recordedCall);
 
+    // Write-through: persistir tras cada call. El factory crea un adapter por sesión/agente, así
+    // que no hay un hook de cierre único donde volcar; grabar incremental evita perder cassettes.
+    if (this.recordingPath) {
+      try {
+        this.saveRecording();
+      } catch (e) {
+        console.error(`[LLMRecorder] no se pudo persistir el recording: ${(e as Error).message}`);
+      }
+    }
+
     return response;
   }
 
@@ -167,9 +186,22 @@ export class RecordingLLMAdapter implements ILLMClient {
       throw new Error('No recording path specified');
     }
 
+    // Merge con el recording existente en disco: varias instancias del adapter (una por sesión/
+    // agente) graban al MISMO archivo. Dedup por inputHash → la última grabación de un input gana.
+    const byHash = new Map<string, RecordedCall>();
+    if (existsSync(filePath)) {
+      try {
+        const prev: Recording = JSON.parse(readFileSync(filePath, 'utf-8'));
+        for (const c of prev.calls) byHash.set(c.inputHash, c);
+      } catch {
+        // archivo parcial/corrupto → se reescribe desde cero
+      }
+    }
+    for (const c of this.calls) byHash.set(c.inputHash, c);
+
     const recording: Recording = {
       version: '1.0',
-      calls: this.calls,
+      calls: [...byHash.values()],
       metadata: {
         createdAt: new Date().toISOString(),
       },
@@ -182,9 +214,18 @@ export class RecordingLLMAdapter implements ILLMClient {
     }
 
     writeFileSync(filePath, JSON.stringify(recording, null, 2));
-    console.log(`Recording saved to ${filePath}`);
   }
 }
+
+/**
+ * Tope del delay reproducido entre eventos en replay. Un cap muy bajo deja el turno casi
+ * instantáneo y expone un race en specs que esperan eventos de ciclo de vida tras enviar (p.ej.
+ * "responde con Kimi real" espera `queue_state:done` → el evento llega antes de que el test lo
+ * escuche). 120ms da margen sin ralentizar de forma apreciable: el grueso de la suite son los
+ * ~47 specs NO-@llm, no estos delays (los @llm suman ~1.5 min). La optimización de coste real es
+ * el trigger del job E2E (solo al integrar a dev/main), no este cap. TER-553.
+ */
+const REPLAY_MAX_DELAY_MS = 120;
 
 /**
  * Mock LLM Adapter - Replays recorded responses
@@ -216,18 +257,27 @@ export class MockLLMAdapter implements ILLMClient {
     if (this.mode === 'sequential') {
       call = this.recording.calls[this.callIndex++];
     } else {
-      // Hash match mode - find matching call
+      // Hash match mode — match EXACTO por hash del input. SIN fallback por
+      // "mismo número de mensajes": ese fallback devolvía la cassette equivocada
+      // EN SILENCIO cuando el input variaba (channelId/timestamp/texto) → verde
+      // engañoso (un turno reproducía otra cassette). Un miss en replay debe ser
+      // RUIDOSO → regrabar o arreglar el determinismo. TER-563.
       const inputHash = hashInput(options);
       call = this.recording.calls.find((c) => c.inputHash === inputHash);
 
       if (!call) {
-        // Try to find by partial match (same number of messages)
-        const msgCount = options.messages.length;
-        call = this.recording.calls.find((c) => c.input.messages.length === msgCount);
+        const available = this.recording.calls.map((c) => c.inputHash).join(', ');
+        throw new Error(
+          `No recorded LLM response for input hash ${inputHash}. ` +
+            `Available hashes: [${available}]. El input cambió respecto a la ` +
+            `grabación (¿determinismo roto o hace falta regrabar?). ` +
+            `Ver scripts/playwright-smoke/recordings/README.md.`,
+        );
       }
     }
 
     if (!call) {
+      // Modo 'sequential': el índice se salió del rango de cassettes grabadas.
       throw new Error(
         `No recorded response found for input. ` +
           `Mode: ${this.mode}, ` +
@@ -236,11 +286,17 @@ export class MockLLMAdapter implements ILLMClient {
       );
     }
 
-    // Replay events with optional delays
+    // Replay events honrando el ritmo grabado y la cancelación:
+    // - delay capeado a REPLAY_MAX_DELAY_MS: un turno largo no se reproduce en tiempo real, pero
+    //   sí mantiene pausas suficientes para que un test vea el turno "en curso" (Stop).
+    // - options.signal: si el caller aborta (el usuario corta el turno), paramos el stream → así
+    //   el replay reproduce la cancelación de un turno en curso, no solo la respuesta completa.
     for (const event of call.events) {
+      if (options.signal?.aborted) break;
       if (event.delay) {
-        await new Promise((r) => setTimeout(r, event.delay));
+        await new Promise((r) => setTimeout(r, Math.min(event.delay, REPLAY_MAX_DELAY_MS)));
       }
+      if (options.signal?.aborted) break;
 
       switch (event.type) {
         case 'text':
@@ -266,6 +322,7 @@ export class MockLLMAdapter implements ILLMClient {
         streaming: true,
         tools: true,
         thinking: false,
+        vision: false,
       },
     };
   }

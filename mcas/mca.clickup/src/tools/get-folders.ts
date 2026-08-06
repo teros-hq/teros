@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const getFolders: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get all folders in a ClickUp space.',
   parameters: {
     type: 'object',

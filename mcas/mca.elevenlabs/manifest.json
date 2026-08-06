@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "ElevenLabs Text-to-Speech - generate natural-sounding speech from text using AI voices",
   "type": "integration",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "ai",
   "entrypoint": "./src/index.ts",
   "runtime": {
@@ -40,5 +40,12 @@
       "systemSecrets": ["API_KEY"]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — turn text into natural speech, browse and inspect AI voices, build multi-speaker conversations, and track plan usage"
+    }
+  ]
 }

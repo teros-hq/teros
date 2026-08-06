@@ -5,6 +5,7 @@
  */
 
 import { Users } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { UsersWindowContent } from './UsersWindowContent';
 
@@ -20,10 +21,9 @@ export const usersWindowDefinition: WindowTypeDefinition<UsersWindowProps> = {
   defaultSize: { width: 900, height: 700 },
   minSize: { width: 500, height: 400 },
 
-  singleton: true,
 
-  getTitle: () => 'Users',
-  getSubtitle: () => 'User management',
+  getTitle: () => i18n.t("windows.users"),
+  getSubtitle: () => i18n.t("windows.usersSub"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

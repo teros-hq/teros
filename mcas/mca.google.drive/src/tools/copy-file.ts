@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const copyFile: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a copy of a file in Google Drive.',
   parameters: {
     type: 'object',
@@ -45,6 +46,7 @@ export const copyFile: ToolConfig = {
         }
 
         const response = await clients.drive.files.copy({
+          ...ALL_DRIVES,
           fileId,
           requestBody: fileMetadata,
           fields: 'id, name, webViewLink',

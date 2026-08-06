@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.context7",
+  "name": "Context7",
+  "version": "1.0.0",
+  "description": "Up-to-date library and framework documentation via Context7 (Upstash). Resolves library identifiers and fetches structured doc snippets with code examples.",
+  "type": "ai",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["CONTEXT7_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["docs", "documentation", "context7", "upstash", "library", "research", "snippets"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-07",
+      "notes": "Initial release — find software libraries by name and fetch up-to-date documentation snippets with real code examples"
+    }
+  ]
+}

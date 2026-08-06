@@ -6,8 +6,9 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
+import type { AgentPhase } from '@teros/core'
 import type { ChannelManager } from '../../../services/channel-manager'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 import type { MessageHandler } from '../../message-handler'
 
 interface SubscribeChannelData {
@@ -16,7 +17,7 @@ interface SubscribeChannelData {
 
 export function createSubscribeChannelHandler(
   channelManager: ChannelManager,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
   messageHandler: MessageHandler,
 ) {
   return async function subscribeChannel(ctx: WsHandlerContext, rawData: unknown) {
@@ -34,7 +35,7 @@ export function createSubscribeChannelHandler(
       throw new HandlerError('UNAUTHORIZED', 'Access denied to channel')
     }
 
-    sessionManager.subscribeToChannel(ctx.sessionId, data.channelId)
+    pubSubService.subscribeSession(ctx.sessionId, `channel:${data.channelId}`)
     console.log(
       `✅ [channel.subscribe] session=${ctx.sessionId} subscribed to channel=${data.channelId}`,
     )
@@ -42,6 +43,25 @@ export function createSubscribeChannelHandler(
     // Restore any pending permission requests for this channel
     await messageHandler.restorePendingPermissions(data.channelId)
 
-    return { channelId: data.channelId }
+    // Restore any pending inline forms (request-user-input) for this channel
+    await messageHandler.restorePendingForms(data.channelId)
+
+    // Snapshot so a fresh tab/reconnect can hydrate without waiting for the next push event.
+    const snapshot = await messageHandler
+      .getChannelRuntimeSnapshot(data.channelId)
+      .catch(() => ({
+        pendingUserMessageIds: [] as string[],
+        runningUserMessageId: undefined as string | undefined,
+        agentPhase: undefined as AgentPhase | undefined,
+        running: false,
+      }))
+
+    return {
+      channelId: data.channelId,
+      pendingUserMessageIds: snapshot.pendingUserMessageIds,
+      runningUserMessageId: snapshot.runningUserMessageId,
+      agentPhase: snapshot.agentPhase,
+      running: snapshot.running,
+    }
   }
 }

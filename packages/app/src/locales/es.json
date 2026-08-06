@@ -1,0 +1,66 @@
+{
+  "common": {
+    "cancel": "Cancelar"
+  },
+  "chat": {
+    "stop": {
+      "label": "Detener",
+      "ariaLabel": "Detener respuesta del agente",
+      "hardHint": "Mantén pulsado el botón o pulsa Mayús+Enter para descartar el turno",
+      "stoppingIndicator": "Deteniendo…",
+      "stoppedIndicator": "Detenido",
+      "hardConfirm": {
+        "title": "¿Cancelar de inmediato?",
+        "bodyNoIrreversible": "El hard cancel puede dejar trabajo a medias. ¿Continuar?",
+        "bodyWithIrreversible": "La tool '{{toolName}}' está ejecutándose y no se puede interrumpir sin riesgo de side effects parciales. Hard cancel terminará el turno pero esperará al tool result antes de cerrar.",
+        "confirm": "Cancelar de todos modos",
+        "confirmWait": "Esperar y cancelar",
+        "deny": "Mantener"
+      },
+      "autoCloseToast": "El agente terminó solo. No hacía falta cancelar.",
+      "connectionLost": "Conexión perdida — recuperando…"
+    },
+    "queue": {
+      "indicator_one": "{{count}} mensaje en cola",
+      "indicator_other": "{{count}} mensajes en cola",
+      "edit": "Editar",
+      "cancel": "Cancelar",
+      "cannotEditStarted": "No se puede editar — ya está en proceso"
+    },
+    "restore": {
+      "banner": "Tu mensaje anterior se canceló",
+      "button": "Recuperar texto",
+      "dismiss": "Descartar"
+    },
+    "irreversibleBanner": "Terminando '{{toolName}}' antes de detener (no se puede cancelar sin riesgo)",
+    "recovering": "Recuperando tras reinicio…"
+  },
+  "feedback": {
+    "thumbsUp": "Pulgar arriba",
+    "thumbsDown": "Pulgar abajo",
+    "copy": "Copiar mensaje",
+    "copied": "Copiado al portapapeles",
+    "copyError": "No se pudo copiar",
+    "report": "Reportar problema",
+    "reportSent": "Reporte enviado al equipo",
+    "reportError": "No se pudo enviar el reporte",
+    "submitReport": "Enviar reporte",
+    "reportDescriptionLabel": "¿Qué salió mal?",
+    "reportPlaceholder": "Describe el problema…",
+    "why": "¿Por qué no fue útil?",
+    "commentPlaceholder": "Añade un comentario (opcional)",
+    "submit": "Enviar feedback",
+    "sending": "Enviando…",
+    "thankYou": "Gracias por tu feedback",
+    "submitError": "No se pudo guardar el feedback",
+    "tryAgain": "Inténtalo de nuevo",
+    "reasons": {
+      "inaccurate": "Incorrecto",
+      "incomplete": "Incompleto",
+      "not_helpful": "No útil",
+      "wrong_tone": "Tono inadecuado",
+      "did_not_follow_instructions": "No siguió las instrucciones",
+      "other": "Otro"
+    }
+  }
+}

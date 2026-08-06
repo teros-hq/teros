@@ -1,21 +1,24 @@
 /**
- * E2E Tests: Messaging
+ * E2E Tests: Messaging — via the REAL WsFramework envelope (TER-453).
  *
- * Tests for basic messaging flow:
- * - Send message confirmation
- * - Get message history
- *
- * Note: Full LLM response tests require MockLLMAdapter integration
+ * `channel.send-message` / `channel.get-messages` respond with `{}` and the
+ * actual payloads arrive as flat pushes (`message_sent`, `messages_history`,
+ * `typing`) — same hybrid contract the production frontend consumes.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
 import { TEST_AGENTS } from '../fixtures/test-data';
-import { cleanupTestData, createTestClient, globalSetup, globalTeardown } from '../utils/setup';
+import {
+  cleanupTestData,
+  createTestClient,
+  createTestWorkspace,
+  globalSetup,
+  globalTeardown,
+} from '../utils/setup';
 import type { TestClient } from '../utils/TestClient';
 
 describe('Messaging E2E', () => {
   let client: TestClient;
-  let channelId: string;
 
   beforeAll(async () => {
     await globalSetup();
@@ -32,88 +35,50 @@ describe('Messaging E2E', () => {
     }
   });
 
+  async function createChannel(c: TestClient): Promise<string> {
+    const workspaceId = await createTestWorkspace(c);
+    const data = await c.requestOk<{ channelId: string }>('channel.create', {
+      agentId: TEST_AGENTS.assistant.id,
+      workspaceId,
+    });
+    return data.channelId;
+  }
+
   test('should send a message and receive confirmation', async () => {
     client = await createTestClient('user1');
+    const channelId = await createChannel(client);
 
-    // Create a channel
-    const createResponse = await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      'channel_created',
-    );
-    channelId = createResponse.channelId;
+    await client.requestOk('channel.send-message', {
+      channelId,
+      content: { type: 'text', text: 'Hello, test assistant!' },
+    });
+    const sent = await client.waitFor('message_sent');
 
-    // Send a message
-    const sendResponse = await client.sendAndWait(
-      {
-        type: 'send_message',
-        channelId,
-        content: { type: 'text', text: 'Hello, test assistant!' },
-      },
-      ['message_sent', 'error'],
-    );
-
-    expect(sendResponse.type).toBe('message_sent');
-    expect(sendResponse.messageId).toBeDefined();
+    expect(sent.type).toBe('message_sent');
+    expect(sent.messageId).toBeDefined();
   });
 
-  test('should get empty message history for new channel', async () => {
+  test('should get message history for a channel', async () => {
     client = await createTestClient('user1');
+    const channelId = await createChannel(client);
 
-    // Create a fresh channel
-    const createResponse = await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      'channel_created',
-    );
-    const newChannelId = createResponse.channelId;
+    await client.requestOk('channel.get-messages', { channelId });
+    const history = await client.waitFor('messages_history');
 
-    // Get message history
-    const historyResponse = await client.sendAndWait(
-      {
-        type: 'get_messages',
-        channelId: newChannelId,
-      },
-      'messages_history',
-    );
-
-    expect(historyResponse.type).toBe('messages_history');
-    expect(historyResponse.messages).toBeDefined();
-    expect(Array.isArray(historyResponse.messages)).toBe(true);
+    expect(history.type).toBe('messages_history');
+    expect(Array.isArray(history.messages)).toBe(true);
   });
 
   test('should receive typing indicator when message is being processed', async () => {
     client = await createTestClient('user1');
+    const channelId = await createChannel(client);
 
-    // Create a channel
-    const createResponse = await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      'channel_created',
-    );
-    channelId = createResponse.channelId;
-
-    // Disconnect and reconnect to clear any pending messages
-    await client.disconnect();
-    client = await createTestClient('user1');
-
-    // Send a message and wait for typing indicator
-    client.send({
-      type: 'send_message',
+    await client.requestOk('channel.send-message', {
       channelId,
       content: { type: 'text', text: 'Hello!' },
     });
 
-    // Wait for either typing indicator or message_sent
-    const response = await client.waitFor(['typing', 'message_sent', 'error'], 5000);
-
-    // Should get message_sent at minimum
+    const response = await client.waitFor(['typing', 'message_sent'], 5000);
     expect(['typing', 'message_sent']).toContain(response.type);
   });
 });

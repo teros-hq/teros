@@ -1,0 +1,119 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la URL, el token y la conectividad con la API de ActiveCampaign."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Lista contactos. Devuelve { items[{id,email,firstName,lastName,phone}], total, nextOffset }. Filtra por email, búsqueda de texto libre o listId.",
+      "params": {
+        "email": "Coincidencia exacta de email",
+        "search": "Búsqueda de texto libre (nombre/email)",
+        "listId": "Solo contactos suscritos a esta lista",
+        "limit": "Resultados máximos (por defecto 20, máximo 100)",
+        "offset": "Offset de paginación (por defecto 0)",
+        "includeRaw": "Incluir respuesta cruda de la API"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Obtiene un contacto por id. Devuelve { contact: {id,email,firstName,lastName,phone,cdate,udate} }.",
+      "params": {
+        "id": "ID del contacto"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Crea un contacto. El email es obligatorio. Devuelve { contact } con el registro creado. ActiveCampaign hace upsert por email; si existe, devuelve el contacto existente.",
+      "params": {
+        "email": "Email del contacto (obligatorio)"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Actualiza un contacto por id. Solo se actualizan los campos proporcionados. Devuelve { contact }.",
+      "params": {
+        "id": "ID del contacto"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Elimina un contacto por id. Permanente — ActiveCampaign no tiene eliminación suave. Devuelve { id, deleted: true }.",
+      "params": {
+        "id": "ID del contacto"
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "Lista listas de suscriptores. Devuelve { items[{id,name,stringid,subscriberCount}], total, nextOffset }.",
+      "params": {
+        "limit": "Resultados máximos (por defecto 20, máximo 100)"
+      }
+    },
+    "subscribe-contact-to-list": {
+      "name": "subscribe-contact-to-list",
+      "description": "Suscribe (o da de baja) un contacto a una lista. Devuelve { contactList: {id, contact, list, status} }.",
+      "params": {
+        "contactId": "ID del contacto",
+        "listId": "ID de la lista",
+        "status": "Por defecto suscrito"
+      }
+    },
+    "list-campaigns": {
+      "name": "list-campaigns",
+      "description": "Lista campañas de email. Devuelve { items[{id,name,type,status,subject,sendDate,totalRecipients,totalOpens,uniqueOpens}], total, nextOffset }.",
+      "params": {
+        "limit": "Resultados máximos (por defecto 20, máximo 100)"
+      }
+    },
+    "get-campaign": {
+      "name": "get-campaign",
+      "description": "Obtiene una campaña por id. Devuelve { campaign: {id,name,subject,status,sendDate,fromName,fromEmail,totalRecipients,opens,clicks} }.",
+      "params": {
+        "id": "ID de la campaña"
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "Lista ofertas (registros del pipeline CRM). Devuelve { items[{id,title,value,currency,status,contact,pipeline,stage}], total, nextOffset }.",
+      "params": {
+        "search": "Buscar en título/descripción",
+        "pipelineId": "Filtrar por id de pipeline",
+        "stageId": "Filtrar por id de etapa",
+        "limit": "Resultados máximos (por defecto 20, máximo 100)"
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "Obtiene una oferta por id. Devuelve { deal: {id,title,description,value,currency,status,contact,pipeline,stage,owner} }.",
+      "params": {
+        "id": "ID de la oferta"
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "Crea una oferta. Obligatorios: title, value (en unidades principales), pipelineId, stageId, ownerId. value se convierte a céntimos internamente. Devuelve { deal }.",
+      "params": {
+        "value": "Valor de la oferta en unidades principales (ej. 1500 para $1.500)",
+        "currency": "Código de moneda ISO, minúsculas (por defecto usd)",
+        "pipelineId": "ID del pipeline (grupo)",
+        "ownerId": "ID de usuario del propietario de la oferta"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "Lista etiquetas. Devuelve { items[{id,name,description,tagType}], total, nextOffset }.",
+      "params": {
+        "search": "Coincidencia de subcadena en el nombre de la etiqueta",
+        "limit": "Resultados máximos (por defecto 20, máximo 100)"
+      }
+    },
+    "add-tag-to-contact": {
+      "name": "add-tag-to-contact",
+      "description": "Asigna una etiqueta a un contacto. Devuelve { contactTag: {id, contact, tag} }."
+    }
+  },
+  "name": "ActiveCampaign",
+  "description": "CRM y email marketing de ActiveCampaign — gestiona contactos, listas, campañas, ofertas y etiquetas vía la API v3."
+}

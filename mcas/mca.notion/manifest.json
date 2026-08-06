@@ -2,7 +2,7 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.notion",
   "name": "Notion",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Notion workspace - pages, databases, blocks, search, comments",
   "type": "integration",
   "icon": "icon.png",
@@ -14,7 +14,7 @@
   },
   "availability": {
     "enabled": true,
-    "multi": false,
+    "multi": true,
     "system": false,
     "hidden": false,
     "role": "user"
@@ -43,5 +43,12 @@
       "pkce": false
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-05-19",
+      "notes": "Search, create and edit pages, manage databases and rows, blocks, comments and file uploads across your Notion workspace"
+    }
+  ]
 }

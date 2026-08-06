@@ -3,6 +3,7 @@ import { createGraphClient, formatMessage } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const searchMessages: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search for email messages. Supports searching by subject, body, sender, etc.',
   parameters: {
     type: 'object',

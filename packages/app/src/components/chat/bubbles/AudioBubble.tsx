@@ -1,9 +1,13 @@
 import { Play, RefreshCw, Square } from '@tamagui/lucide-icons';
 import { useEffect, useRef, useState } from 'react';
+import { getDateLocale } from '../../../i18n';
 import { Platform, useWindowDimensions } from 'react-native';
-import { Button, Text, View, XStack, YStack } from 'tamagui';
+import { Button, Text, View, XStack, YStack } from 'tamagui'
+import { useColors } from '../../mca/primitives/useColors'
+import { colors as semanticColors } from '../../mca/primitives/colors';
 import { TerosLoading } from '../../TerosLoading';
 import { SelectableText } from './shared';
+import { QueuedIndicator, QueuedShimmer } from '../queuedDecorations';
 import { formatDuration } from './VoiceBubble';
 
 /**
@@ -28,15 +32,16 @@ export function AudioBubble({
   timestamp: Date;
   isUser?: boolean;
   showTimestamp?: boolean;
-  status?: 'sending' | 'sent' | 'failed';
+  status?: 'sending' | 'sent' | 'failed' | 'queued';
   onRetry?: () => void;
 }) {
+  const c = useColors()
   const { width: screenWidth } = useWindowDimensions();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const maxWidth = Math.min(screenWidth * 0.7, 400);
 
@@ -96,17 +101,27 @@ export function AudioBubble({
   const progress = audioDuration > 0 ? currentTime / audioDuration : 0;
   const displayDuration = audioDuration || duration || 0;
 
+  const isQueued = status === 'queued';
+
   return (
-    <YStack maxWidth="85%" gap="$2" alignSelf={isUser ? 'flex-end' : 'flex-start'}>
+    <YStack
+      maxWidth="85%"
+      gap="$2"
+      alignSelf={isUser ? 'flex-end' : 'flex-start'}
+      alignItems={isUser ? 'flex-end' : 'flex-start'}
+    >
       <YStack
         width={maxWidth}
         padding="$3"
         borderRadius="$4"
-        backgroundColor="rgba(255, 255, 255, 0.05)"
+        backgroundColor={c.bgInner}
         borderWidth={1}
-        borderColor="rgba(6, 182, 212, 0.2)"
+        borderColor={`rgba(94, 106, 210, 0.2)`}
         gap="$2"
+        overflow={isQueued ? 'hidden' : undefined}
+        position={isQueued ? 'relative' : undefined}
       >
+        {isQueued && <QueuedShimmer />}
         {/* Player controls */}
         <XStack alignItems="center" gap="$3">
           {/* Play/Pause Button */}
@@ -115,12 +130,12 @@ export function AudioBubble({
             height={44}
             padding={0}
             borderRadius={10}
-            backgroundColor="rgba(6, 182, 212, 0.2)"
+            backgroundColor={semanticColors.indigoGlow}
             borderWidth={1}
-            borderColor="rgba(6, 182, 212, 0.5)"
+            borderColor={`rgba(94, 106, 210, 0.5)`}
             onPress={togglePlayback}
             icon={
-              isPlaying ? <Square size={18} color="#06B6D4" /> : <Play size={18} color="#06B6D4" />
+              isPlaying ? <Square size={18} color={semanticColors.indigo} /> : <Play size={18} color={semanticColors.indigo} />
             }
           />
 
@@ -144,14 +159,14 @@ export function AudioBubble({
             >
               <View
                 height={4}
-                backgroundColor="rgba(255, 255, 255, 0.1)"
+                backgroundColor={c.border}
                 borderRadius="$1"
                 overflow="hidden"
               >
                 <View
                   height="100%"
                   width={`${progress * 100}%`}
-                  backgroundColor="#06B6D4"
+                  backgroundColor={semanticColors.indigo}
                   borderRadius="$1"
                 />
               </View>
@@ -159,10 +174,10 @@ export function AudioBubble({
 
             {/* Time display */}
             <XStack justifyContent="space-between">
-              <Text color="rgba(255, 255, 255, 0.5)" fontSize="$1">
+              <Text color={c.text3} fontSize="$1">
                 {formatDuration(currentTime)}
               </Text>
-              <Text color="rgba(255, 255, 255, 0.5)" fontSize="$1">
+              <Text color={c.text3} fontSize="$1">
                 {displayDuration > 0 ? formatDuration(displayDuration) : '--:--'}
               </Text>
             </XStack>
@@ -171,7 +186,7 @@ export function AudioBubble({
 
         {/* Caption if present */}
         {caption && (
-          <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable>
+          <SelectableText color={c.text2} fontSize="$3" selectable>
             {caption}
           </SelectableText>
         )}
@@ -181,22 +196,22 @@ export function AudioBubble({
           <XStack alignItems="center" gap="$1">
             {status === 'sending' && (
               <>
-                <TerosLoading size={12} color="rgba(255, 255, 255, 0.5)" />
-                <Text fontSize="$1" color="rgba(255, 255, 255, 0.5)">
+                <TerosLoading size={12} color={c.text3} />
+                <Text fontSize="$1" color={c.text3}>
                   Enviando...
                 </Text>
               </>
             )}
             {status === 'failed' && (
               <XStack alignItems="center" gap="$2">
-                <Text fontSize="$1" color="#EF4444">
+                <Text fontSize="$1" color={semanticColors.red}>
                   ⚠️ Error al enviar
                 </Text>
                 {onRetry && (
                   <Button size="$1" chromeless onPress={onRetry} paddingHorizontal="$2">
                     <XStack alignItems="center" gap="$1">
-                      <RefreshCw size={12} color="#FF9800" />
-                      <Text fontSize="$1" color="#FF9800">
+                      <RefreshCw size={12} color={semanticColors.amber} />
+                      <Text fontSize="$1" color={semanticColors.amber}>
                         Reintentar
                       </Text>
                     </XStack>
@@ -208,10 +223,15 @@ export function AudioBubble({
         )}
       </YStack>
 
-      {showTimestamp && (
-        <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-          {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-        </SelectableText>
+      {(showTimestamp || isQueued) && (
+        <XStack alignItems="center" gap="$2">
+          {isQueued && <QueuedIndicator />}
+          {showTimestamp && (
+            <SelectableText fontSize="$2" color={c.text3} selectable>
+              {timestamp.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })}
+            </SelectableText>
+          )}
+        </XStack>
       )}
     </YStack>
   );

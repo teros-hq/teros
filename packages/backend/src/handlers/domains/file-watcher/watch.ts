@@ -3,20 +3,20 @@
  *
  * Resolves the host path for the given file, sends the current content
  * immediately, then subscribes the client to the `file:<filePath>` channel
- * via SubscriptionManager. Subsequent changes are pushed as `file.changed`
+ * via PubSubService. Subsequent changes are pushed as `file_changed`
  * events to all subscribers.
  */
 
 import { readFile, access } from 'fs/promises'
 import { watch, type FSWatcher } from 'fs'
-import { join } from 'path'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import type { VolumeService } from '../../../services/volume-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SubscriptionManager } from '../../../ws-framework/SubscriptionManager'
+import type { PubSubService } from '../../../services/pubsub-service'
 import type { WebSocket } from 'ws'
+import { resolveVolumeHostPath } from '../../../lib/volume-path-resolver'
 
 type WsCtx = WsHandlerContext & { ws: WebSocket }
 
@@ -26,7 +26,10 @@ type WsCtx = WsHandlerContext & { ws: WebSocket }
 
 interface WatchFileData {
   filePath: string
-  channelId: string
+  /** Channel ID — used to resolve the workspace volume. Mutually exclusive with workspaceId. */
+  channelId?: string
+  /** Workspace ID — used to resolve the workspace volume directly (e.g. from FileBrowser). Mutually exclusive with channelId. */
+  workspaceId?: string
 }
 
 /** One active watcher entry */
@@ -41,64 +44,7 @@ interface WatcherEntry {
 // PATH RESOLVER (shared helper)
 // ============================================================================
 
-const CONTAINER_MOUNT = '/workspace'
-
-export async function resolveHostPath(
-  filePath: string,
-  channelId: string,
-  db: Db,
-  volumeService: VolumeService,
-  workspaceService: WorkspaceService | null,
-): Promise<string> {
-  const channelsCol = db.collection<any>('channels')
-  const channel = await channelsCol.findOne({ channelId })
-  if (!channel) throw new Error(`Channel not found: ${channelId}`)
-
-  let volumeHostPath: string
-
-  if (channel.workspaceId && workspaceService) {
-    const workspace = await workspaceService.getWorkspace(channel.workspaceId)
-    if (!workspace?.volumeId) throw new Error(`Workspace has no volume: ${channel.workspaceId}`)
-    const vol = await volumeService.getVolume(workspace.volumeId)
-    if (!vol) throw new Error(`Volume not found: ${workspace.volumeId}`)
-    volumeHostPath = vol.hostPath
-  } else {
-    console.log('[FileWatcher] getUserVolume — userId:', channel.userId)
-    const vol = await volumeService.getUserVolume(channel.userId)
-    console.log('[FileWatcher] getUserVolume result:', vol ? vol.volumeId : 'null/undefined')
-    if (!vol) throw new Error(`Volume not found for user: ${channel.userId}`)
-    volumeHostPath = vol.hostPath
-  }
-
-  // Strip any container mount prefix and join with volume host path.
-  let relativePath = filePath
-  if (filePath.startsWith(CONTAINER_MOUNT + '/')) {
-    relativePath = filePath.slice(CONTAINER_MOUNT.length + 1)
-  } else if (filePath.startsWith(CONTAINER_MOUNT)) {
-    relativePath = filePath.slice(CONTAINER_MOUNT.length)
-  }
-  if (relativePath.includes('..')) throw new Error('Invalid file path: path traversal detected')
-
-  const resolvedPath = join(volumeHostPath, relativePath)
-
-  // Local dev fallback: if the volume-derived path doesn't exist but the
-  // filePath itself does (e.g. backend and MCA share the same filesystem),
-  // use it directly. This handles the case where VOLUMES_BASE_PATH is not
-  // configured and the file lives at its literal path on disk.
-  try {
-    await access(resolvedPath)
-    return resolvedPath
-  } catch {
-    try {
-      await access(filePath)
-      console.log(`[FileWatcher] Volume path not found, falling back to literal path: ${filePath}`)
-      return filePath
-    } catch {
-      // Neither exists yet — return the volume path and let waitForFile handle it
-      return resolvedPath
-    }
-  }
-}
+export { resolveVolumeHostPath as resolveHostPath } from '../../../lib/volume-path-resolver'
 
 // ============================================================================
 // WATCHER REGISTRY
@@ -119,7 +65,7 @@ export function createWatcherRegistry(): WatcherRegistry {
 export function cleanupWatcherRegistry(registry: WatcherRegistry): void {
   for (const [filePath, entry] of registry.entries()) {
     if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
-    try { entry.watcher.close() } catch {}
+    try { entry.watcher.close() } catch { /* intentional: watcher may already be closed — cleanup only */ }
     console.log(`[FileWatcher] Cleanup: stopped watching ${filePath}`)
   }
   registry.clear()
@@ -162,22 +108,31 @@ export interface WatchFileDeps {
   db: Db
   volumeService: VolumeService
   workspaceService: WorkspaceService | null
-  subscriptionManager: SubscriptionManager
+  pubSubService: PubSubService
+  /** Resolve sessionId from a WebSocket connection — used to subscribe/unsubscribe */
+  getSessionId: (ws: WebSocket) => string | undefined
   /** Per-connection watcher registry — injected by websocket-handler */
   getRegistry: (ws: WebSocket) => WatcherRegistry
+  /** waitForFile tuning (test-only). Production default: 10 retries × 500 ms. */
+  waitForFileRetries?: number
+  waitForFileDelayMs?: number
 }
 
 export function createWatchFileHandler(deps: WatchFileDeps) {
-  const { db, volumeService, workspaceService, subscriptionManager, getRegistry } = deps
+  const { db, volumeService, workspaceService, pubSubService, getSessionId, getRegistry } = deps
 
   return async function watchFile(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as WatchFileData
-    const { filePath, channelId } = data
+    const { filePath, channelId, workspaceId } = data
 
     if (!filePath) throw new HandlerError('MISSING_FIELDS', 'filePath is required')
-    if (!channelId) throw new HandlerError('MISSING_FIELDS', 'channelId is required')
+    if (!channelId && !workspaceId) throw new HandlerError('MISSING_FIELDS', 'channelId or workspaceId is required')
+
+    // Use whichever context identifier was provided
+    const contextId = (workspaceId ?? channelId)!
 
     const ws = (ctx as WsCtx).ws
+    const sessionId = getSessionId(ws)
     const registry = getRegistry(ws)
 
     // If already watching this path, stop the old watcher first
@@ -190,7 +145,7 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
 
     let hostPath: string
     try {
-      hostPath = await resolveHostPath(filePath, channelId, db, volumeService, workspaceService)
+      hostPath = await resolveVolumeHostPath(filePath, contextId, db, volumeService, workspaceService)
     } catch (err: any) {
       console.error(`[FileWatcher] Failed to resolve path for ${filePath}:`, err.message)
       throw new HandlerError('FILE_WATCHER_ERROR', `Cannot resolve file path: ${err.message}`)
@@ -198,24 +153,31 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
 
     console.log(`[FileWatcher] Watching ${filePath} → ${hostPath}`)
 
-    // Subscribe the client to the file channel
-    const fileChannel = `file:${filePath}`
-    subscriptionManager.subscribe(ws, fileChannel)
+    // Subscribe the client to the file topic via PubSubService
+    const fileTopic = `file:${filePath}`
+    if (sessionId) {
+      pubSubService.subscribeSession(sessionId, fileTopic)
+    }
 
     // Wait for the file to exist before calling fs.watch (race condition fix:
     // the frontend may request a watch before the agent has written the file).
     try {
-      await waitForFile(hostPath)
+      await waitForFile(hostPath, deps.waitForFileRetries, deps.waitForFileDelayMs)
     } catch (err: any) {
       console.error(`[FileWatcher] File never appeared at ${hostPath}:`, err.message)
-      subscriptionManager.unsubscribe(ws, fileChannel)
+      if (sessionId) pubSubService.unsubscribeSession(sessionId, fileTopic)
       throw new HandlerError('FILE_WATCHER_ERROR', `Cannot watch file: ${err.message}`)
     }
 
     // Send current content immediately so the FileViewer has something to show
     try {
       const content = await readFile(hostPath, 'utf-8')
-      subscriptionManager.publish(fileChannel, 'file.changed', { filePath, content })
+      pubSubService.broadcastToTopic(fileTopic, {
+        type: 'event',
+        event: 'file_changed',
+        channel: fileTopic,
+        data: { filePath, content },
+      })
     } catch (err: any) {
       console.warn(`[FileWatcher] Could not read file ${hostPath}:`, err.message)
     }
@@ -235,7 +197,12 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
         entry.debounceTimer = setTimeout(async () => {
           try {
             const content = await readFile(hostPath, 'utf-8')
-            subscriptionManager.publish(fileChannel, 'file.changed', { filePath, content })
+            pubSubService.broadcastToTopic(fileTopic, {
+              type: 'event',
+              event: 'file_changed',
+              channel: fileTopic,
+              data: { filePath, content },
+            })
           } catch (err: any) {
             console.warn(`[FileWatcher] Could not read file ${hostPath}:`, err.message)
           }
@@ -243,7 +210,7 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
       })
     } catch (err: any) {
       console.error(`[FileWatcher] fs.watch failed for ${hostPath}:`, err.message)
-      subscriptionManager.unsubscribe(ws, fileChannel)
+      if (sessionId) pubSubService.unsubscribeSession(sessionId, fileTopic)
       throw new HandlerError('FILE_WATCHER_ERROR', `Cannot watch file: ${err.message}`)
     }
 

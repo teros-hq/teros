@@ -5,6 +5,7 @@ const PERSON_FIELDS =
   'names,emailAddresses,phoneNumbers,organizations,addresses,biographies,photos,birthdays,urls';
 
 export const getContact: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get a specific contact by resource name.',
   parameters: {
     type: 'object',

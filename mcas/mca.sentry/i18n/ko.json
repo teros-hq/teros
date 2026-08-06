@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "sentry-list-organizations": {
+      "name": "sentry-list-organizations",
+      "description": "인증된 사용자가 접근할 수 있는 모든 조직 목록"
+    },
+    "sentry-list-projects": {
+      "name": "sentry-list-projects",
+      "description": "조직 내 모든 프로젝트 목록",
+      "params": {
+        "organization": "조직 슬러그 (예: 'my-org'). 자격 증명에 구성된 경우 선택 사항입니다."
+      }
+    },
+    "sentry-list-issues": {
+      "name": "sentry-list-issues",
+      "description": "프로젝트의 문제(오류/문제) 목록. 상태 및 쿼리로 필터링할 수 있습니다.",
+      "params": {
+        "organization": "조직 슬러그. 자격 증명에 구성된 경우 선택 사항입니다.",
+        "project": "프로젝트 슬러그 (선택 사항, 제공되지 않으면 모두 나열)",
+        "query": "검색 쿼리 (예: 'is:unresolved', 'is:resolved', 'level:error')",
+        "limit": "반환할 문제의 최대 수 (기본값: 25)"
+      }
+    },
+    "sentry-get-issue": {
+      "name": "sentry-get-issue",
+      "description": "특정 문제에 대한 자세한 정보 가져오기",
+      "params": {
+        "issueId": "문제 ID"
+      }
+    },
+    "sentry-list-events": {
+      "name": "sentry-list-events",
+      "description": "문제에 대한 이벤트(개별 오류 발생) 목록",
+      "params": {
+        "issueId": "이벤트를 가져올 문제 ID",
+        "limit": "반환할 이벤트의 최대 수 (기본값: 25)"
+      }
+    },
+    "sentry-get-event": {
+      "name": "sentry-get-event",
+      "description": "전체 스택 추적을 포함한 특정 이벤트에 대한 자세한 정보 가져오기",
+      "params": {
+        "organization": "조직 슬러그. 자격 증명에 구성된 경우 선택 사항입니다.",
+        "project": "프로젝트 슬러그",
+        "eventId": "이벤트 ID"
+      }
+    },
+    "sentry-resolve-issue": {
+      "name": "sentry-resolve-issue",
+      "description": "문제를 해결된 것으로 표시",
+      "params": {
+        "issueId": "해결할 문제 ID"
+      }
+    },
+    "sentry-ignore-issue": {
+      "name": "sentry-ignore-issue",
+      "description": "문제를 무시 (알림 중지)",
+      "params": {
+        "issueId": "무시할 문제 ID"
+      }
+    }
+  },
+  "name": "Sentry 오류 모니터링",
+  "description": "Sentry API를 사용하여 애플리케이션의 오류, 문제 및 성능을 모니터링합니다. 프로젝트 목록, 문제 보기 및 오류 상태 관리.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 프로젝트 탐색, 스택 추적으로 오류 문제 추적, 알림 해결 또는 음소거"
+    }
+  ]
+}

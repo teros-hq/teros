@@ -1,47 +1,44 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected } from '../lib';
+import type { ToolConfig } from '@teros/mca-sdk';
+import { getWsClient } from '../lib';
+import { TASK_WITH_PROGRESS_FIELDS } from './_fields';
+import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 
 export const addProgressNote: ToolConfig = {
   description:
-    'Add a progress note to a task. Use this to post updates about what you are doing ' +
-    'on a task. Progress notes are visible in the task detail and on the board.',
+    'Post a progress note on a task (manager action). Notes are visible on the task detail and the board. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }. Runner agents should use the board-runner add-progress-note instead.',
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
-      taskId: {
-        type: 'string',
-        description: 'The task ID to add a note to',
-      },
-      text: {
-        type: 'string',
-        description: 'The progress note text',
-      },
+      taskId: { type: 'string', description: 'Task ID' },
+      text: { type: 'string', description: 'Progress note text' },
+      includeRaw: { type: 'boolean', description: 'Return full task document' },
     },
     required: ['taskId', 'text'],
   },
   handler: async (args, context) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const taskId = args?.taskId as string;
     const text = args?.text as string;
-    if (!taskId || !text) {
-      throw new Error('taskId and text are required');
-    }
+    if (!taskId || !text) throw new Error('taskId and text are required');
 
     const actor = context?.execution?.agentId || 'unknown';
 
-    const result = await wsClient.queryConversations<any>('add_progress_note', {
-      taskId,
-      text,
-      actor,
-    });
+    const result = await withTimeout(
+      wsClient.queryConversations<any>('add_progress_note', {
+        taskId,
+        text,
+        actor,
+      }),
+      15_000,
+      'add_progress_note',
+    );
 
-    return {
-      success: true,
-      task: result.task,
-    };
+    const task = resolveFields(result.task ?? {}, {
+      includeRaw: args?.includeRaw === true,
+      defaultFields: TASK_WITH_PROGRESS_FIELDS,
+    });
+    return { task };
   },
 };

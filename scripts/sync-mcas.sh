@@ -280,6 +280,22 @@ main() {
         exit 1
     fi
     
+    # Validate manifests and icons before syncing
+    # This ensures no MCA with a broken or placeholder icon can be deployed.
+    log_info "Running pre-sync validation (manifests + icons)..."
+
+    local validate_target=""
+    if [[ -n "$MCA_ID" ]]; then
+        validate_target="$MCA_ID"
+    fi
+
+    if ! bun "$SCRIPT_DIR/validate-manifests.ts" $validate_target; then
+        log_error "Pre-sync validation failed — fix the errors above before syncing"
+        exit 1
+    fi
+
+    log_success "Validation passed"
+
     # Execute sync based on arguments
     if [[ -n "$MCA_ID" ]]; then
         sync_specific_mca "$MCA_ID"

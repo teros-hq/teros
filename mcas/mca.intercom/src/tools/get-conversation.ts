@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest, stripHtml } from '../lib';
 
 export const getConversation: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Get the full details of a specific Intercom conversation by ID, including all messages, notes, tags, and assignee.',
   parameters: {

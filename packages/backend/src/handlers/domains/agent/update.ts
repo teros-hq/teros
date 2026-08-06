@@ -4,8 +4,11 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
+import { isValidWorkspaceColor, isValidWorkspaceIcon } from '@teros/shared'
 import type { Collection, Db } from 'mongodb'
-import { config } from '../../../config'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
+import type { PubSubService } from '../../../services/pubsub-service'
+import { BillingGateService } from '../../../services/billing-gate.js'
 
 interface Agent {
   agentId: string
@@ -22,6 +25,7 @@ interface Agent {
   availableProviders?: string[]
   selectedProviderId?: string | null
   selectedModelId?: string | null
+  appearance?: { color?: string; icon?: string }
   updatedAt?: string
 }
 
@@ -42,14 +46,10 @@ interface UpdateAgentData {
   availableProviders?: string[]
   selectedProviderId?: string | null
   selectedModelId?: string | null
+  appearance?: { color?: string; icon?: string }
 }
 
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined
-  return `${config.static.baseUrl}/${avatarFilename}`
-}
-
-export function createUpdateAgentHandler(db: Db) {
+export function createUpdateAgentHandler(db: Db, pubSubService?: PubSubService | null) {
   const agents: Collection<Agent> = db.collection('agents')
   const agentCores: Collection<AgentCore> = db.collection('agent_cores')
 
@@ -69,6 +69,7 @@ export function createUpdateAgentHandler(db: Db) {
       availableProviders,
       selectedProviderId,
       selectedModelId,
+      appearance,
     } = data
 
     if (!agentId) {
@@ -78,6 +79,17 @@ export function createUpdateAgentHandler(db: Db) {
     const existingAgent = await agents.findOne({ agentId, ownerId: ctx.userId })
     if (!existingAgent) {
       throw new HandlerError('AGENT_NOT_FOUND', `Agent '${agentId}' not found or access denied`)
+    }
+
+    // Billing gate: block adding 'teros' provider for users without terosModel feature
+    if (availableProviders !== undefined) {
+      const currentProviders = existingAgent.availableProviders ?? []
+      const isAddingTeros =
+        availableProviders.includes('teros') && !currentProviders.includes('teros')
+      if (isAddingTeros) {
+        const billingGate = new BillingGateService(db)
+        await billingGate.assertTerosModelAllowed(ctx.userId)
+      }
     }
 
     const updateFields: Partial<Agent> = {
@@ -94,6 +106,15 @@ export function createUpdateAgentHandler(db: Db) {
     if (availableProviders !== undefined) updateFields.availableProviders = availableProviders
     if (selectedProviderId !== undefined) updateFields.selectedProviderId = selectedProviderId
     if (selectedModelId !== undefined) updateFields.selectedModelId = selectedModelId
+    if (appearance !== undefined) {
+      if (appearance.color && !isValidWorkspaceColor(appearance.color)) {
+        throw new HandlerError('INVALID_REQUEST', `Invalid agent color: ${appearance.color}`)
+      }
+      if (appearance.icon && !isValidWorkspaceIcon(appearance.icon)) {
+        throw new HandlerError('INVALID_REQUEST', `Invalid agent icon: ${appearance.icon}`)
+      }
+      updateFields.appearance = appearance
+    }
 
     await agents.updateOne({ agentId, ownerId: ctx.userId }, { $set: updateFields })
 
@@ -107,18 +128,29 @@ export function createUpdateAgentHandler(db: Db) {
     const core = await agentCores.findOne({ coreId: updatedAgent.coreId })
     const finalAvatarUrl = updatedAgent.avatarUrl || core?.avatarUrl
 
-    return {
-      agent: {
-        agentId: updatedAgent.agentId,
-        name: updatedAgent.name,
-        fullName: updatedAgent.fullName,
-        role: updatedAgent.role,
-        intro: updatedAgent.intro,
-        avatarUrl: buildAvatarUrl(finalAvatarUrl),
-        coreId: updatedAgent.coreId,
-        maxSteps: updatedAgent.maxSteps,
-        context: updatedAgent.context,
-      },
+    const agentPayload = {
+      agentId: updatedAgent.agentId,
+      name: updatedAgent.name,
+      fullName: updatedAgent.fullName,
+      role: updatedAgent.role,
+      intro: updatedAgent.intro,
+      avatarUrl: buildAvatarUrl(finalAvatarUrl),
+      coreId: updatedAgent.coreId,
+      workspaceId: updatedAgent.workspaceId,
+      maxSteps: updatedAgent.maxSteps,
+      context: updatedAgent.context,
+      appearance: updatedAgent.appearance,
     }
+
+    if (pubSubService) {
+      const event = { type: 'agent.updated', agent: agentPayload }
+      if (updatedAgent.workspaceId) {
+        await pubSubService.broadcastToWorkspace(updatedAgent.workspaceId, event)
+      } else {
+        pubSubService.broadcastToUser(ctx.userId, event)
+      }
+    }
+
+    return { agent: agentPayload }
   }
 }

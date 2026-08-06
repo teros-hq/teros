@@ -15,6 +15,7 @@ import OpenAI from 'openai';
 import { LLMError } from '../errors/AgentError';
 import { log } from '../logger';
 import type { MessageWithParts, ToolPart } from '../session/types';
+import { extractReasoningDelta } from "./reasoningDelta"
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
 
 // Default base URL for Z.ai API (overseas)
@@ -132,6 +133,14 @@ export class ZhipuLLMAdapter implements ILLMClient {
           await callbacks?.onText?.(choice.delta.content);
         }
 
+        // Reasoning stream (GLM thinking models surface `reasoning_content`) →
+        // onThinking so the turn's stall watchdog counts a silent reasoning
+        // block as progress, not a frozen socket (TER-650).
+        const reasoningChunk = extractReasoningDelta(choice.delta);
+        if (reasoningChunk) {
+          await callbacks?.onThinking?.(reasoningChunk);
+        }
+
         // Handle tool calls
         if (choice.delta?.tool_calls) {
           for (const toolCall of choice.delta.tool_calls) {
@@ -152,6 +161,9 @@ export class ZhipuLLMAdapter implements ILLMClient {
             if (toolCall.function?.arguments) {
               existing.arguments += toolCall.function.arguments;
             }
+            // Heartbeat: onToolCall only fires once the stream ends, so this is
+            // the only progress signal while large tool args stream (TER-650).
+            await callbacks?.onToolInputDelta?.(toolCall.function?.arguments ?? '');
           }
           hasToolCalls = true;
         }
@@ -338,7 +350,8 @@ export class ZhipuLLMAdapter implements ILLMClient {
       capabilities: {
         streaming: true,
         tools: true,
-        vision: this.defaultModel.includes('v'), // glm-4v, glm-4.6v have vision
+        thinking: false,
+        vision: false,
       },
     };
   }

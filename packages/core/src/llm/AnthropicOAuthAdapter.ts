@@ -46,6 +46,18 @@ import Anthropic from '@anthropic-ai/sdk';
 import { LLMError } from '../errors/AgentError';
 import { log } from '../logger';
 import type { MessageWithParts } from '../session/types';
+import { collectEmbeddedImages, DocumentExtractor, formatDocumentsAsText } from './DocumentExtractor';
+import { ImagePipeline, type ProcessedImage } from './ImagePipeline';
+
+/**
+ * Sanitize a tool call ID so it matches Anthropic's required pattern: ^[a-zA-Z0-9_-]+$
+ * IDs stored in DB may come from other providers (e.g. OpenAI legacy format uses dots
+ * and colons like "functions.bash-admin_bash:37"). We translate at the adapter boundary
+ * so the DB remains provider-agnostic.
+ */
+function sanitizeToolId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
 import {
   getOAuthAccessToken,
   getOAuthBetaHeaders,
@@ -88,6 +100,8 @@ export class AnthropicOAuthAdapter implements ILLMClient {
   private defaultModel: string;
   private defaultMaxTokens: number;
   private providedToken?: string;
+  private imagePipeline = new ImagePipeline();
+  private documentExtractor = new DocumentExtractor();
 
   constructor(config: AnthropicOAuthConfig) {
     if (!config.model) {
@@ -186,7 +200,7 @@ export class AnthropicOAuthAdapter implements ILLMClient {
 
     // Convert messages to Anthropic format
     // Pass cacheBreakpointIndex for optimal cache placement
-    const anthropicMessages = this.convertMessages(messages, cacheBreakpointIndex);
+    const anthropicMessages = await this.convertMessages(messages, cacheBreakpointIndex);
 
     // Convert tools to Anthropic format with cache control on the last tool
     // This caches the entire tool definitions block
@@ -272,6 +286,15 @@ export class AnthropicOAuthAdapter implements ILLMClient {
           case 'content_block_delta':
             if (event.delta.type === 'text_delta') {
               await callbacks?.onText?.(event.delta.text);
+            } else if (event.delta.type === 'thinking_delta') {
+              // Interleaved thinking (beta interleaved-thinking-2025-05-14) →
+              // progress for the stall watchdog, not silence (TER-650).
+              await callbacks?.onThinking?.(event.delta.thinking);
+            } else if (event.delta.type === 'input_json_delta') {
+              // Tool input streaming: accumulated by the SDK for finalMessage();
+              // surfaced as a heartbeat so long tool-args generations never read
+              // as a frozen socket to the stall watchdog (TER-650).
+              await callbacks?.onToolInputDelta?.(event.delta.partial_json);
             }
             break;
 
@@ -376,16 +399,78 @@ export class AnthropicOAuthAdapter implements ILLMClient {
    *                               If provided, cache_control will be added at this position.
    *                               If not provided, falls back to caching all but last 5 messages.
    */
-  private convertMessages(
+  private async convertMessages(
     messages: MessageWithParts[],
     cacheBreakpointIndex?: number,
-  ): Anthropic.MessageParam[] {
+  ): Promise<Anthropic.MessageParam[]> {
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
     for (const msg of messages) {
       const role = msg.info.role === 'user' ? 'user' : 'assistant';
-      const textAndToolUse: Array<Anthropic.TextBlockParam | Anthropic.ToolUseBlockParam> = [];
+      const textAndToolUse: Array<Anthropic.TextBlockParam | Anthropic.ToolUseBlockParam | Anthropic.ImageBlockParam> = [];
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
+
+      // Process images for user messages
+      const imageParts = msg.parts.filter(
+        (p): p is import('../session/types').FilePart =>
+          p.type === 'file' && p.mime?.startsWith('image/') && role === 'user',
+      );
+      let processedImages: Map<string, ProcessedImage> = new Map();
+      if (imageParts.length > 0) {
+        if (!this.imagePipeline.supportsVision(this.defaultModel)) {
+          log.warn(
+            'AnthropicOAuth',
+            `Model ${this.defaultModel} does not support vision — skipping ${imageParts.length} image(s)`,
+          );
+        } else {
+          try {
+            processedImages = await this.imagePipeline.processImages(imageParts, 'anthropic');
+          } catch (error: any) {
+            log.error('AnthropicOAuth', 'Failed to process images for message', undefined, { reason: error.message });
+          }
+        }
+      }
+
+      // Extract text + embedded images from non-image documents (PPTX/DOCX/XLSX/ODT/PDF/RTF/plain text)
+      const documentParts = msg.parts.filter(
+        (p): p is import('../session/types').FilePart =>
+          p.type === 'file' &&
+          !p.mime?.startsWith('image/') &&
+          DocumentExtractor.supportsDocument(p.mime) &&
+          role === 'user',
+      );
+      if (documentParts.length > 0) {
+        try {
+          const extracted = await this.documentExtractor.extractDocuments(documentParts);
+          const documentText = formatDocumentsAsText(extracted);
+          if (documentText) {
+            textAndToolUse.push({ type: 'text', text: documentText });
+          }
+          const flat = collectEmbeddedImages(extracted);
+          if (flat.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+            for (const img of flat) {
+              const processed = await this.imagePipeline.processBuffer(img.buffer, img.mimeType, 'anthropic');
+              if (processed) {
+                textAndToolUse.push({
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                    data: processed.base64,
+                  },
+                } as Anthropic.ImageBlockParam);
+              }
+            }
+          } else if (flat.length > 0) {
+            log.warn(
+              'AnthropicOAuth',
+              `Model ${this.defaultModel} not vision-capable — skipping ${flat.length} embedded image(s) from document(s)`,
+            );
+          }
+        } catch (error: any) {
+          log.error('AnthropicOAuth', 'Failed to extract documents for message', undefined, { reason: error.message });
+        }
+      }
 
       for (const part of msg.parts) {
         if (part.type === 'text') {
@@ -394,13 +479,23 @@ export class AnthropicOAuthAdapter implements ILLMClient {
             text: part.text,
           } as Anthropic.TextBlockParam);
         } else if (part.type === 'tool') {
+          // INV-1: orphan tool_use must be remediated upstream (assertInvariantINV1
+          // in PromptBuilder). Throw rather than skip — a silent skip drops the tool
+          // from the LLM's view and corrupts history (same defense as AnthropicLLMAdapter).
+          if (part.state.status !== 'completed' && part.state.status !== 'error') {
+            throw new Error(
+              `INV-1 violation reached AnthropicOAuthAdapter: ToolPart ${part.callID} ` +
+                `(tool=${part.tool}) has status=${part.state.status}. ` +
+                `Expected 'completed' or 'error' — check assertInvariantINV1 in PromptBuilder.`,
+            );
+          }
           if (
             role === 'assistant' &&
             (part.state.status === 'completed' || part.state.status === 'error')
           ) {
             textAndToolUse.push({
               type: 'tool_use',
-              id: part.callID,
+              id: sanitizeToolId(part.callID),
               name: part.tool,
               input: part.state.input || {},
             } as Anthropic.ToolUseBlockParam);
@@ -408,14 +503,14 @@ export class AnthropicOAuthAdapter implements ILLMClient {
             if (part.state.status === 'completed') {
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: part.callID,
+                tool_use_id: sanitizeToolId(part.callID),
                 content: part.state.output,
                 is_error: false,
               } as Anthropic.ToolResultBlockParam);
             } else {
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: part.callID,
+                tool_use_id: sanitizeToolId(part.callID),
                 content: part.state.error,
                 is_error: true,
               } as Anthropic.ToolResultBlockParam);
@@ -424,18 +519,31 @@ export class AnthropicOAuthAdapter implements ILLMClient {
             if (part.state.status === 'completed') {
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: part.callID,
+                tool_use_id: sanitizeToolId(part.callID),
                 content: part.state.output,
                 is_error: false,
               } as Anthropic.ToolResultBlockParam);
             } else if (part.state.status === 'error') {
               toolResults.push({
                 type: 'tool_result',
-                tool_use_id: part.callID,
+                tool_use_id: sanitizeToolId(part.callID),
                 content: part.state.error,
                 is_error: true,
               } as Anthropic.ToolResultBlockParam);
             }
+          }
+        } else if (part.type === 'file' && part.mime?.startsWith('image/') && role === 'user') {
+          // Convert image file to Anthropic image block
+          const processed = processedImages.get(part.url);
+          if (processed) {
+            textAndToolUse.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                data: processed.base64,
+              },
+            } as Anthropic.ImageBlockParam);
           }
         }
       }
@@ -498,13 +606,16 @@ export class AnthropicOAuthAdapter implements ILLMClient {
         totalMessages: messages.length,
       });
     } else {
-      // Fallback: cache all but last 5 messages
-      const MESSAGES_TO_KEEP_FRESH = 5;
-      anthropicCacheIndex = messages.length - MESSAGES_TO_KEEP_FRESH - 1;
+      // Fallback: mod-N strategy — snap to nearest lower multiple of BLOCK_SIZE.
+      // This prevents cache thrashing when cacheBreakpointIndex is not provided.
+      const BLOCK_SIZE = 20;
+      const snapped = Math.floor(messages.length / BLOCK_SIZE) * BLOCK_SIZE;
+      anthropicCacheIndex = snapped > 0 ? snapped - 1 : -1;
 
-      log.debug(MODULE, 'Using fallback cache breakpoint (last 5 fresh)', {
+      log.debug(MODULE, 'Using fallback cache breakpoint (mod-N block strategy)', {
         anthropicIndex: anthropicCacheIndex,
         totalMessages: messages.length,
+        blockSize: BLOCK_SIZE,
       });
     }
 
@@ -537,6 +648,7 @@ export class AnthropicOAuthAdapter implements ILLMClient {
         streaming: true,
         tools: true,
         thinking: true,
+        vision: true,
       },
     };
   }

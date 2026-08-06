@@ -4,7 +4,7 @@
  * HTTP client for MCA → Backend communication.
  * Uses the callbackUrl from ExecutionContext to send requests back to the backend.
  *
- * @see docs/rfc-003-mca-endpoints.md
+ *
  */
 
 import type {
@@ -54,6 +54,8 @@ export interface BackendClientConfig {
   appId?: string;
   /** MCA catalog ID (e.g., 'mca.perplexity') for system secrets lookup */
   mcaId?: string;
+  /** Bearer token for authenticating MCA → Backend requests (MCA_CALLBACK_TOKEN) */
+  callbackToken?: string;
 }
 
 export interface BackendClientError extends Error {
@@ -70,9 +72,10 @@ export interface BackendClientError extends Error {
  * Client for MCA → Backend HTTP calls
  */
 export class McaBackendClient {
-  private config: Required<Omit<BackendClientConfig, 'appId' | 'mcaId'>> & {
+  private config: Required<Omit<BackendClientConfig, 'appId' | 'mcaId' | 'callbackToken'>> & {
     appId?: string;
     mcaId?: string;
+    callbackToken?: string;
   };
 
   constructor(config: BackendClientConfig) {
@@ -81,6 +84,7 @@ export class McaBackendClient {
       timeout: config.timeout ?? 30000,
       appId: config.appId,
       mcaId: config.mcaId,
+      callbackToken: config.callbackToken,
     };
   }
 
@@ -93,6 +97,61 @@ export class McaBackendClient {
    */
   async emitEvent(request: EmitEventRequest): Promise<EmitEventResponse> {
     return this.post<EmitEventResponse>('/events', request);
+  }
+
+  // ==========================================================================
+  // LAYER 2: SUBSCRIPTIONS
+  // ==========================================================================
+
+  /**
+   * Create a channel subscription so this channel receives events for a given topic.
+   * The backend will inject a message (and optionally wake the agent) whenever a
+   * matching event is dispatched.
+   *
+   * @param topic   - Topic pattern, e.g. "scheduler.reminder", "gmail.email.received"
+   * @param mode    - "notify": inject event only; "wake": inject + trigger agent response
+   * @param rules   - OR array of rule objects for filtering (empty = always match)
+   * @param channelId - Target channel (defaults to the current execution context channel)
+   */
+  async createChannelSubscription(params: {
+    topic: string;
+    mode: 'notify' | 'wake';
+    rules?: Record<string, unknown>[];
+    channelId?: string;
+  }): Promise<{ success: boolean; subscription: { id: string; topic: string; channelId: string; mode: string } }> {
+    return this.post('/subscriptions/channel', {
+      action: 'create',
+      topic: params.topic,
+      mode: params.mode,
+      rules: params.rules ?? [],
+      ...(params.channelId ? { channelId: params.channelId } : {}),
+    });
+  }
+
+  /**
+   * Delete a channel subscription by its ID.
+   */
+  async deleteChannelSubscription(subscriptionId: string): Promise<{ success: boolean; deleted: boolean }> {
+    return this.post('/subscriptions/channel', {
+      action: 'delete',
+      subscriptionId,
+    });
+  }
+
+  /**
+   * Delete all channel subscriptions for a given topic + channelId pair.
+   * Use this for cleanup when a MCA no longer needs to deliver events to a channel
+   * (e.g., all reminders for a channel have been cancelled).
+   */
+  async deleteChannelSubscriptionsByTopic(params: {
+    topic: string;
+    channelId?: string;
+  }): Promise<{ success: boolean; deletedCount: number }> {
+    return this.post('/subscriptions/channel', {
+      action: 'delete-by-topic',
+      topic: params.topic,
+      ...(params.channelId ? { channelId: params.channelId } : {}),
+    });
   }
 
   // ==========================================================================
@@ -222,7 +281,6 @@ export class McaBackendClient {
   }
 
   async agentCreate(data: {
-    coreId: string;
     name: string;
     fullName: string;
     role: string;
@@ -354,6 +412,25 @@ export class McaBackendClient {
     return this.post<{ agents: any[] }>(`/resources/apps/${appId}/access`, {});
   }
 
+  async appPermissionsGet(appId: string): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/permissions`, {});
+  }
+
+  async appPermissionsSet(
+    appId: string,
+    changes: { all?: string; tools?: Record<string, string> },
+  ): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/permissions`, { action: 'set', ...changes });
+  }
+
+  async appShowAuth(appId: string): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/auth`, {});
+  }
+
+  async appCheckAuth(appId: string): Promise<any> {
+    return this.post<any>(`/resources/apps/${appId}/auth`, { action: 'check' });
+  }
+
   async workspaceAppList(workspaceId: string): Promise<{ apps: any[] }> {
     return this.post<{ apps: any[] }>(`/resources/workspaces/${workspaceId}/apps`, {});
   }
@@ -363,15 +440,11 @@ export class McaBackendClient {
   }
 
   // ==========================================================================
-  // RESOURCES: CATALOG & CORES
+  // RESOURCES: CATALOG
   // ==========================================================================
 
   async catalogList(category?: string, includeHidden?: boolean): Promise<{ catalog: any[] }> {
     return this.post<{ catalog: any[] }>('/resources/catalog', { category, includeHidden });
-  }
-
-  async agentCoresList(): Promise<{ cores: any[] }> {
-    return this.post<{ cores: any[] }>('/resources/agent-cores', {});
   }
 
   // ==========================================================================
@@ -384,6 +457,53 @@ export class McaBackendClient {
 
   async accessRevoke(agentId: string, appId: string): Promise<any> {
     return this.post<any>(`/resources/access/${agentId}/${appId}`, {});
+  }
+
+  // ==========================================================================
+  // RESOURCES: SKILLS
+  // ==========================================================================
+
+  async skillList(workspaceId: string): Promise<{ skills: any[] }> {
+    return this.post<{ skills: any[] }>('/resources/skills', { action: 'list', workspaceId });
+  }
+
+  async skillCreate(data: {
+    workspaceId: string;
+    name: string;
+    description?: string;
+    content: string;
+  }): Promise<any> {
+    return this.post<any>('/resources/skills', { action: 'create', ...data });
+  }
+
+  async skillUpdate(
+    skillId: string,
+    data: { name?: string; description?: string; content?: string },
+  ): Promise<any> {
+    return this.post<any>(`/resources/skills/${skillId}`, { action: 'update', ...data });
+  }
+
+  async skillDelete(skillId: string): Promise<any> {
+    return this.post<any>(`/resources/skills/${skillId}`, { action: 'delete' });
+  }
+
+  async skillGrantAccess(agentId: string, skillId: string): Promise<any> {
+    return this.post<any>('/resources/skills/access', { agentId, skillId });
+  }
+
+  async skillRevokeAccess(agentId: string, skillId: string): Promise<any> {
+    return this.post<any>(`/resources/skills/access/${agentId}/${skillId}`, { action: 'revoke' });
+  }
+
+  async skillSetEnabled(agentId: string, skillId: string, enabled: boolean): Promise<any> {
+    return this.post<any>(`/resources/skills/access/${agentId}/${skillId}/enabled`, {
+      action: 'set-enabled',
+      enabled,
+    });
+  }
+
+  async skillGetAgentSkills(agentId: string): Promise<{ skills: any[] }> {
+    return this.post<{ skills: any[] }>(`/resources/skills/agent/${agentId}`, {});
   }
 
   // ==========================================================================
@@ -470,6 +590,7 @@ export class McaBackendClient {
           'Content-Type': 'application/json',
           ...(this.config.appId && { 'X-App-Id': this.config.appId }),
           ...(this.config.mcaId && { 'X-Mca-Id': this.config.mcaId }),
+          ...(this.config.callbackToken && { Authorization: `Bearer ${this.config.callbackToken}` }),
         },
         body: JSON.stringify(body),
         signal: controller.signal,
@@ -495,7 +616,11 @@ export class McaBackendClient {
           : `Backend request failed: ${response.status} ${response.statusText}`;
 
         const error = new Error(errorMessage) as BackendClientError;
-        error.code = 'BACKEND_ERROR';
+        // Un 401 en un callback significa que el MCA_CALLBACK_TOKEN del contenedor
+        // ya no es válido para el backend (token efímero desincronizado). Es fatal
+        // y no se recupera sin respawn — el código permite a los consumidores (p.ej.
+        // el watcher) detenerse limpiamente en vez de martillar el endpoint (TER-389).
+        error.code = response.status === 401 ? 'CALLBACK_TOKEN_INVALID' : 'BACKEND_ERROR';
         error.statusCode = response.status;
         error.response = errorBody;
         throw error;
@@ -539,6 +664,7 @@ export class McaBackendClient {
       callbackUrl: context.callbackUrl,
       appId: context.appId,
       mcaId: context.mcaId,
+      callbackToken: process.env.MCA_CALLBACK_TOKEN,
     });
   }
 }
@@ -554,6 +680,7 @@ export function createBackendClient(
   callbackUrl: string,
   appId?: string,
   mcaId?: string,
+  callbackToken?: string,
 ): McaBackendClient {
-  return new McaBackendClient({ callbackUrl, appId, mcaId });
+  return new McaBackendClient({ callbackUrl, appId, mcaId, callbackToken });
 }

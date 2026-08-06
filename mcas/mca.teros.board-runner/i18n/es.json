@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la conectividad WebSocket con el backend.\n\nIMPORTANTE — Protocolo de parada cooperativa:\nAl inicio de cada turno, comprueba si la tarea actual tiene stopRequested=true llamando a get-my-task.\nSi stopRequested es true en tu tarea activa:\n1. Termina solo el paso atómico actual (no empieces trabajo nuevo).\n2. Añade una nota de progreso explicando dónde lo dejaste.\n3. Llama a block-my-task con un motivo explicando dónde te detuviste.\n4. NO continúes con más llamadas a herramientas después de completar los pasos 1-3."
+    },
+    "get-my-tasks": {
+      "name": "get-my-tasks",
+      "description": "Lista las tareas asignadas a este agente en todos los proyectos del workspace. Devuelve: { agentId, tasks: [{ taskId, title, columnName, columnSlug, priority, projectName, running, stopRequested }], nextCursor? }. Paginado: por defecto 50, máximo 200. Usa get-my-task para la tarea activa en la conversación actual.",
+      "params": {
+        "workspaceId": "ID del workspace (opcional, por defecto el workspace actual)",
+        "tags": "Devuelve solo las tareas que tienen TODAS estas etiquetas (opcional). Útil para un ámbito de ciclo/release (ej. [\"cycle:sesion-20260412\"]).",
+        "fields": "Subconjunto personalizado de campos",
+        "includeRaw": "Devolver documentos completos de las tareas",
+        "limit": "Resultados máximos (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    },
+    "get-my-task": {
+      "name": "get-my-task",
+      "description": "Obtiene la tarea vinculada a la conversación actual (ruta rápida). Devuelve: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Comprueba stopRequested en cada turno; si es true, termina el paso actual, añade una nota de progreso, llama a block-my-task y detente.",
+      "params": {
+        "fields": "Subconjunto personalizado de campos",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "complete-my-task": {
+      "name": "complete-my-task",
+      "description": "Marca tu tarea asignada como completada. La mueve a Review (lista para revisión del manager). Funciona desde cualquier columna, incluyendo Blocked. Limpia el flag de ejecución. Devuelve: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "block-my-task": {
+      "name": "block-my-task",
+      "description": "Marca tu tarea asignada como bloqueada. La mueve a Blocked + añade una nota de progreso con el motivo. Limpia el flag de ejecución. Usar para dependencias, información faltante o bloqueantes externos. Devuelve: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: \"blocked\" } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "reason": "Motivo por el que la tarea está bloqueada (se añade como nota de progreso)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "cancel-my-task": {
+      "name": "cancel-my-task",
+      "description": "Cancela tu tarea asignada. La archiva in situ (no cambia de columna) + añade una nota de progreso con el motivo. Limpia el flag de ejecución. Usar cuando la tarea ya no es necesaria, es un duplicado o no se puede completar. Devuelve: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "reason": "Motivo por el que la tarea se cancela (se añade como nota de progreso)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "Añade una nota de progreso a una de tus tareas asignadas. Las notas son visibles en el detalle de la tarea y en el tablero. Usa el prefijo \"PROPUESTA: \" para sugerir nuevas tareas al manager. Devuelve: { task: { ...TASK_WITH_PROGRESS_FIELDS } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "text": "Texto de la nota de progreso",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    }
+  },
+  "name": "Board Runner",
+  "description": "Capacidades de ejecución de tareas para agentes trabajadores. Proporciona acceso únicamente a las tareas asignadas — ver detalles de tareas, actualizar progreso, mover tareas por las etapas del flujo de trabajo y añadir notas de progreso. Para proponer nuevas tareas o escalar bloqueantes, usa el campo de notas con el prefijo 'PROPUESTA:' para que el supervisor pueda actuar.",
+  "changelog": [
+    {
+      "notes": "Consulta tus tareas asignadas, registra notas de progreso y mueve el trabajo por las etapas de completado, bloqueado o cancelado"
+    }
+  ]
+}

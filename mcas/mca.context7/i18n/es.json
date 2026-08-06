@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la presencia de la clave API de Context7 y la conectividad."
+    },
+    "resolve-library": {
+      "name": "resolve-library",
+      "description": "Resuelve un identificador de librería de Context7 a partir de un nombre en texto libre (ej. \"react\" → \"/reactjs/react.dev\"). Devuelve candidatos ordenados por reputación y número de fragmentos. Caché: 7d. Usa el `id` elegido como `libraryId` para `get-docs`.",
+      "params": {
+        "libraryName": "Nombre de la librería a resolver (ej. \"react\", \"tamagui\")",
+        "query": "Consulta opcional de refinamiento (ej. \"hooks\", \"router\")"
+      }
+    },
+    "get-docs": {
+      "name": "get-docs",
+      "description": "Obtiene fragmentos de documentación actualizados para un libraryId resuelto con Context7. Devuelve un array de {title, source, description, code, language}. Usa `resolve-library` primero para obtener el libraryId.",
+      "params": {
+        "libraryId": "ID de librería compatible con Context7 (ej. \"/reactjs/react.dev\"). Obténlo con `resolve-library`.",
+        "query": "Tema o pregunta (ej. \"useEffect cleanup\", \"router hooks\")",
+        "format": "Formato de respuesta de Context7 (por defecto: json)",
+        "limit": "Máximo de fragmentos a devolver (por defecto 10, máximo 30)"
+      }
+    }
+  },
+  "name": "Context7",
+  "description": "Documentación actualizada de librerías y frameworks vía Context7 (Upstash). Resuelve identificadores de librerías y obtiene fragmentos estructurados de documentación con ejemplos de código.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — encuentra librerías de software por nombre y obtiene fragmentos de documentación actualizados con ejemplos de código reales"
+    }
+  ]
+}

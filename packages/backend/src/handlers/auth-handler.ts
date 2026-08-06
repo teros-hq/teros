@@ -8,48 +8,57 @@
  * - Registration
  */
 
-import type { AuthMessage, UserId } from '@teros/shared';
-import { type AuthService, getAuthService } from '../auth/auth-service';
-import { type GoogleAuth, getGoogleAuth } from '../auth/google-auth';
-import type { User } from '../auth/types';
-import type { SessionManager } from '../services/session-manager';
+import type { AuthMessage, UserId } from "@teros/shared"
+import { type AuthService, getAuthService } from "../auth/auth-service"
+import { type GoogleAuth, getGoogleAuth } from "../auth/google-auth"
+import type { User } from "../auth/types"
+import type { SessionManager } from "../services/session-manager"
 
 export interface AuthResult {
-  success: boolean;
-  userId?: UserId;
-  sessionToken?: string;
-  user?: ClientUser;
-  role?: string;
-  error?: string;
-  errorCode?: string;
+  success: boolean
+  userId?: UserId
+  sessionToken?: string
+  user?: ClientUser
+  role?: string
+  error?: string
+  errorCode?: string
   /** For OAuth: URL to redirect user to */
-  redirectUrl?: string;
+  redirectUrl?: string
   /** OAuth URL (alias for redirectUrl) */
-  url?: string;
+  url?: string
   /** OAuth state token */
-  state?: string;
+  state?: string
   /** For account locked */
-  lockedUntil?: Date;
+  lockedUntil?: Date
+  /** Present when the session is an impersonation session */
+  impersonation?: {
+    isImpersonating: true
+    impersonatedBy: string
+    impersonatedByName: string
+  }
 }
 
 /** User data safe to send to client */
 export interface ClientUser {
-  userId: string;
+  userId: string
   profile: {
-    displayName: string;
-    email: string;
-    avatarUrl?: string;
-    locale?: string;
-    timezone?: string;
-  };
-  status: string;
-  role: string;
-  emailVerified: boolean;
+    displayName: string
+    email: string
+    avatarUrl?: string
+    locale?: string
+    timezone?: string
+  }
+  status: string
+  role: string
+  emailVerified: boolean
+  termsAcceptedAt?: string
+  onboardingCompletedAt?: string
+  accessGranted?: boolean
 }
 
 export class AuthHandler {
-  private authService: AuthService | null = null;
-  private googleAuth: GoogleAuth | null = null;
+  private authService: AuthService | null = null
+  private googleAuth: GoogleAuth | null = null
 
   constructor(private sessionManager: SessionManager) {}
 
@@ -58,9 +67,9 @@ export class AuthHandler {
    */
   private getAuth(): AuthService {
     if (!this.authService) {
-      this.authService = getAuthService();
+      this.authService = getAuthService()
     }
-    return this.authService;
+    return this.authService
   }
 
   /**
@@ -72,34 +81,34 @@ export class AuthHandler {
   ): Promise<AuthResult> {
     // Handle different auth methods
     switch (message.method) {
-      case 'credentials':
-        return this.authenticateWithCredentials(message.email, message.password, metadata);
+      case "credentials":
+        return this.authenticateWithCredentials(message.email, message.password, metadata)
 
-      case 'token':
-        return this.authenticateWithToken(message.sessionToken);
+      case "token":
+        return this.authenticateWithToken(message.sessionToken)
 
       // Extended auth methods (need protocol update)
       default: {
         // Check for extended methods via type assertion
-        const extendedMessage = message as any;
+        const extendedMessage = message as any
 
-        if (extendedMessage.method === 'register') {
-          // Registration via email/password is disabled — only OAuth is supported
-          return {
-            success: false,
-            error: 'Registration via email/password is disabled. Please use Google to sign in.',
-            errorCode: 'method_not_allowed',
-          };
+        if (extendedMessage.method === "register") {
+          return this.register(
+            extendedMessage.email,
+            extendedMessage.password,
+            extendedMessage.displayName,
+            metadata,
+          )
         }
 
-        if (extendedMessage.method === 'google_init') {
-          return this.initGoogleAuth();
+        if (extendedMessage.method === "google_init") {
+          return this.initGoogleAuth()
         }
 
         return {
           success: false,
           error: `Unknown auth method: ${extendedMessage.method}`,
-        };
+        }
       }
     }
   }
@@ -113,13 +122,13 @@ export class AuthHandler {
     metadata?: { userAgent?: string; ipAddress?: string },
   ): Promise<AuthResult> {
     try {
-      const auth = this.getAuth();
+      const auth = this.getAuth()
       const result = await auth.loginWithPassword({
         email,
         password,
         userAgent: metadata?.userAgent,
         ipAddress: metadata?.ipAddress,
-      });
+      })
 
       if (!result.success) {
         return {
@@ -127,7 +136,7 @@ export class AuthHandler {
           error: result.error,
           errorCode: result.errorCode,
           lockedUntil: result.lockedUntil,
-        };
+        }
       }
 
       return {
@@ -135,13 +144,13 @@ export class AuthHandler {
         userId: result.user!.userId as UserId,
         sessionToken: result.session!.token,
         user: this.toClientUser(result.user!),
-      };
+      }
     } catch (error) {
-      console.error('[AuthHandler] Login error:', error);
+      console.error("[AuthHandler] Login error:", error)
       return {
         success: false,
-        error: 'Authentication failed',
-      };
+        error: "Authentication failed",
+      }
     }
   }
 
@@ -150,15 +159,15 @@ export class AuthHandler {
    */
   private async authenticateWithToken(token: string): Promise<AuthResult> {
     try {
-      const auth = this.getAuth();
-      const result = await auth.validateSession(token);
+      const auth = this.getAuth()
+      const result = await auth.validateSession(token)
 
       if (!result.success) {
         return {
           success: false,
           error: result.error,
           errorCode: result.errorCode,
-        };
+        }
       }
 
       return {
@@ -166,13 +175,14 @@ export class AuthHandler {
         userId: result.user!.userId as UserId,
         sessionToken: token,
         user: this.toClientUser(result.user!),
-      };
+        impersonation: result.impersonationMeta,
+      }
     } catch (error) {
-      console.error('[AuthHandler] Token validation error:', error);
+      console.error("[AuthHandler] Token validation error:", error)
       return {
         success: false,
-        error: 'Invalid session token',
-      };
+        error: "Invalid session token",
+      }
     }
   }
 
@@ -186,21 +196,21 @@ export class AuthHandler {
     metadata?: { userAgent?: string; ipAddress?: string },
   ): Promise<AuthResult> {
     try {
-      const auth = this.getAuth();
+      const auth = this.getAuth()
       const result = await auth.register({
         email,
         password,
         displayName,
         userAgent: metadata?.userAgent,
         ipAddress: metadata?.ipAddress,
-      });
+      })
 
       if (!result.success) {
         return {
           success: false,
           error: result.error,
           errorCode: result.errorCode,
-        };
+        }
       }
 
       return {
@@ -208,13 +218,13 @@ export class AuthHandler {
         userId: result.user!.userId as UserId,
         sessionToken: result.session!.token,
         user: this.toClientUser(result.user!),
-      };
+      }
     } catch (error) {
-      console.error('[AuthHandler] Registration error:', error);
+      console.error("[AuthHandler] Registration error:", error)
       return {
         success: false,
-        error: 'Registration failed',
-      };
+        error: "Registration failed",
+      }
     }
   }
 
@@ -223,7 +233,7 @@ export class AuthHandler {
    * Returns URL for client to open in browser
    */
   async initGoogleOAuth(): Promise<AuthResult> {
-    return this.initGoogleAuth();
+    return this.initGoogleAuth()
   }
 
   /**
@@ -231,30 +241,30 @@ export class AuthHandler {
    * Returns URL for client to open in browser
    */
   private async initGoogleAuth(): Promise<AuthResult> {
-    const googleAuth = getGoogleAuth();
+    const googleAuth = getGoogleAuth()
 
     if (!googleAuth) {
       return {
         success: false,
-        error: 'Google authentication not configured',
-      };
+        error: "Google authentication not configured",
+      }
     }
 
     try {
-      const { url, state } = await googleAuth.generateAuthUrl();
+      const { url, state } = await googleAuth.generateAuthUrl()
 
       return {
         success: true,
         redirectUrl: url,
         url,
         state,
-      };
+      }
     } catch (error) {
-      console.error('[AuthHandler] Google auth init error:', error);
+      console.error("[AuthHandler] Google auth init error:", error)
       return {
         success: false,
-        error: 'Failed to initialize Google authentication',
-      };
+        error: "Failed to initialize Google authentication",
+      }
     }
   }
 
@@ -267,32 +277,32 @@ export class AuthHandler {
     state: string,
     metadata?: { userAgent?: string; ipAddress?: string },
   ): Promise<AuthResult> {
-    const googleAuth = getGoogleAuth();
+    const googleAuth = getGoogleAuth()
 
     if (!googleAuth) {
       return {
         success: false,
-        error: 'Google authentication not configured',
-      };
+        error: "Google authentication not configured",
+      }
     }
 
     try {
       // Complete OAuth flow
-      const oauthResult = await googleAuth.completeOAuthFlow(code, state);
+      const oauthResult = await googleAuth.completeOAuthFlow(code, state)
 
       if (!oauthResult.success) {
         return {
           success: false,
           error: oauthResult.error,
-        };
+        }
       }
 
-      const { userInfo, tokens } = oauthResult;
+      const { userInfo, tokens } = oauthResult
 
       // Login or create user via AuthService
-      const auth = this.getAuth();
+      const auth = this.getAuth()
       const result = await auth.loginWithOAuth({
-        provider: 'google',
+        provider: "google",
         providerUserId: userInfo!.id,
         email: userInfo!.email,
         displayName: userInfo!.name,
@@ -308,17 +318,17 @@ export class AuthHandler {
           avatarUrl: userInfo!.picture,
           raw: userInfo,
         },
-        scopes: tokens!.scope?.split(' '),
+        scopes: tokens!.scope?.split(" "),
         userAgent: metadata?.userAgent,
         ipAddress: metadata?.ipAddress,
-      });
+      })
 
       if (!result.success) {
         return {
           success: false,
           error: result.error,
           errorCode: result.errorCode,
-        };
+        }
       }
 
       return {
@@ -326,13 +336,13 @@ export class AuthHandler {
         userId: result.user!.userId as UserId,
         sessionToken: result.session!.token,
         user: this.toClientUser(result.user!),
-      };
+      }
     } catch (error) {
-      console.error('[AuthHandler] Google callback error:', error);
+      console.error("[AuthHandler] Google callback error:", error)
       return {
         success: false,
-        error: 'Google authentication failed',
-      };
+        error: "Google authentication failed",
+      }
     }
   }
 
@@ -341,11 +351,11 @@ export class AuthHandler {
    */
   async logout(token: string): Promise<boolean> {
     try {
-      const auth = this.getAuth();
-      return auth.logout(token);
+      const auth = this.getAuth()
+      return auth.logout(token)
     } catch (error) {
-      console.error('[AuthHandler] Logout error:', error);
-      return false;
+      console.error("[AuthHandler] Logout error:", error)
+      return false
     }
   }
 
@@ -363,8 +373,11 @@ export class AuthHandler {
         timezone: user.profile.timezone,
       },
       status: user.status,
-      role: user.role || 'user',
+      role: user.role || "user",
       emailVerified: user.emailVerified,
-    };
+      termsAcceptedAt: user.termsAcceptedAt?.toISOString(),
+      onboardingCompletedAt: user.onboardingCompletedAt?.toISOString(),
+      accessGranted: user.accessGranted,
+    }
   }
 }

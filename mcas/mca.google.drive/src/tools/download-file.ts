@@ -1,5 +1,6 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import {
+  ALL_DRIVES,
   ensureAuthenticated,
   initializeGoogleClients,
   saveToDownloads,
@@ -21,6 +22,7 @@ const EXTENSION_MAP: Record<string, string> = {
 };
 
 export const downloadFile: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Download a file from Google Drive.',
   parameters: {
     type: 'object',
@@ -47,6 +49,7 @@ export const downloadFile: ToolConfig = {
       async () => {
         // Get file info
         const fileInfo = await clients.drive.files.get({
+          ...ALL_DRIVES,
           fileId,
           fields: 'id, name, mimeType, size',
         });
@@ -76,7 +79,7 @@ export const downloadFile: ToolConfig = {
         } else {
           // Regular file download
           const response = await clients.drive.files.get(
-            { fileId, alt: 'media' },
+            { ...ALL_DRIVES, fileId, alt: 'media' },
             { responseType: 'arraybuffer' },
           );
 

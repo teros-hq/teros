@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend."
+    },
+    "mca-status": {
+      "name": "mca-status",
+      "description": "Get status of all running MCA processes. Shows appId, status, tool count, idle time, and restart count for each MCA."
+    },
+    "mca-kill": {
+      "name": "mca-kill",
+      "description": "Kill a specific MCA process by appId. The process will be restarted on next use.",
+      "params": {
+        "appId": "The appId of the MCA to kill (e.g., 'app:mca-teros-bash-system')"
+      }
+    },
+    "mca-cleanup": {
+      "name": "mca-cleanup",
+      "description": "Trigger cleanup of inactive MCA processes. Kills MCAs that have been idle for too long."
+    },
+    "apps-list": {
+      "name": "apps-list",
+      "description": "List all installed apps (MCA instances) with their configuration."
+    },
+    "agent-access-list": {
+      "name": "agent-access-list",
+      "description": "List all agent app access grants. Shows which agents have access to which apps."
+    },
+    "catalog-list": {
+      "name": "catalog-list",
+      "description": "List all MCAs in the catalog (available MCAs that can be installed)."
+    }
+  },
+  "name": "MCA Manager",
+  "description": "Monitor and manage MCA processes. View running MCAs, kill processes, cleanup inactive, and manage app access.",
+  "changelog": [
+    {
+      "notes": "Monitor running apps, stop or clean up idle processes, list installed apps, browse the catalog, and review agent access"
+    }
+  ]
+}

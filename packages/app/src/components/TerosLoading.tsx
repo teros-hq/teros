@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
+import { colors } from './mca/primitives/colors';
 
 interface TerosLoadingProps {
   size?: number;
   color?: string;
 }
 
-export function TerosLoading({ size = 24, color = '#164E63' }: TerosLoadingProps) {
+export function TerosLoading({ size = 24, color = colors.indigo }: TerosLoadingProps) {
   const [activeIndex, setActiveIndex] = useState(0);
 
   // Coordinates of the 6 hexagon points

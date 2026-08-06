@@ -5,12 +5,16 @@
  */
 
 import { User } from '@tamagui/lucide-icons';
+import i18n from "../../i18n";
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { ProfileWindowContent } from './ProfileWindowContent';
 
 export interface ProfileWindowProps {
   /** Callback to log out */
   onLogout?: () => void;
+  /** Initial section to open on. Defaults to 'view'. 'plan' opens Plan & billing
+   *  directly — used by the hours-exhausted CTA in the chat. */
+  initialMode?: 'view' | 'edit' | 'plan';
 }
 
 export const profileWindowDefinition: WindowTypeDefinition<ProfileWindowProps> = {
@@ -23,9 +27,8 @@ export const profileWindowDefinition: WindowTypeDefinition<ProfileWindowProps> =
   defaultSize: { width: 480, height: 600 },
   minSize: { width: 360, height: 400 },
 
-  singleton: true,
 
-  getTitle: () => 'Mi Perfil',
+  getTitle: () => i18n.t("profile.title"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

@@ -23,6 +23,14 @@ export function createGrantAccessHandler(mcaService: McaService) {
       throw new HandlerError('MISSING_APP_ID', 'appId is required')
     }
 
+    // SEC-1 (TER-720 / A1): the caller must own the agent AND be able to access
+    // the app's workspace. Without this, any user could grant their agent access
+    // to another tenant's installed app (BOLA + a route to admin-MCA tools).
+    const allowed = await mcaService.canManageAppAccess(ctx.userId, agentId, appId)
+    if (!allowed) {
+      throw new HandlerError('ACCESS_DENIED', `You cannot manage access for app ${appId}`)
+    }
+
     await mcaService.grantAccess({
       agentId,
       appId,

@@ -1,0 +1,53 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend."
+    },
+    "admin-infra-backend-status": {
+      "name": "admin-infra-backend-status",
+      "description": "Get current status of the Teros backend including uptime, memory usage, process info, and number of running MCAs."
+    },
+    "admin-infra-restart-backend": {
+      "name": "admin-infra-restart-backend",
+      "description": "Restart the Teros backend server. This will gracefully shutdown all MCA processes and restart the backend. Use with caution - this will temporarily interrupt service.",
+      "params": {
+        "confirm": "Confirmation flag - must be true to proceed with restart"
+      }
+    },
+    "admin-infra-sync": {
+      "name": "admin-infra-sync",
+      "description": "Sync MCAs, models, and tools from filesystem to database. Run this after adding or modifying MCAs."
+    },
+    "admin-infra-mca-status": {
+      "name": "admin-infra-mca-status",
+      "description": "Get status of all running MCA processes. Super admin only."
+    },
+    "admin-infra-mca-kill": {
+      "name": "admin-infra-mca-kill",
+      "description": "Kill a running MCA process by ID. Super admin only. DESTRUCTIVE — use with caution.",
+      "params": {
+        "id": "MCA process ID to kill",
+        "confirm": "Must be true to confirm"
+      }
+    },
+    "admin-infra-mca-cleanup": {
+      "name": "admin-infra-mca-cleanup",
+      "description": "Clean up stale or dead MCA processes. Super admin only. DESTRUCTIVE — use with caution.",
+      "params": {
+        "confirm": "Must be true to confirm"
+      }
+    },
+    "admin-infra-mca-health": {
+      "name": "admin-infra-mca-health",
+      "description": "Run health checks on all MCA processes. Super admin only."
+    }
+  },
+  "name": "Teros Admin Infra",
+  "description": "Infrastructure tools for managing the Teros backend: backend status, restart, sync, and MCA process management (status, kill, cleanup, health checks).",
+  "changelog": [
+    {
+      "notes": "Check backend status, restart and sync the server, and monitor, kill, clean up and health-check app processes"
+    }
+  ]
+}

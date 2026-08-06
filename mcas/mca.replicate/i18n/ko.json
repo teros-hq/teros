@@ -1,0 +1,50 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Replicate API 토큰과 연결성을 확인합니다."
+    },
+    "replicate-list-models": {
+      "name": "replicate-list-models",
+      "description": "Replicate에서 사용할 수 있는 모델과 그 정확한 입력 매개변수를 찾습니다. 세 가지 모드: (1) 컬렉션: 카테고리 내 모델 목록 (예: \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\"). (2) 쿼리: 이름이나 설명으로 모델 검색. (3) 모델: 특정 모델에 대한 전체 입력/출력 스키마를 \"owner/name\" 형식으로 가져옵니다 (예: \"google/veo-3.1\") — replicate-run 전에 사용하여 어떤 매개변수를 전달해야 하는지 정확히 알 수 있습니다.",
+      "params": {
+        "collection": "탐색할 컬렉션 슬러그. 예: \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\".",
+        "query": "이름이나 설명으로 모델을 찾기 위한 자유 텍스트 검색 쿼리.",
+        "model": "\"owner/name\" 형식으로 특정 모델에 대한 전체 스키마를 가져옵니다 (예: \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\"). 모든 입력 매개변수와 유형, 기본값 및 설명을 반환합니다."
+      }
+    },
+    "replicate-run": {
+      "name": "replicate-run",
+      "description": "Replicate에서 모든 모델을 실행합니다. 항상 비동기식 — 예측 ID와 상태 \"starting\"으로 즉시 반환됩니다. 그런 다음 replicate-get-prediction을 사용하여 완료될 때까지 폴링합니다. 먼저 replicate-list-models를 사용하여 모델 ID와 그 정확한 입력 매개변수를 찾습니다.",
+      "params": {
+        "model": "\"owner/name\" 형식의 모델 (예: \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\", \"black-forest-labs/flux-kontext-pro\"). 사용 가능한 모델을 찾으려면 replicate-list-models를 사용하세요.",
+        "input": "모델에 대한 입력 매개변수. 정확한 스키마를 얻으려면 모델 필드와 함께 replicate-list-models를 사용하세요."
+      }
+    },
+    "replicate-get-prediction": {
+      "name": "replicate-get-prediction",
+      "description": "ID로 예측의 상태와 결과를 가져옵니다. replicate-run 후 상태가 \"succeeded\" 또는 \"failed\"가 될 때까지 폴링합니다. 성공하면 출력 필드에 결과(이미지 URL, 비디오 URL 등)가 포함됩니다.",
+      "params": {
+        "predictionId": "replicate-run에서 반환된 예측 ID"
+      }
+    },
+    "replicate-cancel-prediction": {
+      "name": "replicate-cancel-prediction",
+      "description": "ID로 실행 중이거나 대기 중인 예측을 취소합니다.",
+      "params": {
+        "predictionId": "취소할 예측 ID"
+      }
+    },
+    "replicate-list-predictions": {
+      "name": "replicate-list-predictions",
+      "description": "상태와 함께 최근 예측 목록을 나열합니다. 진행 중이거나 과거 생성물을 추적하는 데 유용합니다."
+    }
+  },
+  "name": "Replicate",
+  "description": "Replicate에서 AI 모델 실행 - FLUX 이미지 생성, Minimax 비디오, Veo 비디오 및 수천 개의 다른 모델.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — AI 모델 탐색, 이미지, 비디오 및 오디오 생성, 각 생성을 추적하거나 취소합니다."
+    }
+  ]
+}

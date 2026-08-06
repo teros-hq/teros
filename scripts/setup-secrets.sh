@@ -1,65 +1,82 @@
 #!/bin/bash
 
-# =============================================================================
-# Teros - Setup Secrets
-#
-# Generates the minimum required secrets for the backend to start.
-# Run this once after cloning the repo, before docker compose up.
-#
-# Usage:
-#   bash scripts/setup-secrets.sh
-# =============================================================================
+# Setup Secrets Script
+# Copies example secret files to actual secret files
 
 set -e
 
-SECRETS_DIR=".secrets/system"
+SECRETS_DIR=".secrets"
 
-echo ""
-echo "🔐 Teros - Setup Secrets"
-echo "========================"
+echo "🔐 Setting up secrets..."
 echo ""
 
-# Check if node is available
-if ! command -v node &> /dev/null; then
-  echo "❌ Error: node is required to generate secrets."
-  echo "   Install Node.js and try again."
+# Check if .secrets directory exists
+if [ ! -d "$SECRETS_DIR" ]; then
+  echo "❌ Error: $SECRETS_DIR directory not found"
   exit 1
 fi
 
-mkdir -p "$SECRETS_DIR"
+# Function to copy example file if target doesn't exist
+copy_if_not_exists() {
+  local example_file=$1
+  local target_file=${example_file%.example.json}.json
 
-# -----------------------------------------------------------------------------
-# encryption.json — REQUIRED
-# Used to encrypt/decrypt all user credentials stored in the database.
-# If you lose this key, all stored credentials become unrecoverable.
-# -----------------------------------------------------------------------------
-ENCRYPTION_FILE="$SECRETS_DIR/encryption.json"
+  if [ -f "$target_file" ]; then
+    echo "⏭️  Skipping $target_file (already exists)"
+  else
+    cp "$example_file" "$target_file"
+    echo "✅ Created $target_file"
+  fi
+}
 
-if [ -f "$ENCRYPTION_FILE" ]; then
-  echo "⚠️  $ENCRYPTION_FILE already exists — skipping (delete it manually to regenerate)"
-else
-  MASTER_KEY=$(node -e "const {randomBytes}=require('crypto'); process.stdout.write(randomBytes(32).toString('hex'))")
-  echo "{ \"masterKey\": \"$MASTER_KEY\" }" > "$ENCRYPTION_FILE"
-  echo "✅ Generated $ENCRYPTION_FILE"
-  echo "   ⚠️  IMPORTANT: Back this up! Losing it means losing all stored credentials."
-fi
+# Special: generate real encryption key instead of copying the invalid placeholder
+# from encryption.example.json (the example contains a literal string that is NOT
+# valid hex, which would make AES-GCM fail at runtime). If encryption.json already
+# exists we leave it alone.
+generate_encryption_key() {
+  local target_file="$SECRETS_DIR/system/encryption.json"
+  if [ -f "$target_file" ]; then
+    echo "⏭️  Skipping $target_file (already exists)"
+    return
+  fi
+  local key
+  key=$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')
+  node -e "require('fs').writeFileSync('$target_file', JSON.stringify({masterKey:'$key'},null,2)+'\n')"
+  echo "🔑 Generated $target_file with a fresh 32-byte key"
+}
+
+# Copy system secrets
+echo "📁 System secrets:"
+# Generate encryption key first (not copied from .example, see note above)
+generate_encryption_key
+for file in $SECRETS_DIR/system/*.example.json; do
+  if [ -f "$file" ]; then
+    # Skip encryption.example.json — handled by generate_encryption_key above
+    if [[ "$file" == *"encryption.example.json" ]]; then
+      continue
+    fi
+    copy_if_not_exists "$file"
+  fi
+done
 
 echo ""
-
-# -----------------------------------------------------------------------------
-# auth.json — REQUIRED
-# Used to sign session tokens.
-# -----------------------------------------------------------------------------
-AUTH_FILE="$SECRETS_DIR/auth.json"
-
-if [ -f "$AUTH_FILE" ]; then
-  echo "⚠️  $AUTH_FILE already exists — skipping (delete it manually to regenerate)"
-else
-  SESSION_SECRET=$(node -e "const {randomBytes}=require('crypto'); process.stdout.write(randomBytes(32).toString('hex'))")
-  echo "{ \"sessionTokenSecret\": \"$SESSION_SECRET\" }" > "$AUTH_FILE"
-  echo "✅ Generated $AUTH_FILE"
-fi
+echo "📁 MCA secrets:"
+# Copy MCA secrets
+for file in $SECRETS_DIR/mcas/**/credentials.example.json; do
+  if [ -f "$file" ]; then
+    copy_if_not_exists "$file"
+  fi
+done
 
 echo ""
-echo "✅ Done! You can now run: docker compose up"
+echo "✨ Done!"
 echo ""
+echo "⚠️  IMPORTANT: Edit the secret files and add your actual credentials:"
+echo "   - $SECRETS_DIR/system/anthropic.json"
+echo "   - $SECRETS_DIR/system/openai.json"
+echo "   - $SECRETS_DIR/system/database.json"
+echo "   - $SECRETS_DIR/system/auth.json"
+echo ""
+echo "🔒 Set proper permissions:"
+echo "   chmod 600 $SECRETS_DIR/**/*.json"
+

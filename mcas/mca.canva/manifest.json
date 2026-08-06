@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.canva",
   "name": "Canva",
-  "version": "0.9.0",
-  "description": "Canva design management - create, export, and manage designs via Canva Connect API",
+  "version": "1.1.0",
+  "description": "Canva design management — designs, exports, resizes, folders, assets, brand templates, autofill, and comments via the Canva Connect API.",
   "type": "integration",
   "icon": "icon.png",
   "category": "design",
@@ -30,12 +30,18 @@
       "design:content:read",
       "design:content:write",
       "design:meta:read",
+      "design:permission:read",
+      "design:permission:write",
       "folder:read",
       "folder:write",
+      "folder:permission:read",
+      "folder:permission:write",
       "asset:read",
       "asset:write",
       "brandtemplate:meta:read",
       "brandtemplate:content:read",
+      "comment:read",
+      "comment:write",
       "profile:read"
     ],
     "pkce": true,
@@ -46,7 +52,7 @@
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["canva", "design", "graphics", "templates", "export"],
+  "keywords": ["canva", "design", "graphics", "templates", "export", "resize", "comments"],
   "image": "https://www.canva.com/favicon.ico",
   "layers": {
     "tools": true,
@@ -62,12 +68,18 @@
         "design:content:read",
         "design:content:write",
         "design:meta:read",
+        "design:permission:read",
+        "design:permission:write",
         "folder:read",
         "folder:write",
+        "folder:permission:read",
+        "folder:permission:write",
         "asset:read",
         "asset:write",
         "brandtemplate:meta:read",
         "brandtemplate:content:read",
+        "comment:read",
+        "comment:write",
         "profile:read"
       ],
       "pkce": true,
@@ -75,5 +87,12 @@
       "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-05-07",
+      "notes": "Create, export, resize and import designs, organize folders and assets, autofill brand templates, and manage comments"
+    }
+  ]
 }

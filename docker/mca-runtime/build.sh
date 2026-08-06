@@ -27,6 +27,9 @@ cd packages/mca-sdk
 npm run build
 cd "$PROJECT_ROOT"
 
+echo "📦 Generating MCA union deps manifest..."
+node scripts/gen-mca-union-deps.mjs
+
 echo ""
 echo "🐳 Building Docker image..."
 

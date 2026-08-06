@@ -39,20 +39,19 @@ export default {
       bundler: 'metro',
       output: 'single',
       // PWA Configuration
-      name: 'Teros - Asistentes IA Personalizables',
+      name: 'Teros - Customizable AI Assistants',
       shortName: 'Teros',
-      description: 'Plataforma de asistentes IA con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad con inteligencia artificial.',
+      description: 'AI assistant platform with advanced capabilities. Automate tasks, manage projects, and boost your productivity with artificial intelligence.',
       themeColor: '#000000',
       backgroundColor: '#ffffff',
       display: 'standalone',
       orientation: 'portrait',
       startUrl: '/',
-      lang: 'es',
-      // PWA Icons - se generarán desde el icon principal
+      lang: 'en',
     },
     extra: {
       eas: {
-        // projectId will be set by EAS
+        projectId: '7d82a725-7473-485e-a30f-432007d70c42'
       },
     },
     plugins: [

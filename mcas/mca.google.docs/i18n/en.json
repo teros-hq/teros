@@ -1,0 +1,60 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Create a new Google Doc with a title and optional initial content. Returns the document ID and URL.",
+      "params": {
+        "title": "Title of the new Google Doc",
+        "content": "Optional initial text content for the document. Supports \\n for line breaks."
+      }
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Read content from a Google Docs document.",
+      "params": {
+        "documentId": "The ID of the document"
+      }
+    },
+    "update-document": {
+      "name": "update-document",
+      "description": "Replace all occurrences of a text string in a Google Doc. Useful for updating placeholders or specific content.",
+      "params": {
+        "documentId": "The ID of the document",
+        "findText": "Text to find and replace",
+        "replaceText": "Text to replace with",
+        "matchCase": "Whether to match case (default: true)"
+      }
+    },
+    "insert-text": {
+      "name": "insert-text",
+      "description": "Insert text at a specific position in a Google Doc. Index 1 is the start of the document.",
+      "params": {
+        "documentId": "The ID of the document",
+        "text": "Text to insert",
+        "index": "Position to insert at (1 = start of document). Use read-document to find positions."
+      }
+    },
+    "append-text": {
+      "name": "append-text",
+      "description": "Append text to the end of a Google Doc.",
+      "params": {
+        "documentId": "The ID of the document",
+        "text": "Text to append"
+      }
+    },
+    "batch-update-document": {
+      "name": "batch-update-document",
+      "description": "Perform multiple operations on a Google Doc in a single atomic request. Supports insert, delete, and replace operations.",
+      "params": {
+        "documentId": "The ID of the document",
+        "operations": "Array of operations to perform"
+      }
+    }
+  },
+  "name": "Google Docs",
+  "description": "Create, read, and edit Google Docs documents - create, read content, insert text, append text, find & replace, batch updates. To delete a document, use the Google Drive MCA."
+}

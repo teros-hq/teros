@@ -6,18 +6,27 @@
  */
 
 import { determineToolKind, extractLocations } from './tool-utils';
-import type { StreamEvent, StreamMessage, StreamPublisherConfig, ToolLocation } from './types';
+import type {
+  AgentPhase,
+  QueueState,
+  StreamEvent,
+  StreamMessage,
+  StreamPublisherConfig,
+  ToolLocation,
+} from './types';
 
 const DEFAULT_CONFIG: Required<StreamPublisherConfig> = {
   enabled: true,
-  throttleMs: 100, // Max 10 updates per second
-  maxChunkSize: 100, // Force publish after 100 chars
+  throttleMs: 40,
+  maxChunkSize: 30,
 };
 
 /**
- * Callback type for stream events
+ * Callback type for stream events.
+ * May return a Promise — StreamPublisher tracks these so callers can await
+ * all in-flight handlers via flushCallbacks().
  */
-export type StreamCallback = (event: StreamEvent) => void;
+export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
 /**
  * Usage data from LLM response
@@ -27,6 +36,8 @@ export interface LLMUsageData {
   outputTokens: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Reasoning tokens reported by the provider usage (Together; absent on Fireworks). TER-615. */
+  reasoningTokens?: number;
 }
 
 /**
@@ -59,6 +70,22 @@ export type MessageCompleteCallback = (data: {
     toolResults?: number;
     output?: number;
   };
+  /**
+   * Provider metadata accumulated across the LLM steps of this turn
+   * (typically the last response's metadata: `{ id, model, ... }`).
+   *
+   * Fix of a pre-existing bug: previously the metadata was not propagated to
+   * the callback, so consumers (agent-loop.ts:220-233) saw `data.metadata`
+   * undefined and silently fell back to `agentConfig.llm.provider`.
+   */
+  responseMetadata?: Record<string, any>;
+  /**
+   * Opaque correlation ID for the agent usage instrumentation subsystem.
+   * When present, `handleMessageComplete` propagates it as the FK
+   * `sessionUsageId` on the `llm_usage` row and as part of the
+   * `session.delta` event emitted to the UsageEventBuffer.
+   */
+  sessionUsageId?: string;
 }) => void;
 
 /**
@@ -84,6 +111,8 @@ export class StreamPublisher {
   private flushTimers: Map<string, NodeJS.Timeout> = new Map();
   private streamCallbacks: StreamCallback[] = [];
   private messageCompleteCallbacks: MessageCompleteCallback[] = [];
+  /** Tracks in-flight async callback promises for flushCallbacks() */
+  private pendingCallbackPromises: Array<Promise<void>> = [];
 
   constructor(
     private agentId: string,
@@ -115,6 +144,23 @@ export class StreamPublisher {
   }
 
   /**
+   * Await all in-flight async stream callbacks.
+   *
+   * Call this after publishToolStart() inside handleToolCall() so that
+   * the tool_start handler (which saves the tool message to DB and broadcasts
+   * the initial message + tool_call_start events) fully completes before
+   * executeTool() is called.  Without this, tool_status_update(pending_permission)
+   * can race ahead of the initial message events for Gemini (where tool calls
+   * fire after the stream ends rather than during it).
+   */
+  async flushCallbacks(): Promise<void> {
+    if (this.pendingCallbackPromises.length === 0) return;
+    const pending = this.pendingCallbackPromises;
+    this.pendingCallbackPromises = [];
+    await Promise.all(pending);
+  }
+
+  /**
    * Publish text chunk from LLM response
    *
    * Implements intelligent batching:
@@ -133,6 +179,8 @@ export class StreamPublisher {
     if (!this.config.enabled || !text) {
       return;
     }
+
+    this.publishAgentPhase(channelId, userId, 'streaming_text', threadId);
 
     const key = this.getSessionKey(sessionId);
     const now = Date.now();
@@ -266,6 +314,7 @@ export class StreamPublisher {
     if (!this.config.enabled) {
       return;
     }
+    this.publishAgentPhase(channelId, userId, 'executing_tool', threadId);
 
     // Flush any pending text before tool execution
     this.flushTextBuffer(sessionId, channelId, userId, threadId);
@@ -339,10 +388,12 @@ export class StreamPublisher {
     output?: string,
     error?: string,
     duration?: number,
+    attachments?: Array<{ url: string; mime: string; filename?: string }>,
   ): void {
     if (!this.config.enabled) {
       return;
     }
+    this.publishAgentPhase(channelId, userId, 'thinking', threadId);
 
     const event: StreamEvent = {
       channelId,
@@ -357,6 +408,7 @@ export class StreamPublisher {
         output,
         error,
         duration,
+        attachments,
       },
     };
 
@@ -428,10 +480,13 @@ export class StreamPublisher {
       toolResults?: number;
       output?: number;
     },
+    responseMetadata?: Record<string, any>,
+    sessionUsageId?: string,
   ): void {
     if (!this.config.enabled) {
       return;
     }
+    this.publishAgentPhase(channelId, userId, 'idle', threadId);
 
     // Flush any remaining text
     this.flushTextBuffer(sessionId, channelId, userId, threadId);
@@ -463,6 +518,8 @@ export class StreamPublisher {
       toolCalls,
       usage,
       breakdown,
+      responseMetadata,
+      sessionUsageId,
     };
 
     for (const callback of this.messageCompleteCallbacks) {
@@ -478,13 +535,65 @@ export class StreamPublisher {
     );
 
     // Clean up session state
-    this.cleanupSession(sessionId);
+    this.cleanupSession(sessionId, channelId);
+  }
+
+  publishQueueStateChange(
+    channelId: string,
+    userId: string,
+    messageId: string,
+    state: QueueState,
+    threadId?: number,
+    assistantId?: string,
+  ): void {
+    if (!this.config.enabled) return;
+    const baseMessage = {
+      sessionId: channelId,
+      timestamp: Date.now(),
+      messageId,
+    };
+    const message: StreamMessage =
+      state === 'done'
+        ? { ...baseMessage, type: 'queue_state', state: 'done', ...(assistantId ? { assistantId } : {}) }
+        : { ...baseMessage, type: 'queue_state', state };
+    this.publish({ channelId, threadId, userId, message });
+  }
+
+  /** Per-channel dedup so a streaming burst doesn't flood the WS. */
+  private currentAgentPhase = new Map<string, AgentPhase>();
+
+  getAgentPhase(channelId: string): AgentPhase | undefined {
+    return this.currentAgentPhase.get(channelId);
+  }
+
+  publishAgentPhase(
+    channelId: string,
+    userId: string,
+    phase: AgentPhase,
+    threadId?: number,
+  ): void {
+    if (!this.config.enabled) return;
+    const prev = this.currentAgentPhase.get(channelId);
+    if (prev === phase) return;
+    this.currentAgentPhase.set(channelId, phase);
+    const event: StreamEvent = {
+      channelId,
+      threadId,
+      userId,
+      message: {
+        type: 'agent_phase',
+        sessionId: channelId,
+        timestamp: Date.now(),
+        phase,
+      },
+    };
+    this.publish(event);
   }
 
   /**
    * Clean up resources for a session
    */
-  cleanupSession(sessionId: string): void {
+  cleanupSession(sessionId: string, channelId?: string): void {
     const key = this.getSessionKey(sessionId);
 
     this.textBuffer.delete(key);
@@ -494,24 +603,27 @@ export class StreamPublisher {
       clearTimeout(timer);
       this.flushTimers.delete(key);
     }
+    // `currentAgentPhase` is keyed by channelId — pass it explicitly when
+    // available; fall back to sessionId for legacy callers where the two
+    // coincide.
+    this.currentAgentPhase.delete(channelId ?? sessionId);
   }
 
   /**
-   * Publish event to all registered callbacks
+   * Publish event to all registered callbacks.
+   * If a callback returns a Promise, it is collected so flushCallbacks() can await it.
    */
   private publish(event: StreamEvent): void {
-    // Transform event to match expected format
-    const payload = {
-      type: 'message.chunk',
-      channelId: event.channelId,
-      userId: event.userId,
-      threadId: event.threadId,
-      data: event.message,
-    };
-
     for (const callback of this.streamCallbacks) {
       try {
-        callback(event);
+        const result = callback(event);
+        if (result instanceof Promise) {
+          this.pendingCallbackPromises.push(
+            result.catch((error) => {
+              console.error('Error in async stream callback:', error);
+            }),
+          );
+        }
       } catch (error) {
         console.error('Error in stream callback:', error);
       }

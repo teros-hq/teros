@@ -14,21 +14,19 @@ import {
   FileText,
   Presentation,
   Table,
-} from '@tamagui/lucide-icons';
+} from '../../primitives';
+import { ErrorBlock, SuccessBlock, ToolCallCard } from '../../primitives';
 import type React from 'react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
+  useDriveColors,
   getShortToolName,
-  HeaderRow,
   parseOutput,
   truncate,
 } from './shared';
@@ -49,10 +47,13 @@ interface SpreadsheetResult {
 export function ReadSpreadsheetRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useDriveColors();
+  const { t } = useTranslation();
+  const colors = useDriveColors();
   const [expanded, setExpanded] = useState(false);
 
   const parsed = parseOutput<SpreadsheetResult>(output || '');
@@ -61,7 +62,7 @@ export function ReadSpreadsheetRenderer({
 
   // Description - get range from input
   const inputParsed = typeof input === 'string' ? parseOutput<{ range?: string }>(input) : input;
-  const range = inputParsed?.range || result?.range || '';
+  const range = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.range : undefined) || result?.range || '';
 
   // Badge
   let badge: React.ReactNode = null;
@@ -80,33 +81,11 @@ export function ReadSpreadsheetRenderer({
         ? `Read spreadsheet (${range})`
         : 'Read spreadsheet';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {(status === 'failed' || result?.error) && (
-          <ErrorBlock error={result?.error || output || 'Failed to read spreadsheet'} />
+          <ErrorBlock error={result?.error || output || t('errors.drive.readSpreadsheetFailed')} />
         )}
 
         {status === 'completed' && hasData && result?.values && (
@@ -118,7 +97,7 @@ export function ReadSpreadsheetRenderer({
                     {row.slice(0, 6).map((cell, cellIndex) => (
                       <XStack
                         key={cellIndex}
-                        backgroundColor={rowIndex === 0 ? 'rgba(66,133,244,0.15)' : colors.bgInner}
+                        backgroundColor={rowIndex === 0 ? 'rgba(66,133,244,0.15)' : c.bgInner}
                         paddingVertical={4}
                         paddingHorizontal={6}
                         minWidth={60}
@@ -126,7 +105,7 @@ export function ReadSpreadsheetRenderer({
                         borderRadius={2}
                       >
                         <Text
-                          color={rowIndex === 0 ? colors.driveBlue : colors.primary}
+                          color={rowIndex === 0 ? colors.driveBlue : c.text}
                           fontSize={9}
                           fontWeight={rowIndex === 0 ? '600' : '400'}
                           numberOfLines={1}
@@ -137,12 +116,12 @@ export function ReadSpreadsheetRenderer({
                     ))}
                     {row.length > 6 && (
                       <XStack
-                        backgroundColor={colors.bgInner}
+                        backgroundColor={c.bgInner}
                         paddingVertical={4}
                         paddingHorizontal={6}
                         borderRadius={2}
                       >
-                        <Text color={colors.muted} fontSize={9}>
+                        <Text color={c.text3} fontSize={9}>
                           +{row.length - 6}
                         </Text>
                       </XStack>
@@ -150,7 +129,7 @@ export function ReadSpreadsheetRenderer({
                   </XStack>
                 ))}
                 {result.values.length > 10 && (
-                  <Text color={colors.muted} fontSize={9} paddingTop={4}>
+                  <Text color={c.text3} fontSize={9} paddingTop={4}>
                     +{result.values.length - 10} more rows
                   </Text>
                 )}
@@ -158,8 +137,7 @@ export function ReadSpreadsheetRenderer({
             </ScrollView>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -194,10 +172,13 @@ interface PresentationResult {
 export function ReadPresentationRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useDriveColors();
+  const { t } = useTranslation();
+  const colors = useDriveColors();
   const [expanded, setExpanded] = useState(false);
 
   const parsed = parseOutput<PresentationResult>(output || '');
@@ -220,33 +201,11 @@ export function ReadPresentationRenderer({
         ? `Read presentation: ${truncate(result.title, 20)}`
         : 'Read presentation';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {(status === 'failed' || result?.error) && (
-          <ErrorBlock error={result?.error || output || 'Failed to read presentation'} />
+          <ErrorBlock error={result?.error || output || t('errors.drive.readPresentationFailed')} />
         )}
 
         {status === 'completed' && result && (
@@ -254,18 +213,17 @@ export function ReadPresentationRenderer({
             {result.title && (
               <XStack gap={8} alignItems="center">
                 <Presentation size={12} color={colors.presentation} />
-                <Text color={colors.primary} fontSize={11} fontWeight="500">
+                <Text color={c.text} fontSize={11} fontWeight="500">
                   {result.title}
                 </Text>
               </XStack>
             )}
-            <Text color={colors.secondary} fontSize={10}>
+            <Text color={c.text2} fontSize={10}>
               {slideCount} slide{slideCount !== 1 ? 's' : ''} in presentation
             </Text>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -294,10 +252,13 @@ interface DocumentResult {
 export function ReadDocumentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useDriveColors();
+  const { t } = useTranslation();
+  const colors = useDriveColors();
   const [expanded, setExpanded] = useState(false);
 
   const parsed = parseOutput<DocumentResult>(output || '');
@@ -333,33 +294,11 @@ export function ReadDocumentRenderer({
         ? `Read document: ${truncate(result.title, 20)}`
         : 'Read document';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {(status === 'failed' || result?.error) && (
-          <ErrorBlock error={result?.error || output || 'Failed to read document'} />
+          <ErrorBlock error={result?.error || output || t('errors.drive.readDocumentFailed')} />
         )}
 
         {status === 'completed' && result && (
@@ -367,29 +306,28 @@ export function ReadDocumentRenderer({
             {result.title && (
               <XStack gap={8} alignItems="center">
                 <FileText size={12} color={colors.document} />
-                <Text color={colors.primary} fontSize={11} fontWeight="500">
+                <Text color={c.text} fontSize={11} fontWeight="500">
                   {result.title}
                 </Text>
               </XStack>
             )}
 
             {hasContent && (
-              <YStack backgroundColor={colors.bgInner} borderRadius={5} padding={8} maxHeight={150}>
+              <YStack backgroundColor={c.bgInner} borderRadius={5} padding={8} maxHeight={150}>
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  <Text color={colors.secondary} fontSize={10} lineHeight={16}>
+                  <Text color={c.text2} fontSize={10} lineHeight={16}>
                     {truncate(textContent, 500)}
                   </Text>
                 </ScrollView>
               </YStack>
             )}
 
-            <Text color={colors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               {wordCount} words
             </Text>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -413,19 +351,19 @@ interface SlideResult {
 export function ReadSlideRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<SlideResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.slideId ? parsed : null;
 
   // Get slide index from input
   const inputParsed =
     typeof input === 'string' ? parseOutput<{ slideIndex?: number }>(input) : input;
-  const slideIndex = inputParsed?.slideIndex;
+  const slideIndex = typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.slideIndex : undefined;
 
   // Badge
   let badge: React.ReactNode = null;
@@ -443,49 +381,27 @@ export function ReadSlideRenderer({
         ? `Slide: ${truncate(result.title, 25)}`
         : 'Read slide';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
           <YStack gap={6}>
             <XStack gap={8} alignItems="center">
               <Presentation size={12} color={colors.presentation} />
-              <Text color={colors.primary} fontSize={11} fontWeight="500" flex={1}>
+              <Text color={c.text} fontSize={11} fontWeight="500" flex={1}>
                 {result.title}
               </Text>
-              <Text color={colors.muted} fontSize={9}>
+              <Text color={c.text3} fontSize={9}>
                 Page {result.pageNumber}
               </Text>
             </XStack>
 
             {result.content && (
-              <YStack backgroundColor={colors.bgInner} borderRadius={5} padding={8} maxHeight={120}>
+              <YStack backgroundColor={c.bgInner} borderRadius={5} padding={8} maxHeight={120}>
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  <Text color={colors.secondary} fontSize={10} lineHeight={14}>
+                  <Text color={c.text2} fontSize={10} lineHeight={14}>
                     {truncate(result.content, 400)}
                   </Text>
                 </ScrollView>
@@ -494,17 +410,16 @@ export function ReadSlideRenderer({
 
             {result.notes && (
               <YStack gap={2}>
-                <Text color={colors.muted} fontSize={9}>
+                <Text color={c.text3} fontSize={9}>
                   Speaker notes:
                 </Text>
-                <Text color={colors.secondary} fontSize={9} fontStyle="italic" numberOfLines={2}>
+                <Text color={c.text2} fontSize={9} fontStyle="italic" numberOfLines={2}>
                   {truncate(result.notes, 150)}
                 </Text>
               </YStack>
             )}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }

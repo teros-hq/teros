@@ -1,0 +1,81 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "read-presentation": {
+      "name": "read-presentation",
+      "description": "Read slide content from a Google Slides presentation.",
+      "params": {
+        "presentationId": "The ID of the presentation"
+      }
+    },
+    "read-slide": {
+      "name": "read-slide",
+      "description": "Read a specific slide from a Google Slides presentation.",
+      "params": {
+        "fileId": "ID of the Google Slides file",
+        "slideIndex": "0-based index of the slide to read (0 = first slide)"
+      }
+    },
+    "create-presentation": {
+      "name": "create-presentation",
+      "description": "Create a new Google Slides presentation with a title. Returns the presentation ID and URL.",
+      "params": {
+        "title": "Title of the new presentation"
+      }
+    },
+    "add-slide": {
+      "name": "add-slide",
+      "description": "Add a new slide to a Google Slides presentation. Returns the slideObjectId of the new slide.",
+      "params": {
+        "presentationId": "The ID of the presentation",
+        "layout": "Optional layout for the new slide. Can be a layout name (blank, title-slide, title-and-body, title-and-two-columns, title-only, section-header, two-section) or a raw layout objectId. Defaults to \"blank\".",
+        "insertionIndex": "Optional 0-based index where the slide should be inserted. If omitted, the slide is appended at the end."
+      }
+    },
+    "update-slide": {
+      "name": "update-slide",
+      "description": "Update the text content of a slide in a Google Slides presentation. Can target a slide by its objectId or by 0-based slide index. Uses insertText to add text to the first text element found on the slide, or replaceAllText to replace text across the entire presentation.",
+      "params": {
+        "presentationId": "The ID of the presentation",
+        "slideObjectId": "The objectId of the slide to update. If provided, takes precedence over slideIndex.",
+        "slideIndex": "0-based index of the slide to update (used if slideObjectId is not provided).",
+        "text": "Text to insert into the slide. Supports \\n for line breaks.",
+        "mode": "insert (default): insert text into the first text shape on the slide. replace: replace all occurrences of findText with text across the entire presentation.",
+        "findText": "Text to find (required when mode=replace).",
+        "matchCase": "Whether to match case when replacing (default: true). Only used with mode=replace."
+      }
+    },
+    "delete-slide": {
+      "name": "delete-slide",
+      "description": "Delete a slide from a Google Slides presentation by its objectId or 0-based index.",
+      "params": {
+        "presentationId": "The ID of the presentation",
+        "slideObjectId": "The objectId of the slide to delete. If provided, takes precedence over slideIndex.",
+        "slideIndex": "0-based index of the slide to delete (used if slideObjectId is not provided)."
+      }
+    },
+    "batch-update": {
+      "name": "batch-update",
+      "description": "Execute advanced operations on a Google Slides presentation using the Slides API batchUpdate endpoint. Pass an array of native Slides API request objects. Supports: createSlide, deleteObject, insertText, replaceAllText, createShape, updateShapeProperties, createImage, createTable, updatePageProperties, updateTextStyle, and more. See https://developers.google.com/slides/api/reference/rest/v1/presentations/batchUpdate for full schema.",
+      "params": {
+        "presentationId": "The ID of the presentation",
+        "requests": "Array of Slides API batchUpdate request objects. Each object is a key mapped to its request type. Common types: createSlide, deleteObject, insertText, replaceAllText, createShape, createImage, createTable, createLine, updateShapeProperties, updateTextStyle, updatePageProperties, updatePageElementsZOrder, updateSlidesPosition. See https://developers.google.com/slides/api/reference/rest/v1/presentations/request for full schema."
+      }
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "Replace all occurrences of a text string across an entire Google Slides presentation. Uses the Slides API replaceAllText request to find and replace text in all slides at once.",
+      "params": {
+        "presentationId": "The ID of the presentation",
+        "findText": "Text to find and replace",
+        "replaceText": "Text to replace with. Supports \\n for line breaks.",
+        "matchCase": "Whether to match case (default: true)"
+      }
+    }
+  },
+  "name": "Google Slides",
+  "description": "Create, read, update, and delete Google Slides presentations — full read/write support for slides, text, and batch operations"
+}

@@ -1,0 +1,125 @@
+{
+  "tools": {
+    "todoist_list_tasks": {
+      "name": "todoist_list_tasks",
+      "description": "Lista tareas con filtros opcionales",
+      "params": {
+        "projectId": "Filtrar por ID de proyecto",
+        "filter": "Cadena de filtro (p. ej., 'today', 'overdue')",
+        "limit": "Número de tareas a devolver"
+      }
+    },
+    "todoist_get_task": {
+      "name": "todoist_get_task",
+      "description": "Obtiene una tarea específica",
+      "params": {
+        "taskId": "ID de la tarea a obtener"
+      }
+    },
+    "todoist_create_task": {
+      "name": "todoist_create_task",
+      "description": "Crea una nueva tarea",
+      "params": {
+        "content": "Contenido/descripción de la tarea",
+        "projectId": "ID del proyecto (por defecto: bandeja de entrada)",
+        "dueString": "Fecha límite (p. ej., 'tomorrow', '2025-01-01')",
+        "priority": "Prioridad (1=urgente, 4=ninguna)",
+        "labels": "IDs de etiquetas"
+      }
+    },
+    "todoist_update_task": {
+      "name": "todoist_update_task",
+      "description": "Actualiza una tarea existente",
+      "params": {
+        "taskId": "ID de la tarea a actualizar",
+        "content": "Contenido actualizado de la tarea",
+        "dueString": "Nueva fecha límite",
+        "priority": "Nueva prioridad"
+      }
+    },
+    "todoist_complete_task": {
+      "name": "todoist_complete_task",
+      "description": "Marca una tarea como completada",
+      "params": {
+        "taskId": "ID de la tarea a completar"
+      }
+    },
+    "todoist_delete_task": {
+      "name": "todoist_delete_task",
+      "description": "Elimina una tarea",
+      "params": {
+        "taskId": "ID de la tarea a eliminar"
+      }
+    },
+    "todoist_list_projects": {
+      "name": "todoist_list_projects",
+      "description": "Lista todos los proyectos"
+    },
+    "todoist_get_project": {
+      "name": "todoist_get_project",
+      "description": "Obtiene un proyecto específico",
+      "params": {
+        "projectId": "ID del proyecto a obtener"
+      }
+    },
+    "todoist_create_project": {
+      "name": "todoist_create_project",
+      "description": "Crea un nuevo proyecto",
+      "params": {
+        "name": "Nombre del proyecto",
+        "parentId": "ID del proyecto padre para subproyectos",
+        "color": "Color del proyecto"
+      }
+    },
+    "todoist_update_project": {
+      "name": "todoist_update_project",
+      "description": "Actualiza un proyecto existente",
+      "params": {
+        "projectId": "ID del proyecto a actualizar",
+        "name": "Nuevo nombre del proyecto",
+        "color": "Nuevo color del proyecto"
+      }
+    },
+    "todoist_delete_project": {
+      "name": "todoist_delete_project",
+      "description": "Elimina un proyecto",
+      "params": {
+        "projectId": "ID del proyecto a eliminar"
+      }
+    },
+    "todoist_list_labels": {
+      "name": "todoist_list_labels",
+      "description": "Lista todas las etiquetas"
+    },
+    "todoist_create_label": {
+      "name": "todoist_create_label",
+      "description": "Crea una nueva etiqueta",
+      "params": {
+        "name": "Nombre de la etiqueta",
+        "color": "Color de la etiqueta"
+      }
+    },
+    "todoist_add_comment": {
+      "name": "todoist_add_comment",
+      "description": "Añade un comentario a una tarea",
+      "params": {
+        "taskId": "ID de la tarea a comentar",
+        "content": "Contenido del comentario"
+      }
+    },
+    "todoist_list_sections": {
+      "name": "todoist_list_sections",
+      "description": "Lista las secciones de un proyecto",
+      "params": {
+        "projectId": "ID del proyecto"
+      }
+    }
+  },
+  "name": "Todoist",
+  "description": "Gestión de tareas con Todoist — tareas, proyectos, etiquetas, comentarios",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear, actualizar, completar y eliminar tareas, organizar proyectos, secciones, etiquetas y comentarios"
+    }
+  ]
+}

@@ -8,7 +8,7 @@
  *
  * Collections managed:
  *   - models: Available LLM models catalog
- *   - agent_cores: Base personality engines (Alice, Iria)
+ *   - agent_cores: Internal engines assigned by scope (agent, super-agent)
  *   - agents: User-facing agent instances (Alice)
  *
  * Collections NOT managed (handled elsewhere):
@@ -31,9 +31,14 @@ const __dirname = dirname(__filename)
 const args = process.argv.slice(2)
 const forceMode = args.includes("--force")
 
-// Load base agent core prompt from file
+// Load the per-core base system prompts from file. Each internal core has its
+// own base prompt: the workspace `agent` and the global `super-agent`.
 const BASE_AGENT_CORE_PROMPT = readFileSync(
   join(__dirname, "../prompts/base-agent-core.md"),
+  "utf-8",
+)
+const BASE_SUPER_AGENT_CORE_PROMPT = readFileSync(
+  join(__dirname, "../prompts/base-super-agent-core.md"),
   "utf-8",
 )
 
@@ -258,52 +263,50 @@ const models: Model[] = [
 // AGENT CORES (Engines/Personalities)
 // ============================================================================
 
+// Two internal cores. Cores are not user-facing; the server assigns one by
+// scope (global/personal → super-agent; workspace → agent).
 const agentCores: AgentCore[] = [
   {
-    coreId: "alice",
-    name: "Alice",
-    fullName: "Alice Evergreen",
+    coreId: "agent",
+    coreType: "agent",
+    name: "Agent",
+    fullName: "Teros Agent",
     version: "v1.0",
     systemPrompt: BASE_AGENT_CORE_PROMPT,
-    personality: ["Empathetic", "Creative", "Supportive", "Detail-oriented", "Patient"],
-    capabilities: [
-      "Software Development",
-      "Project Management",
-      "Code Review",
-      "Documentation",
-      "Technical Research",
-      "Creative Problem Solving",
-    ],
-    avatarUrl: "alice-avatar.jpg",
-    // LLM Configuration - Alice uses Opus 4.5 (most capable)
-    modelId: "claude-opus-4-5",
+    personality: ["Direct", "Efficient", "Technical", "Professional"],
+    capabilities: ["Software Engineering", "Project Work", "Research", "Execution"],
+    defaultApps: [],
+    avatarUrl: "iria-avatar.jpg",
+    // Workspace agents use Sonnet 4.5 (balanced).
+    modelId: "claude-sonnet-4-5",
     modelOverrides: {
-      temperature: 0.7,
+      temperature: 0.5,
     },
     status: "active",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
   {
-    coreId: "iria",
-    name: "Iria",
-    fullName: "Iria Devon",
+    coreId: "super-agent",
+    coreType: "super-agent",
+    name: "Super Agent",
+    fullName: "Teros Super Agent",
     version: "v1.0",
-    systemPrompt: BASE_AGENT_CORE_PROMPT,
-    personality: ["Direct", "Efficient", "Technical", "Professional", "Action-oriented"],
+    systemPrompt: BASE_SUPER_AGENT_CORE_PROMPT,
+    personality: ["Direct", "Efficient", "Proactive", "Resourceful"],
     capabilities: [
-      "Teros Development",
+      "Personal Assistance",
+      "Platform Management",
       "Software Engineering",
-      "System Architecture",
-      "Code Quality",
-      "DevOps",
-      "Rapid Execution",
+      "Research",
     ],
+    // The onboarding agent (Iria) gets the platform-management app by default.
+    defaultApps: ["mca.teros.core"],
     avatarUrl: "iria-avatar.jpg",
-    // LLM Configuration - Iria uses Sonnet 4.5 (balanced)
-    modelId: "claude-sonnet-4-5",
+    // The personal/global super-agent uses Opus 4.5 (most capable).
+    modelId: "claude-opus-4-5",
     modelOverrides: {
-      temperature: 0.5, // More deterministic for technical tasks
+      temperature: 0.7,
     },
     status: "active",
     createdAt: new Date().toISOString(),
@@ -317,13 +320,13 @@ const agentCores: AgentCore[] = [
 
 const agentInstances: AgentInstance[] = [
   {
-    agentId: "agent:alice",
-    coreId: "alice", // Uses Alice's engine/personality
-    name: "Alice",
-    fullName: "Alice Evergreen",
+    agentId: "agent:iria",
+    coreId: "super-agent", // Global/personal agent → super-agent core
+    name: "Iria",
+    fullName: "Iria Devon",
     role: "Personal Assistant",
     intro: "I help with software engineering tasks, project management, and technical workflows.",
-    // No avatarUrl - will fall back to alice core's avatar
+    // No avatarUrl - will fall back to the core's avatar
     status: "active",
     maxSteps: 80,
     context: `User-focused and collaborative approach. Specializes in Personal Workflow Optimization, Technical Mentoring, and Creative Brainstorming. Friendly response style.`,

@@ -1,0 +1,241 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Zendesk 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-tickets": {
+      "name": "list-tickets",
+      "description": "선택적 필터와 함께 Zendesk 티켓 목록을 표시합니다. 정리된 행 { id, subject, status, priority, requester, assignee, createdAt, updatedAt }를 반환합니다. 매개변수: status?, priority?, assigneeId?, requesterId?, organizationId?, limit (1-100, 기본 30), page.",
+      "params": {
+        "status": "티켓 상태로 필터링합니다.",
+        "priority": "티켓 우선순위로 필터링합니다.",
+        "assigneeId": "담당자 사용자 ID로 필터링합니다.",
+        "requesterId": "요청자 사용자 ID로 필터링합니다.",
+        "organizationId": "조직 ID로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "get-ticket": {
+      "name": "get-ticket",
+      "description": "ID로 단일 Zendesk 티켓을 가져옵니다. 설명, 사용자 정의 필드 및 태그를 포함한 전체 세부정보를 반환합니다.",
+      "params": {
+        "ticketId": "Zendesk 티켓 ID."
+      }
+    },
+    "create-ticket": {
+      "name": "create-ticket",
+      "description": "새 Zendesk 티켓을 생성합니다. 생성된 티켓을 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: subject, description, requesterEmail?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "params": {
+        "subject": "티켓 제목.",
+        "description": "티켓 본문/설명.",
+        "requesterEmail": "요청자의 이메일 주소. 생략하면 인증된 사용자를 사용합니다.",
+        "priority": "티켓 우선순위.",
+        "status": "초기 티켓 상태. 기본: 열림.",
+        "assigneeId": "티켓을 할당할 사용자 ID.",
+        "tags": "티켓에 첨부할 태그.",
+        "customFields": "사용자 정의 필드 값 [{id, value}]."
+      }
+    },
+    "update-ticket": {
+      "name": "update-ticket",
+      "description": "기존 Zendesk 티켓을 업데이트합니다. 제공된 필드만 변경됩니다. 업데이트된 티켓을 반환합니다. 매개변수: ticketId, subject?, description?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "params": {
+        "ticketId": "업데이트할 Zendesk 티켓 ID.",
+        "subject": "새 제목.",
+        "description": "추가할 새 댓글/설명.",
+        "priority": "새 우선순위.",
+        "status": "새 상태.",
+        "assigneeId": "티켓을 할당할 사용자 ID.",
+        "tags": "기존 태그를 이 태그로 교체합니다.",
+        "customFields": "사용자 정의 필드 값 [{id, value}]."
+      }
+    },
+    "delete-ticket": {
+      "name": "delete-ticket",
+      "description": "ID로 Zendesk 티켓을 삭제(소프트 삭제)합니다. { success, ticketId }를 반환합니다.",
+      "params": {
+        "ticketId": "삭제할 Zendesk 티켓 ID."
+      }
+    },
+    "search-tickets": {
+      "name": "search-tickets",
+      "description": "Zendesk Search API를 사용하여 Zendesk 티켓을 검색합니다. 쿼리 구문을 지원합니다(예: \"status:open type:ticket\", \"assignee:me\", \"tags:urgent\"). 정리된 결과를 반환합니다. 매개변수: query, limit (1-100, 기본 30), page.",
+      "params": {
+        "query": "Zendesk 검색 쿼리 문자열.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "list-ticket-comments": {
+      "name": "list-ticket-comments",
+      "description": "Zendesk 티켓에 대한 모든 댓글(공개 및 내부 메모)을 나열합니다. 정리된 행 { id, authorId, body, public, createdAt }를 반환합니다. 매개변수: ticketId.",
+      "params": {
+        "ticketId": "Zendesk 티켓 ID."
+      }
+    },
+    "add-ticket-comment": {
+      "name": "add-ticket-comment",
+      "description": "Zendesk 티켓에 댓글을 추가합니다. 공개(고객 가시) 또는 내부 메모일 수 있습니다. 업데이트된 티켓을 반환합니다. 매개변수: ticketId, body, public?.",
+      "params": {
+        "ticketId": "Zendesk 티켓 ID.",
+        "body": "댓글 텍스트/본문.",
+        "public": "댓글이 공개(고객 가시)인지 여부. 기본값 true."
+      }
+    },
+    "add-comment-with-attachment": {
+      "name": "add-comment-with-attachment",
+      "description": "파일 첨부와 함께 Zendesk 티켓에 댓글을 추가합니다. upload-attachment에서 업로드 토큰을 사용합니다. 업데이트된 티켓을 반환합니다. 매개변수: ticketId, body, uploadTokens?, public?.",
+      "params": {
+        "ticketId": "Zendesk 티켓 ID.",
+        "body": "댓글 텍스트/본문.",
+        "uploadTokens": "upload-attachment 도구에서 가져온 업로드 토큰.",
+        "public": "댓글이 공개(고객 가시)인지 여부. 기본값 true."
+      }
+    },
+    "upload-attachment": {
+      "name": "upload-attachment",
+      "description": "티켓 댓글에 사용할 파일 첨부를 Zendesk에 업로드합니다. 업로드 토큰을 반환합니다. 매개변수: filePath, fileName?.",
+      "params": {
+        "filePath": "업로드할 파일의 경로.",
+        "fileName": "첨부 파일의 원하는 파일 이름. 기본적으로 filePath의 기본 이름을 사용합니다."
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "ID로 Zendesk 첨부 파일의 세부정보를 가져옵니다. { id, fileName, contentUrl, size, contentType, createdAt }를 반환합니다.",
+      "params": {
+        "attachmentId": "Zendesk 첨부 파일 ID."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "선택적 필터와 함께 Zendesk 사용자를 나열합니다. 정리된 행 { id, name, email, role, active, createdAt }를 반환합니다. 매개변수: role?, query?, limit (1-100, 기본 30), page.",
+      "params": {
+        "role": "사용자 역할로 필터링합니다.",
+        "query": "사용자 이름 또는 이메일에 대한 검색 쿼리.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "ID로 단일 Zendesk 사용자를 가져옵니다. 전체 세부정보를 포함합니다.",
+      "params": {
+        "userId": "Zendesk 사용자 ID."
+      }
+    },
+    "create-user": {
+      "name": "create-user",
+      "description": "새 Zendesk 사용자(최종 사용자, 에이전트 또는 관리자)를 생성합니다. 생성된 사용자를 반환합니다. 재시도할 수 없습니다. 매개변수: name, email, role?, phone?, organizationId?, tags?.",
+      "params": {
+        "name": "사용자의 전체 이름.",
+        "email": "이메일 주소(고유해야 함).",
+        "role": "사용자 역할. 기본: 최종 사용자.",
+        "phone": "전화번호.",
+        "organizationId": "사용자와 연결할 조직 ID.",
+        "tags": "사용자에게 첨부할 태그.",
+        "verified": "사용자가 인증되었는지 여부. 에이전트/관리자에게는 기본값 true."
+      }
+    },
+    "update-user": {
+      "name": "update-user",
+      "description": "기존 Zendesk 사용자를 업데이트합니다. 제공된 필드만 변경됩니다. 업데이트된 사용자를 반환합니다. 매개변수: userId, name?, email?, role?, phone?, organizationId?, tags?, active?.",
+      "params": {
+        "userId": "업데이트할 Zendesk 사용자 ID.",
+        "name": "새 전체 이름.",
+        "email": "새 이메일 주소(고유해야 함).",
+        "role": "새 사용자 역할.",
+        "phone": "새 전화번호.",
+        "organizationId": "사용자와 연결할 조직 ID.",
+        "tags": "기존 태그를 이 태그로 교체합니다.",
+        "active": "사용자를 활성화 또는 비활성화합니다."
+      }
+    },
+    "list-organizations": {
+      "name": "list-organizations",
+      "description": "Zendesk 조직을 나열합니다. 정리된 행 { id, name, domainNames, tags, createdAt }를 반환합니다. 매개변수: limit (1-100, 기본 30), page.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "get-organization": {
+      "name": "get-organization",
+      "description": "ID로 단일 Zendesk 조직을 가져옵니다. 도메인 이름 및 태그를 포함한 전체 세부정보.",
+      "params": {
+        "organizationId": "Zendesk 조직 ID."
+      }
+    },
+    "create-organization": {
+      "name": "create-organization",
+      "description": "새 Zendesk 조직을 생성합니다. 생성된 조직을 반환합니다. 재시도할 수 없습니다. 매개변수: name, domainNames?, tags?.",
+      "params": {
+        "name": "조직 이름(고유해야 함).",
+        "domainNames": "사용자를 자동으로 연결할 이메일 도메인(예: [\"example.com\"]).",
+        "tags": "조직에 첨부할 태그."
+      }
+    },
+    "list-views": {
+      "name": "list-views",
+      "description": "Zendesk 뷰(티켓 필터)를 나열합니다. 정리된 행 { id, title, active, position, createdAt }를 반환합니다."
+    },
+    "get-view-tickets": {
+      "name": "get-view-tickets",
+      "description": "특정 Zendesk 뷰에서 티켓을 가져옵니다. 정리된 티켓 행을 반환합니다. 매개변수: viewId, limit (1-100, 기본 30), page.",
+      "params": {
+        "viewId": "Zendesk 뷰 ID.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "list-groups": {
+      "name": "list-groups",
+      "description": "Zendesk 그룹(티켓 할당 그룹)을 나열합니다. 정리된 행 { id, name, default, createdAt }를 반환합니다."
+    },
+    "list-triggers": {
+      "name": "list-triggers",
+      "description": "Zendesk 트리거(티켓 이벤트에서 발생하는 비즈니스 규칙)를 나열합니다. 에이전트에게는 읽기 전용입니다. 정리된 행 { id, title, active, position, createdAt }를 반환합니다.",
+      "params": {
+        "active": "활성 상태로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "list-automations": {
+      "name": "list-automations",
+      "description": "Zendesk 자동화(시간 기반 비즈니스 규칙)를 나열합니다. 에이전트에게는 읽기 전용입니다. 정리된 행 { id, title, active, position, createdAt }를 반환합니다.",
+      "params": {
+        "active": "활성 상태로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "list-webhooks": {
+      "name": "list-webhooks",
+      "description": "Zendesk 웹후크(실시간 이벤트 알림을 수신하는 HTTP 엔드포인트)를 나열합니다. 정리된 행 { id, name, status, endpoint, createdAt }를 반환합니다.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    },
+    "list-satisfaction-ratings": {
+      "name": "list-satisfaction-ratings",
+      "description": "Zendesk 만족도 평가(CSAT 점수)를 나열합니다. 정리된 행 { id, score, comment, ticketId, requesterId, createdAt }를 반환합니다. 매개변수: score?, limit (1-100, 기본 30), page.",
+      "params": {
+        "score": "만족도 점수로 필터링합니다.",
+        "ticketId": "특정 티켓 ID로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 30.",
+        "page": "페이지 번호. 기본 1."
+      }
+    }
+  },
+  "name": "Zendesk",
+  "description": "Zendesk 지원 통합 — Zendesk REST API v2를 통해 티켓, 사용자, 조직, 뷰, 그룹, 트리거, 자동화, 첨부 파일 및 만족도 평가를 관리합니다. 속도 제한이 적용됩니다.",
+  "changelog": [
+    {
+      "notes": "지원 티켓 생성, 검색 및 회신, 사용자, 조직 및 뷰 관리, 만족도 평가 추적"
+    }
+  ]
+}

@@ -1,46 +1,87 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { db, formatReminder } from '../lib';
-import { parseTimeString } from '../time-parser';
+import { z } from 'zod';
+import {
+  assertValidTimezone,
+  db,
+  formatReminder,
+  parseTimeExpression,
+  resolveDefaultTimezone,
+} from '../lib';
+import {
+  assertChannelOwnership,
+  assertValidChannelId,
+  createChannelSubscription,
+  optionalWorkspaceId,
+  requireUserId,
+  structured,
+  type SchedulerTool,
+  toToolError,
+  validateInput,
+} from './_shared';
 
-export const scheduleReminder: ToolConfig = {
+const Schema = z.object({
+  time: z.string().min(1),
+  message: z.string().min(1).max(4000),
+  channelId: z.string().min(1),
+  timezone: z.string().optional(),
+  locale: z.enum(['en', 'es']).optional(),
+  allowPast: z.boolean().optional(),
+  idempotencyKey: z.string().min(1).max(128).optional(),
+});
+
+export const scheduleReminder: SchedulerTool = {
   description:
-    'Schedule a reminder message to be sent at a specific time. Supports natural language time expressions.',
+    'Schedule a one-shot reminder. time: natural ("in 2 hours", "tomorrow at 9am") or ISO 8601. timezone defaults to env. Returns the new reminder.',
   parameters: {
     type: 'object',
     properties: {
-      time: {
+      time: { type: 'string', description: 'Natural ("in 2 hours", "tomorrow at 9am") or ISO 8601.' },
+      message: { type: 'string', description: 'Message to deliver (max 4000 chars).' },
+      channelId: { type: 'string', description: 'Channel that receives the wake event (must be owned by user).' },
+      timezone: { type: 'string', description: 'IANA timezone (default: env MCA_DEFAULT_TIMEZONE).' },
+      locale: { type: 'string', enum: ['en', 'es'], description: 'Parser locale (default: en).' },
+      allowPast: { type: 'boolean', description: 'Allow scheduling in the past (default false).' },
+      idempotencyKey: {
         type: 'string',
-        description:
-          'Time expression. Examples: "at 17:00", "at 5:30pm", "tomorrow at 9:00", "in 30 minutes", "in 2 hours", "in 1 hour and 30 minutes", or ISO format "2025-10-28T17:00:00"',
-      },
-      message: {
-        type: 'string',
-        description: 'The reminder message to send',
-      },
-      channelId: {
-        type: 'string',
-        description: 'Channel ID where the reminder should be sent',
+        description: 'Optional idempotency key. If a reminder with the same key+user already exists, returns it instead of creating a duplicate.',
       },
     },
     required: ['time', 'message', 'channelId'],
   },
-  handler: async (args) => {
-    const { time, message, channelId } = args as {
-      time: string;
-      message: string;
-      channelId: string;
-    };
+  annotations: { readOnlyHint: false, version: '1.1.0', stability: 'stable', idempotentHint: true },
+  handler: async (args, context) => {
+    try {
+      const userId = requireUserId(context);
+      const workspaceId = optionalWorkspaceId(context);
+      const input = validateInput(Schema, args);
+      assertValidChannelId(input.channelId);
+      await assertChannelOwnership(context, userId, input.channelId);
+      const timezone = input.timezone ?? resolveDefaultTimezone();
+      assertValidTimezone(timezone);
 
-    const scheduledTime = parseTimeString(time);
-    const reminder = await db.createReminder(channelId, message, scheduledTime);
-    const allReminders = (await db.getAllReminders(channelId)).map(formatReminder);
+      const parsed = parseTimeExpression(input.time, {
+        timezone,
+        locale: input.locale,
+        allowPast: input.allowPast,
+      });
 
-    return {
-      success: true,
-      message: 'Reminder scheduled successfully',
-      affectedReminderId: reminder.id,
-      reminder: formatReminder(reminder),
-      reminders: allReminders,
-    };
+      const reminder = await db.createReminder(
+        userId,
+        input.channelId,
+        input.message,
+        parsed.timestamp,
+        timezone,
+        workspaceId,
+        input.idempotencyKey,
+      );
+
+      await createChannelSubscription(context, 'scheduler.reminder', input.channelId);
+
+      return structured({
+        action: 'created' as const,
+        reminder: formatReminder(reminder, timezone),
+      });
+    } catch (error) {
+      toToolError(error);
+    }
   },
 };

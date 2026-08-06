@@ -16,6 +16,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -24,6 +27,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -40,6 +46,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -60,6 +69,9 @@
         "required": [
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -80,6 +92,9 @@
         "required": [
           "spaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -101,6 +116,9 @@
           "spaceId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -121,6 +139,9 @@
         "required": [
           "folderId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -146,6 +167,9 @@
           "folderId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -189,6 +213,9 @@
         "required": [
           "listId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -205,6 +232,9 @@
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -274,6 +304,9 @@
           "listId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -324,6 +357,9 @@
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -340,6 +376,10 @@
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -365,6 +405,9 @@
           "workspaceId",
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -390,6 +433,9 @@
           "taskId",
           "commentText"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -406,6 +452,9 @@
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

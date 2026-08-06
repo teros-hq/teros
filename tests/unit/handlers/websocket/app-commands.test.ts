@@ -19,7 +19,7 @@ describe('AppCommands', () => {
       createApp: mock(() =>
         Promise.resolve({
           appId: 'app_new',
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           name: 'Test App',
           status: 'active',
         }),
@@ -49,9 +49,9 @@ describe('AppCommands', () => {
 
   describe('handleListApps', () => {
     it('should list user apps and system apps', async () => {
-      const userApps = [{ appId: 'app_1', mcpId: 'mca.test1', name: 'User App', status: 'active' }];
+      const userApps = [{ appId: 'app_1', mcaId: 'mca.test1', name: 'User App', status: 'active' }];
       const systemApps = [
-        { appId: 'app_sys', mcpId: 'mca.system', name: 'System App', status: 'active' },
+        { appId: 'app_sys', mcaId: 'mca.system', name: 'System App', status: 'active' },
       ];
 
       mcaServiceMock.listAppsByOwner = mock((owner: string) =>
@@ -89,7 +89,7 @@ describe('AppCommands', () => {
     it('should install app from catalog', async () => {
       mcaServiceMock.getMcaFromCatalog = mock(() =>
         Promise.resolve({
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           name: 'Test MCA',
           description: 'Test',
           availability: { enabled: true },
@@ -97,7 +97,7 @@ describe('AppCommands', () => {
       );
 
       const commands = createCommands();
-      await commands.handleInstallApp(wsMock, userId, { mcpId: 'mca.test' });
+      await commands.handleInstallApp(wsMock, userId, { mcaId: 'mca.test' });
 
       expect(mcaServiceMock.createApp).toHaveBeenCalledTimes(1);
       expect(sendMessageMock).toHaveBeenCalledTimes(1);
@@ -108,7 +108,7 @@ describe('AppCommands', () => {
       mcaServiceMock.getMcaFromCatalog = mock(() => Promise.resolve(null));
 
       const commands = createCommands();
-      await commands.handleInstallApp(wsMock, userId, { mcpId: 'mca.nonexistent' });
+      await commands.handleInstallApp(wsMock, userId, { mcaId: 'mca.nonexistent' });
 
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,
@@ -120,13 +120,13 @@ describe('AppCommands', () => {
     it('should reject if MCA is disabled', async () => {
       mcaServiceMock.getMcaFromCatalog = mock(() =>
         Promise.resolve({
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           availability: { enabled: false },
         }),
       );
 
       const commands = createCommands();
-      await commands.handleInstallApp(wsMock, userId, { mcpId: 'mca.test' });
+      await commands.handleInstallApp(wsMock, userId, { mcaId: 'mca.test' });
 
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,
@@ -138,14 +138,14 @@ describe('AppCommands', () => {
     it('should validate custom app name', async () => {
       mcaServiceMock.getMcaFromCatalog = mock(() =>
         Promise.resolve({
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           availability: { enabled: true },
         }),
       );
       mcaServiceMock.validateAppName = mock(() => ({ valid: false, error: 'Name too short' }));
 
       const commands = createCommands();
-      await commands.handleInstallApp(wsMock, userId, { mcpId: 'mca.test', name: 'ab' });
+      await commands.handleInstallApp(wsMock, userId, { mcaId: 'mca.test', name: 'ab' });
 
       expect(sendErrorMock).toHaveBeenCalledWith(wsMock, 'INVALID_APP_NAME', 'Name too short');
     });

@@ -1,0 +1,263 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Odoo API key and connectivity."
+    },
+    "list-models": {
+      "name": "list-models",
+      "description": "List all available Odoo models (ir.model).",
+      "params": {
+        "limit": "Maximum number of results (default: 100)",
+        "offset": "Pagination offset"
+      }
+    },
+    "search-records": {
+      "name": "search-records",
+      "description": "Search and read records from any Odoo model. Use filters like \"is_company=true,name=Acme\".",
+      "params": {
+        "model": "Odoo model technical name, e.g. res.partner",
+        "filters": "Comma-separated filters: field=value, field!=value, field>value, etc.",
+        "fields": "Fields to return (default: all stored fields)",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. name asc"
+      }
+    },
+    "get-record": {
+      "name": "get-record",
+      "description": "Read a single Odoo record by model and ID.",
+      "params": {
+        "model": "Odoo model technical name",
+        "id": "Record ID",
+        "fields": "Fields to return"
+      }
+    },
+    "create-record": {
+      "name": "create-record",
+      "description": "Create a new record in any Odoo model.",
+      "params": {
+        "model": "Odoo model technical name",
+        "values": "Field values for the new record"
+      }
+    },
+    "update-record": {
+      "name": "update-record",
+      "description": "Update an existing Odoo record by model and ID.",
+      "params": {
+        "model": "Odoo model technical name",
+        "id": "Record ID",
+        "values": "Field values to update"
+      }
+    },
+    "delete-record": {
+      "name": "delete-record",
+      "description": "Delete an Odoo record by model and ID.",
+      "params": {
+        "model": "Odoo model technical name",
+        "id": "Record ID"
+      }
+    },
+    "count-records": {
+      "name": "count-records",
+      "description": "Count records in an Odoo model matching the given filters.",
+      "params": {
+        "model": "Odoo model technical name",
+        "filters": "Comma-separated filters: field=value, field!=value, etc."
+      }
+    },
+    "call-method": {
+      "name": "call-method",
+      "description": "Call any public method on an Odoo model.",
+      "params": {
+        "model": "Odoo model technical name",
+        "method": "Method name to call",
+        "args": "Positional arguments passed to the method",
+        "kwargs": "Keyword arguments passed to the method"
+      }
+    },
+    "list-partners": {
+      "name": "list-partners",
+      "description": "List Odoo partners (contacts / companies).",
+      "params": {
+        "filters": "Comma-separated filters, e.g. is_company=true,name=Acme",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. name asc"
+      }
+    },
+    "get-partner": {
+      "name": "get-partner",
+      "description": "Get a specific Odoo partner by ID.",
+      "params": {
+        "id": "Partner ID"
+      }
+    },
+    "create-partner": {
+      "name": "create-partner",
+      "description": "Create a new Odoo partner (contact or company).",
+      "params": {
+        "name": "Partner name",
+        "email": "Email address",
+        "phone": "Phone number",
+        "isCompany": "Whether this is a company",
+        "street": "Street address",
+        "city": "City",
+        "zip": "ZIP / postal code",
+        "countryId": "Country ID",
+        "parentId": "Parent company ID",
+        "values": "Additional field values"
+      }
+    },
+    "update-partner": {
+      "name": "update-partner",
+      "description": "Update an existing Odoo partner by ID.",
+      "params": {
+        "id": "Partner ID",
+        "values": "Field values to update"
+      }
+    },
+    "list-products": {
+      "name": "list-products",
+      "description": "List Odoo products (product.template).",
+      "params": {
+        "filters": "Comma-separated filters, e.g. sale_ok=true",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. name asc"
+      }
+    },
+    "list-sale-orders": {
+      "name": "list-sale-orders",
+      "description": "List Odoo sales orders.",
+      "params": {
+        "filters": "Comma-separated filters, e.g. state=sale",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. date_order desc"
+      }
+    },
+    "get-sale-order": {
+      "name": "get-sale-order",
+      "description": "Get a specific Odoo sales order by ID, including order lines.",
+      "params": {
+        "id": "Sales order ID"
+      }
+    },
+    "create-sale-order": {
+      "name": "create-sale-order",
+      "description": "Create a new Odoo sales order with optional order lines.",
+      "params": {
+        "partnerId": "Customer partner ID",
+        "orderLines": "Order lines as objects with productId, quantity, priceUnit",
+        "dateOrder": "Order date (ISO 8601)",
+        "note": "Internal note"
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "List Odoo customer invoices (account.move).",
+      "params": {
+        "filters": "Comma-separated filters, e.g. state=posted",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. invoice_date desc"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "List Odoo projects.",
+      "params": {
+        "filters": "Comma-separated filters",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. name asc"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "List Odoo project tasks.",
+      "params": {
+        "projectId": "Filter by project ID",
+        "filters": "Additional comma-separated filters",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. date_deadline asc"
+      }
+    },
+    "create-project-task": {
+      "name": "create-project-task",
+      "description": "Create a new task in an Odoo project.",
+      "params": {
+        "projectId": "Project ID",
+        "name": "Task name",
+        "userId": "Assigned user ID",
+        "dateDeadline": "Deadline (ISO 8601)",
+        "description": "Task description (HTML supported)",
+        "values": "Additional field values"
+      }
+    },
+    "list-employees": {
+      "name": "list-employees",
+      "description": "List Odoo employees (hr.employee).",
+      "params": {
+        "filters": "Comma-separated filters",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. name asc"
+      }
+    },
+    "list-leaves": {
+      "name": "list-leaves",
+      "description": "List Odoo time-off requests (hr.leave).",
+      "params": {
+        "employeeId": "Filter by employee ID",
+        "state": "Filter by state: draft, confirm, validate, refuse",
+        "filters": "Additional comma-separated filters",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. date_from desc"
+      }
+    },
+    "create-leave": {
+      "name": "create-leave",
+      "description": "Create a new Odoo time-off request (hr.leave).",
+      "params": {
+        "employeeId": "Employee ID",
+        "holidayStatusId": "Leave type ID",
+        "dateFrom": "Start date/time (ISO 8601)",
+        "dateTo": "End date/time (ISO 8601)",
+        "name": "Reason / description"
+      }
+    },
+    "list-timesheets": {
+      "name": "list-timesheets",
+      "description": "List Odoo timesheet entries (account.analytic.line).",
+      "params": {
+        "projectId": "Filter by project ID",
+        "taskId": "Filter by task ID",
+        "employeeId": "Filter by employee ID",
+        "dateFrom": "Start date (YYYY-MM-DD)",
+        "dateTo": "End date (YYYY-MM-DD)",
+        "filters": "Additional comma-separated filters",
+        "limit": "Maximum results (default: 50)",
+        "offset": "Pagination offset",
+        "order": "Order clause, e.g. date desc"
+      }
+    },
+    "create-timesheet": {
+      "name": "create-timesheet",
+      "description": "Create a new Odoo timesheet entry (account.analytic.line).",
+      "params": {
+        "projectId": "Project ID",
+        "taskId": "Task ID (optional)",
+        "employeeId": "Employee ID",
+        "date": "Date (YYYY-MM-DD)",
+        "name": "Description of the work done",
+        "hours": "Hours spent"
+      }
+    }
+  },
+  "name": "Odoo",
+  "description": "Odoo ERP integration — manage partners, products, sales orders, invoices, projects, tasks, employees, leaves and timesheets via the Odoo JSON-RPC API using an API key."
+}

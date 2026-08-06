@@ -13,21 +13,17 @@
  */
 
 import type React from 'react';
-import { useState } from 'react';
+import { Badge, ToolCallCard } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
 import { GenerateConversationRenderer } from './elevenlabs/GenerateConversationRenderer';
 import { GetSubscriptionRenderer } from './elevenlabs/GetSubscriptionRenderer';
 import { GetVoiceRenderer } from './elevenlabs/GetVoiceRenderer';
 import { ListVoicesRenderer } from './elevenlabs/ListVoicesRenderer';
-import { getShortToolName, HeaderRow } from './elevenlabs/shared';
+import { getShortToolName } from './elevenlabs/shared';
 import { TextToSpeechRenderer } from './elevenlabs/TextToSpeechRenderer';
 
-// ============================================================================
-// Tool Name to Renderer Mapping
-// ============================================================================
-
-const RENDERERS: Record<string, React.ComponentType<any>> = {
+const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'text-to-speech': TextToSpeechRenderer,
   'list-voices': ListVoicesRenderer,
   'get-voice': GetVoiceRenderer,
@@ -35,42 +31,30 @@ const RENDERERS: Record<string, React.ComponentType<any>> = {
   'get-subscription': GetSubscriptionRenderer,
 };
 
-// ============================================================================
-// Fallback Renderer
-// ============================================================================
-
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
 
-  let badge: { text: string; variant: 'green' | 'red' | 'gray' } | undefined;
+  let badge: React.ReactNode = null;
   if (status === 'completed') {
-    badge = { text: 'done', variant: 'green' };
+    badge = <Badge text="done" variant="success" />;
   } else if (status === 'failed') {
-    badge = { text: 'failed', variant: 'red' };
+    badge = <Badge text="failed" variant="error" />;
   }
 
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
-      description={shortName}
-      duration={duration}
+      verb={shortName.replace(/-/g, ' ')}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
+      iconUri={appIcon}
     />
   );
 }
 
-// ============================================================================
-// Main Renderer
-// ============================================================================
-
 function ElevenLabsRendererBase(props: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
   const shortName = getShortToolName(props.toolName);
   const Renderer = RENDERERS[shortName] || FallbackRenderer;
-
-  return <Renderer {...props} expanded={expanded} onToggle={() => setExpanded(!expanded)} />;
+  return <Renderer {...props} />;
 }
 
 export const ElevenLabsToolCallRenderer = withPermissionSupport(ElevenLabsRendererBase);

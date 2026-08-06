@@ -4,11 +4,14 @@
 
 import { EyeOff, Plus } from '@tamagui/lucide-icons';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, TextInput, TouchableOpacity, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { type BoardColumn, type Task } from '../../store/boardStore';
 import { type DependencyHighlight, getColumnColor } from './board-utils';
 import { TaskCard } from './TaskCard';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors } from '../../components/mca/primitives/colors';
 
 interface KanbanColumnProps {
   column: BoardColumn;
@@ -58,6 +61,8 @@ export function KanbanColumn({
   onTaskHoverIn,
   onTaskHoverOut,
 }: KanbanColumnProps) {
+  const { t } = useTranslation();
+  const c = useColors();
   const color = getColumnColor(column.slug);
   const isAdding = addingToColumn === column.columnId;
   const hiddenCount = totalTasksCount - tasks.length;
@@ -131,11 +136,11 @@ export function KanbanColumn({
     <YStack
       ref={columnRef}
       width={260}
-      backgroundColor={dragOver ? 'rgba(139,92,246,0.08)' : 'rgba(255,255,255,0.03)'}
+      backgroundColor={dragOver ? 'rgba(139,92,246,0.08)' : c.bgInner}
       borderRadius={10}
       overflow="hidden"
       borderWidth={2}
-      borderColor={dragOver ? 'rgba(139,92,246,0.4)' : 'transparent'}
+      borderColor={dragOver ? 'rgba(139,92,246,0.4)' : c.border}
       maxHeight="100%"
     >
       {/* Column header */}
@@ -144,7 +149,7 @@ export function KanbanColumn({
         paddingVertical="$2"
         alignItems="center"
         borderBottomWidth={1}
-        borderBottomColor="rgba(255,255,255,0.06)"
+        borderBottomColor={c.border}
       >
         <View
           style={{
@@ -155,10 +160,10 @@ export function KanbanColumn({
             marginRight: 8,
           }}
         />
-        <Text fontSize={13} fontWeight="600" color="$color" flex={1}>
+        <Text fontSize={13} fontWeight="600" color={c.text} flex={1}>
           {column.name}
         </Text>
-        <Text fontSize={11} color="$color" opacity={0.4} marginRight={4}>
+        <Text fontSize={11} color={c.text3} marginRight={4}>
           {tasks.length}
         </Text>
         <TouchableOpacity onPress={onAddTask} style={{ padding: 2 }}>
@@ -175,7 +180,7 @@ export function KanbanColumn({
                 <View
                   style={{
                     height: 2,
-                    backgroundColor: '#8B5CF6',
+                    backgroundColor: colors.violet,
                     borderRadius: 1,
                     marginVertical: -2,
                   }}
@@ -205,22 +210,22 @@ export function KanbanColumn({
           ))}
           {dragOver && dropIndex === tasks.length && (
             <View
-              style={{ height: 2, backgroundColor: '#8B5CF6', borderRadius: 1, marginVertical: -2 }}
+              style={{ height: 2, backgroundColor: colors.violet, borderRadius: 1, marginVertical: -2 }}
             />
           )}
 
           {/* Inline add task */}
           {isAdding && (
-            <YStack backgroundColor="rgba(255,255,255,0.06)" borderRadius={8} padding="$2">
+            <YStack backgroundColor={c.bgCard} borderRadius={8} padding="$2" borderWidth={1} borderColor={c.border}>
               <TextInput
                 value={newTaskTitle}
                 onChangeText={onChangeNewTitle}
-                placeholder="Task title..."
-                placeholderTextColor="#666"
+                placeholder={t('board.taskTitlePlaceholder')}
+                placeholderTextColor={c.text3}
                 autoFocus
                 onSubmitEditing={onSubmitNewTask}
                 style={{
-                  color: 'white',
+                  color: c.text,
                   fontSize: 13,
                   padding: 0,
                   marginBottom: 8,
@@ -243,7 +248,7 @@ export function KanbanColumn({
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={onCancelAdd}>
-                  <Text fontSize={12} color="$color" opacity={0.5}>
+                  <Text fontSize={12} color={c.text3}>
                     Cancelar
                   </Text>
                 </TouchableOpacity>
@@ -260,8 +265,8 @@ export function KanbanColumn({
               paddingVertical={8}
               marginTop={4}
             >
-              <EyeOff size={11} color="#6B7280" />
-              <Text fontSize={11} color="#6B7280" opacity={0.7}>
+              <EyeOff size={11} color={c.text3} />
+              <Text fontSize={11} color={c.text3}>
                 {hiddenCount} {hiddenCount !== 1 ? 'tareas ocultas' : 'tarea oculta'} por filtros
               </Text>
             </XStack>

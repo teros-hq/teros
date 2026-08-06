@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceArchive: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Archive a workspace (soft delete). Only the owner can archive.',
   parameters: {
     type: 'object',

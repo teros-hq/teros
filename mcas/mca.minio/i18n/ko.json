@@ -1,0 +1,107 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. MinIO 자격 증명 및 연결을 확인합니다."
+    },
+    "list-buckets": {
+      "name": "list-buckets",
+      "description": "MinIO 서버의 모든 버킷 목록"
+    },
+    "create-bucket": {
+      "name": "create-bucket",
+      "description": "새 버킷을 생성합니다.",
+      "params": {
+        "bucket": "생성할 버킷의 이름(소문자, 3-63자)",
+        "region": "버킷의 지역(선택 사항, 기본값: us-east-1)"
+      }
+    },
+    "delete-bucket": {
+      "name": "delete-bucket",
+      "description": "버킷을 삭제합니다(비어 있어야 함).",
+      "params": {
+        "bucket": "삭제할 버킷의 이름"
+      }
+    },
+    "bucket-exists": {
+      "name": "bucket-exists",
+      "description": "버킷이 존재하는지 확인합니다.",
+      "params": {
+        "bucket": "확인할 버킷의 이름"
+      }
+    },
+    "list-objects": {
+      "name": "list-objects",
+      "description": "선택적 접두사 필터와 함께 버킷의 객체 목록",
+      "params": {
+        "bucket": "버킷의 이름",
+        "prefix": "접두사/폴더로 객체 필터링(선택 사항)",
+        "recursive": "재귀적으로 목록화(기본값: true)",
+        "limit": "반환할 최대 객체 수(기본값: 100)"
+      }
+    },
+    "upload-object": {
+      "name": "upload-object",
+      "description": "버킷에 파일 또는 내용을 업로드합니다.",
+      "params": {
+        "bucket": "버킷의 이름",
+        "objectName": "버킷 내 객체의 이름/경로",
+        "filePath": "업로드할 로컬 파일 경로(이것 또는 내용을 사용)",
+        "content": "업로드할 문자열 내용(이것 또는 filePath를 사용)",
+        "contentType": "MIME 유형(선택 사항, 가능하면 자동 감지)"
+      }
+    },
+    "download-object": {
+      "name": "download-object",
+      "description": "버킷에서 객체를 다운로드합니다.",
+      "params": {
+        "bucket": "버킷의 이름",
+        "objectName": "다운로드할 객체의 이름/경로",
+        "destPath": "로컬 목적지 경로(선택 사항, 기본값: ~/Downloads/minio/)"
+      }
+    },
+    "delete-object": {
+      "name": "delete-object",
+      "description": "버킷에서 객체를 삭제합니다.",
+      "params": {
+        "bucket": "버킷의 이름",
+        "objectName": "삭제할 객체의 이름/경로"
+      }
+    },
+    "copy-object": {
+      "name": "copy-object",
+      "description": "버킷 내 또는 버킷 간에 객체를 복사합니다.",
+      "params": {
+        "sourceBucket": "원본 버킷 이름",
+        "sourceObject": "원본 객체 이름/경로",
+        "destBucket": "대상 버킷 이름",
+        "destObject": "대상 객체 이름/경로"
+      }
+    },
+    "get-presigned-url": {
+      "name": "get-presigned-url",
+      "description": "객체에 대한 임시 액세스를 위한 사전 서명된 URL을 생성합니다.",
+      "params": {
+        "bucket": "버킷의 이름",
+        "objectName": "객체의 이름/경로",
+        "expiry": "URL 만료 시간(초 단위)(기본값: 3600 = 1시간, 최대: 604800 = 7일)",
+        "method": "HTTP 메서드: GET(다운로드) 또는 PUT(업로드)"
+      }
+    },
+    "get-object-info": {
+      "name": "get-object-info",
+      "description": "객체에 대한 메타데이터/정보(크기, 유형, etag 등)를 가져옵니다.",
+      "params": {
+        "bucket": "버킷의 이름",
+        "objectName": "객체의 이름/경로"
+      }
+    }
+  },
+  "name": "MinIO",
+  "description": "MinIO S3 호환 객체 저장소 - 버킷 관리, 객체 업로드/다운로드, 사전 서명된 URL 생성",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 - 버킷 관리, 파일 업로드, 다운로드, 복사 및 삭제, 임시 공유 링크 생성"
+    }
+  ]
+}

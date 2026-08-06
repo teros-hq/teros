@@ -8,6 +8,7 @@
 import { SquareKanban } from '@tamagui/lucide-icons';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { BoardWindowContent } from './BoardWindowContent';
+import i18n from '../../i18n';
 
 export interface BoardWindowProps {
   /** Workspace to show projects from */
@@ -29,10 +30,9 @@ export const boardWindowDefinition: WindowTypeDefinition<BoardWindowProps> = {
   defaultSize: { width: 900, height: 600 },
   minSize: { width: 600, height: 400 },
 
-  singleton: false,
   isLauncher: true,
 
-  getTitle: (props) => props.projectName || 'Board',
+  getTitle: (props) => props.projectName || i18n.t("windows.board"),
 
   getKey: (props) => props.projectId || undefined,
 

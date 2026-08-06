@@ -3,6 +3,7 @@ import { createGraphClient, buildRecipients, processEmailBody, buildFileAttachme
 import type { OutlookSecrets } from '../lib'
 
 export const sendMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Send an email message from the connected Outlook account.',
   parameters: {
     type: 'object',

@@ -1,223 +1,427 @@
 /**
  * Resume Service
  *
- * Detects incomplete conversations after a backend restart and
- * triggers system_resume events to continue them.
+ * At backend boot, uses the `running` field on Channel as the source of truth
+ * to detect conversations that were interrupted by a restart.
  *
- * A conversation is considered "incomplete" if:
- * 1. The last message is from the agent with a tool_execution that has status 'running'
- * 2. The last message is from the user and there's no agent response yet
- * 3. The session was active recently (within RESUME_WINDOW_MS) before the restart
+ * Logic:
+ * - Find all channels where `running === true`
+ * - Classify by `runningAt`:
+ *   - runningAt < now - ZOMBIE_THRESHOLD_MS  → zombie (crash happened long ago) → reset to running=false
+ *   - runningAt >= now - ZOMBIE_THRESHOLD_MS → recoverable → check if linked to a board task
+ *
+ * For recoverable channels:
+ *   - If linked to a board task → delegate to AutoplayService.scheduleAgentTasks()
+ *     (AutoplayService handles slots, columns, priorities — no direct system_resume)
+ *   - If NOT linked to a board task → trigger system_resume directly
+ *     (normal user conversations not managed by the board)
+ *
+ * This replaces the old heuristic approach (updatedAt window + message state detection).
  */
 
+import { reconcileChannel, type MessageWithParts, type Part, type SessionStore } from '@teros/core';
 import type { Db } from 'mongodb';
 import type { EventHandler } from '../handlers/event-handler';
 import type { ChannelManager } from './channel-manager';
+import type { AutoplayService } from './autoplay-service';
 
-// Only resume conversations that were active within the last 5 minutes
-const RESUME_WINDOW_MS = 5 * 60 * 1000;
+// Channels running for more than this threshold are considered zombies and just reset
+const ZOMBIE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
-// Delay before checking for incomplete conversations (let everything initialize)
+// Delay before checking (let all services initialize)
 const STARTUP_DELAY_MS = 5000;
 
-export interface IncompleteConversation {
-  channelId: string;
-  agentId: string;
-  reason: 'tool_running' | 'pending_approval' | 'no_agent_response' | 'incomplete_response';
-  lastMessageId?: string;
-  lastMessageTimestamp?: Date;
-  lastUserMessage?: string;
-}
+// Parallelism cap for channel-level replay during boot. Per-channel order is
+// preserved by serializing within a channel; different channels run in parallel
+// but not unbounded — otherwise N pending channels = N concurrent LLM turns at
+// boot, which overwhelms providers and DB pools.
+const REPLAY_CHANNEL_CONCURRENCY = 5;
+
+/**
+ * Callback invoked for each queued user message that needs to be re-driven
+ * through the normal agent pipeline after a crash.
+ *
+ * `text` is the joined text from all `text` parts (may be empty when the
+ * message only had file parts). `parts` is the full part list so the callback
+ * can reconstruct file descriptors / multimodal context if needed.
+ */
+export type QueuedMessageReplay = (
+  channelId: string,
+  messageId: string,
+  text: string,
+  parts: Part[],
+) => Promise<void>;
 
 export class ResumeService {
-  private startupTime: number;
+  private replayUserMessage: QueuedMessageReplay | null = null;
 
   constructor(
     private db: Db,
     private eventHandler: EventHandler,
     private channelManager: ChannelManager,
-  ) {
-    this.startupTime = Date.now();
+    private autoplayService: AutoplayService | null = null,
+    private sessionStore: SessionStore | null = null,
+  ) {}
+
+  /** Late-binding to break the ResumeService ↔ MessageHandler circular dep. */
+  setQueueReplayHook(replay: QueuedMessageReplay): void {
+    this.replayUserMessage = replay;
   }
 
   /**
-   * Check for incomplete conversations and trigger resume events
-   * Should be called after the backend is fully initialized
+   * Check for interrupted conversations and trigger resume events.
+   * Should be called after the backend is fully initialized.
    */
   async checkAndResumeConversations(): Promise<void> {
-    console.log('🔄 ResumeService: Checking for incomplete conversations...');
+    console.log('🔄 ResumeService: Checking for interrupted conversations...');
 
     try {
-      const incompleteConversations = await this.findIncompleteConversations();
+      const channelsCollection = this.db.collection('channels');
+      const now = Date.now();
+      const zombieCutoff = new Date(now - ZOMBIE_THRESHOLD_MS).toISOString();
 
-      if (incompleteConversations.length === 0) {
-        console.log('🔄 ResumeService: No incomplete conversations found');
+      // Find all channels that were running when the backend crashed
+      const runningChannels = await channelsCollection
+        .find({ running: true })
+        .toArray();
+
+      if (runningChannels.length === 0) {
+        console.log('🔄 ResumeService: No interrupted conversations found');
         return;
       }
 
       console.log(
-        `🔄 ResumeService: Found ${incompleteConversations.length} incomplete conversation(s)`,
+        `🔄 ResumeService: Found ${runningChannels.length} channel(s) with running=true`,
       );
 
-      for (const conv of incompleteConversations) {
-        await this.triggerResumeEvent(conv);
+      const zombies: string[] = [];
+      const recoverable: string[] = [];
+
+      for (const channel of runningChannels) {
+        const channelId = channel.channelId || channel._id.toString();
+        const runningAt: string | undefined = channel.runningAt;
+
+        if (!runningAt || runningAt < zombieCutoff) {
+          // No timestamp or too old — treat as zombie
+          zombies.push(channelId);
+        } else {
+          // Recent enough — attempt recovery
+          recoverable.push(channelId);
+        }
       }
 
-      console.log('🔄 ResumeService: Resume events triggered');
+      // Reset zombies (just clear the flag, no resume)
+      if (zombies.length > 0) {
+        console.log(
+          `🔄 ResumeService: Resetting ${zombies.length} zombie channel(s) (running=true but runningAt too old or missing)`,
+        );
+        for (const channelId of zombies) {
+          await channelsCollection.updateOne(
+            { channelId },
+            { $set: { running: false }, $unset: { runningAt: '' } },
+          );
+          console.log(`🔄 ResumeService: Reset zombie channel ${channelId}`);
+        }
+      }
+
+      // Recover interrupted channels
+      if (recoverable.length > 0) {
+        console.log(
+          `🔄 ResumeService: Processing ${recoverable.length} recoverable channel(s)`,
+        );
+        await this.recoverChannels(recoverable);
+      }
+
+      console.log('🔄 ResumeService: Boot check complete');
     } catch (error) {
-      console.error('🔄 ResumeService: Error checking for incomplete conversations:', error);
+      console.error('🔄 ResumeService: Error during boot check:', error);
     }
   }
 
   /**
-   * Find conversations that were interrupted by the restart
+   * For each recoverable channel, decide whether to delegate to AutoplayService
+   * (board tasks) or trigger system_resume directly (normal conversations).
    */
-  private async findIncompleteConversations(): Promise<IncompleteConversation[]> {
-    const incomplete: IncompleteConversation[] = [];
-    const cutoffTime = new Date(this.startupTime - RESUME_WINDOW_MS);
+  private async recoverChannels(channelIds: string[]): Promise<void> {
+    const reconciled = await this.reconcileOrphansAcross(channelIds);
+    await this.replayPendingQueuedMessages(reconciled);
+    const { boardPairs, normalChannels } = await this.classifyByBoardLink(reconciled);
+    await this.dispatchRecovery(boardPairs, normalChannels);
+  }
 
-    // Get recently active channels
-    const channelsCollection = this.db.collection('channels');
-    const messagesCollection = this.db.collection('channel_messages');
+  private async reconcileOrphansAcross(channelIds: string[]): Promise<string[]> {
+    if (!this.sessionStore) {
+      console.warn(
+        '🔄 ResumeService: SessionStore not provided — skipping TurnReconciler (orphans will be handled by live INV-1 pipeline on next prompt)',
+      );
+      return channelIds;
+    }
+    const reconciledOk: string[] = [];
+    for (const channelId of channelIds) {
+      try {
+        const result = await reconcileChannel(this.sessionStore, channelId);
+        if (result.orphanedToolCount > 0) {
+          console.log(
+            `🔄 ResumeService: TurnReconciler closed ${result.orphanedToolCount} orphan(s) in channel ${channelId}`,
+          );
+        }
+        if (result.recovered) {
+          reconciledOk.push(channelId);
+        } else {
+          console.warn(
+            `🔄 ResumeService: TurnReconciler did NOT fully recover channel ${channelId} — skipping resume`,
+          );
+          await this.clearRunningFlag(channelId);
+        }
+      } catch (err) {
+        console.error(`🔄 ResumeService: TurnReconciler failed for channel ${channelId}:`, err);
+        await this.clearRunningFlag(channelId);
+      }
+    }
+    return reconciledOk;
+  }
 
-    // Find channels with recent activity
-    const recentChannels = await channelsCollection
-      .find({
-        updatedAt: { $gte: cutoffTime },
-      })
-      .toArray();
+  private async replayPendingQueuedMessages(channelIds: string[]): Promise<void> {
+    if (!this.sessionStore || channelIds.length === 0) return;
+    try {
+      const pending = await this.sessionStore.listPendingQueueMessages(channelIds);
+      if (pending.length === 0) {
+        // running=true but nothing pending → clear the flag so it doesn't
+        // stay stuck across future recoveries.
+        await Promise.all(
+          channelIds.map((cid) =>
+            this.clearRunningFlag(cid).catch(() => undefined),
+          ),
+        );
+        return;
+      }
 
-    for (const channel of recentChannels) {
-      const channelId = channel.channelId || channel._id.toString();
-      const agentId = channel.agentId;
+      if (!this.replayUserMessage) {
+        console.warn(
+          `🔄 ResumeService: ${pending.length} user message(s) left in the worker queue at crash time — no replay hook wired, marking done (manual replay needed)`,
+          { messageIds: pending.map((m) => m.info.id) },
+        );
+        await Promise.all(
+          pending.map((m) =>
+            this.sessionStore!.updateUserMessageQueueState(m.info.id, 'done').catch(() => undefined),
+          ),
+        );
+        return;
+      }
 
-      if (!agentId) continue;
+      // Group by channelId — the worker is FIFO PER channel, so messages
+      // within a channel must be replayed in order. Different channels can
+      // (and should) be re-driven in parallel up to REPLAY_CHANNEL_CONCURRENCY.
+      const byChannel = new Map<string, MessageWithParts[]>();
+      for (const m of pending) {
+        const cid = m.info.sessionID;
+        const list = byChannel.get(cid);
+        if (list) list.push(m);
+        else byChannel.set(cid, [m]);
+      }
 
-      // Get the last few messages from this channel
-      const lastMessages = await messagesCollection
-        .find({ channelId })
-        .sort({ timestamp: -1 })
-        .limit(5)
-        .toArray();
+      console.log(
+        `🔄 ResumeService: re-driving ${pending.length} interrupted user message(s) across ${byChannel.size} channel(s) (concurrency=${REPLAY_CHANNEL_CONCURRENCY})`,
+      );
+      await this.replayChannelsWithConcurrency(byChannel, REPLAY_CHANNEL_CONCURRENCY);
+    } catch (err) {
+      console.error('🔄 ResumeService: failed to drain pending queueState:', err);
+    }
+  }
 
-      if (lastMessages.length === 0) continue;
+  /**
+   * Process N channels in parallel; messages within a channel stay serial
+   * so the existing per-channel FIFO ordering is preserved.
+   */
+  private async replayChannelsWithConcurrency(
+    byChannel: Map<string, MessageWithParts[]>,
+    concurrency: number,
+  ): Promise<void> {
+    const queue: Array<[string, MessageWithParts[]]> = [...byChannel.entries()];
+    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const entry = queue.shift();
+        if (!entry) return;
+        const [, messages] = entry;
+        for (const m of messages) {
+          await this.replaySingleMessage(m);
+        }
+      }
+    });
+    await Promise.all(workers);
+  }
 
-      const lastMessage = lastMessages[0];
-      const lastMessageTime = new Date(lastMessage.timestamp);
+  // Replay failures mark `done` so the next boot doesn't keep hammering
+  // broken state. Messages with only file parts (no text) are still replayed
+  // so the user doesn't lose attachments on crash recovery; only fully-empty
+  // messages (no text, no files) get auto-marked done.
+  private async replaySingleMessage(m: MessageWithParts): Promise<void> {
+    if (!this.sessionStore || !this.replayUserMessage) return;
+    const channelId = m.info.sessionID;
+    const text = m.parts
+      .filter((p) => p.type === 'text')
+      .map((p) => (p as { type: 'text'; text: string }).text)
+      .join('\n');
+    const hasFileParts = m.parts.some((p) => p.type === 'file');
+    if (!text.trim() && !hasFileParts) {
+      await this.sessionStore
+        .updateUserMessageQueueState(m.info.id, 'done')
+        .catch(() => undefined);
+      return;
+    }
+    try {
+      await this.replayUserMessage(channelId, m.info.id, text, m.parts);
+    } catch (err) {
+      console.error(
+        `🔄 ResumeService: replay failed for message ${m.info.id} in channel ${channelId}:`,
+        err,
+      );
+      await this.sessionStore
+        .updateUserMessageQueueState(m.info.id, 'done')
+        .catch(() => undefined);
+    }
+  }
 
-      // Skip if last message is too old
-      if (lastMessageTime < cutoffTime) continue;
+  /** Board pairs deduped by `${projectId}:${agentId}` — N tasks → 1 call. */
+  private async classifyByBoardLink(channelIds: string[]): Promise<{
+    boardPairs: Map<string, { projectId: string; agentId: string }>;
+    normalChannels: string[];
+  }> {
+    const boardPairs = new Map<string, { projectId: string; agentId: string }>();
+    const normalChannels: string[] = [];
 
-      // Check for incomplete states
-      const incompleteReason = this.detectIncompleteState(lastMessages);
+    for (const channelId of channelIds) {
+      const task = await this.db.collection('tasks').findOne(
+        { channelId },
+        { projection: { taskId: 1, boardId: 1, assignedAgentId: 1, columnId: 1 } },
+      );
 
-      if (incompleteReason) {
-        // Find the last user message for context
-        const lastUserMsg = lastMessages.find((m) => m.role === 'user');
-        const lastUserText =
-          lastUserMsg?.content?.type === 'text'
-            ? lastUserMsg.content.text
-            : lastUserMsg?.content?.transcription || '';
+      if (!task || !task.boardId || !task.assignedAgentId || !this.autoplayService) {
+        normalChannels.push(channelId);
+        if (task && !this.autoplayService) {
+          console.warn(
+            `🔄 ResumeService: Channel ${channelId} linked to board task but AutoplayService not available — falling back to direct resume`,
+          );
+        }
+        continue;
+      }
 
-        incomplete.push({
-          channelId,
-          agentId,
-          reason: incompleteReason,
-          lastMessageId: lastMessage.messageId || lastMessage._id?.toString(),
-          lastMessageTimestamp: lastMessageTime,
-          lastUserMessage: lastUserText?.slice(0, 200), // Truncate for logging
+      const project = await this.db.collection('projects').findOne(
+        { boardId: task.boardId },
+        { projection: { projectId: 1 } },
+      );
+
+      if (!project?.projectId) {
+        console.warn(
+          `🔄 ResumeService: Channel ${channelId} linked to task ${task.taskId} but project not found (boardId: ${task.boardId}) — falling back to direct resume`,
+        );
+        normalChannels.push(channelId);
+        continue;
+      }
+
+      const key = `${project.projectId}:${task.assignedAgentId}`;
+      boardPairs.set(key, { projectId: project.projectId, agentId: task.assignedAgentId });
+      console.log(
+        `🔄 ResumeService: Channel ${channelId} linked to task ${task.taskId} → will delegate to AutoplayService (project ${project.projectId}, agent ${task.assignedAgentId})`,
+      );
+    }
+    return { boardPairs, normalChannels };
+  }
+
+  private async dispatchRecovery(
+    boardPairs: Map<string, { projectId: string; agentId: string }>,
+    normalChannels: string[],
+  ): Promise<void> {
+    if (boardPairs.size > 0) {
+      console.log(
+        `🔄 ResumeService: Delegating to AutoplayService for ${boardPairs.size} unique (project, agent) pair(s)`,
+      );
+      for (const { projectId, agentId } of boardPairs.values()) {
+        console.log(`🔄 ResumeService: scheduleAgentTasks(${projectId}, ${agentId})`);
+        this.autoplayService!.scheduleAgentTasks(projectId, agentId).catch((err) => {
+          console.error(
+            `🔄 ResumeService: AutoplayService.scheduleAgentTasks error for project ${projectId}, agent ${agentId}:`,
+            err,
+          );
         });
       }
     }
 
-    return incomplete;
+    if (normalChannels.length > 0) {
+      console.log(
+        `🔄 ResumeService: Triggering direct system_resume for ${normalChannels.length} normal channel(s)`,
+      );
+      for (const channelId of normalChannels) {
+        await this.triggerResumeEvent(channelId);
+      }
+    }
+  }
+
+  private async clearRunningFlag(channelId: string): Promise<void> {
+    await this.db
+      .collection('channels')
+      .updateOne({ channelId }, { $set: { running: false }, $unset: { runningAt: '' } });
   }
 
   /**
-   * Detect if a conversation is in an incomplete state
+   * Trigger a system_resume event for a channel that was interrupted.
+   * Used only for normal (non-board) conversations.
+   *
+   * Revalidates that the channel is still running before emitting — if the
+   * agent already finished its turn (running=false by the time we get here),
+   * there is nothing to resume and we must NOT wake the agent, otherwise it
+   * will repeat actions that were already completed.
    */
-  private detectIncompleteState(messages: any[]): IncompleteConversation['reason'] | null {
-    if (messages.length === 0) return null;
-
-    const lastMessage = messages[0];
-
-    // Case 1: Last message is a tool execution that was running or pending approval
-    if (lastMessage.role === 'agent' && lastMessage.content?.type === 'tool_execution') {
-      const status = lastMessage.content.status;
-      if (status === 'running' || status === 'pending') {
-        return 'tool_running';
-      }
-      // Note: pending_approval is handled differently - the permission manager
-      // will restore the permission request when the user subscribes to the channel
-    }
-
-    // Case 2: Last message is from user with no agent response
-    if (lastMessage.role === 'user') {
-      return 'no_agent_response';
-    }
-
-    // Case 3: Check if there's a user message after the last complete agent response
-    // This handles the case where user sent a message but agent didn't finish responding
-    const lastUserIndex = messages.findIndex((m) => m.role === 'user');
-    const lastAgentIndex = messages.findIndex((m) => m.role === 'agent');
-
-    if (lastUserIndex !== -1 && lastUserIndex < lastAgentIndex) {
-      // User message is more recent than agent's last message
-      // Check if the agent message after it looks complete
-      const agentMsgAfterUser = messages.find((m, i) => m.role === 'agent' && i < lastUserIndex);
-      if (!agentMsgAfterUser) {
-        return 'no_agent_response';
-      }
-    }
-
-    return null;
-  }
-
-  /**
-   * Trigger a system_resume event for an incomplete conversation
-   */
-  private async triggerResumeEvent(conv: IncompleteConversation): Promise<void> {
-    const reasonMessages: Record<IncompleteConversation['reason'], string> = {
-      tool_running: 'A tool was executing when the system restarted',
-      pending_approval: 'A tool was waiting for user approval when the system restarted',
-      no_agent_response: 'The user sent a message but no response was generated',
-      incomplete_response: 'The response was interrupted before completion',
-    };
-
-    const message = conv.lastUserMessage
-      ? `Last user message: "${conv.lastUserMessage}${conv.lastUserMessage.length >= 200 ? '...' : ''}"`
-      : 'Please check the conversation history for context.';
-
-    console.log(
-      `🔄 ResumeService: Triggering resume for channel ${conv.channelId} (${conv.reason})`,
+  private async triggerResumeEvent(channelId: string): Promise<void> {
+    // Revalidate: is the channel still actually running?
+    const channel = await this.db.collection('channels').findOne(
+      { channelId },
+      { projection: { running: 1 } },
     );
 
+    if (!channel || !channel.running) {
+      console.log(
+        `🔄 ResumeService: Channel ${channelId} is no longer running — skipping system_resume (agent already finished)`,
+      );
+      await this.clearRunningFlag(channelId);
+      return;
+    }
+
+    console.log(`🔄 ResumeService: Triggering direct resume for channel ${channelId} (still running)`);
+
     await this.eventHandler.handleScheduledEvent({
-      channelId: conv.channelId,
-      message,
+      channelId,
+      message: 'The backend was restarted while a task was in progress. Check the conversation history to see what was already completed before continuing — do not repeat actions that already succeeded.',
       eventType: 'system_resume',
       wakeUpAgent: true,
       metadata: {
         source: 'resume-service',
-        reason: reasonMessages[conv.reason],
-        lastMessageId: conv.lastMessageId,
-        interruptedAt: conv.lastMessageTimestamp?.toISOString(),
+        reason: 'Backend restarted while channel had running=true',
       },
     });
   }
 
   /**
-   * Start the resume service with a delay
-   * This allows time for all services to initialize
+   * Start the resume service with a startup delay.
+   * This allows time for all services to initialize before checking.
    */
   static async startWithDelay(
     db: Db,
     eventHandler: EventHandler,
     channelManager: ChannelManager,
+    autoplayService: AutoplayService | null = null,
+    sessionStore: SessionStore | null = null,
+    queueReplayHook: QueuedMessageReplay | null = null,
   ): Promise<ResumeService> {
-    const service = new ResumeService(db, eventHandler, channelManager);
+    const service = new ResumeService(
+      db,
+      eventHandler,
+      channelManager,
+      autoplayService,
+      sessionStore,
+    );
+    if (queueReplayHook) service.setQueueReplayHook(queueReplayHook);
 
-    // Wait for startup delay then check for incomplete conversations
     setTimeout(async () => {
       await service.checkAndResumeConversations();
     }, STARTUP_DELAY_MS);

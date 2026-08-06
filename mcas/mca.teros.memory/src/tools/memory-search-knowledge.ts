@@ -5,6 +5,7 @@ import { searchKnowledge } from '@teros/shared/memory/knowledge';
 
 export const memorySearchKnowledge: HttpToolConfig = {
   description: 'Search through the knowledge base',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {

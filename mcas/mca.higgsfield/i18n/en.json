@@ -1,0 +1,90 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Higgsfield API credentials and connectivity."
+    },
+    "higgsfield-run": {
+      "name": "higgsfield-run",
+      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
+      "params": {
+        "model": "Model/endpoint identifier (e.g., 'bytedance/seedream/v4/text-to-image')",
+        "input": "Input parameters for the model",
+        "wait": "Wait for completion (default: false)"
+      }
+    },
+    "higgsfield-text-to-image": {
+      "name": "higgsfield-text-to-image",
+      "description": "Generate images from text prompts using Seedream v4.",
+      "params": {
+        "prompt": "Text description of the image to generate",
+        "resolution": "Output resolution",
+        "aspect_ratio": "Aspect ratio of the generated image",
+        "style": "Optional style preset",
+        "wait": "Wait for completion (default: false)"
+      }
+    },
+    "higgsfield-image-to-video": {
+      "name": "higgsfield-image-to-video",
+      "description": "Convert an image to video with motion. Supports various motion styles and camera movements.",
+      "params": {
+        "image_url": "URL of the input image",
+        "prompt": "Description of the desired motion/video",
+        "duration": "Video duration in seconds (default: 5)",
+        "motion_strength": "Motion intensity (0.0-1.0)",
+        "camera_motion": "Camera movement type",
+        "wait": "Wait for completion (default: false)"
+      }
+    },
+    "higgsfield-text-to-video": {
+      "name": "higgsfield-text-to-video",
+      "description": "Generate video from text prompt.",
+      "params": {
+        "prompt": "Text description of the video to generate",
+        "duration": "Video duration in seconds (default: 5)",
+        "resolution": "Output resolution",
+        "aspect_ratio": "Aspect ratio",
+        "wait": "Wait for completion (default: false)"
+      }
+    },
+    "higgsfield-soul-generate": {
+      "name": "higgsfield-soul-generate",
+      "description": "Generate images with consistent character appearance using Soul. Great for creating multiple images of the same character.",
+      "params": {
+        "prompt": "Text description of the scene/pose for the character",
+        "reference_image": "URL of the reference image for character consistency",
+        "style": "Optional style preset",
+        "wait": "Wait for completion (default: false)"
+      }
+    },
+    "higgsfield-get-prediction": {
+      "name": "higgsfield-get-prediction",
+      "description": "Get the status and result of a prediction by ID.",
+      "params": {
+        "prediction_id": "The prediction ID to check",
+        "wait": "Wait for completion if still processing (default: false)"
+      }
+    },
+    "higgsfield-cancel-prediction": {
+      "name": "higgsfield-cancel-prediction",
+      "description": "Cancel a queued or processing prediction.",
+      "params": {
+        "prediction_id": "The prediction ID to cancel"
+      }
+    },
+    "higgsfield-list-models": {
+      "name": "higgsfield-list-models",
+      "description": "List available models and their capabilities.",
+      "params": {
+        "type": "Filter models by type"
+      }
+    }
+  },
+  "name": "Higgsfield",
+  "description": "Generate AI images and videos with Higgsfield - text-to-image, image-to-video, and consistent character generation with Soul.",
+  "changelog": [
+    {
+      "notes": "Initial release — generate images from text, turn images into videos, and create consistent characters with Soul"
+    }
+  ]
+}

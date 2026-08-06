@@ -8,11 +8,11 @@ import * as LucideIcons from '@tamagui/lucide-icons';
 import {
   Archive,
   Bot,
-  Box,
+
   Check,
   Crown,
   Download,
-  Edit2,
+  Edit3,
   FileText,
   Folder,
   HardDrive,
@@ -39,7 +39,8 @@ import {
   View,
 } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { useTranslation } from 'react-i18next';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { AppCard } from '../../components/AppCard';
 import type { AppAuthInfo } from '../../components/apps';
 import { useToast } from '../../components/Toast';
@@ -48,43 +49,49 @@ import { useClickModifiers } from '../../hooks/useClickModifiers';
 import { useTilingStore } from '../../store/tilingStore';
 import type { WorkspaceWindowProps } from './definition';
 import { AppSpinner, FullscreenLoader } from '../../components/ui';
+import { ContextEditor } from '../../components/ContextEditor';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors as semanticColors, surface } from '../../components/mca/primitives/colors';
 
 interface WorkspaceDetails {
   workspaceId: string;
   name: string;
   description?: string;
   context?: string;
-  volumeId: string;
-  ownerId: string;
-  members: Array<{
+  volumeId?: string;
+  ownerId?: string;
+  members?: Array<{
     userId: string;
     role: 'admin' | 'write' | 'read';
     addedAt: string;
     addedBy: string;
   }>;
-  settings: {
+  settings?: {
     defaultBranch?: string;
   };
   appearance?: {
     color?: string;
     icon?: string;
   };
-  role: 'owner' | 'admin' | 'write' | 'read';
-  status: 'active' | 'archived';
+  /** Workspace type — 'private' is the user's personal workspace and cannot be deleted/archived */
+  type?: 'private' | 'shared';
+  role?: string;
+  status: string;
   createdAt: string;
-  updatedAt: string;
+  updatedAt?: string;
 }
 
 interface WorkspaceApp {
   appId: string;
   name: string;
   mcaId: string;
-  mcaName: string;
+  mcaName?: string;
   description: string;
   icon?: string;
   color?: string;
   category: string;
-  status: 'active' | 'disabled';
+  status: string;
+  volumes?: any[];
 }
 
 interface WorkspaceAgent {
@@ -140,15 +147,14 @@ interface CatalogMca {
   };
 }
 
-// Role display info
-const roleInfo: Record<string, { label: string; color: string; icon: any }> = {
-  owner: { label: 'Propietario', color: '#FFD700', icon: Crown },
-  admin: { label: 'Admin', color: '#9B59B6', icon: Settings },
-  write: { label: 'Editor', color: '#3498DB', icon: Edit2 },
-  read: { label: 'Lector', color: '#95A5A6', icon: Users },
+const roleIcons: Record<string, { color: string; icon: any }> = {
+  owner: { color: '#FFD700', icon: Crown },
+  admin: { color: '#9B59B6', icon: Settings },
+  write: { color: '#3498DB', icon: Edit3 },
+  read: { color: '#95A5A6', icon: Users },
 };
 
-type TabType = 'conversations' | 'agents' | 'apps';
+type TabType = 'conversations' | 'agents' | 'apps' | 'members' | 'context';
 type ModalType = 'none' | 'install-app' | 'edit-appearance' | 'edit-context';
 
 interface WorkspaceWindowContentProps extends WorkspaceWindowProps {
@@ -156,6 +162,7 @@ interface WorkspaceWindowContentProps extends WorkspaceWindowProps {
 }
 
 export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindowContentProps) {
+  const { t } = useTranslation();
   const [workspace, setWorkspace] = useState<WorkspaceDetails | null>(null);
   const [workspaceApps, setWorkspaceApps] = useState<WorkspaceApp[]>([]);
   const [workspaceAgents, setWorkspaceAgents] = useState<WorkspaceAgent[]>([]);
@@ -180,15 +187,18 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
   const [selectedColor, setSelectedColor] = useState<string>('amber');
   const [selectedIcon, setSelectedIcon] = useState<string>('folder');
   const [savingAppearance, setSavingAppearance] = useState(false);
+  const [iconSearch, setIconSearch] = useState<string>('');
 
-  // Edit context modal state
-  const [contextText, setContextText] = useState<string>('');
+  // Edit context state
   const [savingContext, setSavingContext] = useState(false);
+  const [contextText, setContextText] = useState(workspace?.context || '');
 
   const client = getTerosClient();
   const toast = useToast();
   const { closeWindow, updateWindowProps, openWindow } = useTilingStore();
   const { shouldOpenInNewTab } = useClickModifiers();
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
 
   // Load workspace details on mount
   useEffect(() => {
@@ -197,7 +207,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
       setIsLoading(true);
       try {
-        const data = await client.getWorkspace(workspaceId);
+        const { workspace: data } = await client.workspace.getWorkspace(workspaceId);
         setWorkspace(data);
         updateWindowProps(windowId, { name: data.name });
         loadWorkspaceChannels(workspaceId);
@@ -205,7 +215,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
         loadWorkspaceAgents(workspaceId);
       } catch (err: any) {
         console.error('Error loading workspace:', err);
-        toast.error('Error', 'No se pudo cargar el workspace');
+        toast.error(t('workspaceDetail.error'), t('workspaceDetail.loadError'));
       } finally {
         setIsLoading(false);
       }
@@ -226,7 +236,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
   const loadWorkspaceApps = async (wsId: string) => {
     setIsLoadingApps(true);
     try {
-      const apps = await client.listWorkspaceApps(wsId);
+      const { apps } = await client.workspace.listWorkspaceApps(wsId);
       setWorkspaceApps(apps);
       loadAllAuthStatuses(apps);
     } catch (err: any) {
@@ -311,13 +321,18 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
   const handleArchiveWorkspace = async () => {
     if (!workspace) return;
+    // Guard: private workspaces cannot be archived/deleted
+    if (workspace.type === 'private') {
+      toast.error(t('workspaceDetail.notAllowed'), t('workspaceDetail.privateCannotArchive'));
+      return;
+    }
     try {
-      await client.archiveWorkspace(workspace.workspaceId);
-      toast.success('Archivado', `Workspace "${workspace.name}" archivado`);
+      await client.workspace.archiveWorkspace(workspace.workspaceId);
+      toast.success(t('workspaceDetail.archived'), t('workspaceDetail.archivedMessage', { name: workspace.name }));
       closeWindow(windowId);
     } catch (err: any) {
       console.error('Error archiving workspace:', err);
-      toast.error('Error', err.message || 'No se pudo archivar el workspace');
+      toast.error(t('workspaceDetail.error'), err.message || t('workspaceDetail.archiveError'));
     }
   };
 
@@ -328,7 +343,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
   const handleOpenApp = (app: WorkspaceApp, e?: any) => {
     const inNewTab = e && shouldOpenInNewTab(e);
-    openWindow('app', { appId: app.appId, workspaceId }, inNewTab, windowId);
+    openWindow('app', { appId: app.appId }, inNewTab, windowId);
   };
 
   const handleUninstallApp = async (app: WorkspaceApp) => {
@@ -337,10 +352,10 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
     try {
       await client.app.uninstallApp(app.appId);
       setWorkspaceApps((prev) => prev.filter((a) => a.appId !== app.appId));
-      toast.success('Desinstalada', `${app.name} ha sido desinstalada`);
+      toast.success(t('workspaceDetail.uninstalled'), t('workspaceDetail.uninstalledMessage', { name: app.name }));
     } catch (err: any) {
       console.error('Error uninstalling app:', err);
-      toast.error('Error', err.message || 'No se pudo desinstalar la app');
+      toast.error(t('workspaceDetail.error'), err.message || t('workspaceDetail.uninstallError'));
     }
   };
 
@@ -354,28 +369,24 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
   };
 
   // ============================================================================
-  // EDIT CONTEXT MODAL
+  // EDIT CONTEXT INLINE
   // ============================================================================
 
-  const openEditContextModal = () => {
-    setContextText(workspace?.context || '');
-    setActiveModal('edit-context');
-  };
-
-  const handleSaveContext = async () => {
+  const handleSaveContext = async (newContext: string) => {
     if (!workspace) return;
 
     setSavingContext(true);
     try {
-      const updated = await client.updateWorkspace(workspace.workspaceId, {
-        context: contextText.trim(),
+      const { workspace: updated } = await client.workspace.updateWorkspace({
+        workspaceId: workspace.workspaceId,
+        context: newContext.trim(),
       });
       setWorkspace((prev) => (prev ? { ...prev, context: updated.context } : null));
       setActiveModal('none');
-      toast.success('Guardado', 'Contexto actualizado');
+      toast.success(t('workspaceDetail.saved'), t('workspaceDetail.contextUpdated'));
     } catch (err: any) {
       console.error('Error saving context:', err);
-      toast.error('Error', err.message || 'No se pudo guardar el contexto');
+      toast.error(t('workspaceDetail.error'), err.message || t('workspaceDetail.contextSaveError'));
     } finally {
       setSavingContext(false);
     }
@@ -388,6 +399,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
   const openEditAppearanceModal = () => {
     setSelectedColor(workspace?.appearance?.color || 'amber');
     setSelectedIcon(workspace?.appearance?.icon || 'folder');
+    setIconSearch('');
     setActiveModal('edit-appearance');
   };
 
@@ -396,7 +408,8 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
     setSavingAppearance(true);
     try {
-      const updated = await client.updateWorkspace(workspace.workspaceId, {
+      const { workspace: updated } = await client.workspace.updateWorkspace({
+        workspaceId: workspace.workspaceId,
         appearance: {
           color: selectedColor,
           icon: selectedIcon,
@@ -404,10 +417,10 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
       });
       setWorkspace((prev) => (prev ? { ...prev, appearance: updated.appearance } : null));
       setActiveModal('none');
-      toast.success('Guardado', 'Apariencia actualizada');
+      toast.success(t('workspaceDetail.saved'), t('workspaceDetail.appearanceUpdated'));
     } catch (err: any) {
       console.error('Error saving appearance:', err);
-      toast.error('Error', err.message || 'No se pudo guardar la apariencia');
+      toast.error(t('workspaceDetail.error'), err.message || t('workspaceDetail.appearanceSaveError'));
     } finally {
       setSavingAppearance(false);
     }
@@ -433,7 +446,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
       setCatalog(available);
     } catch (err) {
       console.error('Failed to load catalog:', err);
-      toast.error('Error', 'Could not load the catalog');
+      toast.error(t('workspaceDetail.error'), t('workspaceDetail.catalogLoadError'));
     } finally {
       setLoadingCatalog(false);
     }
@@ -457,7 +470,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
           status: 'active',
         },
       ]);
-      toast.success('Installed', `${mca.name} instalada`);
+      toast.success(t('workspaceDetail.installed'), t('workspaceDetail.installedMessage', { name: mca.name }));
 
       // Remove from catalog if not multi
       if (!mca.availability.multi) {
@@ -465,7 +478,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
       }
     } catch (err: any) {
       console.error('Error installing app:', err);
-      toast.error('Error', err.message || 'No se pudo instalar la app');
+      toast.error(t('workspaceDetail.error'), err.message || t('workspaceDetail.installError'));
     } finally {
       setInstallingMcaId(null);
     }
@@ -477,72 +490,58 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
   if (isLoading) {
     return (
-      <FullscreenLoader variant="default" label="Cargando workspace..." />
+      <FullscreenLoader variant="default" label={t('workspaceDetail.loadingWorkspace')} />
     );
   }
 
   if (!workspace) {
     return (
-      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor="#09090B">
-        <Folder size={64} color="#27272A" />
-        <Text color="#71717A" marginTop="$3" fontSize="$4">
-          Workspace no encontrado
+      <YStack flex={1} justifyContent="center" alignItems="center" backgroundColor={c.bgPage}>
+        <Folder size={64} color={c.text3} />
+        <Text color={c.text2} marginTop="$3" fontSize="$4">
+          {t('workspaceDetail.notFound')}
         </Text>
       </YStack>
     );
   }
 
-  const role = roleInfo[workspace.role];
-  const RoleIcon = role.icon;
+  const roleKey = workspace.role ?? 'read';
+  const roleData = roleIcons[roleKey] ?? roleIcons.read;
+  const roleLabel = t(`workspaceDetail.role_${roleKey}`);
+  const RoleIcon = roleData.icon;
   const canEdit =
     workspace.role === 'owner' || workspace.role === 'admin' || workspace.role === 'write';
 
-  const renderTabButton = (tab: TabType, label: string, count: number, icon: any) => {
-    const isActive = activeTab === tab;
-    const Icon = icon;
-    return (
-      <TouchableOpacity
-        onPress={() => setActiveTab(tab)}
-        style={{
-          paddingHorizontal: 14,
-          paddingVertical: 8,
-          borderRadius: 6,
-          backgroundColor: isActive ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: 6,
-        }}
-      >
-        <Icon size={14} color={isActive ? '#3B82F6' : '#71717A'} />
-        <Text
-          fontSize={13}
-          fontWeight={isActive ? '600' : '400'}
-          color={isActive ? '#3B82F6' : '#71717A'}
-        >
-          {label}
-        </Text>
-        <View
-          style={{
-            backgroundColor: isActive ? 'rgba(59, 130, 246, 0.2)' : 'rgba(39, 39, 42, 0.6)',
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 10,
-            minWidth: 20,
-            alignItems: 'center',
-          }}
-        >
-          <Text fontSize={10} color={isActive ? '#3B82F6' : '#71717A'} fontWeight="500">
-            {count}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
+  // ============================================================================
+  // ICON PICKER HELPERS
+  // ============================================================================
+
+  /** Convert PascalCase Lucide export name to kebab-case icon name */
+  const pascalToKebab = (name: string): string =>
+    name.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z])([A-Z][a-z])/g, '$1-$2').toLowerCase();
+
+  /**
+   * Returns the list of icons to display in the icon picker:
+   * - Empty search → curated WORKSPACE_ICONS (~50)
+   * - With search → all Lucide icons filtered by kebab-case name
+   */
+  const getFilteredIcons = (): string[] => {
+    const query = iconSearch.trim().toLowerCase();
+    if (!query) return [...WORKSPACE_ICONS];
+
+    return Object.keys(LucideIcons)
+      .map(pascalToKebab)
+      .filter(
+        (name) =>
+          // Exclude non-icon exports (they tend to be short or have special chars)
+          /^[a-z][a-z0-9-]+$/.test(name) && name.includes(query),
+      );
   };
 
   return (
-    <YStack flex={1} backgroundColor="#09090B">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* Header */}
-      <YStack padding="$3" borderBottomWidth={1} borderBottomColor="rgba(39, 39, 42, 0.6)" gap="$2">
+      <YStack padding="$3" borderBottomWidth={1} borderBottomColor={c.border} gap="$2">
         <XStack alignItems="center" justifyContent="space-between">
           <XStack alignItems="center" gap="$3">
             <TouchableOpacity
@@ -557,11 +556,11 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               />
             </TouchableOpacity>
             <YStack>
-              <Text fontSize={16} fontWeight="600" color="#FAFAFA">
+              <Text fontSize={16} fontWeight="600" color={c.text}>
                 {workspace.name}
               </Text>
               {workspace.description && (
-                <Text color="#71717A" fontSize={12}>
+                <Text color={c.text2} fontSize={12}>
                   {workspace.description}
                 </Text>
               )}
@@ -574,38 +573,29 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               gap="$1"
               paddingHorizontal={8}
               paddingVertical={4}
-              backgroundColor="rgba(39, 39, 42, 0.6)"
+              backgroundColor={c.bgCardHover}
               borderRadius={6}
             >
-              <RoleIcon size={12} color={role.color} />
-              <Text fontSize={11} color={role.color}>
-                {role.label}
+              <RoleIcon size={12} color={roleData.color} />
+              <Text fontSize={11} color={roleData.color}>
+                {roleLabel}
               </Text>
             </XStack>
             {canEdit && (
               <TouchableOpacity onPress={openEditAppearanceModal}>
                 <View
-                  style={{ padding: 8, borderRadius: 6, backgroundColor: 'rgba(39, 39, 42, 0.6)' }}
+                  style={{ padding: 8, borderRadius: 6, backgroundColor: c.bgCardHover }}
                 >
-                  <Palette size={14} color="#71717A" />
+                  <Palette size={14} color={c.text2} />
                 </View>
               </TouchableOpacity>
             )}
-            {canEdit && (
-              <TouchableOpacity onPress={openEditContextModal}>
-                <View
-                  style={{ padding: 8, borderRadius: 6, backgroundColor: 'rgba(39, 39, 42, 0.6)' }}
-                >
-                  <FileText size={14} color="#71717A" />
-                </View>
-              </TouchableOpacity>
-            )}
-            {workspace.role === 'owner' && (
+            {workspace.role === 'owner' && workspace.type !== 'private' && (
               <TouchableOpacity onPress={handleArchiveWorkspace}>
                 <View
-                  style={{ padding: 8, borderRadius: 6, backgroundColor: 'rgba(39, 39, 42, 0.6)' }}
+                  style={{ padding: 8, borderRadius: 6, backgroundColor: c.bgCardHover }}
                 >
-                  <Archive size={14} color="#EF4444" />
+                  <Archive size={14} color={semanticColors.red} />
                 </View>
               </TouchableOpacity>
             )}
@@ -613,28 +603,86 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
         </XStack>
 
         <XStack alignItems="center" gap="$2">
-          <HardDrive size={12} color="#52525B" />
-          <Text color="#52525B" fontSize={11}>
+          <HardDrive size={12} color={c.text3} />
+          <Text color={c.text3} fontSize={11}>
             {workspace.volumeId}
           </Text>
         </XStack>
 
-        <XStack gap="$1" marginTop="$1">
-          {renderTabButton('conversations', 'Chats', workspaceChannels.length, MessageCircle)}
-          {renderTabButton('agents', 'Agentes', workspaceAgents.length, Bot)}
-          {renderTabButton('apps', 'Apps', workspaceApps.length, Package)}
-        </XStack>
       </YStack>
 
-      {/* Content */}
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+      {/* Tabs */}
+      <YStack
+        backgroundColor={c.bgPage}
+        borderBottomWidth={1}
+        borderBottomColor={c.border}
+      >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <XStack paddingHorizontal={16}>
+            {[
+              { id: 'conversations' as TabType, label: t('workspaceDetail.tabChats'), icon: MessageCircle, count: workspaceChannels.length },
+              { id: 'agents' as TabType, label: t('workspaceDetail.tabAgents'), icon: Bot, count: workspaceAgents.length },
+              { id: 'apps' as TabType, label: t('workspaceDetail.tabApps'), icon: Package, count: workspaceApps.length },
+              { id: 'members' as TabType, label: t('workspaceDetail.tabMembers'), icon: Users, count: workspace?.members?.length ?? 0 },
+              { id: 'context' as TabType, label: t('workspaceDetail.tabContext'), icon: FileText, count: 0 },
+            ].map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <XStack
+                  key={tab.id}
+                  paddingVertical={12}
+                  paddingHorizontal={16}
+                  gap={8}
+                  alignItems="center"
+                  cursor="pointer"
+                  borderBottomWidth={2}
+                  borderBottomColor={isActive ? semanticColors.indigo : 'transparent'}
+                  opacity={isActive ? 1 : 0.6}
+                  hoverStyle={{ opacity: 1, backgroundColor: isDark ? '#111' : 'rgba(10,10,15,0.06)' }}
+                  onPress={() => setActiveTab(tab.id)}
+                >
+                  <Icon size={14} color={isActive ? semanticColors.indigo : c.text2} />
+                  <Text
+                    fontSize={12}
+                    fontWeight={isActive ? '600' : '500'}
+                    color={isActive ? semanticColors.indigo : c.text2}
+                  >
+                    {tab.label}
+                  </Text>
+                  {tab.count > 0 && (
+                    <View
+                      style={{
+                        backgroundColor: isActive ? 'rgba(94,106,210,0.20)' : c.bgCardHover,
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 10,
+                        minWidth: 20,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text fontSize={10} color={isActive ? semanticColors.indigo : c.text2} fontWeight="500">
+                        {tab.count}
+                      </Text>
+                    </View>
+                  )}
+                </XStack>
+              );
+            })}
+          </XStack>
+        </ScrollView>
+      </YStack>
+
+      {/* Tab Content */}
+      <ScrollView contentContainerStyle={{ flexGrow: 1, flexShrink: 1 }}>
+        <YStack padding={16} gap={16}>
         {activeTab === 'conversations' && (
           <>
             {/* New chat button - show agent selector */}
             {workspaceAgents.length > 0 && (
               <YStack gap="$2" marginBottom="$3">
-                <Text color="#71717A" fontSize={11} marginBottom="$1">
-                  New conversation con:
+                <Text color={c.text2} fontSize={11} marginBottom="$1">
+                  {t('workspaceDetail.newConversationWith')}
                 </Text>
                 <XStack flexWrap="wrap" gap="$2">
                   {workspaceAgents.map((agent) => (
@@ -647,10 +695,10 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                         gap: 6,
                         paddingHorizontal: 10,
                         paddingVertical: 6,
-                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        backgroundColor: semanticColors.indigoGlow,
                         borderRadius: 16,
                         borderWidth: 1,
-                        borderColor: 'rgba(59, 130, 246, 0.2)',
+                        borderColor: 'rgba(94,106,210,0.20)',
                       }}
                     >
                       {agent.avatarUrl ? (
@@ -664,15 +712,15 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                             width: 20,
                             height: 20,
                             borderRadius: 10,
-                            backgroundColor: 'rgba(59, 130, 246, 0.3)',
+                            backgroundColor: 'rgba(94,106,210,0.30)',
                             justifyContent: 'center',
                             alignItems: 'center',
                           }}
                         >
-                          <Bot size={12} color="#3B82F6" />
+                          <Bot size={12} color={semanticColors.indigo} />
                         </View>
                       )}
-                      <Text color="#3B82F6" fontSize={12} fontWeight="500">
+                      <Text color={semanticColors.indigo} fontSize={12} fontWeight="500">
                         {agent.name}
                       </Text>
                     </TouchableOpacity>
@@ -688,14 +736,14 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               <YStack
                 padding="$6"
                 alignItems="center"
-                backgroundColor="rgba(24, 24, 27, 0.5)"
+                backgroundColor={c.bgInner}
                 borderRadius={12}
               >
-                <MessageCircle size={40} color="#27272A" />
-                <Text color="#52525B" marginTop="$2" textAlign="center" fontSize={13}>
+                <MessageCircle size={40} color={c.text3} />
+                <Text color={c.text3} marginTop="$2" textAlign="center" fontSize={13}>
                   {workspaceAgents.length === 0
-                    ? 'Crea un agente para iniciar conversaciones'
-                    : 'No conversations yet'}
+                    ? t('workspaceDetail.createAgentToChat')
+                    : t('workspaceDetail.noConversationsYet')}
                 </Text>
               </YStack>
             ) : (
@@ -710,12 +758,12 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                     >
                       <XStack
                         padding="$3"
-                        backgroundColor="rgba(24, 24, 27, 0.9)"
+                        backgroundColor={c.bgCard}
                         borderRadius={10}
                         alignItems="center"
                         gap="$3"
                         borderWidth={1}
-                        borderColor="rgba(39, 39, 42, 0.6)"
+                        borderColor={c.border}
                       >
                         {agent?.avatarUrl ? (
                           <Image
@@ -728,20 +776,20 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                               width: 40,
                               height: 40,
                               borderRadius: 20,
-                              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                              backgroundColor: semanticColors.indigoGlow,
                               justifyContent: 'center',
                               alignItems: 'center',
                             }}
                           >
-                            <MessageCircle size={20} color="#3B82F6" />
+                            <MessageCircle size={20} color={semanticColors.indigo} />
                           </View>
                         )}
                         <YStack flex={1}>
-                          <Text color="#FAFAFA" fontWeight="500" fontSize={14} numberOfLines={1}>
-                            {channel.metadata?.name || `Chat con ${agent?.name || 'Agente'}`}
+                          <Text color={c.text} fontWeight="500" fontSize={14} numberOfLines={1}>
+                            {channel.metadata?.name || t('workspaceDetail.chatWith', { name: agent?.name || t('workspaceDetail.agent') })}
                           </Text>
                           {channel.lastMessage && (
-                            <Text color="#71717A" fontSize={11} numberOfLines={1}>
+                            <Text color={c.text2} fontSize={11} numberOfLines={1}>
                               {channel.lastMessage.content}
                             </Text>
                           )}
@@ -749,7 +797,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                         {(channel.unreadCount ?? 0) > 0 && (
                           <View
                             style={{
-                              backgroundColor: '#3B82F6',
+                              backgroundColor: semanticColors.indigo,
                               borderRadius: 10,
                               paddingHorizontal: 6,
                               paddingVertical: 2,
@@ -777,7 +825,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               <TouchableOpacity
                 onPress={openCreateAgentModal}
                 style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  backgroundColor: semanticColors.indigoGlow,
                   borderRadius: 8,
                   padding: 12,
                   marginBottom: 12,
@@ -786,13 +834,13 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   justifyContent: 'center',
                   gap: 8,
                   borderWidth: 1,
-                  borderColor: 'rgba(59, 130, 246, 0.2)',
+                  borderColor: 'rgba(94,106,210,0.20)',
                   borderStyle: 'dashed',
                 }}
               >
-                <Plus size={16} color="#3B82F6" />
-                <Text color="#3B82F6" fontSize={13} fontWeight="500">
-                  Crear agente
+                <Plus size={16} color={semanticColors.indigo} />
+                <Text color={semanticColors.indigo} fontSize={13} fontWeight="500">
+                  {t('workspaceDetail.createAgent')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -804,12 +852,12 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               <YStack
                 padding="$6"
                 alignItems="center"
-                backgroundColor="rgba(24, 24, 27, 0.5)"
+                backgroundColor={c.bgInner}
                 borderRadius={12}
               >
-                <Bot size={40} color="#27272A" />
-                <Text color="#52525B" marginTop="$2" textAlign="center" fontSize={13}>
-                  No hay agentes en este workspace
+                <Bot size={40} color={c.text3} />
+                <Text color={c.text3} marginTop="$2" textAlign="center" fontSize={13}>
+                  {t('workspaceDetail.noAgents')}
                 </Text>
               </YStack>
             ) : (
@@ -822,12 +870,12 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   >
                     <XStack
                       padding="$3"
-                      backgroundColor="rgba(24, 24, 27, 0.9)"
+                      backgroundColor={c.bgCard}
                       borderRadius={10}
                       alignItems="center"
                       gap="$3"
                       borderWidth={1}
-                      borderColor="rgba(39, 39, 42, 0.6)"
+                      borderColor={c.border}
                     >
                       {agent.avatarUrl ? (
                         <Image
@@ -840,19 +888,19 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                             width: 40,
                             height: 40,
                             borderRadius: 20,
-                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            backgroundColor: semanticColors.indigoGlow,
                             justifyContent: 'center',
                             alignItems: 'center',
                           }}
                         >
-                          <Bot size={20} color="#3B82F6" />
+                          <Bot size={20} color={semanticColors.indigo} />
                         </View>
                       )}
                       <YStack flex={1}>
-                        <Text color="#FAFAFA" fontWeight="500" fontSize={14}>
+                        <Text color={c.text} fontWeight="500" fontSize={14}>
                           {agent.name}
                         </Text>
-                        <Text color="#71717A" fontSize={11}>
+                        <Text color={c.text2} fontSize={11}>
                           {agent.role}
                         </Text>
                       </YStack>
@@ -870,7 +918,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               <TouchableOpacity
                 onPress={openInstallAppModal}
                 style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  backgroundColor: semanticColors.indigoGlow,
                   borderRadius: 8,
                   padding: 12,
                   marginBottom: 12,
@@ -879,13 +927,13 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   justifyContent: 'center',
                   gap: 8,
                   borderWidth: 1,
-                  borderColor: 'rgba(59, 130, 246, 0.2)',
+                  borderColor: 'rgba(94,106,210,0.20)',
                   borderStyle: 'dashed',
                 }}
               >
-                <Plus size={16} color="#3B82F6" />
-                <Text color="#3B82F6" fontSize={13} fontWeight="500">
-                  Install app
+                <Plus size={16} color={semanticColors.indigo} />
+                <Text color={semanticColors.indigo} fontSize={13} fontWeight="500">
+                  {t('workspaceDetail.installApp')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -897,12 +945,12 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               <YStack
                 padding="$6"
                 alignItems="center"
-                backgroundColor="rgba(24, 24, 27, 0.5)"
+                backgroundColor={c.bgInner}
                 borderRadius={12}
               >
-                <Package size={40} color="#27272A" />
-                <Text color="#52525B" marginTop="$2" textAlign="center" fontSize={13}>
-                  No hay apps instaladas
+                <Package size={40} color={c.text3} />
+                <Text color={c.text3} marginTop="$2" textAlign="center" fontSize={13}>
+                  {t('workspaceDetail.noAppsInstalled')}
                 </Text>
               </YStack>
             ) : (
@@ -917,7 +965,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                     category={app.category}
                     authInfo={authStatuses[app.appId]}
                     loading={loadingAuthStatus[app.appId]}
-                    onPress={(e) => handleOpenApp(app, e)}
+                    onPress={(e?: any) => handleOpenApp(app, e)}
                     onUninstall={canEdit ? () => handleUninstallApp(app) : undefined}
                     showUninstall={canEdit}
                   />
@@ -926,6 +974,92 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             )}
           </>
         )}
+
+        {/* Members Tab */}
+        {activeTab === 'members' && (
+          <>
+            {workspace?.members && workspace.members.length > 0 ? (
+              <YStack gap={12}>
+                <Text fontSize={14} fontWeight="600" color={c.text}>
+                  {t('workspaceDetail.membersTitle')}
+                </Text>
+                <YStack gap={8}>
+                  {workspace.members.map((member) => {
+                    const roleInfo: any = { owner: { icon: Crown }, admin: { icon: Settings }, write: { icon: Edit3 }, read: { icon: LucideIcons.Eye } };
+                    const mRole = roleInfo[member.role] || roleInfo.read;
+                    const MRoleIcon = mRole.icon;
+                    return (
+                      <XStack
+                        key={member.userId}
+                        padding="$3"
+                        backgroundColor={c.bgCard}
+                        borderRadius={10}
+                        alignItems="center"
+                        gap="$3"
+                        borderWidth={1}
+                        borderColor={c.border}
+                      >
+                        <View
+                          style={{
+                            width: 36,
+                            height: 36,
+                            borderRadius: 18,
+                            backgroundColor: semanticColors.indigoGlow,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Users size={16} color={semanticColors.indigo} />
+                        </View>
+                        <YStack flex={1}>
+                          <Text color={c.text} fontWeight="500" fontSize={14}>
+                            {member.userId}
+                          </Text>
+                          <XStack alignItems="center" gap={4}>
+                            <MRoleIcon size={10} color={mRole.color} />
+                            <Text color={c.text2} fontSize={11}>
+                              {mRole.label}
+                            </Text>
+                          </XStack>
+                        </YStack>
+                      </XStack>
+                    );
+                  })}
+                </YStack>
+              </YStack>
+            ) : (
+              <YStack
+                padding="$6"
+                alignItems="center"
+                backgroundColor={c.bgInner}
+                borderRadius={12}
+              >
+                <Users size={40} color={c.text3} />
+                <Text color={c.text3} marginTop="$2" textAlign="center" fontSize={13}>
+                  {t('workspaceDetail.noMembers')}
+                </Text>
+              </YStack>
+            )}
+          </>
+        )}
+
+        {/* Context Tab */}
+        {activeTab === 'context' && (
+          <ContextEditor
+            title={t('workspaceDetail.workspaceContext')}
+            description={t('workspaceDetail.workspaceContextDescription')}
+            value={workspace?.context ?? ''}
+            onChange={(text) =>
+              setWorkspace((prev) => (prev ? { ...prev, context: text } : null))
+            }
+            onSave={async () => {
+              await handleSaveContext(workspace?.context ?? '');
+            }}
+            isSaving={savingContext}
+            placeholder={t('workspace.contextPlaceholder')}
+          />
+        )}
+        </YStack>
       </ScrollView>
 
       {/* Create Agent Modal */}
@@ -938,7 +1072,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)',
             justifyContent: 'center',
             alignItems: 'center',
             padding: 16,
@@ -946,28 +1080,28 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
         >
           <View
             style={{
-              backgroundColor: '#18181B',
+              backgroundColor: c.bgCard,
               borderRadius: 12,
               width: '100%',
               maxWidth: 500,
               maxHeight: '90%',
               borderWidth: 1,
-              borderColor: 'rgba(39, 39, 42, 0.6)',
+              borderColor: c.border,
             }}
           >
             {/* Header */}
             <XStack
               padding="$3"
               borderBottomWidth={1}
-              borderBottomColor="rgba(39, 39, 42, 0.6)"
+              borderBottomColor={c.border}
               justifyContent="space-between"
               alignItems="center"
             >
-              <Text fontSize={16} fontWeight="600" color="#FAFAFA">
-                Install app
+              <Text fontSize={16} fontWeight="600" color={c.text}>
+                {t('workspaceDetail.installApp')}
               </Text>
               <TouchableOpacity onPress={() => setActiveModal('none')}>
-                <X size={20} color="#71717A" />
+                <X size={20} color={c.text2} />
               </TouchableOpacity>
             </XStack>
 
@@ -975,15 +1109,15 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
               {loadingCatalog ? (
                 <YStack padding="$4" alignItems="center">
                   <AppSpinner size="lg" variant="default" />
-                  <Text color="#71717A" marginTop="$2">
-                    Loading catalog...
+                  <Text color={c.text2} marginTop="$2">
+                    {t('workspaceDetail.loadingCatalog')}
                   </Text>
                 </YStack>
               ) : catalog.length === 0 ? (
                 <YStack padding="$6" alignItems="center">
-                  <Package size={40} color="#27272A" />
-                  <Text color="#52525B" marginTop="$2" textAlign="center">
-                    No hay apps disponibles para instalar
+                  <Package size={40} color={c.text3} />
+                  <Text color={c.text3} marginTop="$2" textAlign="center">
+                    {t('workspaceDetail.noAppsAvailable')}
                   </Text>
                 </YStack>
               ) : (
@@ -994,19 +1128,19 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                       <XStack
                         key={mca.mcaId}
                         padding="$3"
-                        backgroundColor="rgba(24, 24, 27, 0.9)"
+                        backgroundColor={c.bgCard}
                         borderRadius={10}
                         alignItems="center"
                         gap="$3"
                         borderWidth={1}
-                        borderColor="rgba(39, 39, 42, 0.6)"
+                        borderColor={c.border}
                       >
                         <View
                           style={{
                             width: 40,
                             height: 40,
                             borderRadius: 8,
-                            backgroundColor: mca.color || 'rgba(39, 39, 42, 0.6)',
+                            backgroundColor: mca.color || c.bgCardHover,
                             justifyContent: 'center',
                             alignItems: 'center',
                             overflow: 'hidden',
@@ -1019,25 +1153,25 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                               resizeMode="contain"
                             />
                           ) : (
-                            <Package size={20} color="#FAFAFA" />
+                            <Package size={20} color={c.text} />
                           )}
                         </View>
                         <YStack flex={1}>
-                          <Text color="#FAFAFA" fontWeight="500" fontSize={14}>
+                          <Text color={c.text} fontWeight="500" fontSize={14}>
                             {mca.name}
                           </Text>
-                          <Text color="#71717A" fontSize={11} numberOfLines={1}>
+                          <Text color={c.text2} fontSize={11} numberOfLines={1}>
                             {mca.description}
                           </Text>
-                          <Text color="#52525B" fontSize={10}>
-                            {mca.tools.length} herramientas
+                          <Text color={c.text3} fontSize={10}>
+                            {t('workspaceDetail.toolCount', { count: mca.tools.length })}
                           </Text>
                         </YStack>
                         <TouchableOpacity
                           onPress={() => handleInstallApp(mca)}
                           disabled={isInstalling}
                           style={{
-                            backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                            backgroundColor: semanticColors.indigoGlow,
                             paddingHorizontal: 12,
                             paddingVertical: 8,
                             borderRadius: 6,
@@ -1051,9 +1185,9 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                             <AppSpinner size="sm" variant="default" />
                           ) : (
                             <>
-                              <Download size={14} color="#3B82F6" />
-                              <Text color="#3B82F6" fontSize={12} fontWeight="500">
-                                Install
+                              <Download size={14} color={semanticColors.indigo} />
+                              <Text color={semanticColors.indigo} fontSize={12} fontWeight="500">
+                                {t('workspaceDetail.install')}
                               </Text>
                             </>
                           )}
@@ -1077,7 +1211,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)',
             justifyContent: 'center',
             alignItems: 'center',
             padding: 16,
@@ -1085,28 +1219,28 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
         >
           <View
             style={{
-              backgroundColor: '#18181B',
+              backgroundColor: c.bgCard,
               borderRadius: 12,
               width: '100%',
               maxWidth: 400,
               maxHeight: '90%',
               borderWidth: 1,
-              borderColor: 'rgba(39, 39, 42, 0.6)',
+              borderColor: c.border,
             }}
           >
             {/* Header */}
             <XStack
               padding="$3"
               borderBottomWidth={1}
-              borderBottomColor="rgba(39, 39, 42, 0.6)"
+              borderBottomColor={c.border}
               justifyContent="space-between"
               alignItems="center"
             >
-              <Text fontSize={16} fontWeight="600" color="#FAFAFA">
-                Personalizar apariencia
+              <Text fontSize={16} fontWeight="600" color={c.text}>
+                {t('workspaceDetail.customizeAppearance')}
               </Text>
               <TouchableOpacity onPress={() => setActiveModal('none')}>
-                <X size={20} color="#71717A" />
+                <X size={20} color={c.text2} />
               </TouchableOpacity>
             </XStack>
 
@@ -1119,15 +1253,15 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   size={32}
                   containerSize={64}
                 />
-                <Text color="#71717A" fontSize={12} marginTop="$2">
-                  Vista previa
+                <Text color={c.text2} fontSize={12} marginTop="$2">
+                  {t('workspaceDetail.preview')}
                 </Text>
               </YStack>
 
               {/* Color Picker */}
               <YStack gap="$2" marginBottom="$4">
-                <Text color="#A1A1AA" fontSize={12} fontWeight="500">
-                  Color
+                <Text color={c.text2} fontSize={12} fontWeight="500">
+                  {t('workspaceDetail.color')}
                 </Text>
                 <XStack flexWrap="wrap" gap="$2">
                   {WORKSPACE_COLORS.map((color) => {
@@ -1145,10 +1279,10 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                           justifyContent: 'center',
                           alignItems: 'center',
                           borderWidth: 2,
-                          borderColor: isSelected ? '#FAFAFA' : 'transparent',
+                          borderColor: isSelected ? c.text : 'transparent',
                         }}
                       >
-                        {isSelected && <Check size={16} color="#FAFAFA" />}
+                        {isSelected && <Check size={16} color={c.text} />}
                       </TouchableOpacity>
                     );
                   })}
@@ -1157,41 +1291,81 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
 
               {/* Icon Picker */}
               <YStack gap="$2">
-                <Text color="#A1A1AA" fontSize={12} fontWeight="500">
-                  Icono
+                <Text color={c.text2} fontSize={12} fontWeight="500">
+                  {t('workspaceDetail.icon')}
                 </Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                  {WORKSPACE_ICONS.map((icon) => {
-                    const isSelected = selectedIcon === icon;
-                    const iconName = icon
-                      .split('-')
-                      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                      .join('');
-                    const IconComponent = (LucideIcons as any)[iconName] || Folder;
-                    const palette =
-                      COLOR_PALETTE[selectedColor as WorkspaceColor] || COLOR_PALETTE.amber;
+
+                {/* Search input */}
+                <TextInput
+                  value={iconSearch}
+                  onChangeText={setIconSearch}
+                  placeholder={t('workspace.searchIconPlaceholder')}
+                  placeholderTextColor={c.text3}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  style={{
+                    backgroundColor: isDark ? '#27272A' : 'rgba(10,10,15,0.05)',
+                    color: c.text,
+                    borderRadius: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    fontSize: 13,
+                    borderWidth: 1,
+                    borderColor: c.borderStrong,
+                    marginBottom: 8,
+                  }}
+                />
+
+                {/* Icon grid */}
+                {(() => {
+                  const icons = getFilteredIcons();
+                  const palette =
+                    COLOR_PALETTE[selectedColor as WorkspaceColor] || COLOR_PALETTE.amber;
+
+                  if (icons.length === 0) {
                     return (
-                      <TouchableOpacity
-                        key={icon}
-                        onPress={() => setSelectedIcon(icon)}
-                        style={{
-                          width: 36,
-                          height: 36,
-                          borderRadius: 6,
-                          backgroundColor: isSelected
-                            ? palette['900'] + '60'
-                            : 'rgba(39, 39, 42, 0.4)',
-                          justifyContent: 'center',
-                          alignItems: 'center',
-                          borderWidth: 1,
-                          borderColor: isSelected ? palette['500'] : 'transparent',
-                        }}
-                      >
-                        <IconComponent size={16} color={isSelected ? palette['500'] : '#71717A'} />
-                      </TouchableOpacity>
+                      <Text color={c.text3} fontSize={12} textAlign="center" paddingVertical="$3">
+                        {t('workspaceDetail.noIconsFound', { query: iconSearch })}
+                      </Text>
                     );
-                  })}
-                </View>
+                  }
+
+                  return (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                      {icons.map((icon) => {
+                        const isSelected = selectedIcon === icon;
+                        const iconName = icon
+                          .split('-')
+                          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+                          .join('');
+                        const IconComponent = (LucideIcons as any)[iconName] || Folder;
+                        return (
+                          <TouchableOpacity
+                            key={icon}
+                            onPress={() => setSelectedIcon(icon)}
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 6,
+                              backgroundColor: isSelected
+                                ? palette['900'] + '60'
+                                : 'rgba(39, 39, 42, 0.4)',
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                              borderWidth: 1,
+                              borderColor: isSelected ? palette['500'] : 'transparent',
+                            }}
+                          >
+                            <IconComponent
+                              size={16}
+                              color={isSelected ? palette['500'] : c.text2}
+                            />
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  );
+                })()}
               </YStack>
             </ScrollView>
 
@@ -1199,7 +1373,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             <XStack
               padding="$3"
               borderTopWidth={1}
-              borderTopColor="rgba(39, 39, 42, 0.6)"
+              borderTopColor={c.border}
               justifyContent="flex-end"
               gap="$2"
             >
@@ -1210,11 +1384,11 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   paddingVertical: 10,
                   borderRadius: 8,
                   borderWidth: 1,
-                  borderColor: 'rgba(63, 63, 70, 0.5)',
+                  borderColor: c.borderStrong,
                 }}
               >
-                <Text color="#A1A1AA" fontSize={13}>
-                  Cancelar
+                <Text color={c.text2} fontSize={13}>
+                  {t('common.cancel')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -1224,7 +1398,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                   paddingHorizontal: 16,
                   paddingVertical: 10,
                   borderRadius: 8,
-                  backgroundColor: '#3B82F6',
+                  backgroundColor: semanticColors.indigo,
                   opacity: savingAppearance ? 0.5 : 1,
                   minWidth: 100,
                   alignItems: 'center',
@@ -1233,8 +1407,8 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                 {savingAppearance ? (
                   <AppSpinner size="sm" variant="onDark" />
                 ) : (
-                  <Text color="#fff" fontSize={13} fontWeight="500">
-                    Guardar
+                  <Text color="#FFFFFF" fontSize={13} fontWeight="500">
+                    {t('common.save')}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1252,7 +1426,7 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            backgroundColor: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.5)',
             justifyContent: 'center',
             alignItems: 'center',
             padding: 16,
@@ -1260,37 +1434,35 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
         >
           <View
             style={{
-              backgroundColor: '#18181B',
+              backgroundColor: c.bgCard,
               borderRadius: 12,
               width: '100%',
               maxWidth: 500,
               maxHeight: '80%',
               borderWidth: 1,
-              borderColor: 'rgba(39, 39, 42, 0.6)',
+              borderColor: c.border,
             }}
           >
             {/* Header */}
             <XStack
               padding="$3"
               borderBottomWidth={1}
-              borderBottomColor="rgba(39, 39, 42, 0.6)"
+              borderBottomColor={c.border}
               justifyContent="space-between"
               alignItems="center"
             >
-              <Text fontSize={16} fontWeight="600" color="#FAFAFA">
-                Editar contexto del workspace
+              <Text fontSize={16} fontWeight="600" color={c.text}>
+                {t('workspaceDetail.editContext')}
               </Text>
               <TouchableOpacity onPress={() => setActiveModal('none')}>
-                <X size={20} color="#71717A" />
+                <X size={20} color={c.text2} />
               </TouchableOpacity>
             </XStack>
 
             {/* Content */}
             <View style={{ padding: 16, flex: 1 }}>
-              <Text color="#71717A" fontSize={12} marginBottom="$2">
-                The context is included in the prompts of agents in this workspace. Use it to
-                provide project-specific information, coding standards, or any
-                other relevant information that agents should know.
+              <Text color={c.text2} fontSize={12} marginBottom="$2">
+                {t('workspaceDetail.workspaceContextDescription')}
               </Text>
 
               <TextInput
@@ -1298,16 +1470,16 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                 onChangeText={setContextText}
                 multiline
                 numberOfLines={8}
-                placeholder="Write the workspace context here..."
-                placeholderTextColor="#52525B"
+                placeholder={t('workspace.contextPlaceholder')}
+                placeholderTextColor={c.text3}
                 style={{
-                  backgroundColor: '#27272A',
-                  color: '#FAFAFA',
+                  backgroundColor: isDark ? '#27272A' : 'rgba(10,10,15,0.05)',
+                  color: c.text,
                   borderRadius: 8,
                   padding: 12,
                   fontSize: 14,
                   borderWidth: 1,
-                  borderColor: 'rgba(39, 39, 42, 0.6)',
+                  borderColor: c.border,
                   textAlignVertical: 'top',
                   minHeight: 150,
                   flex: 1,
@@ -1320,26 +1492,26 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
             <XStack
               padding="$3"
               borderTopWidth={1}
-              borderTopColor="rgba(39, 39, 42, 0.6)"
+              borderTopColor={c.border}
               justifyContent="flex-end"
               gap="$2"
             >
               <TouchableOpacity
                 onPress={() => setActiveModal('none')}
                 disabled={savingContext}
-                style={{ padding: 12, borderRadius: 6, backgroundColor: 'rgba(39, 39, 42, 0.6)' }}
+                style={{ padding: 12, borderRadius: 6, backgroundColor: c.bgCardHover }}
               >
-                <Text color="#FAFAFA" fontSize={13}>
-                  Cancelar
+                <Text color={c.text} fontSize={13}>
+                  {t('common.cancel')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={handleSaveContext}
+                onPress={() => handleSaveContext(contextText)}
                 disabled={savingContext}
                 style={{
                   padding: 12,
                   borderRadius: 6,
-                  backgroundColor: savingContext ? 'rgba(59, 130, 246, 0.5)' : '#3B82F6',
+                  backgroundColor: savingContext ? 'rgba(94,106,210,0.50)' : semanticColors.indigo,
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 8,
@@ -1348,8 +1520,8 @@ export function WorkspaceWindowContent({ windowId, workspaceId }: WorkspaceWindo
                 {savingContext ? (
                   <AppSpinner size="sm" variant="onDark" />
                 ) : (
-                  <Text color="#fff" fontSize={13} fontWeight="500">
-                    Guardar
+                  <Text color="#FFFFFF" fontSize={13} fontWeight="500">
+                    {t('common.save')}
                   </Text>
                 )}
               </TouchableOpacity>

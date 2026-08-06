@@ -1,0 +1,119 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies ActiveCampaign API URL, token, and connectivity."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "List contacts. Returns { items[{id,email,firstName,lastName,phone}], total, nextOffset }. Filter by email, free-text search, or listId.",
+      "params": {
+        "email": "Exact email match",
+        "search": "Free-text search (name/email)",
+        "listId": "Only contacts subscribed to this list",
+        "limit": "Max results (default 20, max 100)",
+        "offset": "Pagination offset (default 0)",
+        "includeRaw": "Include raw API response"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Get a contact by id. Returns { contact: {id,email,firstName,lastName,phone,cdate,udate} }.",
+      "params": {
+        "id": "Contact id"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Create a contact. Email is required. Returns { contact } with the created record. ActiveCampaign upserts by email; if it exists you get the existing contact.",
+      "params": {
+        "email": "Contact email (required)"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Update a contact by id. Only provided fields are updated. Returns { contact }.",
+      "params": {
+        "id": "Contact id"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Delete a contact by id. Permanent — no soft-delete in ActiveCampaign. Returns { id, deleted: true }.",
+      "params": {
+        "id": "Contact id"
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "List subscriber lists. Returns { items[{id,name,stringid,subscriberCount}], total, nextOffset }.",
+      "params": {
+        "limit": "Max results (default 20, max 100)"
+      }
+    },
+    "subscribe-contact-to-list": {
+      "name": "subscribe-contact-to-list",
+      "description": "Subscribe (or unsubscribe) a contact to a list. Returns { contactList: {id, contact, list, status} }.",
+      "params": {
+        "contactId": "Contact id",
+        "listId": "List id",
+        "status": "Default subscribed"
+      }
+    },
+    "list-campaigns": {
+      "name": "list-campaigns",
+      "description": "List email campaigns. Returns { items[{id,name,type,status,subject,sendDate,totalRecipients,totalOpens,uniqueOpens}], total, nextOffset }.",
+      "params": {
+        "limit": "Max results (default 20, max 100)"
+      }
+    },
+    "get-campaign": {
+      "name": "get-campaign",
+      "description": "Get a campaign by id. Returns { campaign: {id,name,subject,status,sendDate,fromName,fromEmail,totalRecipients,opens,clicks} }.",
+      "params": {
+        "id": "Campaign id"
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "List deals (CRM pipeline records). Returns { items[{id,title,value,currency,status,contact,pipeline,stage}], total, nextOffset }.",
+      "params": {
+        "search": "Search title/description",
+        "pipelineId": "Filter by pipeline id",
+        "stageId": "Filter by stage id",
+        "limit": "Max results (default 20, max 100)"
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "Get a deal by id. Returns { deal: {id,title,description,value,currency,status,contact,pipeline,stage,owner} }.",
+      "params": {
+        "id": "Deal id"
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "Create a deal. Required: title, value (in major units), pipelineId, stageId, ownerId. value is converted to cents internally. Returns { deal }.",
+      "params": {
+        "value": "Deal value in major units (e.g. 1500 for $1,500)",
+        "currency": "ISO currency code, lowercase (default usd)",
+        "pipelineId": "Pipeline (group) id",
+        "ownerId": "User id of deal owner"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "List tags. Returns { items[{id,name,description,tagType}], total, nextOffset }.",
+      "params": {
+        "search": "Substring match on tag name",
+        "limit": "Max results (default 20, max 100)"
+      }
+    },
+    "add-tag-to-contact": {
+      "name": "add-tag-to-contact",
+      "description": "Assign a tag to a contact. Returns { contactTag: {id, contact, tag} }."
+    }
+  },
+  "name": "ActiveCampaign",
+  "description": "ActiveCampaign CRM and email marketing — manage contacts, lists, campaigns, deals, and tags via the v3 API."
+}

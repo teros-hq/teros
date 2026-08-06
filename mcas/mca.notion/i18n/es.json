@@ -1,0 +1,347 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad."
+    },
+    "search": {
+      "name": "search",
+      "description": "Busca páginas y bases de datos por título. Devuelve filas curadas { id, object, url, title, icon, lastEditedTime }. Parámetros: query, filter?, sort?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "query": "Texto de búsqueda",
+        "filter": "Limitar a 'page' (solo páginas) o 'data_source' (bases de datos — nota: la API de Notion 2025-09-03+ usa 'data_source', NO 'database').",
+        "sort": "Ordenar por 'last_edited_time' (descendente)",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "startCursor": "Cursor de paginación de Notion de la respuesta anterior (nextCursor).",
+        "fields": "Sobrescribe la lista blanca por defecto. Pasa nombres de campos de la estructura curada.",
+        "includeRaw": "Devuelve la respuesta sin procesar de la API de Notion. Por defecto false."
+      }
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "Obtiene una página. Devuelve { id, url, title, icon, cover, properties, createdTime, lastEditedTime, parentType, parentId, archived }. Parámetros: pageId, fields?, includeRaw.",
+      "params": {
+        "pageId": "UUID de la página (con o sin guiones).",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "get-page-markdown": {
+      "name": "get-page-markdown",
+      "description": "Obtiene el contenido completo de una página como markdown usando el endpoint nativo de Notion v5. Reemplaza `get-page-content` (eliminado 2026-05). Pasa `includeTranscript=true` para incrustar transcripciones de meeting_notes. Respuesta: { markdown }.",
+      "params": {
+        "pageId": "UUID de la página.",
+        "includeTranscript": "Incrusta transcripciones de bloques meeting_notes. Por defecto false.",
+        "includeRaw": "Devuelve la respuesta sin procesar de la API. Por defecto false."
+      }
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "Crea una nueva página bajo una página (parentType='page') o base de datos (parentType='database'). Para bases de datos padre, la fila se añade a la primera fuente de datos salvo que se proporcione `dataSourceId`. Devuelve { id, url, title, icon, cover, parentType, parentId, createdTime }. No reintentable (sin clave de idempotencia).",
+      "params": {
+        "parentId": "UUID de la página o base de datos padre.",
+        "parentType": "'page' o 'database'.",
+        "dataSourceId": "Para bases de datos multi-fuente, el UUID específico de la fuente de datos donde insertar. Se ignora cuando parentType=page.",
+        "title": "Título de la página. Para páginas de base de datos se ignora cuando se proporciona `properties`; por defecto \"Untitled\".",
+        "properties": "Objeto completo de propiedades de Notion para páginas de base de datos (usado tal cual). Sobrescribe `title` para la columna de título.",
+        "propertiesSimple": "Mapa plano apto para agentes: `{ Status: 'Done', Tags: ['urgent'] }`. El esquema se resuelve automáticamente. Solo para parentType=database. Si se pasan ambos `properties` y `propertiesSimple`, `properties` en bruto tiene prioridad (con advertencia).",
+        "fields": "Sobrescribe la lista blanca por defecto en la página devuelta.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-page": {
+      "name": "update-page",
+      "description": "Actualiza las propiedades de una página y/o su estado de archivado. Devuelve la página actualizada { id, url, title, properties, icon, cover, archived, lastEditedTime }. Idempotente por campo — los reintentos son seguros.",
+      "params": {
+        "pageId": "UUID de la página.",
+        "properties": "Objeto de propiedades de Notion a actualizar (depende del esquema de la base de datos). Usado tal cual.",
+        "propertiesSimple": "Mapa plano apto para agentes: `{ Status: 'Done' }`. El esquema se resuelve automáticamente. Solo para filas de base de datos. Si se pasan ambos `properties` y `propertiesSimple`, `properties` en bruto tiene prioridad.",
+        "archived": "Mover a la papelera (true) o restaurar (false). Se envía como `in_trash` según API 2026-03-11. Opcional.",
+        "fields": "Sobrescribe la lista blanca por defecto en la página devuelta.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-page-markdown": {
+      "name": "update-page-markdown",
+      "description": "Edita una página usando operaciones markdown. Modos: 'replace' (por defecto — sobrescribe todo el cuerpo con `markdown`), 'append' (añade `markdown` al final, `afterBlockId` opcional), 'edit' (aplica ediciones por cadena vía `edits: [{oldStr, newStr, replaceAll?}]`). Devuelve { pageId, mode }. `replace` es destructivo — no reintentable.",
+      "params": {
+        "pageId": "UUID de la página.",
+        "mode": "'replace' (por defecto) | 'append' | 'edit'.",
+        "markdown": "Cuerpo markdown para los modos replace/append. Soporta encabezados #/##/###/####, listas, código, callouts, tablas.",
+        "afterBlockId": "Solo modo append — UUID del bloque después del cual insertar. Por defecto: final de la página.",
+        "edits": "Solo modo edit — array de [{ oldStr, newStr, replaceAll? }] aplicadas en orden contra el markdown actual de la página.",
+        "allowDeletingContent": "Modos replace/edit — debe ser true para permitir reducir el contenido de la página. Por defecto true."
+      }
+    },
+    "set-page-icon": {
+      "name": "set-page-icon",
+      "description": "Establece el icono de una página (emoji o URL externa). Devuelve { id, url, title, icon, lastEditedTime }. Idempotente.",
+      "params": {
+        "pageId": "UUID de la página.",
+        "iconType": "'emoji' o 'external'.",
+        "icon": "Carácter emoji o URL de imagen según iconType.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "set-page-cover": {
+      "name": "set-page-cover",
+      "description": "Establece la imagen de portada de una página desde una URL externa. Devuelve { id, url, title, cover, lastEditedTime }. Idempotente.",
+      "params": {
+        "pageId": "UUID de la página.",
+        "coverUrl": "URL HTTPS de la imagen de portada.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "duplicate-page": {
+      "name": "duplicate-page",
+      "description": "Duplica una página incluyendo icono/portada/propiedades/bloques hijos. Devuelve { sourcePage, duplicate } con estructuras curadas. No reintentable — crea páginas nuevas en cada llamada.",
+      "params": {
+        "pageId": "UUID de la página origen.",
+        "newTitle": "Nuevo título. Por defecto: 'Copy of <título original>'.",
+        "targetParentId": "UUID del padre destino. Por defecto: mismo padre que el origen.",
+        "fields": "Sobrescribe la lista blanca por defecto en ambas páginas.",
+        "includeRaw": "Devuelve los objetos sin procesar de Notion. Por defecto false."
+      }
+    },
+    "get-database": {
+      "name": "get-database",
+      "description": "Obtiene una base de datos. Devuelve { id, url, title, description, icon, cover, schema, createdTime, lastEditedTime, parentType, parentId, archived }. Parámetros: databaseId, fields?, includeRaw.",
+      "params": {
+        "databaseId": "UUID de la base de datos.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de base de datos sin procesar de Notion. Por defecto false."
+      }
+    },
+    "query-database": {
+      "name": "query-database",
+      "description": "Consulta filas de una base de datos con filtros y ordenación. Devuelve filas curadas { id, url, title, icon, properties, lastEditedTime }. La lista blanca de `properties` controla qué columnas se incluyen (por defecto: solo el título). Pasa `dataSourceId` directamente para bases de datos multi-fuente; de lo contrario se usa la primera fuente de datos. El filtro acepta la estructura estándar de Notion: { property, <type>: { <op>: <value> } } — solo operaciones de valor único (Notion v5 NO soporta equals_any). Para coincidir con cualquiera de N valores, compón con `or`: { or: [ { property: 'Status', status: { equals: 'Done' } }, { property: 'Status', status: { equals: 'In review' } } ] }. Parámetros: databaseId | dataSourceId, filter?, sorts?, propertyNames?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "databaseId": "UUID de la base de datos. Se consulta la primera fuente de datos bajo ella salvo que se establezca `dataSourceId`.",
+        "dataSourceId": "UUID específico de la fuente de datos a consultar. Usar para bases de datos multi-fuente (wikis, bases de datos enlazadas).",
+        "filter": "Objeto filtro de Notion. Compón multi-valor vía arrays `or`/`and` — Notion no tiene equals_any.",
+        "sorts": "Array de objetos de ordenación.",
+        "propertyNames": "Lista blanca de nombres de propiedades a incluir en cada fila. Por defecto: solo el título. Pasa ['*'] para incluir todas.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "startCursor": "Cursor de paginación de Notion.",
+        "fields": "Sobrescribe la lista blanca por defecto en cada envoltorio de fila.",
+        "includeRaw": "Devuelve la respuesta sin procesar de la API de Notion. Por defecto false."
+      }
+    },
+    "create-database": {
+      "name": "create-database",
+      "description": "Crea una nueva base de datos como hija de una página. Devuelve { id, url, title, schema, icon, cover, createdTime, parentType, parentId }. No reintentable (sin clave de idempotencia).",
+      "params": {
+        "parentPageId": "UUID de la página padre.",
+        "title": "Título de la base de datos.",
+        "properties": "Esquema de Notion. Ej: { Name: { title: {} }, Status: { select: { options: [...] } } }.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de base de datos sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-database-schema": {
+      "name": "update-database-schema",
+      "description": "Añade/modifica/elimina columnas de una base de datos y opcionalmente renombra. Las mutaciones de esquema se dirigen a la fuente de datos (división API de Notion 2025-09-03). Pasa `dataSourceId` para bases de datos multi-fuente; de lo contrario se usa la primera. Establece el valor de una propiedad a `null` para eliminarla. Devuelve la base de datos actualizada { id, schema, title, description, lastEditedTime }. Idempotente por campo.",
+      "params": {
+        "databaseId": "UUID de la base de datos.",
+        "dataSourceId": "UUID específico de la fuente de datos para bases de datos multi-fuente.",
+        "properties": "Propiedades a añadir/modificar. Establece el valor a null para eliminar.",
+        "title": "Nuevo título. Opcional. Se envía a la fuente de datos.",
+        "description": "Nueva descripción. Opcional. Se envía a la fuente de datos.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de base de datos sin procesar de Notion. Por defecto false."
+      }
+    },
+    "create-database-item": {
+      "name": "create-database-item",
+      "description": "Inserta una nueva fila (registro) en una base de datos de Notion. Añadir a tabla, crear elemento de tabla, añadir fila de base de datos. Pasa `properties` como un mapa plano apto para agentes: `{ Title: \"Spec\", Status: \"In review\", Tags: [\"urgent\"], Assignee: [\"<user-uuid>\"], DueDate: \"2026-05-06\" }`. El manejador resuelve el esquema y serializa cada valor a la estructura verbosa de Notion automáticamente. Devuelve la página creada. Bases de datos multi-fuente: pasa `dataSourceId` para dirigirse a una fuente específica.",
+      "params": {
+        "databaseId": "UUID de la base de datos.",
+        "dataSourceId": "UUID específico de la fuente de datos para bases de datos multi-fuente.",
+        "properties": "Mapa plano de nombre de columna → valor simple. El esquema se resuelve automáticamente.",
+        "fields": "Sobrescribe la lista blanca por defecto en la página devuelta.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-database-item": {
+      "name": "update-database-item",
+      "description": "Actualiza una fila existente (registro) en una base de datos de Notion. Actualizar fila, modificar registro, cambiar relación, asignar responsable, marcar como completado. Pasa `pageId` y `properties` como un mapa plano apto para agentes: `{ Status: \"Done\", Assignee: [\"<uuid>\"] }`. El manejador resuelve el esquema de la base de datos padre y serializa cada valor automáticamente. Pasa `archived: true` para mover a la papelera. Idempotente — seguro para reintentar. Para bases de datos multi-fuente el `databaseId` de la fila se lee del padre de la página.",
+      "params": {
+        "pageId": "UUID de la fila de base de datos (página).",
+        "properties": "Mapa plano de nombre de columna → valor simple a actualizar.",
+        "archived": "Mover a la papelera de Notion (true) o restaurar (false). Se envía como `in_trash`.",
+        "fields": "Sobrescribe la lista blanca por defecto en la página devuelta.",
+        "includeRaw": "Devuelve el objeto de página sin procesar de Notion. Por defecto false."
+      }
+    },
+    "get-block": {
+      "name": "get-block",
+      "description": "Obtiene un bloque. Devuelve { id, type, plainText, hasChildren, checked, language, caption, url, createdTime, lastEditedTime }. Parámetros: blockId, fields?, includeRaw.",
+      "params": {
+        "blockId": "UUID del bloque.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de bloque sin procesar de Notion. Por defecto false."
+      }
+    },
+    "get-block-children": {
+      "name": "get-block-children",
+      "description": "OBSOLETO — prefiere `get-page-content` (markdown) o `get-blocks` (sin procesar paginado). Mantenido por compatibilidad: devuelve { textContent } como markdown recursivo. Pasa includeBlockIds=true para incrustar comentarios `<!-- block: id -->` antes de cada bloque de nivel superior.",
+      "params": {
+        "blockId": "UUID del bloque o página.",
+        "includeBlockIds": "Incrusta comentarios `<!-- block: id -->` en el markdown. Por defecto false.",
+        "includeRaw": "Devuelve la respuesta sin procesar de la API. Por defecto false."
+      }
+    },
+    "get-blocks": {
+      "name": "get-blocks",
+      "description": "Lista los hijos directos de una página/bloque con paginación. Devuelve { id, type, plainText, hasChildren, ... }. Úsalo cuando necesites IDs de bloques y estructura. Para markdown renderizado usa `get-block-children` o `get-page-content`. Parámetros: blockId, limit (1-100, por defecto 25), cursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "UUID de la página o bloque padre.",
+        "limit": "Bloques por página. Mín 1, máx 100, por defecto 25.",
+        "cursor": "Cursor de paginación de Notion del nextCursor anterior.",
+        "fields": "Sobrescribe la lista blanca por defecto por bloque.",
+        "includeRaw": "Devuelve los objetos de bloque sin procesar de Notion (recortados a maxDepth=2, maxChars=10_000). Por defecto false."
+      }
+    },
+    "append-blocks": {
+      "name": "append-blocks",
+      "description": "Añade bloques como hijos de una página o bloque. Soporta paragraph/heading_1..heading_4 (H4 añadido en v5.16) y los bloques paragraph aceptan un `icon` para iconos inline emoji/external/file. `position` elige la ubicación: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' (por defecto) }. Devuelve { blocks, appendedCount, parentId }. No reintentable (sin clave de idempotencia — crea duplicados al reintentar).",
+      "params": {
+        "blockId": "UUID de la página o bloque padre.",
+        "blocks": "Array de objetos de bloque de Notion en la estructura estándar `{ object: 'block', type: 'paragraph'|'heading_1'|...|'heading_4', <type>: { rich_text: [...] } }`. heading_4 añadido en v5.16. El `icon` de paragraph (v5.16) SOLO funciona cuando el paragraph es hijo directo de un tab block — añadir icon bajo una página normal devuelve 'Cannot set icon on a paragraph block that is not a direct child of a tab block'. Otros tipos: bulleted_list_item, numbered_list_item, to_do, toggle, quote, callout, code, divider, image, video, file, pdf, bookmark, embed, equation, link_to_page, table, table_row, meeting_notes, synced_block.",
+        "position": "Ubicación opcional. Por defecto end. Estructura: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' }.",
+        "fields": "Sobrescribe la lista blanca por defecto por bloque devuelto.",
+        "includeRaw": "Devuelve los bloques sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-block": {
+      "name": "update-block",
+      "description": "Reemplaza `oldText` con `newText` en el texto de un bloque. Lee el bloque, verifica que `oldText` existe (coincidencia exacta), luego actualiza preservando anotaciones. Error con 'Text not found in block. No changes made.' cuando oldText no coincide. Devuelve el bloque { id, type, plainText, lastEditedTime }.",
+      "params": {
+        "blockId": "UUID del bloque.",
+        "oldText": "Texto exacto actualmente en el bloque que debe reemplazarse.",
+        "newText": "Texto de reemplazo.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el bloque sin procesar de Notion. Por defecto false."
+      }
+    },
+    "delete-block": {
+      "name": "delete-block",
+      "description": "Elimina (archiva) un bloque. Devuelve el bloque archivado { id, type, archived, lastEditedTime }. Idempotente — los reintentos son seguros.",
+      "params": {
+        "blockId": "UUID del bloque.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el bloque sin procesar de Notion. Por defecto false."
+      }
+    },
+    "create-column-layout": {
+      "name": "create-column-layout",
+      "description": "Crea un column_list con N columnas en una página. `columns` es un array de arrays de objetos de bloque de Notion (un array interno por columna). No reintentable.",
+      "params": {
+        "pageId": "UUID de la página donde añadir el layout de columnas.",
+        "columns": "Array de arrays. Cada array interno es los bloques de una columna.",
+        "fields": "Sobrescribe la lista blanca por defecto en los bloques column_list devueltos.",
+        "includeRaw": "Devuelve los bloques sin procesar de Notion. Por defecto false."
+      }
+    },
+    "create-advanced-blocks": {
+      "name": "create-advanced-blocks",
+      "description": "Crea un bloque avanzado. Tipos soportados: 'callout' (icono + color), 'toggle' (hijos), 'synced_block', 'meeting_notes' (resumen + transcripción), 'paragraph' (con `icon` opcional según v5.16). `content` debe coincidir con la estructura de Notion para el `blockType` dado. No reintentable.",
+      "params": {
+        "pageId": "UUID de la página destino.",
+        "blockType": "'callout' | 'toggle' | 'synced_block' | 'meeting_notes' | 'paragraph'.",
+        "content": "Cuerpo del bloque de Notion (rich_text, children, icon, ...). Para 'paragraph' puedes incluir un `icon: { type: 'emoji'|'external'|'file', ... }` (v5.16+).",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve los bloques sin procesar de Notion. Por defecto false."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "Lista los usuarios del workspace. Devuelve filas curadas { id, name, type, avatarUrl, email, bot }. Parámetros: limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "startCursor": "Cursor de paginación de Notion.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve la respuesta sin procesar de Notion. Por defecto false.",
+        "cursor": "Cursor de paginación de la respuesta anterior."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtiene un usuario por ID. Devuelve { id, name, type, avatarUrl, email, bot }. Parámetros: userId, fields?, includeRaw.",
+      "params": {
+        "userId": "UUID del usuario.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el usuario sin procesar de Notion. Por defecto false."
+      }
+    },
+    "get-me": {
+      "name": "get-me",
+      "description": "Devuelve el usuario bot (esta integración). Devuelve { id, name, type, avatarUrl, email, bot }. Parámetros: fields?, includeRaw.",
+      "params": {
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el usuario sin procesar de Notion. Por defecto false."
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "Lista los comentarios de una página/bloque. Devuelve filas curadas { id, pageId, parentBlockId, discussionId, authorId, plainText, createdTime }. Parámetros: blockId, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "UUID del bloque o página.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "startCursor": "Cursor de paginación de Notion.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve la respuesta sin procesar de Notion. Por defecto false.",
+        "cursor": "Cursor de paginación de la respuesta anterior."
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Publica un comentario en una página (pasa pageId) o responde a una discusión (pasa discussionId). Devuelve el comentario { id, pageId, parentBlockId, authorId, plainText, createdTime }. No reintentable.",
+      "params": {
+        "pageId": "UUID de la página. Excluyente con discussionId.",
+        "discussionId": "UUID de la discusión a responder. Excluyente con pageId.",
+        "text": "Texto del comentario (sin formato).",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el comentario sin procesar de Notion. Por defecto false."
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "Edita un comentario existente. Pasa `text` sin formato para un cuerpo de cadena simple, o `richText` para formato rich-text completo de Notion. Devuelve el comentario actualizado { id, plainText, lastEditedTime, ... }. Idempotente — seguro para reintentar.",
+      "params": {
+        "commentId": "UUID del comentario.",
+        "text": "Cuerpo en texto sin formato. Excluyente con richText.",
+        "richText": "Array de rich text de Notion. Excluyente con text.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el objeto de comentario sin procesar de Notion. Por defecto false."
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Elimina un comentario por ID. Devuelve { id, deleted: true }. Destructivo: un comentario eliminado no puede recuperarse. Idempotente — re-eliminar un comentario ya eliminado es un no-op desde la perspectiva del agente (Notion devuelve 404, coercemos a deleted=true).",
+      "params": {
+        "commentId": "UUID del comentario."
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Sube un archivo a Notion. Ciclo de tres pasos: create → send → complete (gestionado internamente). Proporciona `dataUrl` (base64 inline) o `filePath` (ruta del lado del servidor). Devuelve { fileUploadId, status, name, contentType }. El ID puede incrustarse en creaciones de bloques posteriores como { type: 'file_upload', file_upload: { id } }. Límite máximo 20 MB.",
+      "params": {
+        "pageId": "UUID de la página propietaria de la subida (obligatorio).",
+        "name": "Nombre del archivo incluyendo extensión (ej. 'spec.pdf', 'cover.png').",
+        "contentType": "Tipo MIME (ej. 'application/pdf', 'image/png').",
+        "dataUrl": "Esquema Data URI — formato exacto `data:<mime>;base64,<base64Payload>`. NO es una cadena base64 en bruto. Se requiere este o filePath.",
+        "filePath": "Ruta absoluta a un archivo del lado del servidor. Se requiere este o dataUrl."
+      }
+    }
+  },
+  "name": "Notion",
+  "description": "Workspace de Notion - páginas, bases de datos, bloques, búsqueda, comentarios",
+  "changelog": [
+    {
+      "notes": "Busca, crea y edita páginas, gestiona bases de datos y filas, bloques, comentarios y subidas de archivos en tu workspace de Notion"
+    }
+  ]
+}

@@ -5,6 +5,7 @@ const PERSON_FIELDS =
   'names,emailAddresses,phoneNumbers,organizations,addresses,biographies,photos';
 
 export const listContacts: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'List contacts from Google Contacts. Returns name, email, phone numbers. Supports pagination.',
   parameters: {

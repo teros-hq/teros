@@ -16,7 +16,7 @@ export function createSetPreferredProviderHandler(db: Db) {
     const data = rawData as SetPreferredProviderData
     const { agentId, providerId } = data
 
-    if (!agentId) {
+    if (typeof agentId !== 'string' || !agentId) {
       throw new HandlerError('MISSING_AGENT_ID', 'agentId is required')
     }
 
@@ -25,7 +25,7 @@ export function createSetPreferredProviderHandler(db: Db) {
       throw new HandlerError('AGENT_NOT_FOUND', 'Agent not found')
     }
 
-    if (agent.ownerId && agent.ownerId !== ctx.userId) {
+    if (agent.ownerId !== ctx.userId) {
       throw new HandlerError('PERMISSION_DENIED', 'You do not have permission to modify this agent')
     }
 

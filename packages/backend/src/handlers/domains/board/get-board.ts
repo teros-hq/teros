@@ -1,11 +1,12 @@
 /**
- * board.get — Get board with tasks and agents for a project
+ * board.get — Get board with tasks, agents, and autoplay relationships for a project
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { AutoplayService } from '../../../services/autoplay-service'
 
 interface GetBoardData {
   projectId: string
@@ -14,6 +15,8 @@ interface GetBoardData {
 export function createGetBoardHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
+  _db?: unknown,
+  autoplayService?: AutoplayService,
 ) {
   return async function getBoard(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as GetBoardData
@@ -45,6 +48,31 @@ export function createGetBoardHandler(
     const agentIds = boardService.collectAgentIds(tasks)
     const agents = await boardService.resolveAgents(agentIds)
 
-    return { board, tasks, agents }
+    // Get agent relationships (slots, playEnabled, activeSlots) — only explicitly added agents
+    let agentRelationships: Array<{
+      agentId: string
+      agentName: string
+      avatarUrl?: string
+      slots: number
+      playEnabled: boolean
+      activeSlots: number
+    }> = []
+
+    if (autoplayService) {
+      const rels = await autoplayService.getProjectRelationships(projectId, board.boardId)
+      const relAgentIds = rels.map((r) => r.agentId)
+      const relAgents = await boardService.resolveAgents(relAgentIds)
+
+      agentRelationships = rels.map((rel) => ({
+        agentId: rel.agentId,
+        agentName: relAgents[rel.agentId]?.name ?? rel.agentId,
+        avatarUrl: relAgents[rel.agentId]?.avatarUrl, // ya resuelto por resolveAgents
+        slots: rel.slots,
+        playEnabled: rel.playEnabled,
+        activeSlots: rel.activeSlots,
+      }))
+    }
+
+    return { board, tasks, agents, project, agentRelationships }
   }
 }

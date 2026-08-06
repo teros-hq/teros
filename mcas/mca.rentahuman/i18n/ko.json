@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. RentAHuman.ai API 연결을 확인합니다."
+    },
+    "search-humans": {
+      "name": "search-humans",
+      "description": "RentAHuman.ai에서 사용 가능한 인간을 검색합니다. 기술, 시간당 요금 범위 또는 이름으로 필터링합니다. API 키가 필요하지 않으며 — 검색은 무료입니다.",
+      "params": {
+        "skill": "기술로 필터링 (예: '사진 촬영', '대면 회의', '심부름', '번역')",
+        "name": "인간 이름으로 필터링",
+        "minRate": "최소 시간당 요금 (USD)",
+        "maxRate": "최대 시간당 요금 (USD)",
+        "limit": "반환할 최대 결과 수 (기본값: 20, 최대: 100)"
+      }
+    },
+    "get-human": {
+      "name": "get-human",
+      "description": "특정 인간의 전체 프로필을 가져옵니다. 여기에는 기술, 가용성, 시간당 요금, 위치, 평가 및 결제 지갑 주소가 포함됩니다.",
+      "params": {
+        "humanId": "인간의 프로필 ID"
+      }
+    },
+    "create-booking": {
+      "name": "create-booking",
+      "description": "물리적 작업을 위해 인간을 예약합니다. RENTAHUMAN_API_KEY가 필요합니다. 작업 세부정보, 시작 시간 및 예상 소요 시간으로 예약을 생성합니다. 결제 지침을 반환합니다.",
+      "params": {
+        "humanId": "예약할 인간의 ID",
+        "taskTitle": "작업의 간단한 제목 (3-200자)",
+        "taskDescription": "인간이 수행해야 할 작업에 대한 자세한 설명",
+        "taskCategory": "작업 카테고리 (예: '심부름', '회의', '연구', '사진 촬영', '배달')",
+        "startTime": "작업이 시작되어야 하는 시간 (ISO 8601 형식, 예: '2025-06-15T10:00:00Z')",
+        "estimatedHours": "필요한 예상 시간 (최소: 0.5, 최대: 168)",
+        "agentName": "귀하의 에이전트 표시 이름 (선택 사항)"
+      }
+    },
+    "list-bookings": {
+      "name": "list-bookings",
+      "description": "현재 에이전트의 예약 목록을 표시합니다. 선택적으로 상태로 필터링합니다. RENTAHUMAN_API_KEY가 필요합니다.",
+      "params": {
+        "status": "예약 상태로 필터링",
+        "limit": "최대 결과 수 (기본값: 20)"
+      }
+    },
+    "get-booking": {
+      "name": "get-booking",
+      "description": "특정 예약의 세부정보 및 현재 상태를 가져옵니다. RENTAHUMAN_API_KEY가 필요합니다.",
+      "params": {
+        "bookingId": "가져올 예약 ID"
+      }
+    }
+  },
+  "name": "RentAHuman.ai",
+  "description": "물리적 작업을 위해 인간을 고용합니다. 50개 이상의 국가에서 657,000명 이상의 검증된 인간을 검색하고, 예약을 생성하고, 실제 존재가 필요한 작업을 관리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 전 세계 검증된 인간 검색, 프로필 보기, 실제 작업 예약 및 추적"
+    }
+  ]
+}

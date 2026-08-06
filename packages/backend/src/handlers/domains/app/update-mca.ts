@@ -2,8 +2,10 @@
  * app.update-mca — Update MCA availability settings (admin)
  */
 
+import type { Db } from 'mongodb'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
+import { requireSystemAdmin } from '../../../auth/auth-helpers'
 import type { McaService } from '../../../services/mca-service'
 
 interface UpdateMcaData {
@@ -11,8 +13,11 @@ interface UpdateMcaData {
   updates: Record<string, unknown>
 }
 
-export function createUpdateMcaHandler(mcaService: McaService) {
-  return async function updateMca(_ctx: WsHandlerContext, rawData: unknown) {
+export function createUpdateMcaHandler(mcaService: McaService, db: Db) {
+  return async function updateMca(ctx: WsHandlerContext, rawData: unknown) {
+    // Admin-only: MCA availability is global catalog state (TER-513).
+    await requireSystemAdmin(db, ctx.userId)
+
     const data = rawData as UpdateMcaData
     const { mcpId, updates } = data
 

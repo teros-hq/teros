@@ -1,0 +1,393 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de HubSpot y la conectividad."
+    },
+    "search": {
+      "name": "search",
+      "description": "Busca en objetos CRM de HubSpot (contactos, empresas, ofertas) usando la API de búsqueda v3. Devuelve resultados curados. Parámetros: query, objectType, limit?, after?, sorts?, filters?",
+      "params": {
+        "query": "Cadena de búsqueda.",
+        "objectType": "Tipo de objeto a buscar: contacts, companies o deals.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Desplazamiento de paginación (número de cursor).",
+        "sorts": "Configuración de ordenación.",
+        "filters": "Grupos de filtros para búsqueda avanzada.",
+        "properties": "Propiedades específicas a devolver."
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Crea un nuevo contacto en HubSpot. Devuelve la forma curada del contacto. No reintentable (sin clave de idempotencia). Parámetros: email, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "email": "Correo electrónico del contacto (obligatorio, único).",
+        "firstName": "Nombre.",
+        "lastName": "Apellidos.",
+        "phone": "Número de teléfono.",
+        "company": "Nombre de la empresa.",
+        "jobTitle": "Cargo.",
+        "website": "URL del sitio web.",
+        "lifecycleStage": "Etapa del ciclo de vida: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other.",
+        "properties": "Propiedades adicionales del contacto de HubSpot como pares clave-valor."
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Recupera un contacto de HubSpot por ID o correo electrónico. Devuelve { id, email, firstName, lastName, phone, company, jobTitle, website, lifecycleStage, leadStatus, createdAt, updatedAt }. Parámetros: contactId, idProperty?",
+      "params": {
+        "contactId": "ID del contacto (ID de HubSpot) o correo electrónico si idProperty=email.",
+        "idProperty": "Tipo de identificador: \"email\" para buscar por correo electrónico. Por defecto usa el ID de HubSpot.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Lista contactos de HubSpot con filtros opcionales. Devuelve filas curadas { id, email, firstName, lastName, phone, company, jobTitle, lifecycleStage, createdAt }. Parámetros: limit (1-100, por defecto 50), after, properties?",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Cursor de paginación de la respuesta anterior paging.next.after.",
+        "properties": "Propiedades adicionales del contacto a incluir."
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Actualiza un contacto existente de HubSpot. Idempotente por campo — seguro para reintentar. Parámetros: contactId, email?, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "contactId": "ID del contacto en HubSpot.",
+        "email": "Correo electrónico del contacto.",
+        "firstName": "Nombre.",
+        "lastName": "Apellidos.",
+        "phone": "Número de teléfono.",
+        "company": "Nombre de la empresa.",
+        "jobTitle": "Cargo.",
+        "website": "URL del sitio web.",
+        "lifecycleStage": "Etapa del ciclo de vida.",
+        "properties": "Propiedades adicionales del contacto de HubSpot como pares clave-valor."
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Archiva (eliminación suave) un contacto de HubSpot. Irreversible vía API. Devuelve { success, contactId }.",
+      "params": {
+        "contactId": "ID del contacto en HubSpot a archivar."
+      }
+    },
+    "create-company": {
+      "name": "create-company",
+      "description": "Crea una nueva empresa en HubSpot. Devuelve la forma curada de la empresa. No reintentable. Parámetros: name, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "name": "Nombre de la empresa (obligatorio).",
+        "domain": "Dominio de la empresa (p. ej. \"example.com\").",
+        "industry": "Industria.",
+        "type": "Tipo de empresa.",
+        "phone": "Número de teléfono.",
+        "website": "URL del sitio web.",
+        "city": "Ciudad.",
+        "state": "Estado/región.",
+        "country": "País.",
+        "numberOfEmployees": "Número de empleados.",
+        "annualRevenue": "Ingresos anuales.",
+        "lifecycleStage": "Etapa del ciclo de vida.",
+        "properties": "Propiedades adicionales de la empresa de HubSpot como pares clave-valor."
+      }
+    },
+    "get-company": {
+      "name": "get-company",
+      "description": "Recupera una empresa de HubSpot por ID o dominio. Devuelve { id, name, domain, industry, type, phone, website, city, state, country, numberOfEmployees, annualRevenue, lifecycleStage, createdAt, updatedAt }. Parámetros: companyId, idProperty?",
+      "params": {
+        "companyId": "ID de la empresa (ID de HubSpot) o dominio si idProperty=domain.",
+        "idProperty": "Tipo de identificador: \"domain\" para buscar por nombre de dominio. Por defecto usa el ID de HubSpot.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "list-companies": {
+      "name": "list-companies",
+      "description": "Lista empresas de HubSpot con filtros opcionales. Devuelve filas curadas { id, name, domain, industry, type, phone, city, state, country, numberOfEmployees, lifecycleStage, createdAt }. Parámetros: limit (1-100, por defecto 50), after, properties?",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Cursor de paginación de la respuesta anterior paging.next.after.",
+        "properties": "Propiedades adicionales de la empresa a incluir."
+      }
+    },
+    "update-company": {
+      "name": "update-company",
+      "description": "Actualiza una empresa existente de HubSpot. Idempotente por campo — seguro para reintentar. Parámetros: companyId, name?, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "companyId": "ID de la empresa en HubSpot.",
+        "name": "Nombre de la empresa.",
+        "domain": "Dominio de la empresa.",
+        "industry": "Industria.",
+        "type": "Tipo de empresa.",
+        "phone": "Número de teléfono.",
+        "website": "URL del sitio web.",
+        "city": "Ciudad.",
+        "state": "Estado/región.",
+        "country": "País.",
+        "numberOfEmployees": "Número de empleados.",
+        "annualRevenue": "Ingresos anuales.",
+        "lifecycleStage": "Etapa del ciclo de vida.",
+        "properties": "Propiedades adicionales de la empresa de HubSpot como pares clave-valor."
+      }
+    },
+    "delete-company": {
+      "name": "delete-company",
+      "description": "Archiva (eliminación suave) una empresa de HubSpot. Irreversible vía API. Devuelve { success, companyId }.",
+      "params": {
+        "companyId": "ID de la empresa en HubSpot a archivar."
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "Crea una nueva oferta en HubSpot. Devuelve la forma curada de la oferta. No reintentable. Parámetros: name, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "name": "Nombre de la oferta (obligatorio).",
+        "amount": "Importe de la oferta.",
+        "stage": "ID de la etapa de la oferta.",
+        "pipeline": "ID del pipeline.",
+        "type": "Tipo de oferta: newbusiness o existingbusiness.",
+        "closeDate": "Fecha esperada de cierre (YYYY-MM-DD).",
+        "probability": "Probabilidad de cierre (0-100).",
+        "description": "Descripción de la oferta.",
+        "properties": "Propiedades adicionales de la oferta de HubSpot como pares clave-valor."
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "Recupera una oferta de HubSpot por ID. Devuelve { id, name, amount, stage, pipeline, type, closeDate, probability, description, source, createdAt, updatedAt }. Parámetros: dealId",
+      "params": {
+        "dealId": "ID de la oferta en HubSpot.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "Lista ofertas de HubSpot con filtros opcionales. Devuelve filas curadas { id, name, amount, stage, pipeline, type, closeDate, probability, description, createdAt }. Parámetros: limit (1-100, por defecto 50), after, properties?",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Cursor de paginación de la respuesta anterior paging.next.after.",
+        "properties": "Propiedades adicionales de la oferta a incluir."
+      }
+    },
+    "update-deal": {
+      "name": "update-deal",
+      "description": "Actualiza una oferta existente de HubSpot. Idempotente por campo — seguro para reintentar. Parámetros: dealId, name?, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "dealId": "ID de la oferta en HubSpot.",
+        "name": "Nombre de la oferta.",
+        "amount": "Importe de la oferta.",
+        "stage": "ID de la etapa de la oferta.",
+        "pipeline": "ID del pipeline.",
+        "type": "Tipo de oferta.",
+        "closeDate": "Fecha esperada de cierre (YYYY-MM-DD).",
+        "probability": "Probabilidad de cierre (0-100).",
+        "description": "Descripción de la oferta.",
+        "properties": "Propiedades adicionales de la oferta de HubSpot como pares clave-valor."
+      }
+    },
+    "delete-deal": {
+      "name": "delete-deal",
+      "description": "Archiva (eliminación suave) una oferta de HubSpot. Irreversible vía API. Devuelve { success, dealId }.",
+      "params": {
+        "dealId": "ID de la oferta en HubSpot a archivar."
+      }
+    },
+    "create-ticket": {
+      "name": "create-ticket",
+      "description": "Crea un nuevo ticket en HubSpot. Devuelve la forma curada del ticket. No reintentable. Parámetros: subject, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "subject": "Asunto del ticket (obligatorio).",
+        "content": "Descripción/contenido del ticket.",
+        "status": "Estado del ticket.",
+        "priority": "Prioridad del ticket: LOW, MEDIUM, HIGH.",
+        "category": "Categoría del ticket.",
+        "pipeline": "ID del pipeline.",
+        "stage": "ID de la etapa del pipeline.",
+        "source": "Tipo de origen del ticket.",
+        "properties": "Propiedades adicionales del ticket de HubSpot como pares clave-valor."
+      }
+    },
+    "get-ticket": {
+      "name": "get-ticket",
+      "description": "Recupera un ticket de HubSpot por ID. Devuelve { id, subject, content, status, priority, category, pipeline, stage, source, createdAt, updatedAt }. Parámetros: ticketId",
+      "params": {
+        "ticketId": "ID del ticket en HubSpot.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "list-tickets": {
+      "name": "list-tickets",
+      "description": "Lista tickets de HubSpot con filtros opcionales. Devuelve filas curadas { id, subject, content, status, priority, category, pipeline, createdAt }. Parámetros: limit (1-100, por defecto 50), after, properties?",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Cursor de paginación de la respuesta anterior paging.next.after.",
+        "properties": "Propiedades adicionales del ticket a incluir."
+      }
+    },
+    "update-ticket": {
+      "name": "update-ticket",
+      "description": "Actualiza un ticket existente de HubSpot. Idempotente por campo — seguro para reintentar. Parámetros: ticketId, subject?, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "ticketId": "ID del ticket en HubSpot.",
+        "subject": "Asunto del ticket.",
+        "content": "Contenido del ticket.",
+        "status": "Estado del ticket.",
+        "priority": "Prioridad del ticket.",
+        "category": "Categoría del ticket.",
+        "pipeline": "ID del pipeline.",
+        "stage": "ID de la etapa del pipeline.",
+        "source": "Origen del ticket.",
+        "properties": "Propiedades adicionales del ticket de HubSpot como pares clave-valor."
+      }
+    },
+    "delete-ticket": {
+      "name": "delete-ticket",
+      "description": "Archiva (eliminación suave) un ticket de HubSpot. Irreversible vía API. Devuelve { success, ticketId }.",
+      "params": {
+        "ticketId": "ID del ticket en HubSpot a archivar."
+      }
+    },
+    "create-association": {
+      "name": "create-association",
+      "description": "Crea una asociación entre dos objetos CRM de HubSpot (p. ej., contacto-empresa, oferta-contacto). Usa la API v4 de asociaciones. Parámetros: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "Tipo de objeto de origen: contacts, companies, deals, tickets.",
+        "fromObjectId": "ID de HubSpot del objeto de origen.",
+        "toObjectType": "Tipo de objeto de destino: contacts, companies, deals, tickets.",
+        "toObjectId": "ID de HubSpot del objeto de destino.",
+        "associationType": "ID o etiqueta del tipo de asociación (p. ej., \"contact_to_company\", \"deal_to_contact\"). Opcional — HubSpot usará el valor por defecto si se omite."
+      }
+    },
+    "delete-association": {
+      "name": "delete-association",
+      "description": "Elimina una asociación entre dos objetos CRM de HubSpot. Parámetros: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "Tipo de objeto de origen.",
+        "fromObjectId": "ID de HubSpot del objeto de origen.",
+        "toObjectType": "Tipo de objeto de destino.",
+        "toObjectId": "ID de HubSpot del objeto de destino.",
+        "associationType": "ID del tipo de asociación. Opcional."
+      }
+    },
+    "list-associations": {
+      "name": "list-associations",
+      "description": "Lista todas las asociaciones de un objeto de HubSpot. Parámetros: objectType, objectId, toObjectType, limit?",
+      "params": {
+        "objectType": "Tipo de objeto.",
+        "objectId": "ID del objeto en HubSpot.",
+        "toObjectType": "Tipo de objeto asociado a recuperar.",
+        "limit": "Resultados máximos. Por defecto 100."
+      }
+    },
+    "list-pipelines": {
+      "name": "list-pipelines",
+      "description": "Lista los pipelines de HubSpot para ofertas o tickets. Devuelve las definiciones de pipelines con sus etapas. Parámetros: objectType (deals o tickets), includeInactive?",
+      "params": {
+        "objectType": "Tipo de objeto del pipeline.",
+        "includeInactive": "Incluir pipelines inactivos. Por defecto false."
+      }
+    },
+    "get-pipeline": {
+      "name": "get-pipeline",
+      "description": "Obtiene un pipeline específico de HubSpot por ID. Devuelve el pipeline con sus etapas. Parámetros: objectType, pipelineId",
+      "params": {
+        "objectType": "Tipo de objeto del pipeline.",
+        "pipelineId": "ID del pipeline."
+      }
+    },
+    "create-engagement": {
+      "name": "create-engagement",
+      "description": "Crea una interacción en HubSpot (llamada, correo, reunión, nota, tarea). Usa la API v3 de interacciones. Parámetros: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "params": {
+        "type": "Tipo de interacción.",
+        "subject": "Asunto o título de la interacción.",
+        "body": "Cuerpo/contenido de la interacción.",
+        "status": "Estado (p. ej., \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
+        "direction": "Dirección: INBOUND o OUTBOUND (para llamadas/correos).",
+        "startTime": "Hora de inicio en formato ISO (para reuniones/llamadas).",
+        "duration": "Duración en milisegundos (para llamadas).",
+        "associatedObjectType": "Tipo de objeto asociado: contacts, companies, deals, tickets.",
+        "associatedObjectId": "ID de HubSpot del objeto asociado.",
+        "properties": "Propiedades adicionales de la interacción como pares clave-valor."
+      }
+    },
+    "get-engagement": {
+      "name": "get-engagement",
+      "description": "Recupera una interacción de HubSpot por ID. Parámetros: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "Tipo de interacción.",
+        "engagementId": "ID de la interacción en HubSpot.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "list-engagements": {
+      "name": "list-engagements",
+      "description": "Lista interacciones de HubSpot (llamadas, correos, reuniones, notas, tareas). Parámetros: type (call|email|meeting|note|task), limit?, after?",
+      "params": {
+        "type": "Tipo de interacción.",
+        "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
+        "after": "Cursor de paginación.",
+        "properties": "Propiedades adicionales a incluir."
+      }
+    },
+    "delete-engagement": {
+      "name": "delete-engagement",
+      "description": "Archiva (eliminación suave) una interacción de HubSpot. Parámetros: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "Tipo de interacción.",
+        "engagementId": "ID de la interacción en HubSpot a archivar."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "Lista listas de HubSpot (CRM Lists v3). Devuelve filas curadas { id, name, processingType, dynamic, objectTypeId, createdAt, updatedAt, memberCount }. Parámetros: limit?, offset?, processingType?",
+      "params": {
+        "limit": "Resultados por página. Máx 500, por defecto 50.",
+        "offset": "Desplazamiento de paginación (por defecto 0).",
+        "processingType": "Filtrar por tipo de procesamiento."
+      }
+    },
+    "get-list": {
+      "name": "get-list",
+      "description": "Obtiene una lista específica de HubSpot por ID (CRM Lists v3). Parámetros: listId",
+      "params": {
+        "listId": "ID de la lista en HubSpot."
+      }
+    },
+    "list-conversations": {
+      "name": "list-conversations",
+      "description": "Lista conversaciones de HubSpot (bandeja de entrada) con filtros opcionales. Devuelve filas curadas. Parámetros: limit?, after?, status?",
+      "params": {
+        "limit": "Resultados por página. Máx 100, por defecto 50.",
+        "after": "Cursor de paginación.",
+        "status": "Filtrar por estado: OPEN, CLOSED, WAITING."
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "Obtiene una conversación de HubSpot por ID, incluyendo mensajes. Parámetros: conversationId, includeMessages?",
+      "params": {
+        "conversationId": "ID de la conversación en HubSpot.",
+        "includeMessages": "Incluir mensajes en la respuesta. Por defecto true.",
+        "limit": "Mensajes máximos a incluir. Por defecto 50."
+      }
+    },
+    "send-conversation-message": {
+      "name": "send-conversation-message",
+      "description": "Envía un mensaje en una conversación de HubSpot (respuesta de bandeja de entrada). Parámetros: conversationId, text, channelId?",
+      "params": {
+        "conversationId": "ID de la conversación en HubSpot.",
+        "text": "Contenido de texto del mensaje.",
+        "channelId": "ID de canal opcional (sobrescribe el por defecto).",
+        "attachments": "Adjuntos opcionales del mensaje."
+      }
+    }
+  },
+  "name": "HubSpot",
+  "description": "Integración CRM de HubSpot — gestiona contactos, empresas, ofertas, tickets, interacciones, listas y conversaciones vía la API REST v3 de HubSpot con OAuth2",
+  "changelog": [
+    {
+      "notes": "Versión inicial — gestiona contactos, empresas, ofertas, tickets, actividades, listas, conversaciones y webhooks de HubSpot directamente desde tus agentes"
+    }
+  ]
+}

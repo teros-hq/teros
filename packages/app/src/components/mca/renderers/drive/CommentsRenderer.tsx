@@ -11,23 +11,19 @@
  * - list-replies
  */
 
-import { Check, MessageSquare, Trash2, User } from '@tamagui/lucide-icons';
+import { Check, MessageSquare, Trash2, User } from '../../primitives';
+import { ErrorBlock, SuccessBlock, ToolCallCard } from '../../primitives';
 import type React from 'react';
-import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { countBadgeVariant, Empty, formatCountBadge } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
+  useDriveColors,
   formatDate,
-  HeaderRow,
   parseOutput,
-  SuccessBlock,
   truncate,
 } from './shared';
 
@@ -66,17 +62,19 @@ interface Reply {
 // ============================================================================
 
 function CommentRow({ comment }: { comment: Comment }) {
+  const c = useDriveColors();
+  const colors = useDriveColors();
   return (
     <YStack
-      backgroundColor={colors.bgInner}
+      backgroundColor={c.bgInner}
       borderRadius={5}
       paddingVertical={6}
       paddingHorizontal={8}
       gap={4}
     >
       <XStack alignItems="center" gap={6}>
-        <User size={10} color={colors.secondary} />
-        <Text color={colors.primary} fontSize={9} fontWeight="500" flex={1}>
+        <User size={10} color={c.text2} />
+        <Text color={c.text} fontSize={9} fontWeight="500" flex={1}>
           {comment.author?.displayName || comment.author?.emailAddress || 'Unknown'}
         </Text>
         {comment.resolved && (
@@ -88,18 +86,18 @@ function CommentRow({ comment }: { comment: Comment }) {
           </XStack>
         )}
         {comment.createdTime && (
-          <Text color={colors.muted} fontSize={8}>
+          <Text color={c.text3} fontSize={8}>
             {formatDate(comment.createdTime)}
           </Text>
         )}
       </XStack>
 
-      <Text color={colors.secondary} fontSize={10} numberOfLines={3}>
+      <Text color={c.text2} fontSize={10} numberOfLines={3}>
         {comment.content}
       </Text>
 
       {comment.replies && comment.replies.length > 0 && (
-        <Text color={colors.muted} fontSize={8}>
+        <Text color={c.text3} fontSize={8}>
           {comment.replies.length} repl{comment.replies.length === 1 ? 'y' : 'ies'}
         </Text>
       )}
@@ -114,12 +112,11 @@ function CommentRow({ comment }: { comment: Comment }) {
 export function CreateCommentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<Comment>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -134,31 +131,9 @@ export function CreateCommentRenderer({
   // Description
   const description = 'Create comment';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -167,8 +142,7 @@ export function CreateCommentRenderer({
             <CommentRow comment={result} />
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -183,12 +157,12 @@ interface ListCommentsResult {
 export function ListCommentsRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<ListCommentsResult>(output || '');
   const comments = typeof parsed === 'object' && parsed?.comments ? parsed.comments : [];
   const count = comments.length;
@@ -196,7 +170,9 @@ export function ListCommentsRenderer({
   // Badge
   let badge: React.ReactNode = null;
   if (status === 'completed') {
-    badge = <Badge text={`${count} comment${count !== 1 ? 's' : ''}`} variant="gray" />;
+    badge = (
+      <Badge text={formatCountBadge(count, 'comment')} variant={countBadgeVariant(count)} />
+    );
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
@@ -204,38 +180,12 @@ export function ListCommentsRenderer({
   // Description
   const description = 'List comments';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
-        {status === 'completed' && comments.length === 0 && (
-          <Text color={colors.muted} fontSize={10}>
-            No comments
-          </Text>
-        )}
+        {status === 'completed' && comments.length === 0 && <Empty message="No comments yet" />}
 
         {status === 'completed' && comments.length > 0 && (
           <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
@@ -244,15 +194,14 @@ export function ListCommentsRenderer({
                 <CommentRow key={comment.id} comment={comment} />
               ))}
               {comments.length > 10 && (
-                <Text color={colors.muted} fontSize={9} textAlign="center">
+                <Text color={c.text3} fontSize={9} textAlign="center">
                   +{comments.length - 10} more comments
                 </Text>
               )}
             </YStack>
           </ScrollView>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -263,12 +212,11 @@ export function ListCommentsRenderer({
 export function GetCommentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<Comment>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -287,36 +235,13 @@ export function GetCommentRenderer({
   // Description
   const description = 'Get comment';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && <CommentRow comment={result} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -327,12 +252,11 @@ export function GetCommentRenderer({
 export function UpdateCommentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<Comment>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -347,31 +271,9 @@ export function UpdateCommentRenderer({
   // Description
   const description = 'Update comment';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -380,8 +282,7 @@ export function UpdateCommentRenderer({
             <CommentRow comment={result} />
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -397,12 +298,11 @@ interface DeleteCommentResult {
 export function DeleteCommentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<DeleteCommentResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.success ? parsed : null;
 
@@ -417,38 +317,15 @@ export function DeleteCommentRenderer({
   // Description
   const description = 'Delete comment';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
           <SuccessBlock message={result.message || 'Comment deleted successfully'} />
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -459,18 +336,18 @@ export function DeleteCommentRenderer({
 export function CreateReplyRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<Reply>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
   // Get action from input
   const inputParsed = typeof input === 'string' ? parseOutput<{ action?: string }>(input) : input;
-  const action = inputParsed?.action;
+  const action = typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.action : undefined;
 
   // Badge
   let badge: React.ReactNode = null;
@@ -487,31 +364,9 @@ export function CreateReplyRenderer({
   // Description
   const description = action === 'resolve' ? 'Resolve comment' : 'Create reply';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -519,32 +374,31 @@ export function CreateReplyRenderer({
             <SuccessBlock message={action === 'resolve' ? 'Comment resolved' : 'Reply created'} />
 
             <YStack
-              backgroundColor={colors.bgInner}
+              backgroundColor={c.bgInner}
               borderRadius={5}
               paddingVertical={6}
               paddingHorizontal={8}
               gap={4}
             >
               <XStack alignItems="center" gap={6}>
-                <User size={10} color={colors.secondary} />
-                <Text color={colors.primary} fontSize={9} fontWeight="500" flex={1}>
+                <User size={10} color={c.text2} />
+                <Text color={c.text} fontSize={9} fontWeight="500" flex={1}>
                   {result.author?.displayName || result.author?.emailAddress || 'You'}
                 </Text>
                 {result.createdTime && (
-                  <Text color={colors.muted} fontSize={8}>
+                  <Text color={c.text3} fontSize={8}>
                     {formatDate(result.createdTime)}
                   </Text>
                 )}
               </XStack>
 
-              <Text color={colors.secondary} fontSize={10}>
+              <Text color={c.text2} fontSize={10}>
                 {result.content}
               </Text>
             </YStack>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -559,12 +413,12 @@ interface ListRepliesResult {
 export function ListRepliesRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<ListRepliesResult>(output || '');
   const replies = typeof parsed === 'object' && parsed?.replies ? parsed.replies : [];
   const count = replies.length;
@@ -572,7 +426,12 @@ export function ListRepliesRenderer({
   // Badge
   let badge: React.ReactNode = null;
   if (status === 'completed') {
-    badge = <Badge text={`${count} repl${count !== 1 ? 'ies' : 'y'}`} variant="gray" />;
+    badge = (
+      <Badge
+        text={formatCountBadge(count, 'reply', 'replies')}
+        variant={countBadgeVariant(count)}
+      />
+    );
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
@@ -580,35 +439,13 @@ export function ListRepliesRenderer({
   // Description
   const description = 'List replies';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && replies.length === 0 && (
-          <Text color={colors.muted} fontSize={10}>
+          <Text color={c.text3} fontSize={10}>
             No replies
           </Text>
         )}
@@ -619,20 +456,20 @@ export function ListRepliesRenderer({
               {replies.map((reply) => (
                 <YStack
                   key={reply.id}
-                  backgroundColor={colors.bgInner}
+                  backgroundColor={c.bgInner}
                   borderRadius={5}
                   paddingVertical={4}
                   paddingHorizontal={8}
                   gap={2}
                 >
                   <XStack alignItems="center" gap={6}>
-                    <User size={8} color={colors.secondary} />
-                    <Text color={colors.primary} fontSize={8} fontWeight="500" flex={1}>
+                    <User size={8} color={c.text2} />
+                    <Text color={c.text} fontSize={8} fontWeight="500" flex={1}>
                       {reply.author?.displayName || reply.author?.emailAddress || 'Unknown'}
                     </Text>
                     {reply.action && <Badge text={reply.action} variant="info" />}
                   </XStack>
-                  <Text color={colors.secondary} fontSize={9}>
+                  <Text color={c.text2} fontSize={9}>
                     {reply.content}
                   </Text>
                 </YStack>
@@ -640,7 +477,6 @@ export function ListRepliesRenderer({
             </YStack>
           </ScrollView>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }

@@ -1,0 +1,60 @@
+{
+  "name": "Google Docs",
+  "description": "Crea, lee y edita documentos de Google Docs — crear, leer contenido, insertar texto, añadir texto al final, buscar y reemplazar, actualizaciones por lotes. Para eliminar un documento, usa el MCA de Google Drive.",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de Google Docs."
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Crea un nuevo Google Doc con un título y contenido inicial opcional. Devuelve el ID del documento y la URL.",
+      "params": {
+        "title": "Título del nuevo Google Doc",
+        "content": "Contenido de texto inicial opcional para el documento. Admite \\n para saltos de línea."
+      }
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Lee el contenido de un documento de Google Docs.",
+      "params": {
+        "documentId": "El ID del documento"
+      }
+    },
+    "update-document": {
+      "name": "update-document",
+      "description": "Reemplaza todas las apariciones de una cadena de texto en un Google Doc. Útil para actualizar marcadores de posición o contenido específico.",
+      "params": {
+        "documentId": "El ID del documento",
+        "findText": "Texto a buscar y reemplazar",
+        "replaceText": "Texto de reemplazo",
+        "matchCase": "Si debe coincidir mayúsculas/minúsculas (por defecto: true)"
+      }
+    },
+    "insert-text": {
+      "name": "insert-text",
+      "description": "Inserta texto en una posición específica de un Google Doc. El índice 1 es el inicio del documento.",
+      "params": {
+        "documentId": "El ID del documento",
+        "text": "Texto a insertar",
+        "index": "Posición de inserción (1 = inicio del documento). Usa read-document para encontrar posiciones."
+      }
+    },
+    "append-text": {
+      "name": "append-text",
+      "description": "Añade texto al final de un Google Doc.",
+      "params": {
+        "documentId": "El ID del documento",
+        "text": "Texto a añadir"
+      }
+    },
+    "batch-update-document": {
+      "name": "batch-update-document",
+      "description": "Realiza múltiples operaciones en un Google Doc en una sola petición atómica. Soporta operaciones de inserción, eliminación y reemplazo.",
+      "params": {
+        "documentId": "El ID del documento",
+        "operations": "Array de operaciones a realizar"
+      }
+    }
+  }
+}

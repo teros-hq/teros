@@ -1,0 +1,83 @@
+{
+  "tools": {
+    "env-create": {
+      "name": "env-create",
+      "description": "Launch a docker-compose stack from a local workspace directory as an ephemeral environment. Returns immediately with envId and status \"creating\" — the build happens in the background. Use env-status to poll until status is \"running\". The environment is isolated in its own Docker network scoped to your user.",
+      "params": {
+        "localPath": "Absolute path to the local workspace directory containing the docker-compose file. Example: /workspace/my-project",
+        "composeFile": "Path to docker-compose file relative to localPath (default: docker-compose.yml)",
+        "envVars": "Additional environment variables to inject into the compose stack (key-value pairs)",
+        "timeout": "Timeout in seconds for docker-compose up --build (default: 300)",
+        "slug": "Optional custom URL slug for the environment (e.g. \"teros-landing-maria\"). Must be lowercase letters, digits, and hyphens only. If omitted, the slug is derived automatically from the last segment of localPath. If there is a collision, a short random suffix is appended (e.g. \"-a3f2\")."
+      }
+    },
+    "env-status": {
+      "name": "env-status",
+      "description": "Get detailed status of a Docker environment. Useful for polling after env-create until the environment is \"running\". Returns status, URLs, services, createdAt, error (if failed), and last build log lines.",
+      "params": {
+        "envId": "Environment ID returned by env-create",
+        "buildLogLines": "Number of recent build log lines to include (default: 20, max: 100)"
+      }
+    },
+    "env-exec": {
+      "name": "env-exec",
+      "description": "Execute a command inside a running environment. The command runs in the context of the docker-compose project. Returns stdout, stderr, and exit code.",
+      "params": {
+        "envId": "Environment ID returned by env-create",
+        "service": "Name of the service/container to run the command in (as defined in docker-compose)",
+        "command": "Command to execute inside the container (e.g. \"npx playwright test --reporter=json\")",
+        "workdir": "Working directory inside the container (optional)",
+        "timeout": "Timeout in seconds (default: 120, max: 600)"
+      }
+    },
+    "env-logs": {
+      "name": "env-logs",
+      "description": "Fetch recent logs from a service in a running environment. Returns the last N lines of container output.",
+      "params": {
+        "envId": "Environment ID returned by env-create",
+        "service": "Service name (as defined in docker-compose). Omit for all services.",
+        "lines": "Number of log lines to return (default: 50, max: 200)",
+        "timestamps": "Include timestamps in log output (default: true)"
+      }
+    },
+    "env-list": {
+      "name": "env-list",
+      "description": "List all environments for the current user/workspace. Shows envId, status (including intermediate states: creating, building, running, stopped, error), localPath, services, and URLs."
+    },
+    "env-restart": {
+      "name": "env-restart",
+      "description": "Restart a Docker environment: stops all containers and brings them back up. Useful to reload config changes or recover from a stopped state. Returns immediately — use env-status to poll until \"running\".",
+      "params": {
+        "envId": "Environment ID to restart",
+        "rebuild": "If true, rebuild images before restarting (docker-compose up --build). Default: false."
+      }
+    },
+    "env-destroy": {
+      "name": "env-destroy",
+      "description": "Stop and remove a Docker environment: runs docker-compose down, removes containers, networks, and volumes. The local workspace directory (localPath) is NOT deleted. This action is irreversible.",
+      "params": {
+        "envId": "Environment ID to destroy",
+        "removeVolumes": "Also remove named Docker volumes (default: true)"
+      }
+    },
+    "env-rename": {
+      "name": "env-rename",
+      "description": "Rename the URL slug of an existing environment. Updates the Caddy route so the environment becomes accessible at the new URL immediately. The envId does not change.",
+      "params": {
+        "envId": "Environment ID to rename",
+        "slug": "New URL slug (e.g. \"my-project-v2\"). Must be lowercase letters, digits, and hyphens only, and must not start or end with a hyphen. Max 63 characters."
+      }
+    },
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies Docker socket connectivity."
+    }
+  },
+  "name": "Docker Environments",
+  "description": "Manage ephemeral Docker environments tied to a workspace. Spin up a full docker-compose stack from a git repo, execute commands inside it, stream logs, and tear it down — all scoped per user for isolation.",
+  "changelog": [
+    {
+      "notes": "Initial release — spin up live Docker environments from your projects, run commands, view logs, restart, rename, and tear them down"
+    }
+  ]
+}

@@ -17,6 +17,7 @@ export function createListProvidersHandler(providerService: ProviderService) {
       config: p.config,
       models: p.models,
       defaultModelId: p.defaultModelId,
+      isDefault: p.isDefault ?? false,
       priority: p.priority,
       status: p.status,
       lastTestedAt: p.lastTestedAt,

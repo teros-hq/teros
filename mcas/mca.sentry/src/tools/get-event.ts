@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getCredentials, getOrganization, type SentryEvent, sentryRequest } from '../lib/index.js';
 
 export const getEvent: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific event including full stack trace',
   parameters: {
     type: 'object',

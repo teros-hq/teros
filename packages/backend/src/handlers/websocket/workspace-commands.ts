@@ -327,6 +327,9 @@ export function createWorkspaceCommands(deps: WorkspaceCommandsDeps) {
           mountPath,
         });
 
+        // Auto-grant the newly installed app to the installer's superagents
+        await mcaService.grantAccessToUserSuperagents(userId, app.appId);
+
         const mca = await mcaService.getMcaFromCatalog(mcaId);
 
         sendMessage(ws, {

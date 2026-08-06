@@ -23,6 +23,14 @@ export function createRevokeAccessHandler(mcaService: McaService) {
       throw new HandlerError('MISSING_APP_ID', 'appId is required')
     }
 
+    // SEC-1 (TER-720 / A1): the caller must own the agent AND be able to access
+    // the app's workspace — otherwise any user could revoke another tenant's
+    // agent grants (cross-tenant DoS).
+    const allowed = await mcaService.canManageAppAccess(ctx.userId, agentId, appId)
+    if (!allowed) {
+      throw new HandlerError('ACCESS_DENIED', `You cannot manage access for app ${appId}`)
+    }
+
     const success = await mcaService.revokeAccess(agentId, appId)
 
     console.log(`✅ Revoked ${agentId} access to ${appId}`)

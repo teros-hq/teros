@@ -1,156 +1,128 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getNotionClient } from '../lib';
+import { resolveDataSourceId } from './_data-source-resolver';
+import { PAGE_COMPACT_FIELDS } from './_fields';
+import { extractPageShape, extractProperties, resolveNotionId } from './_notion-helpers';
+import { resolveFieldsList, sanitizeLimit, wrapNotionCall } from './utils';
 
 export const queryDatabase: ToolConfig = {
-  description: 'Query database entries with optional filters and sorts. Returns compact results by default (just titles). Use properties parameter to get specific fields.',
+  description:
+    "Query database rows with filter + sorts. Returns curated rows { id, url, title, icon, properties, lastEditedTime }. `properties` whitelist controls which columns travel (default: title only). Pass `dataSourceId` directly for multi-source DBs; otherwise the first data source is used. Filter accepts the standard Notion shape: { property, <type>: { <op>: <value> } } — single-value ops only (Notion v5 does NOT support equals_any). To match any of N values, compose with `or`: { or: [ { property: 'Status', status: { equals: 'Done' } }, { property: 'Status', status: { equals: 'In review' } } ] }. Params: databaseId | dataSourceId, filter?, sorts?, propertyNames?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
   parameters: {
     type: 'object',
     properties: {
       databaseId: {
         type: 'string',
-        description: 'The ID of the database to query',
+        description:
+          'Database UUID. The first data source under it is queried unless `dataSourceId` is set.',
+      },
+      dataSourceId: {
+        type: 'string',
+        description:
+          'Specific data source UUID to query. Use for multi-source DBs (wikis, linked DBs).',
       },
       filter: {
         type: 'object',
-        description: 'Filter object (optional, see Notion API docs for syntax)',
+        description:
+          'Notion filter object. Compose multi-value via `or`/`and` arrays — Notion does not have equals_any.',
       },
       sorts: {
         type: 'array',
-        description: 'Array of sort objects (optional)',
         items: { type: 'object' },
+        description: 'Array of sort objects.',
       },
-      pageSize: {
+      propertyNames: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          "Whitelist of property names to include in each row. Default: only the title. Pass ['*'] to include all.",
+      },
+      limit: {
         type: 'number',
-        description: 'Number of results per page (max 100, default 100)',
+        description: 'Results per page. Min 1, max 100, default 50.',
       },
       startCursor: {
         type: 'string',
-        description: 'Cursor for pagination. Use next_cursor from previous response to get next page.',
+        description: 'Notion pagination cursor.',
       },
-      properties: {
+      fields: {
         type: 'array',
-        description: 'Array of property names to include in results. If not provided, returns only title/name. Use ["*"] to get all properties.',
         items: { type: 'string' },
+        description: 'Override default whitelist on each row envelope.',
+      },
+      includeRaw: {
+        type: 'boolean',
+        description: 'Return raw Notion API response. Default false.',
       },
     },
-    required: ['databaseId'],
+    required: [],
   },
+  annotations: { readOnlyHint: true, version: '2.0.0', stability: 'stable' },
   handler: async (args, context) => {
     const client = await getNotionClient(context);
-
-    const { databaseId, filter, sorts, pageSize, startCursor, properties } = args as {
-      databaseId: string;
+    const {
+      databaseId: rawDatabaseId,
+      dataSourceId: rawDataSourceId,
+      filter,
+      sorts,
+      propertyNames,
+      limit,
+      startCursor,
+      fields,
+      includeRaw,
+    } = args as {
+      databaseId?: string;
+      dataSourceId?: string;
       filter?: any;
       sorts?: any[];
-      pageSize?: number;
+      propertyNames?: string[];
+      limit?: number;
       startCursor?: string;
-      properties?: string[];
+      fields?: string[];
+      includeRaw?: boolean;
     };
 
+    if (!rawDatabaseId && !rawDataSourceId) {
+      throw new Error('query-database requires either databaseId or dataSourceId.');
+    }
+    const databaseId = rawDatabaseId ? resolveNotionId(rawDatabaseId, 'databaseId') : undefined;
+    const dataSourceId = rawDataSourceId
+      ? resolveNotionId(rawDataSourceId, 'dataSourceId')
+      : undefined;
+
+    const resolvedDataSourceId =
+      dataSourceId ?? (await resolveDataSourceId(client, databaseId as string));
+
+    const pageSize = sanitizeLimit(limit, { max: 100, default: 50 });
     const queryParams: any = {
-      database_id: databaseId,
-      page_size: pageSize || 100,
+      data_source_id: resolvedDataSourceId,
+      page_size: pageSize,
     };
+    if (filter) queryParams.filter = filter;
+    if (sorts) queryParams.sorts = sorts;
+    if (startCursor) queryParams.start_cursor = startCursor;
 
-    if (filter) {
-      queryParams.filter = filter;
-    }
+    const response: any = await wrapNotionCall(() =>
+      (client as any).dataSources.query(queryParams),
+    );
 
-    if (sorts) {
-      queryParams.sorts = sorts;
-    }
+    const shaped = response.results.map((page: any) => {
+      const base = extractPageShape(page);
+      base.properties = extractProperties(page.properties, propertyNames);
+      return base;
+    });
 
-    if (startCursor) {
-      queryParams.start_cursor = startCursor;
-    }
-
-    const response = await client.databases.query(queryParams);
-
-    // Helper to extract property value
-    const extractValue = (prop: any): any => {
-      if (!prop) return null;
-      
-      switch (prop.type) {
-        case 'title':
-          return prop.title?.map((t: any) => t.plain_text).join('') || null;
-        case 'rich_text':
-          return prop.rich_text?.map((t: any) => t.plain_text).join('') || null;
-        case 'number':
-          return prop.number;
-        case 'select':
-          return prop.select?.name || null;
-        case 'multi_select':
-          return prop.multi_select?.map((s: any) => s.name) || [];
-        case 'date':
-          return prop.date?.start || null;
-        case 'checkbox':
-          return prop.checkbox;
-        case 'url':
-          return prop.url;
-        case 'email':
-          return prop.email;
-        case 'phone_number':
-          return prop.phone_number;
-        case 'formula':
-          return prop.formula?.[prop.formula.type] || null;
-        case 'relation':
-          return prop.relation?.map((r: any) => r.id) || [];
-        case 'rollup':
-          return prop.rollup?.[prop.rollup.type] || null;
-        case 'people':
-          return prop.people?.map((p: any) => p.name || p.id) || [];
-        case 'files':
-          return prop.files?.map((f: any) => f.name || f.external?.url || f.file?.url) || [];
-        case 'created_time':
-          return prop.created_time;
-        case 'last_edited_time':
-          return prop.last_edited_time;
-        case 'created_by':
-          return prop.created_by?.name || prop.created_by?.id;
-        case 'last_edited_by':
-          return prop.last_edited_by?.name || prop.last_edited_by?.id;
-        case 'status':
-          return prop.status?.name || null;
-        default:
-          return null;
-      }
-    };
-
-    // Process results to be more compact
-    const compactResults = response.results.map((page: any) => {
-      const result: any = {
-        id: page.id,
-      };
-
-      // If properties is ["*"], return all properties
-      const returnAll = properties?.includes('*');
-      
-      // Always try to get the title
-      const props = page.properties || {};
-      
-      for (const [key, value] of Object.entries(props)) {
-        const prop = value as any;
-        
-        // Always include title property
-        if (prop.type === 'title') {
-          result[key] = extractValue(prop);
-          continue;
-        }
-        
-        // If returnAll or property is in the list, include it
-        if (returnAll || properties?.includes(key)) {
-          result[key] = extractValue(prop);
-        }
-      }
-
-      return result;
+    const results = resolveFieldsList(shaped as any, response.results, {
+      includeRaw,
+      fields,
+      defaultFields: [...PAGE_COMPACT_FIELDS, 'properties'],
     });
 
     return {
-      results: compactResults,
-      total: compactResults.length,
-      has_more: response.has_more,
-      next_cursor: response.next_cursor,
+      results,
+      total: results.length,
+      hasMore: response.has_more,
+      nextCursor: response.next_cursor,
     };
   },
 };

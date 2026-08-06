@@ -15,7 +15,7 @@ import type { WebSocket } from 'ws';
 import type { Task } from '../../types/database';
 import { type BoardService, type CreateTaskInput, buildTaskInitialMessage } from '../../services/board-service';
 import type { ChannelManager } from '../../services/channel-manager';
-import type { SessionManager } from '../../services/session-manager';
+import type { PubSubService } from '../../services/pubsub-service';
 import type { WorkspaceService } from '../../services/workspace-service';
 import type { MessageHandler } from '../message-handler';
 
@@ -23,30 +23,14 @@ export interface BoardCommandsDeps {
   boardService: BoardService;
   workspaceService: WorkspaceService;
   channelManager: ChannelManager;
-  sessionManager: SessionManager;
+  pubSubService: PubSubService;
   sendMessage: (ws: WebSocket, msg: ServerMessage) => void;
   sendError: (ws: WebSocket, code: string, message: string) => void;
   messageHandler?: MessageHandler;
 }
 
 export function createBoardCommands(deps: BoardCommandsDeps) {
-  const { boardService, workspaceService, channelManager, sessionManager, sendMessage, sendError, messageHandler } = deps;
-
-  /**
-   * Broadcast a board event to all subscribers of a board.
-   * Used for real-time updates (task created, moved, updated, deleted, etc.)
-   */
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId);
-    if (subscribers.length === 0) return;
-
-    const payload = JSON.stringify(event);
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload);
-      }
-    }
-  }
+  const { boardService, workspaceService, channelManager, pubSubService, sendMessage, sendError, messageHandler } = deps;
 
   // ==========================================================================
   // HELPERS
@@ -271,6 +255,43 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
       }
     },
 
+    async handleArchiveProject(
+      ws: WebSocket,
+      userId: string,
+      message: { projectId: string; archiveNote?: string },
+    ): Promise<void> {
+      try {
+        const { projectId, archiveNote } = message;
+        if (!projectId) {
+          sendError(ws, 'MISSING_FIELDS', 'projectId is required');
+          return;
+        }
+
+        const project = await boardService.getProject(projectId);
+        if (!project) {
+          sendError(ws, 'NOT_FOUND', 'Project not found');
+          return;
+        }
+
+        // Only admin/owner can archive
+        const role = await workspaceService.getUserRole(project.workspaceId, userId);
+        if (role !== 'owner' && role !== 'admin') {
+          sendError(ws, 'FORBIDDEN', 'Only workspace admin or owner can archive projects');
+          return;
+        }
+
+        const archivedProject = await boardService.archiveProject(projectId, userId, archiveNote);
+
+        sendMessage(ws, {
+          type: 'project_archived',
+          project: archivedProject,
+        } as any);
+      } catch (error: any) {
+        console.error('❌ Error archiving project:', error);
+        sendError(ws, 'ARCHIVE_PROJECT_ERROR', error.message || 'Failed to archive project');
+      }
+    },
+
     // ========================================================================
     // BOARDS
     // ========================================================================
@@ -431,7 +452,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_created',
           task,
         } as any);
-        broadcastBoardEvent(project.boardId, { type: 'board_task_created', task });
+        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_task_created', task });
       } catch (error: any) {
         console.error('❌ Error creating task:', error);
         sendError(ws, 'CREATE_TASK_ERROR', error.message || 'Failed to create task');
@@ -469,7 +490,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           tasks,
           count: tasks.length,
         } as any);
-        broadcastBoardEvent(project.boardId, { type: 'board_tasks_batch_created', tasks });
+        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_tasks_batch_created', tasks });
       } catch (error: any) {
         console.error('❌ Error batch creating tasks:', error);
         sendError(ws, 'BATCH_CREATE_TASKS_ERROR', error.message || 'Failed to batch create tasks');
@@ -602,7 +623,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_updated',
           task,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task });
       } catch (error: any) {
         console.error('❌ Error updating task:', error);
         sendError(ws, 'UPDATE_TASK_ERROR', error.message || 'Failed to update task');
@@ -637,7 +658,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_moved',
           task,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task });
       } catch (error: any) {
         console.error('❌ Error moving task:', error);
         sendError(ws, 'MOVE_TASK_ERROR', error.message || 'Failed to move task');
@@ -672,7 +693,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_assigned',
           task,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task });
       } catch (error: any) {
         console.error('❌ Error assigning task:', error);
         sendError(ws, 'ASSIGN_TASK_ERROR', error.message || 'Failed to assign task');
@@ -709,7 +730,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
         if (!channel) {
           channel = await channelManager.createChannel(userId, assignedAgentId, {
             name: task.title,
-          });
+          }, { workspaceId: wsId });
           await boardService.linkConversation(task.taskId, userId, channel.channelId);
         }
 
@@ -722,7 +743,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           task: startedFullTask,
           channelId: channel.channelId,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task: startedFullTask });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task: startedFullTask });
 
         // Send the initial message to trigger the agent (fire-and-forget)
         // We save the message directly and call processAgentResponse instead of
@@ -745,7 +766,14 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
                 timestamp: msgTimestamp,
               });
 
-              await messageHandler.processAgentResponse(channel.channelId, assignedAgentId, initialMessage);
+              await messageHandler.processAgentResponse(
+                channel.channelId,
+                assignedAgentId,
+                initialMessage,
+                undefined,
+                undefined,
+                'autorun',
+              );
             } catch (err: any) {
               console.error(`❌ Error sending initial task message to ${channel.channelId}:`, err);
             }
@@ -785,7 +813,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_conversation_linked',
           task,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task });
       } catch (error: any) {
         console.error('❌ Error linking conversation:', error);
         sendError(ws, 'LINK_CONVERSATION_ERROR', error.message || 'Failed to link conversation');
@@ -823,7 +851,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           taskId,
         } as any);
         if (taskToDelete) {
-          broadcastBoardEvent(taskToDelete.boardId, {
+          pubSubService.broadcastToTopic(`board:${taskToDelete.boardId}`, {
             type: 'board_task_deleted',
             taskId,
           });
@@ -837,10 +865,10 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
     async handleGetTasksByAgent(
       ws: WebSocket,
       userId: string,
-      message: { workspaceId: string; agentId: string },
+      message: { workspaceId: string; agentId: string; tags?: string[] },
     ): Promise<void> {
       try {
-        const { workspaceId, agentId } = message;
+        const { workspaceId, agentId, tags } = message;
         if (!workspaceId || !agentId) {
           sendError(ws, 'MISSING_FIELDS', 'workspaceId and agentId are required');
           return;
@@ -851,7 +879,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           return;
         }
 
-        const tasks = await boardService.getTasksByAgent(workspaceId, agentId);
+        const tasks = await boardService.getTasksByAgent(workspaceId, agentId, tags);
 
         sendMessage(ws, {
           type: 'agent_tasks_list',
@@ -934,61 +962,14 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_moved',
           task: updatedTask,
         } as any);
-        broadcastBoardEvent(updatedTask.boardId, { type: 'board_task_updated', task: updatedTask });
+        pubSubService.broadcastToTopic(`board:${updatedTask.boardId}`, { type: 'board_task_updated', task: updatedTask });
       } catch (error: any) {
         console.error('❌ Error moving own task:', error);
         sendError(ws, 'MOVE_MY_TASK_ERROR', error.message || 'Failed to move task');
       }
     },
 
-    async handleUpdateMyTaskStatus(
-      ws: WebSocket,
-      userId: string,
-      message: { taskId: string; status: string; agentId: string },
-    ): Promise<void> {
-      try {
-        const { taskId, status, agentId } = message;
-        if (!taskId || !status || !agentId) {
-          sendError(ws, 'MISSING_FIELDS', 'taskId, status, and agentId are required');
-          return;
-        }
-
-        // Verify task exists and is assigned to this agent
-        const task = await boardService.getTask(taskId);
-        if (!task) {
-          sendError(ws, 'NOT_FOUND', 'Task not found');
-          return;
-        }
-
-        if (task.assignedAgentId !== agentId) {
-          sendError(ws, 'FORBIDDEN', 'You can only update status of tasks assigned to you');
-          return;
-        }
-
-        // Verify workspace access
-        const wsId = await getWorkspaceFromTask(taskId);
-        if (!wsId || !(await verifyWorkspaceAccess(userId, wsId))) {
-          sendError(ws, 'FORBIDDEN', 'No access');
-          return;
-        }
-
-        const result = await boardService.updateTaskStatus(taskId, status as any, agentId);
-        if (!result) {
-          sendError(ws, 'NOT_FOUND', 'Task not found');
-          return;
-        }
-
-        sendMessage(ws, {
-          type: 'task_status_updated',
-          task: result.task,
-          previousStatus: result.previousStatus,
-        } as any);
-        broadcastBoardEvent(result.task.boardId, { type: 'board_task_updated', task: result.task });
-      } catch (error: any) {
-        console.error('❌ Error updating own task status:', error);
-        sendError(ws, 'UPDATE_MY_TASK_STATUS_ERROR', error.message || 'Failed to update status');
-      }
-    },
+    // handleUpdateMyTaskStatus removed — use board.archive-task instead
 
     async handleAddMyProgressNote(
       ws: WebSocket,
@@ -1031,7 +1012,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_progress_note_added',
           task: updatedTask,
         } as any);
-        broadcastBoardEvent(updatedTask.boardId, { type: 'board_task_updated', task: updatedTask });
+        pubSubService.broadcastToTopic(`board:${updatedTask.boardId}`, { type: 'board_task_updated', task: updatedTask });
       } catch (error: any) {
         console.error('❌ Error adding progress note:', error);
         sendError(ws, 'ADD_MY_PROGRESS_NOTE_ERROR', error.message || 'Failed to add progress note');
@@ -1039,18 +1020,18 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
     },
 
     // ========================================================================
-    // MANAGER COMMANDS (existing handlers for update_task_status and add_progress_note)
+    // MANAGER COMMANDS
     // ========================================================================
 
-    async handleUpdateTaskStatus(
+    async handleArchiveTask(
       ws: WebSocket,
       userId: string,
-      message: { taskId: string; status: string; actor: string },
+      message: { taskId: string; archived: boolean; archiveNote?: string; actor?: string },
     ): Promise<void> {
       try {
-        const { taskId, status, actor } = message;
-        if (!taskId || !status) {
-          sendError(ws, 'MISSING_FIELDS', 'taskId and status are required');
+        const { taskId, archived, archiveNote, actor } = message;
+        if (!taskId || archived === undefined) {
+          sendError(ws, 'MISSING_FIELDS', 'taskId and archived are required');
           return;
         }
 
@@ -1060,21 +1041,19 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           return;
         }
 
-        const result = await boardService.updateTaskStatus(taskId, status as any, actor || userId);
+        const result = archived
+          ? await boardService.archiveTask(taskId, actor || userId, archiveNote)
+          : await boardService.unarchiveTask(taskId, actor || userId);
         if (!result) {
           sendError(ws, 'NOT_FOUND', 'Task not found');
           return;
         }
 
-        sendMessage(ws, {
-          type: 'task_status_updated',
-          task: result.task,
-          previousStatus: result.previousStatus,
-        } as any);
-        broadcastBoardEvent(result.task.boardId, { type: 'board_task_updated', task: result.task });
+        sendMessage(ws, { type: 'task_archived', task: result } as any);
+        pubSubService.broadcastToTopic(`board:${result.boardId}`, { type: 'board_task_updated', task: result });
       } catch (error: any) {
-        console.error('❌ Error updating task status:', error);
-        sendError(ws, 'UPDATE_TASK_STATUS_ERROR', error.message || 'Failed to update status');
+        console.error('❌ Error archiving task:', error);
+        sendError(ws, 'ARCHIVE_TASK_ERROR', error.message || 'Failed to archive task');
       }
     },
 
@@ -1106,7 +1085,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_progress_note_added',
           task,
         } as any);
-        broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task });
+        pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task });
       } catch (error: any) {
         console.error('❌ Error adding progress note:', error);
         sendError(ws, 'ADD_PROGRESS_NOTE_ERROR', error.message || 'Failed to add progress note');

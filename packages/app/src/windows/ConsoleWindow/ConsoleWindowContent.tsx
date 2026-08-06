@@ -4,8 +4,11 @@
 
 import { Trash2 } from '@tamagui/lucide-icons';
 import React, { useEffect, useRef, useState } from 'react';
+import { getDateLocale } from '../../i18n';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors as semanticColors, surface } from '../../components/mca/primitives/colors';
 import { consoleCapture, type LogEntry } from './consoleCapture';
 
 interface Props {
@@ -14,10 +17,10 @@ interface Props {
 
 const LEVEL_COLORS: Record<string, string> = {
   log: '#888',
-  info: '#06B6D4',
-  warn: '#F59E0B',
-  error: '#EF4444',
-  debug: '#8B5CF6',
+  info: semanticColors.indigo,
+  warn: semanticColors.amber,
+  error: semanticColors.red,
+  debug: semanticColors.violet,
 };
 
 function formatArg(arg: any): string {
@@ -35,7 +38,7 @@ function formatArg(arg: any): string {
 }
 
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString('es-ES', {
+  return date.toLocaleTimeString(getDateLocale(), {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
@@ -44,6 +47,8 @@ function formatTime(date: Date): string {
 }
 
 export function ConsoleWindowContent({ windowId }: Props) {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const scrollRef = useRef<ScrollView>(null);
   const autoScrollRef = useRef(true);
@@ -85,10 +90,10 @@ export function ConsoleWindowContent({ windowId }: Props) {
         paddingHorizontal={8}
         alignItems="center"
         borderBottomWidth={1}
-        borderBottomColor="#1a1a1a"
+        borderBottomColor={c.border}
         gap={8}
       >
-        <Text color="#666" fontSize={11} fontFamily="$mono">
+        <Text color={c.text3} fontSize={11} fontFamily="$mono">
           {logs.length} logs
         </Text>
 
@@ -97,11 +102,11 @@ export function ConsoleWindowContent({ windowId }: Props) {
         <XStack
           padding={4}
           borderRadius={4}
-          hoverStyle={{ backgroundColor: '#1a1a1a' }}
+          hoverStyle={{ backgroundColor: c.bgInner }}
           cursor="pointer"
           onPress={handleClear}
         >
-          <Trash2 size={14} color="#666" />
+          <Trash2 size={14} color={c.text3} />
         </XStack>
       </XStack>
 
@@ -124,9 +129,9 @@ export function ConsoleWindowContent({ windowId }: Props) {
               paddingVertical={2}
               paddingHorizontal={4}
               borderRadius={2}
-              hoverStyle={{ backgroundColor: '#111' }}
+              hoverStyle={{ backgroundColor: c.bgInner }}
             >
-              <Text color="#444" fontSize={10} fontFamily="$mono" width={85} flexShrink={0}>
+              <Text color={c.text3} fontSize={10} fontFamily="$mono" width={85} flexShrink={0}>
                 {formatTime(entry.timestamp)}
               </Text>
 
@@ -141,14 +146,14 @@ export function ConsoleWindowContent({ windowId }: Props) {
                 {entry.level}
               </Text>
 
-              <Text color="#ccc" fontSize={11} fontFamily="$mono" flex={1} selectable>
+              <Text color={c.text} fontSize={11} fontFamily="$mono" flex={1} selectable>
                 {entry.args.map(formatArg).join(' ')}
               </Text>
             </XStack>
           ))}
 
           {logs.length === 0 && (
-            <Text color="#444" fontSize={11} textAlign="center" padding={20}>
+            <Text color={c.text3} fontSize={11} textAlign="center" padding={20}>
               No logs yet
             </Text>
           )}

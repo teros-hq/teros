@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const deleteMessage: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description:
     'Delete a message (moves to Deleted Items) or permanently delete it.',
   parameters: {

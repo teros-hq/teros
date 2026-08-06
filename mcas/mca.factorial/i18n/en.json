@@ -1,0 +1,170 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Factorial API."
+    },
+    "list-employees": {
+      "name": "list-employees",
+      "description": "List all employees in the company with optional filters (active status, team, location, etc.).",
+      "params": {
+        "active": "Filter by active status (default: true)",
+        "teamIds": "Filter by team IDs",
+        "locationIds": "Filter by location IDs",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "get-employee": {
+      "name": "get-employee",
+      "description": "Get detailed information about a specific employee by ID.",
+      "params": {
+        "employeeId": "The employee ID"
+      }
+    },
+    "list-teams": {
+      "name": "list-teams",
+      "description": "List all teams in the company."
+    },
+    "list-team-memberships": {
+      "name": "list-team-memberships",
+      "description": "List all team memberships (employee-team associations).",
+      "params": {
+        "teamId": "Filter by team ID",
+        "employeeId": "Filter by employee ID"
+      }
+    },
+    "list-leaves": {
+      "name": "list-leaves",
+      "description": "List time-off requests (leaves) with optional filters (employee, status, date range, etc.).",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "status": "Filter by status: pending, approved, rejected",
+        "from": "Start date in ISO format (YYYY-MM-DD)",
+        "to": "End date in ISO format (YYYY-MM-DD)",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "get-leave": {
+      "name": "get-leave",
+      "description": "Get detailed information about a specific time-off request by ID.",
+      "params": {
+        "leaveId": "The leave ID"
+      }
+    },
+    "create-leave": {
+      "name": "create-leave",
+      "description": "Create a new time-off request (vacation, sick leave, etc.).",
+      "params": {
+        "employeeId": "The employee ID requesting the leave",
+        "leaveTypeId": "The leave type ID (e.g., vacation, sick leave)",
+        "startOn": "Start date in ISO format (YYYY-MM-DD)",
+        "finishOn": "End date in ISO format (YYYY-MM-DD)",
+        "halfDayStart": "Whether the start day is a half day",
+        "halfDayFinish": "Whether the end day is a half day",
+        "comment": "Optional comment or reason for the leave"
+      }
+    },
+    "list-leave-types": {
+      "name": "list-leave-types",
+      "description": "List all available leave types (vacation, sick leave, etc.)."
+    },
+    "list-shifts": {
+      "name": "list-shifts",
+      "description": "List all attendance shifts with optional filters.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "from": "Start date in ISO format (YYYY-MM-DD)",
+        "to": "End date in ISO format (YYYY-MM-DD)",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "list-worked-times": {
+      "name": "list-worked-times",
+      "description": "List worked time records for employees.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "from": "Start date in ISO format (YYYY-MM-DD)",
+        "to": "End date in ISO format (YYYY-MM-DD)",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "list-overtime-requests": {
+      "name": "list-overtime-requests",
+      "description": "List overtime requests with optional filters.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "status": "Filter by status: pending, approved, rejected",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "approve-overtime": {
+      "name": "approve-overtime",
+      "description": "Approve an overtime request by ID.",
+      "params": {
+        "overtimeRequestId": "The overtime request ID to approve"
+      }
+    },
+    "reject-overtime": {
+      "name": "reject-overtime",
+      "description": "Reject an overtime request by ID.",
+      "params": {
+        "overtimeRequestId": "The overtime request ID to reject"
+      }
+    },
+    "list-documents": {
+      "name": "list-documents",
+      "description": "List all company documents with optional filters.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "folderId": "Filter by folder ID",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "get-document": {
+      "name": "get-document",
+      "description": "Get detailed information about a specific document by ID.",
+      "params": {
+        "documentId": "The document ID"
+      }
+    },
+    "list-contract-versions": {
+      "name": "list-contract-versions",
+      "description": "List all employee contract versions.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "list-compensations": {
+      "name": "list-compensations",
+      "description": "List all employee compensation records.",
+      "params": {
+        "employeeIds": "Filter by employee IDs",
+        "limit": "Maximum number of results (default: 50)",
+        "offset": "Pagination offset"
+      }
+    },
+    "list-legal-entities": {
+      "name": "list-legal-entities",
+      "description": "List all company legal entities."
+    },
+    "list-locations": {
+      "name": "list-locations",
+      "description": "List all company work locations and offices."
+    }
+  },
+  "name": "Factorial",
+  "description": "Factorial HR — manage employees, time off, attendance, payroll, documents, contracts and teams via Factorial API with OAuth2",
+  "changelog": [
+    {
+      "notes": "Initial release — browse employees and teams, request and review time off, track attendance and overtime, and view documents, contracts and pay"
+    }
+  ]
+}

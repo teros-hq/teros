@@ -42,5 +42,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["clickup", "tasks", "project", "management", "productivity", "kanban"]
+  "keywords": ["clickup", "tasks", "project", "management", "productivity", "kanban"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-03-09",
+      "notes": "Initial release — create, update, search and comment on tasks across ClickUp spaces, folders and lists"
+    }
+  ]
 }

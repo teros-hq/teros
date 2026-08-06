@@ -5,13 +5,16 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface UpdateTaskData {
   taskId: string
   title?: string
   description?: string
+  instructions?: string
   priority?: string
   tags?: string[]
   assignedAgentId?: string | null
@@ -20,19 +23,9 @@ interface UpdateTaskData {
 export function createUpdateTaskHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function updateTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateTaskData
     const { taskId, ...updateInput } = data
@@ -62,7 +55,24 @@ export function createUpdateTaskHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task })
+
+    // Emit board.task_updated to subscribers
+    if (boardSubscriptionService) {
+      const payload = {
+        taskId: task.taskId,
+        taskTitle: task.title,
+        assignedAgentId: task.assignedAgentId,
+        tags: task.tags,
+        columnId: task.columnId,
+      }
+      boardSubscriptionService.notifySubscribers(task.boardId, {
+        eventType: 'board.task_updated',
+        boardId: task.boardId,
+        formattedMessage: BSS.formatEventMessage({ eventType: 'board.task_updated', boardId: task.boardId, payload }),
+        payload,
+      })
+    }
 
     return { task }
   }

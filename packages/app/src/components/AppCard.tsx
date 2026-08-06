@@ -7,9 +7,13 @@
 
 import { ChevronRight, Package } from "@tamagui/lucide-icons"
 import type React from "react"
+import { useTranslation } from "react-i18next"
 import { Image, TouchableOpacity, View } from "react-native"
 import { Text, XStack, YStack } from "tamagui"
 import type { AppAuthInfo } from "./apps"
+import { useColors } from "./mca/primitives/useColors"
+import { McaIcon } from "./mca/McaIcon"
+import { colors as semanticColors, indicators } from "./mca/primitives/colors"
 
 interface AppCardProps {
   appId: string
@@ -22,66 +26,20 @@ interface AppCardProps {
   onPress: () => void
   onUninstall?: () => void
   showUninstall?: boolean
+  mcaId?: string
 }
 
-// Map icon names to Lucide components (subset for common icons)
-const iconMap: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
-  package: Package,
-  // Add more as needed - for now we'll handle most via image URLs or emojis
-}
-
-const isImageUrl = (str?: string): boolean => {
-  if (!str) return false
-  return (
-    str.startsWith("http://") ||
-    str.startsWith("https://") ||
-    str.endsWith(".png") ||
-    str.endsWith(".jpg") ||
-    str.endsWith(".jpeg") ||
-    str.endsWith(".svg")
-  )
-}
-
-const getIconUrl = (icon?: string): string => {
-  if (!icon) return ""
-  if (icon.startsWith("http://") || icon.startsWith("https://")) {
-    return icon
-  }
-  // Relative path - construct full URL from env
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL
-  if (!backendUrl) {
-    console.warn("EXPO_PUBLIC_BACKEND_URL is not configured")
-    return ""
-  }
-  return `${backendUrl}/static/mcas/${icon}`
-}
-
-const isEmoji = (str?: string): boolean => {
-  if (!str) return false
-  return str.length <= 2 && /\p{Emoji}/u.test(str)
-}
-
-const getIcon = (
-  iconName?: string,
-): React.ComponentType<{ size?: number; color?: string }> | null => {
-  if (!iconName) return Package
-  if (isImageUrl(iconName) || isEmoji(iconName)) {
-    return null
-  }
-  return iconMap[iconName.toLowerCase()] || Package
-}
-
-// Category display names
-const categoryNames: Record<string, string> = {
-  system: "System",
-  productivity: "Productivity",
-  communication: "Communication",
-  integration: "Integration",
-  ai: "Artificial Intelligence",
-  development: "Development",
-  data: "Data",
-  media: "Media",
-  other: "Other",
+const categoryKeyMap: Record<string, string> = {
+  google: "apps.categoryGoogle",
+  system: "apps.categorySystem",
+  productivity: "apps.categoryProductivity",
+  communication: "apps.categoryCommunication",
+  integration: "apps.categoryIntegration",
+  ai: "apps.categoryAi",
+  development: "apps.categoryDevelopment",
+  data: "apps.categoryData",
+  media: "apps.categoryMedia",
+  other: "apps.categoryOther",
 }
 
 export function AppCard({
@@ -95,25 +53,33 @@ export function AppCard({
   onPress,
   onUninstall,
   showUninstall = false,
+  mcaId,
 }: AppCardProps) {
-  const IconComponent = getIcon(icon)
+  const { t } = useTranslation()
+  const c = useColors()
 
-  // Get simple status text
+  const getCategoryLabel = () => {
+    const key = categoryKeyMap[category || ""]
+    return key ? t(key) : category || t("apps.app")
+  }
+
   const getStatusText = () => {
-    if (!authInfo) return { color: "#52525B", text: "Verifying..." }
+    if (!authInfo) return { color: c.text3, text: t("apps.verifying") }
     switch (authInfo.status) {
       case "ready":
-        return { color: "#10B981", text: "Ready" }
+        return { color: semanticColors.green, text: t("apps.ready") }
+      case "needs_system_setup":
+        return { color: semanticColors.amber, text: t("apps.requiresSetup") }
       case "needs_user_auth":
-        return { color: "#F59E0B", text: "Requires connection" }
+        return { color: semanticColors.amber, text: t("apps.requiresConnection") }
       case "expired":
-        return { color: "#F59E0B", text: "Session expired" }
+        return { color: semanticColors.amber, text: t("apps.sessionExpired") }
       case "error":
-        return { color: "#EF4444", text: "Error" }
+        return { color: semanticColors.red, text: t("apps.error") }
       case "not_required":
-        return { color: "#71717A", text: categoryNames[category || ""] || category || "App" }
+        return { color: c.text2, text: getCategoryLabel() }
       default:
-        return { color: "#71717A", text: categoryNames[category || ""] || category || "App" }
+        return { color: c.text2, text: getCategoryLabel() }
     }
   }
 
@@ -121,9 +87,16 @@ export function AppCard({
 
   // Show category for ready/not_required, show status for others
   const needsAttention =
+    authInfo?.status === "needs_system_setup" ||
     authInfo?.status === "needs_user_auth" ||
     authInfo?.status === "expired" ||
     authInfo?.status === "error"
+
+  // Health dot — a coloured indicator for apps that actually carry an auth
+  // status. Apps with `not_required` (no credentials) get no dot: a green/grey
+  // dot there would imply a health signal that doesn't exist for them. The dot
+  // colour mirrors the status text, so both read the same at a glance.
+  const showHealthDot = !loading && !!authInfo && authInfo.status !== "not_required"
 
   return (
     <TouchableOpacity
@@ -133,11 +106,11 @@ export function AppCard({
         flexBasis: "30%",
         flexGrow: 1,
         minWidth: 250,
-        backgroundColor: "rgba(24, 24, 27, 0.9)",
+        backgroundColor: c.bgCard,
         borderRadius: 12,
         padding: 14,
         borderWidth: 1,
-        borderColor: needsAttention ? "rgba(245, 158, 11, 0.3)" : "rgba(39, 39, 42, 0.6)",
+        borderColor: needsAttention ? indicators.risk.border : c.border,
       }}
     >
       <XStack gap="$3" alignItems="center">
@@ -147,37 +120,46 @@ export function AppCard({
             width: 40,
             height: 40,
             borderRadius: 10,
-            backgroundColor: color || "rgba(255, 255, 255, 0.05)",
+            backgroundColor: color || c.bgInner,
             justifyContent: "center",
             alignItems: "center",
             overflow: "hidden",
           }}
         >
-          {isImageUrl(icon) ? (
-            <Image
-              source={{ uri: getIconUrl(icon) }}
-              style={{ width: 24, height: 24 }}
-              resizeMode="contain"
-            />
-          ) : IconComponent ? (
-            <IconComponent size={20} color="#FAFAFA" />
-          ) : (
-            <Text fontSize={20}>{icon}</Text>
-          )}
+          <McaIcon
+            icon={icon}
+            mcaId={mcaId}
+            size={24}
+            color={c.text}
+            backgroundColor="transparent"
+          />
         </View>
 
         {/* Content */}
         <YStack flex={1}>
-          <Text fontSize={14} fontWeight="500" color="#FAFAFA" numberOfLines={1}>
+          <Text fontSize={14} fontWeight="500" color={c.text} numberOfLines={1}>
             {name}
           </Text>
-          <Text fontSize={11} color={loading ? "#52525B" : status.color} numberOfLines={1}>
-            {loading ? "Verifying..." : status.text}
-          </Text>
+          <XStack alignItems="center" gap={6}>
+            {showHealthDot && (
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  backgroundColor: status.color,
+                  flexShrink: 0,
+                }}
+              />
+            )}
+            <Text fontSize={11} color={loading ? c.text3 : status.color} numberOfLines={1}>
+              {loading ? t("apps.verifying") : status.text}
+            </Text>
+          </XStack>
         </YStack>
 
         {/* Arrow */}
-        <ChevronRight size={16} color="#3F3F46" />
+        <ChevronRight size={16} color={c.text3} />
       </XStack>
     </TouchableOpacity>
   )

@@ -62,6 +62,9 @@
         "required": [
           "text"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -83,6 +86,9 @@
             "description": "Filter by voice category: premade, cloned, generated, professional (optional)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -99,6 +105,9 @@
         "required": [
           "voiceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -115,6 +124,9 @@
         "required": [
           "scriptPath"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -123,6 +135,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

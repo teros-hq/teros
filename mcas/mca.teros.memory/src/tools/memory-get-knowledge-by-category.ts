@@ -5,6 +5,7 @@ import { getKnowledgeByCategory } from '@teros/shared/memory/knowledge';
 
 export const memoryGetKnowledgeByCategory: HttpToolConfig = {
   description: 'Get all knowledge items in a specific category',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {

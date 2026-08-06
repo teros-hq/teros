@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Granola API 키와 연결성을 확인합니다."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "선택적 필터와 함께 Granola 회의 노트를 나열합니다. id, 제목, 소유자, 생성일, 수정일이 포함된 노트를 반환합니다. API는 AI 요약 및 전사가 생성된 노트만 반환합니다.",
+      "params": {
+        "created_before": "ISO 날짜 또는 날짜시간. 이 날짜 이전에 생성된 노트만 반환됩니다.",
+        "created_after": "ISO 날짜 또는 날짜시간. 이 날짜 이후에 생성된 노트만 반환됩니다.",
+        "updated_after": "ISO 날짜 또는 날짜시간. 이 날짜 이후에 수정된 노트만 반환됩니다.",
+        "cursor": "이전 응답의 페이지네이션 커서.",
+        "page_size": "페이지당 결과 수 (기본값: 10, 최대: 30)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "ID로 Granola 회의 노트의 전체 세부정보를 가져옵니다. 요약, 참석자, 캘린더 이벤트 및 선택적으로 전사가 포함됩니다. API는 AI 요약 및 전사가 생성된 노트만 반환합니다.",
+      "params": {
+        "noteId": "노트 ID (형식: not_XXXXXXXXXXXXXX)",
+        "includeTranscript": "전체 전사 세그먼트를 포함할지 여부"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "사용자가 접근할 수 있는 Granola 폴더를 나열합니다. parent_folder_id를 통해 폴더 계층 구조를 반환합니다.",
+      "params": {
+        "cursor": "이전 응답의 페이지네이션 커서.",
+        "page_size": "페이지당 결과 수 (기본값: 10, 최대: 30)"
+      }
+    }
+  },
+  "name": "Granola",
+  "description": "Granola 회의 노트, 전사 및 AI 요약에 접근하세요.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — Granola 회의 노트를 탐색하고, 전사 및 AI 요약을 읽고, 폴더를 탐색하세요."
+    }
+  ]
+}

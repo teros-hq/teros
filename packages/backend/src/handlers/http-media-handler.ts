@@ -16,6 +16,9 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import { basename, dirname, extname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config';
+import { applyDownloadSafetyHeaders, sanitizeContentDispositionFilename } from '../lib/content-safety';
+import type { AuthService } from '../auth/auth-service';
+import type { McaContainerManager } from '../services/mca-container-manager';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,6 +40,7 @@ const ALLOWED_MIME_TYPES: Record<string, string[]> = {
     'text/plain',
     'text/csv',
     'text/html',
+    'text/markdown',
     'application/zip',
     'application/x-tar',
     'application/gzip',
@@ -68,6 +72,8 @@ const EXT_TO_MIME: Record<string, string> = {
   '.txt': 'text/plain',
   '.csv': 'text/csv',
   '.html': 'text/html',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
   '.zip': 'application/zip',
   '.tar': 'application/x-tar',
   '.gz': 'application/gzip',
@@ -95,6 +101,7 @@ const MIME_TO_EXT: Record<string, string> = {
   'text/plain': '.txt',
   'text/csv': '.csv',
   'text/html': '.html',
+  'text/markdown': '.md',
   'application/zip': '.zip',
   'application/x-tar': '.tar',
   'application/gzip': '.gz',
@@ -165,9 +172,9 @@ async function parseJsonBody(req: IncomingMessage): Promise<any> {
 }
 
 /**
- * Handle media upload via JSON (base64 or file path)
+ * Handle media upload via JSON (base64 data only — filePath mode removed, fixes C-3 LFI)
  */
-async function handleJsonUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleJsonUpload(req: IncomingMessage, res: ServerResponse, _userId: string): Promise<void> {
   try {
     const body = await parseJsonBody(req);
 
@@ -176,38 +183,11 @@ async function handleJsonUpload(req: IncomingMessage, res: ServerResponse): Prom
     let mimeType: string;
 
     if (body.filePath) {
-      // Upload from local file path
-      const filePath = body.filePath;
-
-      // Security: prevent path traversal
-      if (filePath.includes('..')) {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: 'Invalid file path' }));
-        return;
-      }
-
-      // Check file exists
-      try {
-        const stats = await stat(filePath);
-        if (stats.size > MAX_FILE_SIZE) {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({
-              success: false,
-              error: `File too large. Max size: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-            }),
-          );
-          return;
-        }
-      } catch {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: false, error: 'File not found' }));
-        return;
-      }
-
-      fileBuffer = await readFile(filePath);
-      filename = body.filename || basename(filePath);
-      mimeType = body.mimeType || getMimeType(filename) || 'application/octet-stream';
+      // filePath mode removed — it allowed reading arbitrary host paths (C-3 LFI).
+      // Callers must use base64 data instead.
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'filePath upload mode is not supported. Use base64 data field instead.' }));
+      return;
     } else if (body.data) {
       // Upload from base64 data
       fileBuffer = Buffer.from(body.data, 'base64');
@@ -336,13 +316,23 @@ async function handleMediaServe(res: ServerResponse, mediaId: string): Promise<v
 
     const fileBuffer = await readFile(filePath);
 
-    res.writeHead(200, {
-      'Content-Type': metadata.mimeType,
-      'Content-Length': fileBuffer.length.toString(),
-      'Content-Disposition': `inline; filename="${metadata.filename}"`,
-      'Cache-Control': 'public, max-age=86400',
-      'Access-Control-Allow-Origin': '*',
-    });
+    // /media/:id is public and served from the backend origin. A user-uploaded
+    // SVG/HTML with an inline <script> would otherwise run as Stored XSS on
+    // be.teros.ai. applyDownloadSafetyHeaders forces attachment + nosniff for
+    // browser-executable types (kept in sync with the static-file handler) and
+    // sanitizes the user-supplied filename before it reaches the header.
+    const headers = applyDownloadSafetyHeaders(
+      {
+        'Content-Type': metadata.mimeType,
+        'Content-Length': fileBuffer.length.toString(),
+        'Content-Disposition': `inline; filename="${sanitizeContentDispositionFilename(metadata.filename)}"`,
+        'Cache-Control': 'public, max-age=86400',
+        'Access-Control-Allow-Origin': '*',
+      },
+      metadata.mimeType,
+      metadata.filename,
+    );
+    res.writeHead(200, headers);
     res.end(fileBuffer);
   } catch (error) {
     console.error('❌ Error serving media:', error);
@@ -355,6 +345,38 @@ async function handleMediaServe(res: ServerResponse, mediaId: string): Promise<v
  * HTTP Media Handler class
  */
 export class HttpMediaHandler {
+  constructor(
+    private authService: AuthService,
+    private containerManager?: McaContainerManager,
+  ) {}
+
+  /**
+   * Extract userId from Bearer token in Authorization header.
+   * Returns null if missing or invalid.
+   */
+  private async getUserId(req: IncomingMessage): Promise<string | null> {
+    const authHeader = req.headers['authorization'];
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      const result = await this.authService.validateSession(token);
+      return result.success ? (result.user?.userId ?? null) : null;
+    }
+    return null;
+  }
+
+  /**
+   * Check if request is authenticated via MCA_CALLBACK_TOKEN.
+   * MCAs don't have user session tokens, so they use their callback token instead.
+   */
+  private isMcaAuthenticated(req: IncomingMessage): boolean {
+    if (!this.containerManager) return false;
+    const authHeader = req.headers['authorization'];
+    if (!authHeader?.startsWith('Bearer ')) return false;
+    const token = authHeader.slice(7);
+    // isValidCallbackToken checks against all registered container tokens
+    return this.containerManager.isValidCallbackToken(token);
+  }
+
   /**
    * Handle media routes
    * Returns true if the route was handled
@@ -362,13 +384,20 @@ export class HttpMediaHandler {
   async handleRoute(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     const method = req.method || 'GET';
 
-    // POST /api/media/upload - Upload media file
+    // POST /api/media/upload - Upload media file (requires auth: user session OR MCA callback token)
     if (url === '/api/media/upload' && method === 'POST') {
-      await handleJsonUpload(req, res);
+      const userId = await this.getUserId(req);
+      const isMca = !userId && this.isMcaAuthenticated(req);
+      if (!userId && !isMca) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Authentication required' }));
+        return true;
+      }
+      await handleJsonUpload(req, res, userId ?? 'mca');
       return true;
     }
 
-    // GET /media/:mediaId - Serve media file
+    // GET /media/:mediaId - Serve media file (public, no auth required)
     const mediaMatch = url.match(/^\/media\/([a-f0-9-]+)$/i);
     if (mediaMatch && method === 'GET') {
       const mediaId = mediaMatch[1];

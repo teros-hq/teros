@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba el Personal Access Token de Netlify mediante GET /user."
+    },
+    "deploy-site": {
+      "name": "deploy-site",
+      "description": "Despliega un sitio estático (HTML/CSS/JS) desde un directorio del workspace a Netlify y devuelve la URL pública. AVISO: todos los archivos bajo `dir` se vuelven PÚBLICAMENTE accesibles en internet — nunca despliegues un directorio que contenga secretos (.env), credenciales o datos privados. Pasa siteId o siteName para desplegar en un sitio existente; omite ambos para crear uno nuevo. Desplegar la raíz completa del workspace se rechaza por defecto a menos que allowWorkspaceRoot sea true. Devuelve { url, deployId, state, siteId }.",
+      "params": {
+        "dir": "Directorio a desplegar, relativo a /workspace (ej. \"site\" o \"build\"). Debe contener un index.html. Todo su contenido se vuelve PÚBLICO — apúntalo a un directorio de build, no a la raíz del workspace.",
+        "siteId": "ID de sitio de Netlify existente donde desplegar. Tiene precedencia sobre siteName.",
+        "siteName": "Nombre del sitio de Netlify. Despliega en el sitio coincidente si existe; en caso contrario, lo crea.",
+        "draft": "Si es true, crea un despliegue en borrador (URL de previsualización) en lugar de publicar en producción. Por defecto false.",
+        "allowWorkspaceRoot": "Confirmación de seguridad. Desplegar `dir: \".\"` (la raíz completa del workspace) se rechaza por defecto porque la raíz suele contener archivos privados. Establece true solo cuando el usuario quiera explícitamente que todo el workspace sea público. Por defecto false."
+      }
+    },
+    "list-sites": {
+      "name": "list-sites",
+      "description": "Lista los sitios de Netlify accesibles con el token configurado. Devuelve { sites: [{ id, name, url, ssl_url }] }."
+    },
+    "get-deploy-status": {
+      "name": "get-deploy-status",
+      "description": "Obtiene el estado actual de un despliegue de Netlify. Devuelve { state, url, errorMessage? }.",
+      "params": {
+        "siteId": "El ID del sitio de Netlify al que pertenece el despliegue.",
+        "deployId": "El ID del despliegue a comprobar."
+      }
+    }
+  },
+  "name": "Netlify",
+  "description": "Despliega sitios estáticos (HTML/CSS/JS) desde el workspace a Netlify y devuelve la URL pública. Usa la API REST file-digest con un Personal Access Token por usuario."
+}

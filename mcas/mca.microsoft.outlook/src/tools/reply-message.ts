@@ -3,6 +3,7 @@ import { createGraphClient, processEmailBody } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const replyMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Reply to an existing email message.',
   parameters: {
     type: 'object',

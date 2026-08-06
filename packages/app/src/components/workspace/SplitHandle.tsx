@@ -6,6 +6,8 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform, type View } from 'react-native';
 import { XStack, YStack } from 'tamagui';
 import type { SplitDirection } from '../../store/tilingStore';
+import { useColors } from '../mca/primitives/useColors';
+import { colors as semanticColors } from '../mca/primitives/colors';
 
 interface Props {
   direction: SplitDirection;
@@ -13,6 +15,7 @@ interface Props {
 }
 
 export function SplitHandle({ direction, onDrag }: Props) {
+  const c = useColors();
   const [isDragging, setIsDragging] = useState(false);
   const startPosRef = useRef(0);
   const handleRef = useRef<HTMLDivElement | null>(null);
@@ -44,8 +47,8 @@ export function SplitHandle({ direction, onDrag }: Props) {
   }, [isHorizontal]);
 
   // Handlers como refs para evitar recrearlos
-  const onMoveRef = useRef<(e: TouchEvent | MouseEvent) => void>();
-  const onEndRef = useRef<(e: TouchEvent | MouseEvent) => void>();
+  const onMoveRef = useRef<(e: TouchEvent | MouseEvent) => void>(() => {});
+  const onEndRef = useRef<(e: TouchEvent | MouseEvent) => void>(() => {});
 
   useEffect(() => {
     onMoveRef.current = (e: TouchEvent | MouseEvent) => {
@@ -134,17 +137,16 @@ export function SplitHandle({ direction, onDrag }: Props) {
       ref={setRef as any}
       {...(isHorizontal ? { width: 12 } : { height: 12 })}
       flexShrink={0}
-      backgroundColor={isDragging ? 'rgba(6, 182, 212, 0.3)' : 'transparent'}
+      backgroundColor={isDragging ? 'rgba(94,106,210,0.3)' : 'transparent'}
       cursor={isHorizontal ? 'col-resize' : 'row-resize'}
-      hoverStyle={{ backgroundColor: 'rgba(6, 182, 212, 0.2)' }}
+      hoverStyle={{ backgroundColor: 'rgba(94,106,210,0.2)' }}
       justifyContent="center"
       alignItems="center"
-      // @ts-expect-error
       style={{ touchAction: 'none', userSelect: 'none' }}
     >
       <Indicator
         {...(isHorizontal ? { width: 3, height: 50 } : { width: 50, height: 3 })}
-        backgroundColor={isDragging ? '#06B6D4' : '#444'}
+        backgroundColor={isDragging ? semanticColors.indigo : c.borderStrong}
         borderRadius={2}
         pointerEvents="none"
       />

@@ -1,0 +1,106 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. Intercom API 토큰 및 연결성을 확인합니다."
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "연결된 Intercom 작업 공간에 대한 정보 가져오기: 이름, 지역, 시간대 및 인증된 관리자."
+    },
+    "search-conversations": {
+      "name": "search-conversations",
+      "description": "상태, 날짜 범위, 태그 및 담당자별로 필터링하여 Intercom에서 대화를 검색합니다. 대화 메타데이터와 함께 페이지네이션된 결과를 반환합니다.",
+      "params": {
+        "state": "대화 상태로 필터링",
+        "createdAfter": "유닉스 타임스탬프 — 이 시간 이후에 생성된 대화만",
+        "createdBefore": "유닉스 타임스탬프 — 이 시간 이전에 생성된 대화만",
+        "assigneeId": "지정된 관리자 ID로 필터링",
+        "teamId": "지정된 팀 ID로 필터링",
+        "perPage": "페이지당 결과 (기본값: 20, 최대: 50)",
+        "startingAfter": "이전 응답의 페이지네이션 커서"
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "ID로 특정 Intercom 대화의 전체 세부정보를 가져옵니다. 모든 메시지, 노트, 태그 및 담당자를 포함합니다.",
+      "params": {
+        "conversationId": "Intercom 대화 ID"
+      }
+    },
+    "reply-conversation": {
+      "name": "reply-conversation",
+      "description": "관리자로서 Intercom 대화에 답장합니다. 고객에게 공개 답장을 보내거나 비공식 내부 노트를 추가할 수 있습니다.",
+      "params": {
+        "conversationId": "Intercom 대화 ID",
+        "body": "답장 텍스트 (일반 텍스트 또는 HTML)",
+        "type": "\"comment\"는 고객에게 공개 답장을 보냅니다; \"note\"는 팀만 볼 수 있는 비공식 내부 노트를 추가합니다 (기본값: comment)",
+        "adminId": "답장할 관리자 ID. 생략하면 토큰 소유자를 사용합니다."
+      }
+    },
+    "assign-conversation": {
+      "name": "assign-conversation",
+      "description": "특정 관리자 또는 팀에 Intercom 대화를 할당합니다. 둘 다 생략하여 할당 해제할 수도 있습니다.",
+      "params": {
+        "conversationId": "Intercom 대화 ID",
+        "adminId": "대화를 할당할 관리자 ID",
+        "teamId": "대화를 할당할 팀 ID"
+      }
+    },
+    "update-conversation": {
+      "name": "update-conversation",
+      "description": "Intercom에서 대화 상태(열림, 닫힘, 일시 중지) 또는 우선 순위를 업데이트합니다.",
+      "params": {
+        "conversationId": "Intercom 대화 ID",
+        "state": "대화의 새로운 상태",
+        "priority": "우선 순위 플래그 설정 또는 해제",
+        "snoozedUntil": "유닉스 타임스탬프 — 상태가 \"일시 중지\"일 때 필요"
+      }
+    },
+    "tag-conversation": {
+      "name": "tag-conversation",
+      "description": "Intercom 대화에서 태그를 추가하거나 제거합니다.",
+      "params": {
+        "conversationId": "Intercom 대화 ID",
+        "tagIds": "대화에 추가할 태그 ID",
+        "removeTagIds": "대화에서 제거할 태그 ID"
+      }
+    },
+    "list-admins": {
+      "name": "list-admins",
+      "description": "Intercom 작업 공간의 모든 관리자(에이전트) 목록을 ID, 이름, 이메일 및 좌석 상태와 함께 나열합니다."
+    },
+    "list-teams": {
+      "name": "list-teams",
+      "description": "Intercom 작업 공간의 모든 팀을 ID, 이름 및 구성원 수와 함께 나열합니다."
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "Intercom 작업 공간에 정의된 모든 태그를 나열합니다. 대화에 태그를 추가하기 전에 태그 ID를 찾는 데 유용합니다."
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Intercom ID로 Intercom 연락처(사용자 또는 리드)의 세부정보를 가져옵니다.",
+      "params": {
+        "contactId": "Intercom 연락처 ID"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "이메일, 이름 또는 전화번호로 Intercom 연락처를 검색합니다.",
+      "params": {
+        "email": "정확한 이메일 주소로 필터링",
+        "name": "이름으로 필터링 (부분 일치)",
+        "phone": "전화번호로 필터링",
+        "perPage": "페이지당 결과 (기본값: 20, 최대: 50)"
+      }
+    }
+  },
+  "name": "Intercom",
+  "description": "Intercom 고객 지원 통합 — Intercom API를 통해 대화, 티켓, 연락처 및 팀을 관리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 고객 대화를 검색하고 답장하며, 할당, 태그 추가, 일시 중지 및 연락처 및 팀원을 조회합니다."
+    }
+  ]
+}

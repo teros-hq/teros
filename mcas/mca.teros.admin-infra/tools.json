@@ -1,0 +1,124 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.admin-infra",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "admin-infra-backend-status",
+      "description": "Get current status of the Teros backend including uptime, memory usage, process info, and number of running MCAs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-restart-backend",
+      "description": "Restart the Teros backend server. This will gracefully shutdown all MCA processes and restart the backend. Use with caution - this will temporarily interrupt service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Confirmation flag - must be true to proceed with restart"
+          }
+        },
+        "required": [
+          "confirm"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-sync",
+      "description": "Sync MCAs, models, and tools from filesystem to database. Run this after adding or modifying MCAs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-mca-status",
+      "description": "Get status of all running MCA processes. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-mca-kill",
+      "description": "Kill a running MCA process by ID. Super admin only. DESTRUCTIVE — use with caution.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "MCA process ID to kill"
+          },
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to confirm"
+          }
+        },
+        "required": [
+          "id",
+          "confirm"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-mca-cleanup",
+      "description": "Clean up stale or dead MCA processes. Super admin only. DESTRUCTIVE — use with caution.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be true to confirm"
+          }
+        },
+        "required": [
+          "confirm"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-infra-mca-health",
+      "description": "Run health checks on all MCA processes. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,235 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Linear API key and connectivity."
+    },
+    "linear-list-issues": {
+      "name": "linear-list-issues",
+      "description": "List Linear issues with optional filters. Returns curated rows { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. Params: teamId?, status?, assigneeId?, priority?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filter by team UUID.",
+        "status": "Filter by workflow state type.",
+        "assigneeId": "Filter by assignee UUID.",
+        "priority": "Filter by priority.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear issue nodes. Default false."
+      }
+    },
+    "linear-get-issue": {
+      "name": "linear-get-issue",
+      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, descriptionFormat ('full' | 'summary', default 'full'), fields?, includeRaw.",
+      "params": {
+        "issueId": "Issue UUID or human identifier (e.g. \"TER-123\").",
+        "descriptionFormat": "Control description size. 'full' (default) returns the complete markdown; 'summary' truncates to 500 chars and adds descriptionTruncated=true. Useful when scanning issues for context size.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Linear issue object. Default false."
+      }
+    },
+    "linear-create-issue": {
+      "name": "linear-create-issue",
+      "description": "Create a Linear issue. Returns curated { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. Not retryable (no idempotency key). Params: title, teamId, description?, assigneeId?, priority?, projectId?, labelIds?, stateId?, parentId? (UUID or \"TER-123\"), fields?, includeRaw.",
+      "params": {
+        "title": "Issue title.",
+        "teamId": "Team UUID (required).",
+        "description": "Markdown description.",
+        "assigneeId": "Assignee UUID.",
+        "priority": "Issue priority.",
+        "projectId": "Project UUID.",
+        "labelIds": "Label UUIDs to attach on creation.",
+        "stateId": "Workflow state UUID to set initially.",
+        "parentId": "Parent issue UUID or identifier (e.g. \"TER-123\"). Only set when creating a sub-task; omit otherwise.",
+        "fields": "Override default whitelist on the returned issue.",
+        "includeRaw": "Return raw Linear issue object. Default false."
+      }
+    },
+    "linear-update-issue": {
+      "name": "linear-update-issue",
+      "description": "Update a Linear issue. Returns curated updated issue. Idempotent per-field — safe to retry. Params: issueId, title?, description?, stateId?, assigneeId?, priority?, projectId?, labelIds?, estimate?, dueDate?, fields?, includeRaw.",
+      "params": {
+        "issueId": "Issue UUID or identifier.",
+        "title": "New title.",
+        "description": "New markdown description.",
+        "stateId": "Workflow state UUID.",
+        "assigneeId": "Assignee UUID (null to unassign).",
+        "priority": "New priority.",
+        "projectId": "Project UUID (pass null-equivalent via remove-issues-from-project).",
+        "labelIds": "Full label-id set (overwrites). Use add/remove-labels-to-issue for delta.",
+        "estimate": "Point estimate.",
+        "dueDate": "ISO date string (YYYY-MM-DD).",
+        "fields": "Override default whitelist on the returned issue.",
+        "includeRaw": "Return raw Linear issue object. Default false."
+      }
+    },
+    "linear-delete-issue": {
+      "name": "linear-delete-issue",
+      "description": "Permanently delete a Linear issue. Irreversible. Returns { success, issueId }.",
+      "params": {
+        "issueId": "Issue UUID or identifier."
+      }
+    },
+    "linear-archive-issue": {
+      "name": "linear-archive-issue",
+      "description": "Archive a Linear issue (soft delete). Reversible via un-archive. Returns { success, issueId }.",
+      "params": {
+        "issueId": "Issue UUID or identifier."
+      }
+    },
+    "linear-add-comment": {
+      "name": "linear-add-comment",
+      "description": "Add a comment to a Linear issue. Returns curated { id, body, authorId, authorName, issueId, url, createdAt }. Not retryable. Params: issueId, body, fields?, includeRaw.",
+      "params": {
+        "issueId": "Issue UUID or identifier.",
+        "body": "Markdown comment body. Must not be empty.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Linear comment object. Default false."
+      }
+    },
+    "linear-list-projects": {
+      "name": "linear-list-projects",
+      "description": "List Linear projects. Returns curated rows { id, name, url, state, icon, color, progress, startDate, targetDate, createdAt, updatedAt }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filter by team UUID.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear project nodes. Default false."
+      }
+    },
+    "linear-create-project": {
+      "name": "linear-create-project",
+      "description": "Create a Linear project. Returns curated project shape. Not retryable (no idempotency key). Params: name, teamIds, description?, leadId?, startDate?, targetDate?, fields?, includeRaw.",
+      "params": {
+        "name": "Project name.",
+        "teamIds": "Team UUIDs that own this project.",
+        "description": "Project description.",
+        "leadId": "Project lead UUID.",
+        "startDate": "ISO date (YYYY-MM-DD).",
+        "targetDate": "ISO date (YYYY-MM-DD).",
+        "fields": "Override default whitelist on the returned project.",
+        "includeRaw": "Return raw Linear project object. Default false."
+      }
+    },
+    "linear-delete-project": {
+      "name": "linear-delete-project",
+      "description": "Permanently delete a Linear project. Irreversible. Issues in the project become detached (not deleted). Returns { success, projectId }.",
+      "params": {
+        "projectId": "Project UUID."
+      }
+    },
+    "linear-add-issues-to-project": {
+      "name": "linear-add-issues-to-project",
+      "description": "Attach one or more Linear issues to a project. Returns { projectId, added, failed, results: [{ issueId, identifier?, success, error? }] }.",
+      "params": {
+        "projectId": "Project UUID.",
+        "issueIds": "Issue UUIDs or identifiers."
+      }
+    },
+    "linear-remove-issues-from-project": {
+      "name": "linear-remove-issues-from-project",
+      "description": "Detach one or more Linear issues from their project. Returns { removed, failed, results: [{ issueId, identifier?, success, error? }] }.",
+      "params": {
+        "issueIds": "Issue UUIDs or identifiers to detach."
+      }
+    },
+    "linear-list-labels": {
+      "name": "linear-list-labels",
+      "description": "List Linear labels. Returns curated rows { id, name, color, description, isGroup, parentId }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filter by team UUID (team-scoped labels).",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear label nodes. Default false."
+      }
+    },
+    "linear-create-label": {
+      "name": "linear-create-label",
+      "description": "Create a Linear label. Returns curated { id, name, color, description }. Not retryable. Params: name, teamId, color?, description?, fields?, includeRaw.",
+      "params": {
+        "name": "Label name.",
+        "teamId": "Team UUID that owns the label.",
+        "color": "Hex color (e.g. '#FF5733').",
+        "description": "Label description.",
+        "fields": "Override default whitelist on the returned label.",
+        "includeRaw": "Return raw Linear label object. Default false."
+      }
+    },
+    "linear-update-label": {
+      "name": "linear-update-label",
+      "description": "Update a Linear label. Returns curated updated label. Idempotent per-field. Params: labelId, name?, color?, description?, fields?, includeRaw.",
+      "params": {
+        "labelId": "Label UUID.",
+        "name": "New name.",
+        "color": "New hex color (e.g. '#FF5733').",
+        "description": "New description.",
+        "fields": "Override default whitelist on the returned label.",
+        "includeRaw": "Return raw Linear label object. Default false."
+      }
+    },
+    "linear-delete-label": {
+      "name": "linear-delete-label",
+      "description": "Permanently delete a Linear label. Irreversible. Returns { success, labelId }.",
+      "params": {
+        "labelId": "Label UUID."
+      }
+    },
+    "linear-add-labels-to-issue": {
+      "name": "linear-add-labels-to-issue",
+      "description": "Add labels to a Linear issue (deduped server-side against existing labels). Returns { issueId, added, total, labelIds }.",
+      "params": {
+        "issueId": "Issue UUID or identifier.",
+        "labelIds": "Label UUIDs to add."
+      }
+    },
+    "linear-remove-labels-from-issue": {
+      "name": "linear-remove-labels-from-issue",
+      "description": "Remove labels from a Linear issue. Returns { issueId, removed, total, labelIds }.",
+      "params": {
+        "issueId": "Issue UUID or identifier.",
+        "labelIds": "Label UUIDs to remove."
+      }
+    },
+    "linear-list-teams": {
+      "name": "linear-list-teams",
+      "description": "List Linear teams. Returns curated rows { id, name, key, icon, color, description, private }. Params: limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear team nodes. Default false."
+      }
+    },
+    "linear-list-users": {
+      "name": "linear-list-users",
+      "description": "List Linear workspace users. Optionally filters by team membership. Returns curated rows { id, name, displayName, email, avatarUrl, active, admin }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filter by team UUID (returns members of that team only).",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear user nodes. Default false."
+      }
+    },
+    "linear-list-workflow-states": {
+      "name": "linear-list-workflow-states",
+      "description": "List workflow states for a team. Returns curated rows { id, name, type, color, position, description }. Params: teamId, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Team UUID.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Linear relay cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Linear state nodes. Default false."
+      }
+    }
+  },
+  "name": "Linear",
+  "description": "Linear issue tracking - list, create, update issues, manage teams and users",
+  "changelog": [
+    {
+      "notes": "Initial release — create, update, and comment on issues, manage projects and labels, and browse teams"
+    }
+  ]
+}

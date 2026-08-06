@@ -1,47 +1,53 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected } from '../lib';
+import type { ToolConfig, ToolContext } from '@teros/mca-sdk';
+import { getWsClient } from '../lib';
+import { TASK_FIELDS } from './_fields';
+import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 
 export const startTask: ToolConfig = {
-  description: 'Start a task: moves it to in_progress, creates a headless conversation with the assigned agent, sends the task description as the initial message, and links the conversation to the task. Optionally override the assigned agent or provide a custom prompt.',
+  description:
+    'Start a task: moves to in_progress, creates a headless conversation with the assigned agent, sends the task description as the first message, and links the conversation to the task. Returns: { task: { ...TASK_FIELDS, channelId }, channelId }. Optional override of agent or prompt.',
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
-      taskId: {
-        type: 'string',
-        description: 'The task ID to start',
-      },
+      taskId: { type: 'string', description: 'Task ID' },
       agentId: {
         type: 'string',
-        description: 'Optional agent ID override. If provided, the task will be reassigned to this agent before starting.',
+        description: 'Optional agent override. Reassigns the task before starting.',
       },
       prompt: {
         type: 'string',
-        description: 'Optional custom prompt to send to the agent instead of the default task description message.',
+        description:
+          'Optional custom prompt. Overrides the default task description as the first message.',
       },
+      includeRaw: { type: 'boolean', description: 'Return full task document' },
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const taskId = args?.taskId as string;
-    if (!taskId) {
-      throw new Error('taskId is required');
-    }
+    if (!taskId) throw new Error('taskId is required');
 
-    const result = await wsClient.queryConversations<any>('start_task', {
-      taskId,
-      agentId: args?.agentId,
-      prompt: args?.prompt,
+    // Capture caller channel at call time — safe under parallel invocations
+    const callerChannelId = context.execution.channelId;
+
+    const result = await withTimeout(
+      wsClient.queryConversations<any>('start_task', {
+        taskId,
+        agentId: args?.agentId,
+        prompt: args?.prompt,
+        ...(callerChannelId && { callerChannelId }),
+      }),
+      20_000,
+      'start_task',
+    );
+
+    const task = resolveFields(result.task ?? {}, {
+      includeRaw: args?.includeRaw === true,
+      defaultFields: TASK_FIELDS,
     });
-
-    return {
-      success: true,
-      task: result.task,
-      channelId: result.channelId,
-    };
+    return { task, ...(result.channelId ? { channelId: result.channelId } : {}) };
   },
 };

@@ -29,9 +29,10 @@ import {
   Terminal,
   Wrench,
 } from '@tamagui/lucide-icons';
-import { useGlobalSearchParams, useRouter } from 'expo-router';
+
 import type React from 'react';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Image,
   ScrollView,
@@ -40,13 +41,21 @@ import {
   View,
 } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { AppCard } from '../../components/AppCard';
 import type { AppAuthInfo } from '../../components/apps';
 import { useToast } from '../../components/Toast';
 import { useClickModifiers } from '../../hooks/useClickModifiers';
 import type { AppsWindowProps } from './definition';
+import { useTilingStore } from '../../store/tilingStore';
 import { AppSpinner, FullscreenLoader } from '../../components/ui';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import { useColors } from '../../components/mca/primitives/useColors';
+import {
+  GOOGLE_FAKE_AUTH,
+  GOOGLE_FAKE_INSTALLS,
+  GOOGLE_PLACEHOLDER_CARDS,
+} from '../CatalogWindow/googleSuite';
 
 interface CatalogMca {
   mcaId: string;
@@ -95,24 +104,12 @@ const iconMap: Record<string, React.ComponentType<{ size?: number; color?: strin
   sparkles: Sparkles,
 };
 
-// Category display names
-const categoryNames: Record<string, string> = {
-  system: 'Sistema',
-  productivity: 'Productividad',
-  communication: 'Communication',
-  integration: 'Integration',
-  ai: 'Inteligencia Artificial',
-  development: 'Desarrollo',
-  data: 'Datos',
-  media: 'Media',
-  other: 'Otros',
-};
-
 interface AppsWindowContentProps extends AppsWindowProps {
   windowId: string;
 }
 
-export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindowContentProps) {
+export function AppsWindowContent({ windowId, workspaceId, search: initialSearch }: AppsWindowContentProps) {
+  const { t } = useTranslation();
   const [catalog, setCatalog] = useState<CatalogMca[]>([]);
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -120,11 +117,12 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
   const [authStatuses, setAuthStatuses] = useState<Record<string, AppAuthInfo | null>>({});
   const [loadingAuthStatus, setLoadingAuthStatus] = useState<Record<string, boolean>>({});
 
-  const router = useRouter();
-  const globalParams = useGlobalSearchParams();
+  const { openWindow } = useTilingStore();
   const client = getTerosClient();
   const toast = useToast();
   const { shouldOpenInNewTab } = useClickModifiers();
+  const activeWorkspaceId = workspaceId ?? useWorkspaceStore((s) => s.activeWorkspaceId);
+  const c = useColors();
 
   useEffect(() => {
     const tryLoadData = async () => {
@@ -170,15 +168,30 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [catalogResult, appsResult] = await Promise.all([client.app.listCatalog(), client.app.listApps()]);
-      const catalogData = catalogResult.catalog as CatalogMca[];
-      const appsData = appsResult.apps;
-      setCatalog(catalogData);
-      setInstalledApps(appsData);
-      loadAllAuthStatuses(appsData);
+      const catalogResult = await client.app.listCatalog();
+      // Fold in the Google Suite placeholder cards so their icon/category resolve
+      // for the simulated installs below (they aren't in the backend catalog).
+      setCatalog([
+        ...(catalogResult.catalog as CatalogMca[]),
+        ...(GOOGLE_PLACEHOLDER_CARDS as CatalogMca[]),
+      ]);
+
+      if (activeWorkspaceId) {
+        const { apps: wsApps } = await client.workspace.listWorkspaceApps(activeWorkspaceId);
+        const real = wsApps.map((a) => ({ appId: a.appId, mcaId: a.mcaId, name: a.name }));
+        // Prototype: Docs (1 instance) + Sheets/Slides (2 each) are simulated
+        // installs (see googleSuite.ts). Only the real apps hit the backend for
+        // auth status; the fakes use a mocked "ready" status.
+        setInstalledApps([...GOOGLE_FAKE_INSTALLS, ...real]);
+        setAuthStatuses((prev) => ({
+          ...prev,
+          ...(GOOGLE_FAKE_AUTH as unknown as Record<string, AppAuthInfo>),
+        }));
+        loadAllAuthStatuses(real);
+      }
     } catch (err: any) {
       console.error('Error loading apps:', err);
-      toast.error('Error', 'No se pudo cargar las aplicaciones');
+      toast.error(t('common.error'), t('apps.couldNotLoadApps'));
     } finally {
       setIsLoading(false);
     }
@@ -215,25 +228,21 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
         name={app.name}
         icon={mca?.icon}
         color={mca?.color}
+        mcaId={app.mcaId}
         category={mca?.category}
         authInfo={authInfo}
         loading={loading}
-        onPress={(e) => {
-          const url = `/app/${app.appId}`;
-          if (shouldOpenInNewTab(e)) {
-            router.push(`${url}?newTab=true`);
-          } else {
-            router.push(url);
-          }
+        onPress={(e?: any) => {
+          openWindow('app', { appId: app.appId }, shouldOpenInNewTab(e));
         }}
       />
     );
   };
 
   return (
-    <YStack flex={1} backgroundColor="#09090B">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* Header */}
-      <YStack borderBottomWidth={1} borderBottomColor="rgba(39, 39, 42, 0.6)">
+      <YStack borderBottomWidth={1} borderBottomColor={c.border}>
         {/* Title and Search */}
         <XStack
           paddingHorizontal="$3"
@@ -241,13 +250,13 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
           justifyContent="space-between"
           alignItems="center"
         >
-          <Text fontSize={16} fontWeight="600" color="#FAFAFA">
-            Mis Apps
+          <Text fontSize={16} fontWeight="600" color={c.text}>
+            {t('windows.myApps')}
           </Text>
 
           {/* Search */}
           <XStack
-            backgroundColor="rgba(39, 39, 42, 0.6)"
+            backgroundColor={c.bgCard}
             borderRadius={6}
             paddingHorizontal="$2"
             paddingVertical="$1"
@@ -255,17 +264,17 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
             gap="$2"
             width={160}
             borderWidth={1}
-            borderColor="rgba(63, 63, 70, 0.5)"
+            borderColor={c.borderStrong}
           >
-            <Search size={12} color="#71717A" />
+            <Search size={12} color={c.text3} />
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Buscar..."
-              placeholderTextColor="#52525B"
+              placeholder={t('common.search')}
+              placeholderTextColor={c.text3}
               style={{
                 flex: 1,
-                color: '#FAFAFA',
+                color: c.text,
                 fontSize: 12,
               }}
             />
@@ -274,7 +283,7 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
       </YStack>
 
       {isLoading ? (
-        <FullscreenLoader variant="default" label="Cargando..." />
+        <FullscreenLoader variant="default" label={t('common.loading')} />
       ) : (
         <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
           {filteredInstalledApps.length > 0 ? (
@@ -283,9 +292,9 @@ export function AppsWindowContent({ windowId, search: initialSearch }: AppsWindo
             </XStack>
           ) : (
             <YStack alignItems="center" padding="$6">
-              <Package size={40} color="#27272A" />
-              <Text color="#52525B" marginTop="$3" textAlign="center" fontSize={13}>
-                {searchQuery ? 'No se encontraron apps' : 'No tienes apps instaladas'}
+              <Package size={40} color={c.text3} />
+              <Text color={c.text3} marginTop="$3" textAlign="center" fontSize={13}>
+                {searchQuery ? t('apps.noAppsFound') : t('apps.noAppsInstalled')}
               </Text>
             </YStack>
           )}

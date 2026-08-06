@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const appUninstall: ToolConfig = {
+  annotations: { readOnlyHint: false, alwaysAsk: true },
   description: 'Uninstall an app. This also removes all agent access grants.',
   parameters: {
     type: 'object',

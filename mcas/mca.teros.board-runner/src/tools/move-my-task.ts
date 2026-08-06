@@ -1,4 +1,4 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { ToolConfig } from '@teros/mca-sdk';
 import { getWsClient, isWsConnected } from '../lib';
 
 export const moveMyTask: ToolConfig = {

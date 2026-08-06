@@ -1,0 +1,86 @@
+{
+  "tools": {
+    "memory-health-check": {
+      "name": "memory-health-check",
+      "description": "Verificación interna de estado. Comprueba la conectividad con Qdrant y la presencia de la clave de OpenAI."
+    },
+    "memory-search-conversations": {
+      "name": "memory-search-conversations",
+      "description": "Busca en el historial de conversaciones usando búsqueda semántica",
+      "params": {
+        "query": "Consulta de búsqueda para encontrar conversaciones relevantes",
+        "limit": "Número máximo de resultados a devolver"
+      }
+    },
+    "memory-get-recent-conversations": {
+      "name": "memory-get-recent-conversations",
+      "description": "Obtiene las conversaciones más recientes",
+      "params": {
+        "limit": "Número máximo de conversaciones a devolver"
+      }
+    },
+    "memory-save-conversation": {
+      "name": "memory-save-conversation",
+      "description": "Guarda una conversación en memoria con puntuación de importancia",
+      "params": {
+        "userMessage": "El mensaje del usuario",
+        "assistantResponse": "La respuesta del asistente",
+        "filesModified": "Lista de archivos que fueron modificados",
+        "commandsRun": "Lista de comandos que fueron ejecutados"
+      }
+    },
+    "memory-save-knowledge": {
+      "name": "memory-save-knowledge",
+      "description": "Guarda un conocimiento en la base de conocimiento",
+      "params": {
+        "content": "El contenido del conocimiento a guardar",
+        "category": "Categoría del conocimiento",
+        "confidence": "Puntuación de confianza (0-1)"
+      }
+    },
+    "memory-search-knowledge": {
+      "name": "memory-search-knowledge",
+      "description": "Busca en la base de conocimiento",
+      "params": {
+        "query": "Consulta de búsqueda",
+        "category": "Filtro de categoría opcional",
+        "limit": "Número máximo de resultados"
+      }
+    },
+    "memory-get-knowledge-by-category": {
+      "name": "memory-get-knowledge-by-category",
+      "description": "Obtiene todos los elementos de conocimiento de una categoría específica",
+      "params": {
+        "category": "Categoría de conocimiento"
+      }
+    },
+    "memory-calculate-importance": {
+      "name": "memory-calculate-importance",
+      "description": "Calcula la puntuación de importancia de un mensaje",
+      "params": {
+        "userMessage": "El mensaje del usuario",
+        "assistantResponse": "La respuesta del asistente",
+        "filesModified": "Lista de archivos modificados",
+        "commandsRun": "Lista de comandos ejecutados"
+      }
+    },
+    "memory-get-context-for-query": {
+      "name": "memory-get-context-for-query",
+      "description": "Obtiene el contexto de memoria relevante para una consulta del usuario (lo que se inyectaría en el prompt)",
+      "params": {
+        "query": "La consulta del usuario"
+      }
+    },
+    "memory-stats": {
+      "name": "memory-stats",
+      "description": "Obtiene las estadísticas de memoria del agente actual (tamaños de colección, recuentos de puntos)"
+    }
+  },
+  "name": "Memoria y Base de Datos Vectorial",
+  "description": "Sistema de memoria multi-agente con búsqueda vectorial. Cada agente tiene colecciones de memoria aisladas.",
+  "changelog": [
+    {
+      "notes": "Búsqueda semántica en conversaciones pasadas, guardado y navegación de conocimiento categorizado, y seguimiento del uso de memoria por agente"
+    }
+  ]
+}

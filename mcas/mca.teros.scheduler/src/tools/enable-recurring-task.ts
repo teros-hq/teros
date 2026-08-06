@@ -1,53 +1,46 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getNextRunTime } from '../cron-helper';
-import { db, formatRecurringTask } from '../lib';
+import { z } from 'zod';
+import { db, formatRecurringTask, getNextCronRun, SchedulerError } from '../lib';
+import {
+  requireUserId,
+  structured,
+  type SchedulerTool,
+  toToolError,
+  validateInput,
+} from './_shared';
 
-export const enableRecurringTask: ToolConfig = {
-  description: 'Enable (resume) a recurring task',
+const Schema = z.object({ taskId: z.number().int().positive() });
+
+export const enableRecurringTask: SchedulerTool = {
+  description: 'Enable (resume) a recurring task of the current user. Recomputes nextRun. Idempotent if already enabled.',
   parameters: {
     type: 'object',
-    properties: {
-      taskId: {
-        type: 'number',
-        description: 'The ID of the task to enable',
-      },
-    },
+    properties: { taskId: { type: 'number', description: 'Recurring task ID.' } },
     required: ['taskId'],
   },
-  handler: async (args) => {
-    const { taskId } = args as { taskId: number };
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable', idempotentHint: true },
+  handler: async (args, context) => {
+    try {
+      const userId = requireUserId(context);
+      const input = validateInput(Schema, args);
 
-    const task = await db.getRecurringTask(taskId);
-    if (!task) {
-      throw new Error(`Task ${taskId} not found`);
+      const existing = await db.getRecurringTask(input.taskId, userId);
+      if (!existing) throw new SchedulerError('NOT_FOUND', `Recurring task ${input.taskId} not found.`);
+
+      const nextRun = getNextCronRun(existing.cron_expression, existing.timezone);
+      const updated = await db.updateRecurringTask(input.taskId, userId, {
+        enabled: true,
+        next_run: nextRun,
+      });
+      if (!updated) {
+        throw new SchedulerError('NOT_FOUND', `Recurring task ${input.taskId} disappeared during enable.`);
+      }
+
+      return structured({
+        action: existing.enabled ? ('noop' as const) : ('enabled' as const),
+        task: formatRecurringTask(updated),
+      });
+    } catch (error) {
+      toToolError(error);
     }
-
-    if (task.enabled) {
-      return {
-        success: true,
-        message: `Task ${taskId} is already enabled`,
-        task: formatRecurringTask(task),
-      };
-    }
-
-    const enabled = await db.enableRecurringTask(taskId);
-    if (!enabled) {
-      throw new Error(`Failed to enable task ${taskId}`);
-    }
-
-    // Recalculate next run
-    const nextRun = getNextRunTime(task.cron_expression, task.timezone);
-    await db.updateRecurringTaskNextRun(taskId, nextRun, Date.now());
-
-    const updatedTask = (await db.getRecurringTask(taskId))!;
-    const allTasks = (await db.getAllRecurringTasks(task.channel_id)).map(formatRecurringTask);
-
-    return {
-      success: true,
-      message: 'Task enabled',
-      affectedTaskId: taskId,
-      task: formatRecurringTask(updatedTask),
-      tasks: allTasks,
-    };
   },
 };

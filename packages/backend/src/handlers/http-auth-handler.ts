@@ -214,6 +214,10 @@ export class HttpAuthHandler {
         "appUrl is not configured. Set APP_URL env var or appUrl in .secrets/system/oauth.json.",
       )
     }
+    // See http-mca-auth-handler.sendOAuthResult for the same reasoning: in
+    // dev Metro and the backend live on different origins, so a strict
+    // target silences the popup→opener postMessage. Relax only in dev.
+    const postMessageTarget = process.env.NODE_ENV === "production" ? appUrl : "*"
 
     // HTML that handles both popup and redirect flows
     const html = `
@@ -273,23 +277,13 @@ export class HttpAuthHandler {
   <script>
     const result = ${JSON.stringify(result)};
     
-    // Store token if successful
-    if (result.success && result.token) {
-      try {
-        localStorage.setItem('teros_session_token', result.token);
-        localStorage.setItem('teros_user', JSON.stringify(result.user));
-      } catch (e) {
-        console.error('Failed to store token:', e);
-      }
-    }
-    
     // Try to send to opener (popup flow)
     if (window.opener) {
       try {
         window.opener.postMessage({
           type: 'oauth_result',
           ...result
-        }, '${appUrl}');
+        }, '${postMessageTarget}');
         
         // Close popup after a short delay
         setTimeout(() => window.close(), 1000);
@@ -310,7 +304,7 @@ export class HttpAuthHandler {
     `.trim()
 
     res.writeHead(200, {
-      "Content-Type": "text/html",
+      "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
     })
     res.end(html)

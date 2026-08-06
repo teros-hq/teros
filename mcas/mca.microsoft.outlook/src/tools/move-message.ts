@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const moveMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Move a message to a different mail folder.',
   parameters: {
     type: 'object',

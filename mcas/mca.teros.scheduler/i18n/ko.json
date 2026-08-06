@@ -1,0 +1,184 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사. MongoDB 연결을 확인합니다. 사용자별 활성 카운트를 보려면 `get-stats`를 사용하세요."
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "현재 사용자의 실시간 카운터: 활성 알림, 활성 반복 작업 및 다음 예정 실행 타임스탬프.",
+      "params": {
+        "timezone": "다음ScheduledHumanReadable에 대한 IANA 시간대(기본 env)."
+      }
+    },
+    "parse-time-expression": {
+      "name": "parse-time-expression",
+      "description": "일정을 잡지 않고 시간/크론 표현식을 미리 봅니다. 구문 분석된 타임스탬프, humanReadable 및 다음 발생을 반환합니다.",
+      "params": {
+        "expression": "자연어 (\"2시간 후\", \"내일 오전 9시\", ISO) 또는 크론 (\"0 9 * * 1-5\").",
+        "timezone": "IANA 시간대 (기본: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "파서 로케일 (기본: en).",
+        "previewCount": "크론에 대한 다음 발생 (기본 5, 최대 20).",
+        "reference": "ISO 8601 기준 타임스탬프 (기본: 지금)."
+      }
+    },
+    "schedule-reminder": {
+      "name": "schedule-reminder",
+      "description": "일회성 알림을 예약합니다. 시간: 자연어 (\"2시간 후\", \"내일 오전 9시\") 또는 ISO 8601. 시간대는 env로 기본 설정됩니다. 새 알림을 반환합니다.",
+      "params": {
+        "time": "자연어 (\"2시간 후\", \"내일 오전 9시\") 또는 ISO 8601.",
+        "message": "전달할 메시지 (최대 4000자).",
+        "channelId": "알림 이벤트를 수신하는 채널 (사용자가 소유해야 함).",
+        "timezone": "IANA 시간대 (기본: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "파서 로케일 (기본: en).",
+        "allowPast": "과거에 일정을 잡도록 허용 (기본 false).",
+        "idempotencyKey": "선택적 멱등성 키. 동일한 키+사용자가 이미 존재하는 경우, 중복을 생성하는 대신 반환합니다."
+      }
+    },
+    "list-reminders": {
+      "name": "list-reminders",
+      "description": "현재 사용자의 알림 목록, 페이지 매김. channelId 또는 상태로 필터링합니다. {items[], nextCursor?}를 반환합니다.",
+      "params": {
+        "channelId": "채널로 필터링.",
+        "status": "상태로 필터링 (기본: 모두).",
+        "limit": "최대 결과 (기본 50, 최대 200).",
+        "cursor": "이전 응답의 페이지 매김 커서.",
+        "timezone": "humanReadable에 대한 IANA 시간대 (기본 env)."
+      }
+    },
+    "list-upcoming": {
+      "name": "list-upcoming",
+      "description": "현재 사용자의 다가오는 알림 및 반복 작업을 목록화합니다. 기본적으로 7일 이내. 포함: 알림|반복|둘 다. 페이지 매김.",
+      "params": {
+        "channelId": "채널로 필터링.",
+        "days": "일수로 창 길이 (기본 7, 최대 90).",
+        "limit": "그룹당 최대 항목 (기본 50, 최대 200).",
+        "cursor": "페이지 매김 커서 (알림에만 적용).",
+        "timezone": "humanReadable에 대한 IANA 시간대.",
+        "include": "포함할 항목 (기본 둘 다)."
+      }
+    },
+    "get-reminder": {
+      "name": "get-reminder",
+      "description": "ID로 알림을 가져옵니다 (현재 사용자에 속해야 함). humanReadable 다음 실행을 포함한 전체 알림을 반환합니다.",
+      "params": {
+        "reminderId": "알림 ID.",
+        "timezone": "humanReadable에 대한 IANA 시간대 (기본 env)."
+      }
+    },
+    "update-reminder": {
+      "name": "update-reminder",
+      "description": "현재 사용자의 보류 중인 알림을 업데이트합니다. 시간 (재구문 분석) 또는 메시지 (또는 둘 다)를 제공합니다. 취소된/전송된 알림은 편집할 수 없습니다.",
+      "params": {
+        "reminderId": "업데이트할 알림의 ID.",
+        "time": "새 시간 표현식 (자연어 또는 ISO).",
+        "message": "새 메시지 텍스트 (최대 4000자).",
+        "timezone": "IANA 시간대 (기본 env).",
+        "locale": "파서 로케일.",
+        "allowPast": "과거에 일정을 잡도록 허용."
+      }
+    },
+    "snooze-reminder": {
+      "name": "snooze-reminder",
+      "description": "현재 사용자의 보류 중인 알림을 지연시킵니다 (예: \"30m\", \"2h\", \"1d\"). 현재 시간에 지연을 추가합니다.",
+      "params": {
+        "reminderId": "지연할 알림의 ID.",
+        "delay": "지연 표현식 (예: \"30m\", \"2h\", \"1d\").",
+        "timezone": "humanReadable에 대한 IANA 시간대 (기본 env)."
+      }
+    },
+    "cancel-reminder": {
+      "name": "cancel-reminder",
+      "description": "현재 사용자의 보류 중인 알림을 취소합니다. 멱등적 (이미 취소된 경우 noop을 반환). 마지막 알림인 경우 채널 구독을 정리합니다.",
+      "params": {
+        "reminderId": "취소할 알림의 ID.",
+        "timezone": "humanReadable에 대한 IANA 시간대 (기본 env)."
+      }
+    },
+    "bulk-cancel": {
+      "name": "bulk-cancel",
+      "description": "현재 사용자의 보류 중인 알림을 일괄 취소합니다. channelId, 이전 (ISO 또는 epoch ms) 또는 ids[]로 필터링합니다. 취소된 ID를 반환하고 남아 있는 보류 중인 채널의 구독을 정리합니다.",
+      "params": {
+        "channelId": "이 채널에서 모든 보류 중인 항목을 취소합니다.",
+        "before": "이 시간 이전에 예정된 보류 중인 항목을 취소합니다 (ISO 8601 또는 epoch ms).",
+        "ids": "ID로 취소 (최대 500).",
+        "timezone": "humanReadable에 대한 IANA 시간대."
+      }
+    },
+    "create-recurring-task": {
+      "name": "create-recurring-task",
+      "description": "5개 필드 크론 표현식을 사용하여 반복 작업을 생성합니다. 예: \"0 9 * * *\", \"*/15 * * * *\", \"0 10-22 * * 1-5\". 시간대는 env로 기본 설정됩니다.",
+      "params": {
+        "cronExpression": "크론 5 필드: \"분 시 일 월 요일\".",
+        "message": "각 실행 시 전달되는 메시지 (최대 4000자).",
+        "channelId": "알림 이벤트를 수신하는 채널 (사용자가 소유해야 함).",
+        "timezone": "IANA 시간대 (기본: env MCA_DEFAULT_TIMEZONE).",
+        "idempotencyKey": "선택적 멱등성 키. 동일한 키+사용자가 이미 존재하는 경우, 중복을 생성하는 대신 반환합니다."
+      }
+    },
+    "list-recurring-tasks": {
+      "name": "list-recurring-tasks",
+      "description": "현재 사용자의 반복 작업 목록, 페이지 매김. channelId 또는 활성화된 상태로 필터링합니다. {items[], nextCursor?}를 반환합니다.",
+      "params": {
+        "channelId": "채널로 필터링.",
+        "enabled": "활성화 상태로 필터링.",
+        "limit": "최대 결과 (기본 50, 최대 200).",
+        "cursor": "페이지 매김 커서."
+      }
+    },
+    "get-recurring-task": {
+      "name": "get-recurring-task",
+      "description": "ID로 반복 작업을 가져옵니다 (현재 사용자에 속해야 함). cronDescription 및 humanReadable 다음 실행을 포함한 전체 작업을 반환합니다.",
+      "params": {
+        "taskId": "반복 작업 ID."
+      }
+    },
+    "update-recurring-task": {
+      "name": "update-recurring-task",
+      "description": "현재 사용자의 반복 작업을 업데이트합니다. cronExpression (다시 유효성 검사 및 다음 실행 재계산), 메시지 또는 시간대를 제공합니다.",
+      "params": {
+        "taskId": "반복 작업의 ID.",
+        "cronExpression": "새 크론 표현식 (5 필드).",
+        "message": "새 메시지 텍스트 (최대 4000자).",
+        "timezone": "새 IANA 시간대."
+      }
+    },
+    "enable-recurring-task": {
+      "name": "enable-recurring-task",
+      "description": "현재 사용자의 반복 작업을 활성화 (재개)합니다. 다음 실행을 재계산합니다. 이미 활성화된 경우 멱등적입니다.",
+      "params": {
+        "taskId": "반복 작업 ID."
+      }
+    },
+    "disable-recurring-task": {
+      "name": "disable-recurring-task",
+      "description": "현재 사용자의 반복 작업을 비활성화 (일시 중지)합니다. 이미 비활성화된 경우 멱등적입니다.",
+      "params": {
+        "taskId": "반복 작업 ID."
+      }
+    },
+    "delete-recurring-task": {
+      "name": "delete-recurring-task",
+      "description": "현재 사용자의 반복 작업을 영구적으로 삭제합니다. 채널에 대한 마지막 작업인 경우 채널 구독을 정리합니다.",
+      "params": {
+        "taskId": "반복 작업 ID."
+      }
+    },
+    "list-executions": {
+      "name": "list-executions",
+      "description": "현재 사용자의 반복 작업 실행 기록을 목록화합니다. 최신 항목이 먼저 표시됩니다. {items[], nextCursor?}를 반환합니다.",
+      "params": {
+        "taskId": "반복 작업 ID.",
+        "limit": "최대 결과 (기본 50, 최대 200).",
+        "cursor": "페이지 매김 커서."
+      }
+    }
+  },
+  "name": "스케줄러 및 알림",
+  "description": "알림 및 반복 작업을 예약합니다. 자연어 시간 (chrono-node, en+es) 및 크론 표현식 (croner). 시간대 인식.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 자연어 또는 크론 시간을 사용하여 일회성 알림 및 반복 작업을 예약, 지연 및 취소합니다. 시간대 인식."
+    }
+  ]
+}

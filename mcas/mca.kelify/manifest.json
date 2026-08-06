@@ -36,5 +36,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["real estate", "property search", "ai", "conversational", "kelify"]
+  "keywords": ["real estate", "property search", "ai", "conversational", "kelify"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-02-28",
+      "notes": "Initial release — search real estate listings through AI conversations, with follow-up questions and full chat history"
+    }
+  ]
 }

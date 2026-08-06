@@ -1,14 +1,22 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import {
+  ALL_DRIVES_LIST,
+  ensureAuthenticated,
+  initializeGoogleClients,
+  withAuthRetry,
+} from '../lib';
+import { escapeQueryValue } from './_query';
 
 export const searchFiles: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search for files in Google Drive by name, content, or properties.',
   parameters: {
     type: 'object',
     properties: {
       searchTerm: {
         type: 'string',
-        description: 'Search term to find in file names',
+        description:
+          'Filename match (Drive `name contains`: prefix/token, not substring). For advanced filters (owners, dates, fullText) use the list-files `driveQuery` parameter.',
       },
       mimeType: {
         type: 'string',
@@ -39,17 +47,21 @@ export const searchFiles: ToolConfig = {
       context,
       async () => {
         const query =
-          `name contains '${searchTerm}' and trashed = false` +
-          (mimeType ? ` and mimeType = '${mimeType}'` : '');
+          `name contains '${escapeQueryValue(searchTerm)}' and trashed = false` +
+          (mimeType ? ` and mimeType = '${escapeQueryValue(mimeType)}'` : '');
 
         const response = await clients.drive.files.list({
+          ...ALL_DRIVES_LIST,
           pageSize: maxResults,
           q: query,
-          fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink)',
+          fields: 'files(id, name, mimeType, size, modifiedTime, webViewLink, driveId), incompleteSearch',
           orderBy: 'modifiedTime desc',
         });
 
-        return { files: response.data.files || [] };
+        return {
+          files: response.data.files || [],
+          ...(response.data.incompleteSearch ? { incompleteSearch: true } : {}),
+        };
       },
       'search-files',
     );

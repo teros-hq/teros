@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "description": "Multi-agent memory system with vector search. Each agent has isolated memory collections.",
   "type": "utility",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "development",
   "entrypoint": "src/index.ts",
   "author": {
@@ -40,9 +40,17 @@
       "type": "api-key",
       "systemSecrets": [
         "QDRANT_URL",
-        "QDRANT_API_KEY"
+        "QDRANT_API_KEY",
+        "OPENAI_API_KEY"
       ]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-06-02",
+      "notes": "Semantically search past conversations, save and browse categorized knowledge, and track per-agent memory usage"
+    }
+  ]
 }

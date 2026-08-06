@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const createFolder: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new folder in Google Drive.',
   parameters: {
     type: 'object',
@@ -36,6 +37,7 @@ export const createFolder: ToolConfig = {
         }
 
         const response = await clients.drive.files.create({
+          ...ALL_DRIVES,
           requestBody: fileMetadata,
           fields: 'id, name, webViewLink',
         });

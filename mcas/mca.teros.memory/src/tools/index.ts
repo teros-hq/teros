@@ -1,3 +1,4 @@
+export * from './memory-health-check';
 export * from './memory-search-conversations';
 export * from './memory-get-recent-conversations';
 export * from './memory-save-conversation';

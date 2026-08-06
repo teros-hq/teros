@@ -1,12 +1,19 @@
 /**
  * board.move-task — Move a task to a different column
+ *
+ * Triggers autoplay scheduling when:
+ * - Task moves to Review or Done (slot freed for agent)
+ * - Task moves to To Do (new eligible task for agent)
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
+import type { AutoplayService } from '../../../services/autoplay-service'
 
 interface MoveTaskData {
   taskId: string
@@ -17,19 +24,10 @@ interface MoveTaskData {
 export function createMoveTaskHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  autoplayService?: AutoplayService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function moveTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as MoveTaskData
     const { taskId, columnId, position } = data
@@ -54,12 +52,46 @@ export function createMoveTaskHandler(
       throw new HandlerError('FORBIDDEN', 'No write access')
     }
 
+    const fromColumn = board?.columns.find((c) => c.columnId === existing.columnId)
     const task = await boardService.moveTask(taskId, ctx.userId, columnId, position)
     if (!task) {
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task })
+
+    // Emit board.task_moved to subscribers
+    if (boardSubscriptionService && board) {
+      const toColumn = board.columns.find((c) => c.columnId === columnId)
+      const payload = {
+        taskId: task.taskId,
+        taskTitle: task.title,
+        assignedAgentId: task.assignedAgentId,
+        tags: task.tags,
+        fromColumnId: existing.columnId,
+        fromColumnName: fromColumn?.name,
+        toColumnId: columnId,
+        toColumnName: toColumn?.name,
+        columnId,
+      }
+      boardSubscriptionService.notifySubscribers(task.boardId, {
+        eventType: 'board.task_moved',
+        boardId: task.boardId,
+        formattedMessage: BSS.formatEventMessage({ eventType: 'board.task_moved', boardId: task.boardId, payload }),
+        payload,
+      })
+    }
+
+    // Trigger autoplay scheduling based on destination column
+    if (autoplayService && task.assignedAgentId && board) {
+      const targetCol = board.columns.find((c) => c.columnId === columnId)
+      if (targetCol) {
+        const slug = targetCol.slug
+        if (slug === 'review' || slug === 'done' || slug === 'todo') {
+          autoplayService.scheduleAgentTasks(project.projectId, task.assignedAgentId)
+        }
+      }
+    }
 
     return { task }
   }

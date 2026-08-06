@@ -1,0 +1,64 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "create-form": {
+      "name": "create-form",
+      "description": "Create a new Google Form with a title. Returns the form ID and responder URL.",
+      "params": {
+        "title": "The title of the form (shown to respondents)",
+        "documentTitle": "Optional: The document title shown in Google Drive (defaults to the form title if not provided)"
+      }
+    },
+    "get-form": {
+      "name": "get-form",
+      "description": "Get the full structure of a Google Form by its ID, including all items and questions.",
+      "params": {
+        "formId": "The ID of the form to retrieve"
+      }
+    },
+    "update-form": {
+      "name": "update-form",
+      "description": "Update a Google Form using batch update requests. Supports adding, editing, and deleting items, as well as updating form info and settings.\n\nAvailable request types in the `requests` array:\n\n- **createItem**: Add a new item (question, section, etc.) at a specific location.\n  `{ createItem: { item: { title, questionItem: { question: { required, choiceQuestion | textQuestion | scaleQuestion | dateQuestion | timeQuestion } } }, location: { index: 0 } } }`\n\n- **updateItem**: Modify an existing item by its ID.\n  `{ updateItem: { item: { itemId, title, ... }, location: { index: 0 }, updateMask: \"title,description\" } }`\n\n- **deleteItem**: Remove an item by its location index.\n  `{ deleteItem: { location: { index: 0 } } }`\n\n- **updateFormInfo**: Update the form title, description, or document title.\n  `{ updateFormInfo: { info: { title, description, documentTitle }, updateMask: \"title,description\" } }`\n\n- **updateSettings**: Change form settings such as quiz mode or response collection.\n  `{ updateSettings: { settings: { quizSettings: { isQuiz: true } }, updateMask: \"quizSettings.isQuiz\" } }`\n\nSee https://developers.google.com/forms/api/reference/rest/v1/forms/batchUpdate for full schemas.",
+      "params": {
+        "formId": "The ID of the form to update",
+        "requests": "Array of update requests. Each request is one of: createItem, updateItem, deleteItem, updateFormInfo, or updateSettings."
+      }
+    },
+    "list-forms": {
+      "name": "list-forms",
+      "description": "List all Google Forms in your Drive. Uses the Drive API to find files with the Google Forms MIME type.",
+      "params": {
+        "pageSize": "Maximum number of forms to return (default: 10, max: 100)",
+        "pageToken": "Pagination token from a previous response to get the next page"
+      }
+    },
+    "list-responses": {
+      "name": "list-responses",
+      "description": "List responses submitted to a Google Form. Supports pagination and filtering by submission timestamp.",
+      "params": {
+        "formId": "The ID of the form to retrieve responses from",
+        "pageSize": "Maximum number of responses to return (default: 10, max: 5000)",
+        "pageToken": "Pagination token from a previous response to get the next page",
+        "filter": "Optional timestamp filter in RFC3339 format. Example: \"timestamp > 2024-01-01T00:00:00Z\" — returns only responses submitted after that time."
+      }
+    },
+    "get-response": {
+      "name": "get-response",
+      "description": "Get a specific response to a Google Form by its response ID.",
+      "params": {
+        "formId": "The ID of the form",
+        "responseId": "The ID of the response to retrieve"
+      }
+    }
+  },
+  "name": "Google Forms",
+  "description": "Manage Google Forms - create forms, add questions, and read responses via Google Forms API",
+  "changelog": [
+    {
+      "notes": "Initial release — create and edit forms, add questions, list your forms, and read submitted responses"
+    }
+  ]
+}

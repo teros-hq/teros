@@ -1,6 +1,8 @@
 import type { ToolConfig } from '@teros/mca-sdk';
+import { validateAgentId } from './utils';
 
 export const agentPreferredProviderSet: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Set the preferred LLM provider for an agent. The provider must be in the agent\'s available providers list. Pass null to clear the preference.',
   parameters: {
@@ -19,6 +21,7 @@ export const agentPreferredProviderSet: ToolConfig = {
   },
   handler: async (args, context) => {
     const agentId = args.agentId as string;
+    await validateAgentId(agentId, context);
     const providerId = args.providerId as string | null | undefined;
     return context.agentPreferredProviderSet(agentId, providerId ?? null);
   },

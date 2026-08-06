@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const assignConversation: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Assign an Intercom conversation to a specific admin or team. Can also unassign by omitting both.',
   parameters: {

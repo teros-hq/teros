@@ -1,0 +1,180 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "Google Drive의 파일 및 폴더 목록. 폴더, 파일 유형 및 검색 쿼리로 필터링을 지원합니다.",
+      "params": {
+        "folderId": "선택 사항: 특정 폴더 내의 파일 목록 (폴더 ID 사용)",
+        "query": "선택 사항: 파일 이름 일치 (Drive `name contains`: 접두사/토큰, 예: 'Hello'는 'HelloWorld'와 일치하지만 'World'는 일치하지 않음). 원시 Drive 쿼리가 아님 — 소유자/날짜/전체 텍스트 필터에 대해서는 `driveQuery`를 사용하십시오.",
+        "pageSize": "선택 사항: 반환할 결과 수 (기본값: 10, 최대: 100)",
+        "mimeType": "선택 사항: MIME 유형으로 필터링 (예: 'application/pdf', 'application/vnd.google-apps.folder')",
+        "driveQuery": "선택 사항 고급: 원시 Google Drive API v3 쿼리 절, 다른 필터와 AND-ing됨. `query`로 표현할 수 없는 필터에 사용, 예: \"not 'me' in owners\", \"modifiedTime > '2024-01-01T00:00:00'\", \"fullText contains 'budget'\". 리터럴 내에서 단일 인용부호는 \\'로 이스케이프하십시오 (Drive 구문, NOT '' ) — 일반 파일 이름 일치의 경우 `query` 매개변수를 선호하십시오, 이 매개변수가 자동으로 이스케이프합니다."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "특정 파일 또는 폴더에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "fileId": "정보를 가져올 파일 또는 폴더의 ID"
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "Google Drive에서 파일을 다운로드합니다.",
+      "params": {
+        "fileId": "다운로드할 파일의 ID",
+        "outputPath": "선택 사항: 파일을 저장할 로컬 경로 (기본값: 현재 디렉터리)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "로컬 파일을 Google Drive에 업로드합니다. 기본적으로 파일은 실제 유형으로 그대로 저장됩니다. convertTo를 전달하여 이를 기본 Google 파일로 가져올 수 있습니다 (예: HTML/Word 파일 → 편집 가능한 Google 문서).",
+      "params": {
+        "filePath": "업로드할 파일의 로컬 경로",
+        "parentFolderId": "선택 사항: 업로드할 폴더의 ID (기본값: 루트)",
+        "fileName": "선택 사항: 파일의 사용자 정의 이름 (기본값: 원래 파일 이름)",
+        "convertTo": "선택 사항: 업로드를 기본 Google 파일로 변환합니다. \"document\" (예: HTML/Word/Markdown에서) → 편집 가능한 Google 문서; \"spreadsheet\" (CSV/Excel에서) → Google 시트; \"presentation\" (PPTX에서) → Google 슬라이드. 원래 형식을 유지하려면 생략하십시오."
+      }
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "텍스트 콘텐츠에서 기본 편집 가능한 Google 문서를 생성합니다. 본문을 HTML(기본값, 최상의 형식), Markdown 또는 일반 텍스트로 전달하십시오 — Drive는 이를 실제 Google 문서로 변환합니다, .html 파일이 아닙니다. 문서를 작성하는 데 사용하십시오; 기존 로컬 파일에 대해서는 upload-file을 사용하십시오.",
+      "params": {
+        "title": "새 Google 문서의 제목 (파일 이름)",
+        "content": "문서 본문. contentType에 따라 해석됩니다.",
+        "contentType": "내용 해석 방법: \"html\" (기본값, 가장 풍부한 형식), \"markdown\" 또는 \"text\" (일반). Drive는 이를 기본 Google 문서로 변환합니다.",
+        "parentFolderId": "선택 사항: 문서를 생성할 폴더의 ID (기본값: 루트)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Google Drive에 새 폴더를 생성합니다.",
+      "params": {
+        "name": "생성할 폴더의 이름",
+        "parentFolderId": "선택 사항: 상위 폴더의 ID (기본값: 루트)"
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Google Drive에서 파일 또는 폴더를 삭제합니다.",
+      "params": {
+        "fileId": "삭제할 파일 또는 폴더의 ID"
+      }
+    },
+    "share-file": {
+      "name": "share-file",
+      "description": "특정 권한으로 파일 또는 폴더를 공유합니다.",
+      "params": {
+        "fileId": "공유할 파일 또는 폴더의 ID",
+        "emailAddress": "공유할 이메일 주소",
+        "role": "권한 역할 (기본값: 리더)"
+      }
+    },
+    "search-files": {
+      "name": "search-files",
+      "description": "이름, 내용 또는 속성으로 Google Drive에서 파일을 검색합니다.",
+      "params": {
+        "searchTerm": "파일 이름 일치 (Drive `name contains`: 접두사/토큰, 부분 문자열 아님). 고급 필터(소유자, 날짜, 전체 텍스트)에 대해서는 list-files `driveQuery` 매개변수를 사용하십시오.",
+        "mimeType": "선택 사항: MIME 유형으로 필터링",
+        "maxResults": "최대 결과 수 (기본값: 20)"
+      }
+    },
+    "move-file": {
+      "name": "move-file",
+      "description": "파일 또는 폴더를 Google Drive의 다른 위치로 이동합니다.",
+      "params": {
+        "fileId": "이동할 파일/폴더의 ID",
+        "newParentId": "대상 폴더의 ID"
+      }
+    },
+    "copy-file": {
+      "name": "copy-file",
+      "description": "Google Drive에서 파일의 복사본을 생성합니다.",
+      "params": {
+        "fileId": "복사할 파일의 ID",
+        "name": "선택 사항: 복사본의 이름",
+        "parentFolderId": "선택 사항: 특정 폴더에 복사"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Google 문서 또는 텍스트 파일의 일반 텍스트 내용을 가져옵니다. 이진 파일(PDF, Word 등)에서 텍스트를 추출하지 않습니다 — 그런 경우 파일을 다운로드하고 file-processor \"file-to-markdown\" 도구를 사용하십시오.",
+      "params": {
+        "fileId": "읽을 파일의 ID",
+        "mimeType": "선택 사항: Google 문서용 내보내기 MIME 유형 (예: 'text/plain', 'text/html')"
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "파일의 모든 댓글을 나열합니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "includeDeleted": "선택 사항: 삭제된 댓글 포함 (기본값: false)",
+        "pageSize": "선택 사항: 반환할 최대 댓글 수 (기본값: 100)"
+      }
+    },
+    "get-comment": {
+      "name": "get-comment",
+      "description": "ID로 특정 댓글을 가져옵니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "commentId": "댓글의 ID"
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "파일에 댓글을 생성합니다.",
+      "params": {
+        "fileId": "댓글을 달 파일의 ID",
+        "content": "댓글의 텍스트 내용"
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "댓글의 내용을 업데이트합니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "commentId": "업데이트할 댓글의 ID",
+        "content": "댓글의 새 내용"
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "댓글을 삭제합니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "commentId": "삭제할 댓글의 ID"
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "댓글에 대한 답글을 생성합니다. 댓글을 해결하는 데에도 사용할 수 있습니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "commentId": "답글을 달 댓글의 ID",
+        "content": "답글 텍스트 내용",
+        "action": "선택 사항: 수행할 작업. 댓글을 해결하려면 'resolve'를 사용하십시오."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "댓글에 대한 모든 답글을 나열합니다.",
+      "params": {
+        "fileId": "파일의 ID",
+        "commentId": "댓글의 ID",
+        "pageSize": "선택 사항: 반환할 최대 답글 수 (기본값: 100)"
+      }
+    }
+  },
+  "name": "Google Drive",
+  "description": "Google Drive 파일 및 폴더 관리 - 업로드, 다운로드, 공유, 검색, 내용 읽기",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — Drive 파일 탐색, 업로드, 공유 및 정리, Sheets 및 Slides 읽기, Docs 편집"
+    }
+  ]
+}

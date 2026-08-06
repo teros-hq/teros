@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const deleteTask: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a ClickUp task permanently.',
   parameters: {
     type: 'object',

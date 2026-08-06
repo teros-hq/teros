@@ -1,0 +1,18 @@
+{
+  "tools": {
+    "http-request": {
+      "name": "http-request",
+      "description": "Realiza una petición HTTP a cualquier API REST pública (GET/POST/PUT/PATCH/DELETE) y devuelve { status, ok, headers, body }. Para usar una clave API sin exponerla, guárdala una vez en la configuración de esta app y referénciala como {{NAME}} en la url, un valor de query o un valor de cabecera (ej. cabecera \"api-key: {{BREVO_API_KEY}}\", query api_key=\"{{HUNTER_API_KEY}}\" o url \".../{{MAKE_WEBHOOK_TOKEN}}\"). Las direcciones privadas/internas están bloqueadas (protección SSRF).",
+      "params": {
+        "method": "Método HTTP. Por defecto GET.",
+        "url": "URL https:// completa (puede contener marcadores {{SECRET}}). En producción, http:// sin cifrar se rechaza para peticiones que llevan secretos.",
+        "headers": "Cabeceras de la petición. Los valores pueden contener marcadores {{SECRET}}. Content-Type por defecto es application/json cuando se envía un body.",
+        "query": "Parámetros de query-string añadidos a la URL. Los valores pueden contener marcadores {{SECRET}}.",
+        "body": "Cuerpo de la petición en bruto (ej. una cadena JSON). Se ignora para GET. Puede contener marcadores {{SECRET}}.",
+        "timeoutMs": "Tiempo máximo de espera de la petición en milisegundos (por defecto 30000, mínimo 1000, máximo 120000)."
+      }
+    }
+  },
+  "name": "HTTP Request",
+  "description": "Llama a cualquier API REST pública (GET/POST/PUT/PATCH/DELETE) desde tu agente. Referencia claves API guardadas como {{PLACEHOLDER}} para que nunca lleguen al modelo. Las direcciones privadas/internas están bloqueadas (protección SSRF)."
+}

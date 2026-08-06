@@ -2,15 +2,15 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.figma",
   "name": "Figma",
-  "version": "0.9.0",
-  "description": "Access Figma design files, extract styles, components, design tokens, and export assets. Perfect for design-to-code workflows.",
+  "version": "2.1.0",
+  "description": "Access Figma design files, extract styles, components, design tokens, and export assets. Works directly with files via file key — no project or team browsing. Perfect for design-to-code workflows.",
   "type": "integration",
   "icon": "icon.png",
   "category": "design",
-  "entrypoint": "./mcp/index.ts",
+  "entrypoint": "./src/index.ts",
   "author": {
-    "name": "Alice Evergreen",
-    "email": "alice@teros.ai"
+    "name": "Teros Team",
+    "email": "team@teros.ai"
   },
   "availability": {
     "enabled": true,
@@ -19,18 +19,51 @@
     "hidden": false,
     "role": "user"
   },
-  "userSecrets": ["PERSONAL_ACCESS_TOKEN", "TEAM_ID"],
-  "runtime": {
-    "transport": "http",
-    "containerMode": "per-app"
-  },
-  "keywords": ["figma", "design", "ui", "ux", "styles", "components", "tokens", "css", "tailwind"],
   "layers": {
     "tools": true,
     "events": false,
     "ui": false,
     "permissions": false,
-    "auth": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "figma",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "EXPIRY_DATE"],
+      "authorizeUrl": "https://www.figma.com/oauth",
+      "tokenUrl": "https://api.figma.com/v1/oauth/token",
+      "scopes": [
+        "current_user:read",
+        "file_content:read",
+        "file_metadata:read",
+        "file_comments:read",
+        "file_comments:write",
+        "file_versions:read",
+        "library_assets:read",
+        "library_content:read",
+        "team_library_content:read",
+        "file_dev_resources:read",
+        "file_dev_resources:write",
+        "file_variables:read",
+        "webhooks:read",
+        "webhooks:write"
+      ],
+      "pkce": false,
+      "extraFields": []
+    },
     "agent": false
-  }
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["figma", "design", "ui", "ux", "styles", "components", "tokens", "css", "tailwind"],
+  "changelog": [
+    {
+      "version": "2.1.0",
+      "date": "2026-05-07",
+      "notes": "Inspect Figma files, extract design tokens, colors and fonts as CSS or Tailwind, export images, and manage comments"
+    }
+  ]
 }

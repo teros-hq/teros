@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const createFolder: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new folder in a ClickUp space.',
   parameters: {
     type: 'object',

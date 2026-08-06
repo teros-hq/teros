@@ -8,19 +8,45 @@ export type {
   CompactionResult,
   PruneConfig,
   PruneResult,
+  StaticPromptComponents,
 } from './compaction';
 // Compaction
 export {
   CompactionService,
   estimateConversationTokens,
   estimateMessageTokens,
+  estimateStaticPromptTokens,
   estimateTokens,
 } from './compaction';
 export type { PartInput, PromptInput } from './conversation/ConversationManager';
 // Conversation Management (main exports)
 export { ConversationManager } from './conversation/ConversationManager';
-export { MessageProcessor } from './conversation/MessageProcessor';
-export { MessageProcessorAdapter } from './conversation/MessageProcessorAdapter';
+export {
+  ChannelWorker,
+  type ChannelWorkerDeps,
+  type EnqueueResult,
+  type WorkerInspectSnapshot,
+  type WorkerLifecycle,
+  type WorkerPhase,
+  WorkerCancelledError,
+} from './conversation/ChannelWorker';
+export { ChannelWorkerRegistry } from './conversation/ChannelWorkerRegistry';
+export {
+  boundaryAware,
+  type BoundaryKind,
+  DEFAULT_STRATEGY,
+  endOfTurnOnly,
+  hardInterrupt,
+  type InterruptContext,
+  type InterruptDecision,
+  type InterruptKind,
+  postTurnFifo,
+  resolveStrategy,
+  type StrategyId,
+  type TurnInterruptStrategy,
+} from './conversation/InterruptStrategy';
+export { MessageProcessor, synthesizeOrphans } from './conversation/MessageProcessor';
+export { reconcileChannel, type ReconcileResult } from './conversation/TurnReconciler';
 export type { ErrorContext, ErrorType } from './errors/AgentError';
 // Errors
 export {
@@ -43,7 +69,12 @@ export {
   generateMessageId,
   generateProjectId,
   generateSessionId,
+  generateSessionUsageId,
+  generateSkillId,
   generateTaskId,
+  generateToolExecutionId,
+  generateUsageEventId,
+  generateUsageRollupId,
   generateUserId,
   generateUserVolumeId,
   generateWorkspaceId,
@@ -52,8 +83,12 @@ export {
   ID_PREFIXES,
   validateIdPrefix,
 } from './ids';
+export { type Clock, SystemClock, FixedClock } from './runtime/Clock';
+export { type IdGenerator, RandomIdGenerator, SeededIdGenerator } from './runtime/IdGenerator';
 export { AnthropicLLMAdapter } from './llm/AnthropicLLMAdapter';
 export { AnthropicOAuthAdapter } from './llm/AnthropicOAuthAdapter';
+export type { GeminiConfig } from './llm/GeminiLLMAdapter';
+export { GeminiLLMAdapter } from './llm/GeminiLLMAdapter';
 // Codex OAuth (for ChatGPT Pro/Plus subscription)
 export type { CodexOAuthTokens, CodexDeviceCodeResponse } from './llm/CodexOAuth';
 export {
@@ -68,6 +103,8 @@ export { OpenAICodexOAuthAdapter } from './llm/OpenAICodexOAuthAdapter';
 export type { ClaudeCodeCredentials } from './llm/ClaudeCodeCredentials';
 export type { OllamaConfig } from './llm/OllamaLLMAdapter';
 export { OllamaLLMAdapter } from './llm/OllamaLLMAdapter';
+export type { OpenAICompatibleConfig } from './llm/OpenAICompatibleLLMAdapter';
+export { OpenAICompatibleLLMAdapter } from './llm/OpenAICompatibleLLMAdapter';
 // Claude Code Credentials (from Claude Code CLI)
 export {
   getClaudeCodeAccessToken,
@@ -90,7 +127,29 @@ export {
   tokensNeedRefresh,
 } from './llm/ClaudeOAuth';
 // LLM
-export type { ILLMClient, LLMResponse, ToolDefinition } from './llm/ILLMClient';
+export type {
+  ILLMClient,
+  LLMFinishInfo,
+  LLMResponse,
+  LLMUsageInfo,
+  StreamingCallbacks,
+  StreamMessageOptions,
+  ToolDefinition,
+} from './llm/ILLMClient';
+export { ImagePipeline, type ProcessedImage } from './llm/ImagePipeline';
+export {
+  decInflight,
+  getInflightSnapshot,
+  getInflightTotal,
+  incInflight,
+} from './llm/inflight-gauge';
+export {
+  countTokensForProvider,
+  encodingForProvider,
+  estimateCostUsd,
+  estimateCostBreakdownUsd,
+} from './llm/token-counter';
+export type { CostBreakdownInput, CostBreakdownUsd } from './llm/token-counter';
 export type { LLMConfig } from './llm/LLMClientFactory';
 export { LLMClientFactory } from './llm/LLMClientFactory';
 export type { Claude45Model, ModelId, Provider } from './llm/models';
@@ -121,7 +180,7 @@ export type {
 export { NoOpMemoryHooks } from './memory';
 
 // Memory
-export type { IMemoryHooks, ResponseMetadata } from './memory/IMemoryHooks';
+export type { IMemoryHooks, MemoryHookOptions, ResponseMetadata } from './memory/IMemoryHooks';
 // Prompts
 export { SystemPromptBuilder } from './prompts/SystemPromptBuilder';
 // Queue

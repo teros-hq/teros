@@ -39,9 +39,15 @@ export function createListWorkspaceAppsHandler(
           description: mca?.description || '',
           icon: mca?.icon,
           color: mca?.color,
+          // Brand accent colours (TER-538) for the AppWindow hero gradient.
+          accentColors: mca?.accentColors ?? [],
           category: mca?.category || 'other',
           status: app.status,
           volumes: app.volumes,
+          // App.context — the per-app instructions. Without it the AppWindow
+          // can't show or edit saved instructions (it reads app.context), so
+          // they'd look empty on every reload even though they drive the prompt.
+          context: app.context ?? '',
         }
       }),
     )

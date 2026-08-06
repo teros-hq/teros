@@ -1,0 +1,40 @@
+{
+  "config": {
+    "auth": {
+      "type": "oauth",
+      "redirectUrls": [
+        "https://be.teros.ai/auth/mca/callback",
+        "https://your-domain.com/auth/mca/callback"
+      ],
+      "requiredScopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "crm.objects.owners.read"
+      ],
+      "optionalScopes": [
+        "tickets",
+        "crm.lists.read",
+        "crm.lists.write",
+        "conversations.read",
+        "conversations.write"
+      ],
+      "conditionallyRequiredScopes": []
+    },
+    "name": "Teros",
+    "description": "",
+    "isUserLevel": false,
+    "distribution": "MARKETPLACE",
+    "permittedUrls": {
+      "img": [],
+      "fetch": [],
+      "iframe": []
+    }
+  },
+  "uid": "Teros",
+  "type": "app"
+}

@@ -1,0 +1,126 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "List contacts from Google Contacts. Returns name, email, phone numbers. Supports pagination.",
+      "params": {
+        "pageSize": "Number of contacts per page (default: 100, max: 1000)",
+        "pageToken": "Token for pagination (from previous response)"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Get a specific contact by resource name.",
+      "params": {
+        "resourceName": "Contact resource name (e.g., 'people/c123456789')"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "Search for contacts by query.",
+      "params": {
+        "query": "Search query (name, email, phone, etc.)",
+        "pageSize": "Number of results per page (default: 30, max: 30)"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Create a new contact.",
+      "params": {
+        "givenName": "First name",
+        "familyName": "Last name",
+        "email": "Email address",
+        "phone": "Phone number",
+        "organization": "Company/organization name",
+        "title": "Job title",
+        "notes": "Notes/biography"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Update an existing contact.",
+      "params": {
+        "resourceName": "Contact resource name (e.g., 'people/c123456789')",
+        "givenName": "First name",
+        "familyName": "Last name",
+        "email": "Email address",
+        "phone": "Phone number",
+        "organization": "Company/organization name",
+        "title": "Job title"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Delete a contact.",
+      "params": {
+        "resourceName": "Contact resource name (e.g., 'people/c123456789')"
+      }
+    },
+    "list-contact-groups": {
+      "name": "list-contact-groups",
+      "description": "List all contact groups (labels) from Google Contacts. Returns group name, member count, and type.",
+      "params": {
+        "pageSize": "Maximum number of groups to return (default: 100, max: 1000)",
+        "pageToken": "Token for pagination (from previous response)"
+      }
+    },
+    "get-contact-group": {
+      "name": "get-contact-group",
+      "description": "Get detailed information about a specific contact group, including its members.",
+      "params": {
+        "resourceName": "Contact group resource name (e.g., 'contactGroups/abc123')",
+        "maxMembers": "Maximum number of members to return (default: 100, max: 1000)"
+      }
+    },
+    "create-contact-group": {
+      "name": "create-contact-group",
+      "description": "Create a new contact group (label) in Google Contacts.",
+      "params": {
+        "name": "Name of the contact group (must be unique)"
+      }
+    },
+    "update-contact-group": {
+      "name": "update-contact-group",
+      "description": "Update an existing contact group (rename it).",
+      "params": {
+        "resourceName": "Contact group resource name (e.g., 'contactGroups/abc123')",
+        "name": "New name for the contact group"
+      }
+    },
+    "delete-contact-group": {
+      "name": "delete-contact-group",
+      "description": "Delete a contact group. This does NOT delete the contacts in the group, only the group itself.",
+      "params": {
+        "resourceName": "Contact group resource name (e.g., 'contactGroups/abc123')",
+        "deleteContacts": "If true, also delete the contacts in this group (default: false)"
+      }
+    },
+    "add-contacts-to-group": {
+      "name": "add-contacts-to-group",
+      "description": "Add one or more contacts to a contact group.",
+      "params": {
+        "resourceName": "Contact group resource name (e.g., 'contactGroups/abc123')",
+        "contactResourceNames": "Array of contact resource names to add (e.g., ['people/c123', 'people/c456'])"
+      }
+    },
+    "remove-contacts-from-group": {
+      "name": "remove-contacts-from-group",
+      "description": "Remove one or more contacts from a contact group.",
+      "params": {
+        "resourceName": "Contact group resource name (e.g., 'contactGroups/abc123')",
+        "contactResourceNames": "Array of contact resource names to remove (e.g., ['people/c123', 'people/c456'])"
+      }
+    }
+  },
+  "name": "Google Contacts",
+  "description": "Manage Google Contacts - list, search, create, update, and delete contacts, and organize them into groups and labels",
+  "changelog": [
+    {
+      "notes": "Initial release — list, search, create, update and delete contacts, plus organize them into groups and labels"
+    }
+  ]
+}

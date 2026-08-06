@@ -3,10 +3,10 @@
   "id": "mca.google.drive",
   "name": "Google Drive",
   "version": "1.0.0",
-  "description": "Manage Google Drive files, folders, Sheets, and Slides - upload, download, share, read content",
+  "description": "Manage Google Drive files and folders - upload, download, share, search, read content",
   "type": "integration",
   "icon": "icon.png",
-  "category": "storage",
+  "category": "google",
   "entrypoint": "./src/index.ts",
   "runtime": {
     "transport": "http",
@@ -35,16 +35,13 @@
     "scopes": [
       "https://www.googleapis.com/auth/drive",
       "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/spreadsheets.readonly",
-      "https://www.googleapis.com/auth/presentations.readonly",
-      "https://www.googleapis.com/auth/documents.readonly",
       "https://www.googleapis.com/auth/userinfo.email"
     ],
     "pkce": false,
     "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
     "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
   },
-  "keywords": ["google", "drive", "files", "storage", "sheets", "slides", "documents"],
+  "keywords": ["google", "drive", "files", "storage"],
   "image": "https://ssl.gstatic.com/docs/doclist/images/drive_2020q3_icon_color_2x.png",
   "layers": {
     "tools": true,
@@ -59,9 +56,6 @@
       "scopes": [
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/drive.file",
-        "https://www.googleapis.com/auth/spreadsheets.readonly",
-        "https://www.googleapis.com/auth/presentations.readonly",
-        "https://www.googleapis.com/auth/documents.readonly",
         "https://www.googleapis.com/auth/userinfo.email"
       ],
       "pkce": false,
@@ -69,5 +63,12 @@
       "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — browse, upload, share and organize Drive files, read Sheets and Slides, and edit Docs"
+    }
+  ]
 }

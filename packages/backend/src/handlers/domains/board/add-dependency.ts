@@ -10,8 +10,10 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface AddDependencyData {
   /** The task that gains the new dependency */
@@ -23,19 +25,9 @@ interface AddDependencyData {
 export function createAddDependencyHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function addDependency(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as AddDependencyData
     const { taskId, dependsOnTaskId } = data
@@ -68,7 +60,7 @@ export function createAddDependencyHandler(
     } catch (err: any) {
       if (err.message?.startsWith('CIRCULAR_DEPENDENCY:')) {
         // Broadcast updated tasks (now marked circular_dependency) to board subscribers
-        broadcastBoardEvent(existing.boardId, {
+        pubSubService.broadcastToTopic(`board:${existing.boardId}`, {
           type: 'board_circular_dependency_detected',
           boardId: existing.boardId,
           taskId,
@@ -80,7 +72,25 @@ export function createAddDependencyHandler(
       throw err
     }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task })
+
+    // Emit board.dependency_added to subscribers
+    if (boardSubscriptionService) {
+      const payload = {
+        taskId: task.taskId,
+        taskTitle: task.title,
+        assignedAgentId: task.assignedAgentId,
+        tags: task.tags,
+        columnId: task.columnId,
+        dependsOnTaskId,
+      }
+      boardSubscriptionService.notifySubscribers(task.boardId, {
+        eventType: 'board.dependency_added',
+        boardId: task.boardId,
+        formattedMessage: BSS.formatEventMessage({ eventType: 'board.dependency_added', boardId: task.boardId, payload }),
+        payload,
+      })
+    }
 
     return { task }
   }

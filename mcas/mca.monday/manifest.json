@@ -37,5 +37,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-03-01",
+      "notes": "Initial release — create and manage boards, items, groups and columns, post and read updates, and search across boards"
+    }
+  ]
 }

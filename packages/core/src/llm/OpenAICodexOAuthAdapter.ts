@@ -22,6 +22,9 @@ import { LLMError } from '../errors/AgentError';
 import { createLogger, log } from '../logger';
 import type { MessageWithParts } from '../session/types';
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
+import { isContextLengthExceeded } from './context-length-error';
+import { collectEmbeddedImages, DocumentExtractor, formatDocumentsAsText } from './DocumentExtractor';
+import { ImagePipeline, type ProcessedImage } from './ImagePipeline';
 import {
   CODEX_OAUTH_CONFIG,
   type CodexOAuthTokens,
@@ -40,9 +43,13 @@ export interface OpenAICodexOAuthConfig {
 
 // ── Responses API types ───────────────────────────────────────────────────────
 
+type ResponsesInputContentPart =
+  | { type: 'input_text'; text: string }
+  | { type: 'input_image'; image_url: string; detail?: 'auto' | 'low' | 'high' };
+
 type ResponsesInputItem =
   | { role: 'developer'; content: string }
-  | { role: 'user'; content: Array<{ type: 'input_text'; text: string }> }
+  | { role: 'user'; content: Array<ResponsesInputContentPart> }
   | { role: 'assistant'; content: Array<{ type: 'output_text'; text: string }>; id?: string }
   | { type: 'function_call'; call_id: string; name: string; arguments: string; id?: string }
   | { type: 'function_call_output'; call_id: string; output: string };
@@ -87,6 +94,8 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
   private tokens: CodexOAuthTokens;
   private onTokenRefresh?: (newTokens: CodexOAuthTokens) => Promise<void>;
   private logger = createLogger(MODULE);
+  private imagePipeline = new ImagePipeline();
+  private documentExtractor = new DocumentExtractor();
 
   constructor(config: OpenAICodexOAuthConfig) {
     if (!config.model) throw new Error('OpenAICodexOAuthAdapter: model is required');
@@ -119,7 +128,7 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
 
   // ── Message conversion ──────────────────────────────────────────────────────
 
-  private convertMessages(messages: MessageWithParts[]): ResponsesInputItem[] {
+  private async convertMessages(messages: MessageWithParts[]): Promise<ResponsesInputItem[]> {
     const input: ResponsesInputItem[] = [];
 
     for (const msg of messages) {
@@ -128,6 +137,58 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
       const textParts: string[] = [];
       const toolCalls: Array<{ id: string; name: string; arguments: string }> = [];
       const toolResults: Array<{ call_id: string; output: string }> = [];
+
+      // Collect image file parts for user messages
+      const imageParts = msg.parts.filter(
+        (p): p is import('../session/types').FilePart =>
+          p.type === 'file' && p.mime?.startsWith('image/') && role === 'user',
+      );
+      let processedImages: Map<string, ProcessedImage> = new Map();
+      if (imageParts.length > 0) {
+        if (!this.imagePipeline.supportsVision(this.defaultModel)) {
+          log.warn(
+            MODULE,
+            `Model ${this.defaultModel} does not support vision — skipping ${imageParts.length} image(s)`,
+          );
+        } else {
+          try {
+            processedImages = await this.imagePipeline.processImages(imageParts, 'openai');
+          } catch (error: any) {
+            log.error(MODULE, 'Failed to process images for message', undefined, { reason: error.message });
+          }
+        }
+      }
+
+      // Extract text + embedded images from non-image documents (PPTX/DOCX/XLSX/ODT/PDF/RTF/plain text)
+      const documentParts = msg.parts.filter(
+        (p): p is import('../session/types').FilePart =>
+          p.type === 'file' &&
+          !p.mime?.startsWith('image/') &&
+          DocumentExtractor.supportsDocument(p.mime) &&
+          role === 'user',
+      );
+      let extractedDocumentText: string | null = null;
+      const documentEmbeddedImages: ProcessedImage[] = [];
+      if (documentParts.length > 0) {
+        try {
+          const extracted = await this.documentExtractor.extractDocuments(documentParts);
+          extractedDocumentText = formatDocumentsAsText(extracted);
+          const flat = collectEmbeddedImages(extracted);
+          if (flat.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+            for (const img of flat) {
+              const processed = await this.imagePipeline.processBuffer(img.buffer, img.mimeType, 'openai');
+              if (processed) documentEmbeddedImages.push(processed);
+            }
+          } else if (flat.length > 0) {
+            log.warn(
+              MODULE,
+              `Model ${this.defaultModel} not vision-capable — skipping ${flat.length} embedded image(s) from document(s)`,
+            );
+          }
+        } catch (error: any) {
+          log.error(MODULE, 'Failed to extract documents for message', undefined, { reason: error.message });
+        }
+      }
 
       for (const part of msg.parts) {
         if (part.type === 'text') {
@@ -159,6 +220,7 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
             }
           }
         }
+        // Image file parts are handled separately below
       }
 
       if (role === 'assistant') {
@@ -184,11 +246,33 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
           });
         }
       } else {
-        if (textParts.length > 0) {
-          input.push({
-            role: 'user',
-            content: [{ type: 'input_text', text: textParts.join('\n') }],
+        // User message: build content array with text + images
+        // Documents (PPTX/DOCX/...) are prepended as a separate text block before user prose.
+        // Images embedded inside those documents follow the text.
+        const contentParts: ResponsesInputContentPart[] = [];
+        if (extractedDocumentText) {
+          contentParts.push({ type: 'input_text', text: extractedDocumentText });
+        }
+        for (const processed of documentEmbeddedImages) {
+          contentParts.push({
+            type: 'input_image',
+            image_url: `data:${processed.mimeType};base64,${processed.base64}`,
           });
+        }
+        if (textParts.length > 0) {
+          contentParts.push({ type: 'input_text', text: textParts.join('\n') });
+        }
+        for (const part of imageParts) {
+          const processed = processedImages.get(part.url);
+          if (processed) {
+            contentParts.push({
+              type: 'input_image',
+              image_url: `data:${processed.mimeType};base64,${processed.base64}`,
+            });
+          }
+        }
+        if (contentParts.length > 0) {
+          input.push({ role: 'user', content: contentParts });
         }
         for (const tr of toolResults) {
           input.push({
@@ -232,7 +316,7 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
 
     await this.ensureValidToken();
 
-    const input = this.convertMessages(messages);
+    const input = await this.convertMessages(messages);
     const modelName = model ?? this.defaultModel;
 
     const openaiTools: ResponsesTool[] | undefined = tools?.map((tool) => ({
@@ -324,6 +408,18 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
               break;
             }
 
+            // Reasoning stream (Responses API emits these while the model
+            // reasons before any visible text). Route to onThinking so the
+            // turn's stall watchdog counts it as progress, not a frozen socket
+            // (TER-650). NOT onText — reasoning must not leak into the reply.
+            case 'response.reasoning_text.delta':
+            case 'response.reasoning_summary_text.delta': {
+              if (event.delta) {
+                await callbacks?.onThinking?.(event.delta);
+              }
+              break;
+            }
+
             case 'response.output_item.added': {
               if (
                 event.item?.type === 'function_call' &&
@@ -344,6 +440,10 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
               if (event.output_index !== undefined && event.delta) {
                 const tc = pendingToolCalls.get(event.output_index);
                 if (tc) tc.arguments += event.delta;
+                // Heartbeat: onToolCall only fires on output_item.done, so this
+                // is the only progress signal while large tool args stream
+                // (TER-650).
+                await callbacks?.onToolInputDelta?.(event.delta);
               }
               break;
             }
@@ -403,14 +503,21 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
         return { stopReason: 'error', metadata: { error: 'Aborted by user' } };
       }
 
+      // Flag context-length overflow structurally so recovery fires — the
+      // generic catch previously surfaced every failure (including overflow) as
+      // "check your ChatGPT session", never triggering compaction. CTX-007.
+      const isOverflow = isContextLengthExceeded(error?.status, error?.message, error?.code);
       const llmError = new LLMError(
-        'Cannot connect to OpenAI Codex. Please check your ChatGPT session.',
+        isOverflow
+          ? 'The conversation is too long. Attempting to summarize...'
+          : 'Cannot connect to OpenAI Codex. Please check your ChatGPT session.',
         `Codex OAuth error: ${error?.message ?? 'Unknown error'}`,
         {
           model: modelName,
           messageCount: messages.length,
           toolCount: tools?.length ?? 0,
           authType: 'oauth',
+          isContextLengthError: isOverflow,
         },
         error instanceof Error ? error : undefined,
       );
@@ -428,6 +535,7 @@ export class OpenAICodexOAuthAdapter implements ILLMClient {
         streaming: true,
         tools: true,
         thinking: true,
+        vision: true,
       },
     };
   }

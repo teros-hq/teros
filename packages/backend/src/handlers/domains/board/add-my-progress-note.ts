@@ -6,7 +6,9 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 
 interface AddMyProgressNoteData {
   taskId: string
@@ -17,19 +19,9 @@ interface AddMyProgressNoteData {
 export function createAddMyProgressNoteHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function addMyProgressNote(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as AddMyProgressNoteData
     const { taskId, text, agentId } = data
@@ -65,7 +57,25 @@ export function createAddMyProgressNoteHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(updatedTask.boardId, { type: 'board_task_updated', task: updatedTask })
+    pubSubService.broadcastToTopic(`board:${updatedTask.boardId}`, { type: 'board_task_updated', task: updatedTask })
+
+    // Emit board.task_progress_note to subscribers
+    if (boardSubscriptionService) {
+      const payload = {
+        taskId: updatedTask.taskId,
+        taskTitle: updatedTask.title,
+        assignedAgentId: updatedTask.assignedAgentId,
+        tags: updatedTask.tags,
+        columnId: updatedTask.columnId,
+        noteText: text,
+      }
+      boardSubscriptionService.notifySubscribers(updatedTask.boardId, {
+        eventType: 'board.task_progress_note',
+        boardId: updatedTask.boardId,
+        formattedMessage: BSS.formatEventMessage({ eventType: 'board.task_progress_note', boardId: updatedTask.boardId, payload }),
+        payload,
+      })
+    }
 
     return { task: updatedTask }
   }

@@ -1,0 +1,154 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Get the authenticated ClickUp user information."
+    },
+    "get-workspaces": {
+      "name": "get-workspaces",
+      "description": "Get all ClickUp workspaces (teams) the user belongs to."
+    },
+    "get-members": {
+      "name": "get-members",
+      "description": "Get all members of a ClickUp workspace.",
+      "params": {
+        "workspaceId": "The workspace (team) ID"
+      }
+    },
+    "get-spaces": {
+      "name": "get-spaces",
+      "description": "Get all spaces in a ClickUp workspace.",
+      "params": {
+        "workspaceId": "The workspace (team) ID",
+        "archived": "Include archived spaces (default: false)"
+      }
+    },
+    "get-folders": {
+      "name": "get-folders",
+      "description": "Get all folders in a ClickUp space.",
+      "params": {
+        "spaceId": "The space ID",
+        "archived": "Include archived folders (default: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Create a new folder in a ClickUp space.",
+      "params": {
+        "spaceId": "The space ID where the folder will be created",
+        "name": "Name of the new folder"
+      }
+    },
+    "get-lists": {
+      "name": "get-lists",
+      "description": "Get all lists in a ClickUp folder.",
+      "params": {
+        "folderId": "The folder ID",
+        "archived": "Include archived lists (default: false)"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Create a new list inside a ClickUp folder.",
+      "params": {
+        "folderId": "The folder ID where the list will be created",
+        "name": "Name of the new list",
+        "content": "Description/content of the list (optional)"
+      }
+    },
+    "get-tasks": {
+      "name": "get-tasks",
+      "description": "Get tasks from a ClickUp list with optional filters.",
+      "params": {
+        "listId": "The list ID to get tasks from",
+        "archived": "Include archived tasks (default: false)",
+        "page": "Page number for pagination (default: 0)",
+        "orderBy": "Field to order by: id, created, updated, due_date (default: created)",
+        "reverse": "Reverse the order (default: false)",
+        "subtasks": "Include subtasks (default: false)",
+        "statuses": "Filter by status names"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "Get detailed information about a specific ClickUp task.",
+      "params": {
+        "taskId": "The task ID"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "Create a new task in a ClickUp list.",
+      "params": {
+        "listId": "The list ID where the task will be created",
+        "name": "Task name/title",
+        "description": "Task description (markdown supported)",
+        "priority": "Task priority: urgent, high, normal, low",
+        "status": "Task status (must match a status in the list)",
+        "assignees": "Array of user IDs to assign",
+        "tags": "Array of tag names",
+        "dueDate": "Due date as Unix timestamp in milliseconds",
+        "startDate": "Start date as Unix timestamp in milliseconds",
+        "timeEstimate": "Time estimate in milliseconds",
+        "parentId": "Parent task ID to create as a subtask"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "Update an existing ClickUp task.",
+      "params": {
+        "taskId": "The task ID to update",
+        "name": "New task name",
+        "description": "New task description",
+        "priority": "New priority: urgent, high, normal, low",
+        "status": "New status",
+        "dueDate": "New due date as Unix timestamp in milliseconds",
+        "startDate": "New start date as Unix timestamp in milliseconds",
+        "timeEstimate": "New time estimate in milliseconds"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "Delete a ClickUp task permanently.",
+      "params": {
+        "taskId": "The task ID to delete"
+      }
+    },
+    "search-tasks": {
+      "name": "search-tasks",
+      "description": "Search for tasks across a ClickUp workspace.",
+      "params": {
+        "workspaceId": "The workspace (team) ID to search in",
+        "query": "Search query text",
+        "page": "Page number (default: 0)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "Add a comment to a ClickUp task.",
+      "params": {
+        "taskId": "The task ID to comment on",
+        "commentText": "The comment text (markdown supported)",
+        "notifyAll": "Notify all assignees of the task (default: false)"
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Get all comments on a ClickUp task.",
+      "params": {
+        "taskId": "The task ID"
+      }
+    }
+  },
+  "name": "ClickUp",
+  "description": "ClickUp project management - manage tasks, lists, folders, spaces and workspaces via ClickUp API with OAuth2",
+  "changelog": [
+    {
+      "notes": "Initial release — create, update, search and comment on tasks across ClickUp spaces, folders and lists"
+    }
+  ]
+}

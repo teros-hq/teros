@@ -1,6 +1,8 @@
 import type { ToolConfig } from '@teros/mca-sdk';
+import { validateAgentId } from './utils';
 
 export const agentProvidersSet: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Set the available LLM providers for an agent. This determines which providers the agent can use. Requires workspace access or agent ownership.',
   parameters: {
@@ -22,6 +24,7 @@ export const agentProvidersSet: ToolConfig = {
   },
   handler: async (args, context) => {
     const agentId = args.agentId as string;
+    await validateAgentId(agentId, context);
     const providerIds = args.providerIds as string[];
     return context.agentProvidersSet(agentId, providerIds);
   },

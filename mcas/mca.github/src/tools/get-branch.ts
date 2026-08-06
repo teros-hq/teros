@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const getBranch: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get information about a specific branch',
   parameters: {
     type: 'object',

@@ -1,15 +1,20 @@
 /**
- * E2E Tests: Channels
+ * E2E Tests: Channels — via the REAL WsFramework envelope (TER-453).
  *
- * Tests for channel (conversation) management:
- * - Create channel
- * - List channels
- * - Close channel
+ * Requires an external backend on E2E_CONFIG.wsUrl (this is the
+ * against-real-backend lane; the self-contained lane is
+ * smoke.acceptance.test.ts + the Cucumber features).
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { E2E_CONFIG, TEST_AGENTS, TEST_USERS } from '../fixtures/test-data';
-import { cleanupTestData, createTestClient, globalSetup, globalTeardown } from '../utils/setup';
+import { TEST_AGENTS } from '../fixtures/test-data';
+import {
+  cleanupTestData,
+  createTestClient,
+  createTestWorkspace,
+  globalSetup,
+  globalTeardown,
+} from '../utils/setup';
 import type { TestClient } from '../utils/TestClient';
 
 describe('Channels E2E', () => {
@@ -32,71 +37,45 @@ describe('Channels E2E', () => {
 
   test('should create a new channel', async () => {
     client = await createTestClient('user1');
+    const workspaceId = await createTestWorkspace(client);
 
-    const response = await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      ['channel_created', 'error'],
-    );
+    const data = await client.requestOk<{ channelId: string; agentId: string }>('channel.create', {
+      agentId: TEST_AGENTS.assistant.id,
+      workspaceId,
+    });
 
-    expect(response.type).toBe('channel_created');
-    expect(response.channelId).toBeDefined();
-    expect(response.channelId).toMatch(/^ch_/);
-    expect(response.agentId).toBe(TEST_AGENTS.assistant.id);
+    expect(data.channelId).toMatch(/^ch_/);
+    expect(data.agentId).toBe(TEST_AGENTS.assistant.id);
   });
 
   test('should list user channels', async () => {
     client = await createTestClient('user1');
+    const workspaceId = await createTestWorkspace(client);
 
-    // Create a channel first
-    await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      'channel_created',
-    );
+    await client.requestOk('channel.create', {
+      agentId: TEST_AGENTS.assistant.id,
+      workspaceId,
+    });
 
-    // List channels
-    const response = await client.sendAndWait({ type: 'list_channels' }, 'channels_list');
+    const data = await client.requestOk<{ channels: unknown[] }>('channel.list', { workspaceId });
 
-    expect(response.type).toBe('channels_list');
-    expect(response.channels).toBeDefined();
-    expect(Array.isArray(response.channels)).toBe(true);
-    expect(response.channels.length).toBeGreaterThan(0);
+    expect(Array.isArray(data.channels)).toBe(true);
+    expect(data.channels.length).toBeGreaterThan(0);
   });
 
   test('should close a channel', async () => {
-    // Use a fresh client to avoid message queue issues
     client = await createTestClient('user1');
+    const workspaceId = await createTestWorkspace(client);
 
-    // Create a channel
-    const createResponse = await client.sendAndWait(
-      {
-        type: 'create_channel',
-        agentId: TEST_AGENTS.assistant.id,
-      },
-      'channel_created',
-    );
-    const channelId = createResponse.channelId;
-
-    // Disconnect and create fresh client to clear all state
-    await client.disconnect();
-    client = await createTestClient('user1');
-
-    // Close the channel
-    client.send({
-      type: 'close_channel',
-      channelId,
+    const created = await client.requestOk<{ channelId: string }>('channel.create', {
+      agentId: TEST_AGENTS.assistant.id,
+      workspaceId,
     });
 
-    // Wait for the deleted status message
-    const closeResponse = await client.waitFor(['channel_list_status', 'error'], 5000);
+    const closed = await client.requestOk<{ channelId: string; status: string }>('channel.close', {
+      channelId: created.channelId,
+    });
 
-    expect(closeResponse.type).toBe('channel_list_status');
-    expect(closeResponse.channelId).toBe(channelId);
-    expect(closeResponse.action).toBe('deleted');
+    expect(closed).toEqual({ channelId: created.channelId, status: 'closed' });
   });
 });

@@ -1,0 +1,129 @@
+{
+  "tools": {
+    "monday_list_boards": {
+      "name": "monday_list_boards",
+      "description": "모든 Monday.com 보드를 나열합니다.",
+      "params": {
+        "limit": "반환할 보드 수"
+      }
+    },
+    "monday_get_board": {
+      "name": "monday_get_board",
+      "description": "상세 보드 정보를 가져옵니다.",
+      "params": {
+        "boardId": "가져올 보드 ID"
+      }
+    },
+    "monday_create_board": {
+      "name": "monday_create_board",
+      "description": "새 보드를 생성합니다.",
+      "params": {
+        "name": "보드 이름",
+        "description": "보드 설명",
+        "templateId": "사용할 템플릿 ID"
+      }
+    },
+    "monday_list_items": {
+      "name": "monday_list_items",
+      "description": "보드 또는 그룹의 항목을 나열합니다.",
+      "params": {
+        "boardId": "보드 ID",
+        "groupId": "그룹 ID (선택 사항)",
+        "limit": "반환할 항목 수"
+      }
+    },
+    "monday_get_item": {
+      "name": "monday_get_item",
+      "description": "상세 항목 정보를 가져옵니다.",
+      "params": {
+        "itemId": "가져올 항목 ID",
+        "boardId": "보드 ID"
+      }
+    },
+    "monday_create_item": {
+      "name": "monday_create_item",
+      "description": "새 항목을 생성합니다.",
+      "params": {
+        "boardId": "보드 ID",
+        "groupId": "그룹 ID",
+        "itemName": "항목 이름",
+        "values": "열 값 (columnId: value)"
+      }
+    },
+    "monday_update_item": {
+      "name": "monday_update_item",
+      "description": "기존 항목을 업데이트합니다.",
+      "params": {
+        "itemId": "업데이트할 항목 ID",
+        "boardId": "보드 ID",
+        "values": "업데이트된 열 값 (columnId: value)"
+      }
+    },
+    "monday_delete_item": {
+      "name": "monday_delete_item",
+      "description": "항목을 삭제합니다.",
+      "params": {
+        "itemId": "삭제할 항목 ID",
+        "boardId": "보드 ID"
+      }
+    },
+    "monday_list_groups": {
+      "name": "monday_list_groups",
+      "description": "보드의 그룹을 나열합니다.",
+      "params": {
+        "boardId": "보드 ID"
+      }
+    },
+    "monday_create_group": {
+      "name": "monday_create_group",
+      "description": "새 그룹을 생성합니다.",
+      "params": {
+        "boardId": "보드 ID",
+        "name": "그룹 이름"
+      }
+    },
+    "monday_list_columns": {
+      "name": "monday_list_columns",
+      "description": "보드의 열을 나열합니다.",
+      "params": {
+        "boardId": "보드 ID"
+      }
+    },
+    "monday_add_update": {
+      "name": "monday_add_update",
+      "description": "항목에 업데이트를 추가합니다.",
+      "params": {
+        "itemId": "항목 ID",
+        "updateValue": "업데이트 텍스트"
+      }
+    },
+    "monday_list_updates": {
+      "name": "monday_list_updates",
+      "description": "항목에 대한 업데이트를 나열합니다.",
+      "params": {
+        "itemId": "항목 ID",
+        "limit": "반환할 업데이트 수"
+      }
+    },
+    "monday_search_items": {
+      "name": "monday_search_items",
+      "description": "보드 간 항목을 검색합니다.",
+      "params": {
+        "query": "검색 쿼리",
+        "boardId": "검색할 보드 ID",
+        "limit": "결과 수"
+      }
+    },
+    "monday_get_me": {
+      "name": "monday_get_me",
+      "description": "현재 사용자 정보를 가져옵니다."
+    }
+  },
+  "name": "Monday.com",
+  "description": "Monday.com 작업 관리 - 보드, 항목, 그룹, 열, 업데이트",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 보드, 항목, 그룹 및 열을 생성 및 관리하고, 업데이트를 게시 및 읽고, 보드 간 검색"
+    }
+  ]
+}

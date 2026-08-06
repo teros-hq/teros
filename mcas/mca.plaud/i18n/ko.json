@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. PLAUD OAuth 구성을 확인하고 연결성을 확인하기 위해 라이브 MCP 호출을 수행합니다."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "PLAUD 음성 녹음을 나열합니다. 생성 날짜(가장 최근 것부터) 순서로 각 녹음의 메타데이터를 반환합니다.",
+      "params": {
+        "limit": "반환할 최대 녹음 수(기본값: 50, 최대: 200)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "PLAUD 녹음의 전체 세부정보를 가져옵니다: 전사(연결된), AI 요약 및 메타데이터.",
+      "params": {
+        "id": "녹음 파일 ID(32자 헥스 문자열)"
+      }
+    },
+    "get-transcript": {
+      "name": "get-transcript",
+      "description": "PLAUD 녹음의 원시 전사 세그먼트를 가져옵니다. 각 세그먼트를 텍스트와 선택적 타이밍과 함께 반환합니다. 전사만 필요하고 토큰 예산을 절약하고 싶을 때 get-note 대신 사용하세요.",
+      "params": {
+        "id": "녹음 파일 ID(32자 헥스 문자열)"
+      }
+    },
+    "search-notes": {
+      "name": "search-notes",
+      "description": "키워드 및/또는 날짜 범위로 PLAUD 녹음을 검색합니다. 필터는 공식 Plaud MCP 서버로 전달되며, 결과는 생성 날짜(가장 최근 것부터)로 정렬됩니다. 최소한 하나의 필터 매개변수가 필요합니다.",
+      "params": {
+        "query": "녹음 제목 및 요약 미리보기에서 검색할 키워드(대소문자 구분 없음)",
+        "date_from": "시작 날짜(ISO 8601, 포함). 예: \"2026-01-01\"",
+        "date_to": "종료 날짜(ISO 8601, 포함). 예: \"2026-01-31\"",
+        "limit": "반환할 최대 결과 수(기본값: 50, 최대: 200)"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "귀하의 PLAUD 라이브러리에 있는 모든 태그와 폴더를 나열합니다. 각 태그에는 ID, 이름 및 사용 가능한 경우 녹음 수가 포함됩니다."
+    },
+    "get-current-user": {
+      "name": "get-current-user",
+      "description": "현재 PLAUD 사용자 프로필(id, 이메일, 이름)을 가져옵니다. 건강 검사 및 OAuth 연결 확인에 유용합니다."
+    },
+    "download-recording": {
+      "name": "download-recording",
+      "description": "PLAUD 녹음 오디오 파일을 다운로드합니다. 녹음 오디오에 대한 공개 또는 사전 서명된 URL을 반환합니다.",
+      "params": {
+        "id": "녹음 파일 ID(32자 헥스 문자열)"
+      }
+    }
+  },
+  "name": "PLAUD",
+  "description": "공식 Plaud MCP 서버를 통해 PLAUD 음성 녹음, 전사 및 AI 요약에 접근하세요. PLAUD 라이브러리에서 노트를 검색하고 검색합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 전사, AI 요약, 태그 및 폴더가 포함된 PLAUD 음성 녹음을 탐색하고 검색하며 열 수 있습니다."
+    }
+  ]
+}

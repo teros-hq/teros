@@ -5,6 +5,8 @@
  * Used by both frontend and backend for validation and rendering.
  */
 
+import { LUCIDE_ICONS } from './generated/lucide-icons.js';
+
 // ============================================================================
 // COLORS
 // ============================================================================
@@ -14,6 +16,7 @@
  */
 export const WORKSPACE_COLORS = [
   'gray',
+  'indigo',   // Teros brand accent
   'blue',
   'cyan',
   'green',
@@ -32,28 +35,40 @@ export type WorkspaceColor = (typeof WORKSPACE_COLORS)[number];
  */
 export const COLOR_PALETTE: Record<WorkspaceColor, Record<string, string>> = {
   gray: {
-    '50': '#FAFAFA',
-    '100': '#E5E5E5',
-    '200': '#C4C4C4',
-    '300': '#9A9A9A',
-    '400': '#6B6B6B',
-    '500': '#4A4A4A',
-    '600': '#2E2E2E',
-    '700': '#1F1F1F',
-    '800': '#141414',
-    '900': '#0A0A0A',
+    '50': '#F8F8FA',
+    '100': '#E4E4E8',
+    '200': '#C4C4CC',
+    '300': '#9A9AA6',
+    '400': '#6E6E7A',
+    '500': '#4A4A56',
+    '600': '#2E2E3A',
+    '700': '#1F1F2A',
+    '800': '#14141E',
+    '900': '#0A0A0F',
+  },
+  indigo: {
+    '50': '#F0EFFF',
+    '100': '#E0DBFF',
+    '200': '#C4B8FF',
+    '300': '#A08FFF',
+    '400': '#7E6EF2',
+    '500': '#5E6AD2',
+    '600': '#4F5BB8',
+    '700': '#3F4A9E',
+    '800': '#30397A',
+    '900': '#21285A',
   },
   blue: {
-    '50': '#E8F1F8',
-    '100': '#C5DCF0',
-    '200': '#9AC4E4',
-    '300': '#6AAAD6',
-    '400': '#4A93C9',
-    '500': '#3B82C4',
-    '600': '#3271AB',
-    '700': '#285A8A',
-    '800': '#1F4569',
-    '900': '#1A3A52',
+    '50': '#EFF4FF',
+    '100': '#DBE4FE',
+    '200': '#BFCFFF',
+    '300': '#93BBFD',
+    '400': '#6094FA',
+    '500': '#3B82F6',
+    '600': '#2563EB',
+    '700': '#1D4ED8',
+    '800': '#1E40AF',
+    '900': '#1E3A8A',
   },
   cyan: {
     '50': '#E9F4F6',
@@ -154,17 +169,13 @@ export function getColorShade(color: WorkspaceColor, shade: string = '500'): str
 
 /**
  * Available workspace icons (Lucide icon names in kebab-case)
- * Curated list of ~120 icons suitable for workspace identification
+ * Curated list of ~50 favourite icons shown by default in the icon picker.
+ * Users can search across all ~1760 Lucide icons using the search input.
  */
 export const WORKSPACE_ICONS = [
   // General / Abstract
+  'folder',
   'box',
-  'circle',
-  'square',
-  'triangle',
-  'hexagon',
-  'pentagon',
-  'octagon',
   'star',
   'heart',
   'zap',
@@ -176,160 +187,72 @@ export const WORKSPACE_ICONS = [
 
   // Work / Business
   'briefcase',
-  'building',
   'building-2',
-  'landmark',
-  'store',
-  'factory',
   'wallet',
-  'credit-card',
-  'piggy-bank',
-  'banknote',
-  'receipt',
   'calculator',
+  'chart-bar',
+  'trending-up',
+  'target',
 
   // Tech / Development
   'code',
-  'code-2',
   'terminal',
   'cpu',
   'server',
   'database',
-  'hard-drive',
   'git-branch',
-  'git-commit',
-  'git-merge',
   'bug',
   'wrench',
   'settings',
-  'cog',
 
   // Files / Documents
-  'file',
   'file-text',
   'file-code',
-  'folder',
-  'folder-open',
-  'archive',
-  'clipboard',
-  'clipboard-list',
   'book-open',
-  'book',
   'notebook',
+  'clipboard-list',
   'library',
 
   // Communication
   'mail',
   'message-circle',
-  'message-square',
-  'phone',
-  'video',
-  'radio',
-  'megaphone',
   'bell',
+  'megaphone',
   'send',
-  'inbox',
-  'at-sign',
 
   // Creative / Design
   'palette',
   'paintbrush',
-  'pen-tool',
-  'pencil',
-  'brush',
-  'eraser',
   'camera',
-  'image',
-  'film',
   'music',
-  'mic',
   'headphones',
-
-  // Science / Analytics
-  'flask',
-  'microscope',
-  'atom',
-  'dna',
-  'brain',
-  'activity',
-  'bar-chart',
-  'pie-chart',
-  'trending-up',
-  'line-chart',
-  'target',
-
-  // Nature / Environment
-  'sun',
-  'moon',
-  'cloud',
-  'umbrella',
-  'snowflake',
-  'leaf',
-  'tree',
-  'flower',
-  'mountain',
-  'waves',
-  'wind',
-
-  // Transport / Travel
-  'car',
-  'plane',
-  'ship',
-  'rocket',
-  'bike',
-  'train',
-  'globe',
-  'map',
-  'map-pin',
-  'compass',
-  'navigation',
 
   // People / Social
   'user',
   'users',
-  'user-circle',
-  'user-plus',
-  'hand-heart',
   'home',
-  'school',
   'graduation-cap',
   'trophy',
 
-  // Security / Privacy
-  'shield',
-  'shield-check',
-  'lock',
-  'unlock',
-  'key',
-  'fingerprint',
-  'eye',
-  'eye-off',
-  'scan',
-
-  // Time / Calendar
-  'clock',
-  'calendar',
-  'timer',
-  'hourglass',
-  'history',
-  'alarm-clock',
+  // Science / Analytics
+  'brain',
+  'atom',
+  'microscope',
 
   // Misc Useful
   'lightbulb',
-  'puzzle',
-  'gamepad-2',
-  'dice-5',
-  'gift',
-  'package',
-  'shopping-cart',
-  'shopping-bag',
-  'tag',
+  'rocket',
+  'globe',
+  'shield',
+  'key',
+  'clock',
+  'calendar',
   'bookmark',
   'flag',
-  'anchor',
+  'package',
 ] as const;
 
-export type WorkspaceIcon = (typeof WORKSPACE_ICONS)[number];
+export type WorkspaceIcon = (typeof WORKSPACE_ICONS)[number] | string;
 
 /**
  * Check if a string is a valid workspace color
@@ -339,10 +262,12 @@ export function isValidWorkspaceColor(color: string): color is WorkspaceColor {
 }
 
 /**
- * Check if a string is a valid workspace icon
+ * Check if a string is a valid workspace icon.
+ * Validates against the full set of real Lucide icon names (kebab-case).
+ * Generated from @tamagui/lucide-icons — run `bun run generate-icons` in packages/shared to update.
  */
 export function isValidWorkspaceIcon(icon: string): icon is WorkspaceIcon {
-  return WORKSPACE_ICONS.includes(icon as WorkspaceIcon);
+  return LUCIDE_ICONS.has(icon);
 }
 
 /**

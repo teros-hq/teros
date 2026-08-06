@@ -29,6 +29,9 @@
             "description": "OData $filter expression (e.g., \"isRead eq false\", \"importance eq 'high'\")"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -45,6 +48,9 @@
         "required": [
           "messageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -107,6 +113,9 @@
           "subject",
           "body"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -136,6 +145,9 @@
           "messageId",
           "body"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -161,6 +173,9 @@
           "messageId",
           "to"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -181,6 +196,9 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -216,6 +234,9 @@
         "required": [
           "messageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -237,6 +258,9 @@
           "messageId",
           "destinationFolderId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -257,6 +281,10 @@
         "required": [
           "messageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -270,6 +298,9 @@
             "description": "Maximum number of drafts to return (default: 10, max: 100)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -312,6 +343,9 @@
           "subject",
           "body"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -352,6 +386,9 @@
         "required": [
           "draftId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -368,6 +405,9 @@
         "required": [
           "draftId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -384,6 +424,10 @@
         "required": [
           "draftId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -397,6 +441,9 @@
             "description": "Whether to include child folders (default: false)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -417,6 +464,9 @@
         "required": [
           "displayName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -433,6 +483,10 @@
         "required": [
           "folderId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -458,6 +512,9 @@
           "messageId",
           "attachmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -483,6 +540,9 @@
           "messageId",
           "attachmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -491,6 +551,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

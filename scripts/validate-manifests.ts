@@ -2,17 +2,21 @@
 /**
  * Validate MCA Manifests
  *
- * Validates all MCA manifest.json files against the schema.
+ * Validates all MCA manifest.json files against the schema AND validates
+ * the icon file referenced in each manifest (see Section 10 of
+
  *
  * Usage:
  *   bun scripts/validate-manifests.ts                    # All MCAs
  *   bun scripts/validate-manifests.ts mca.google.gmail   # Specific MCA
+ *   bun scripts/validate-manifests.ts --skip-icons       # Skip icon validation
  *   bun scripts/validate-manifests.ts --help             # Help
  */
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { validateMCAManifest } from '../packages/shared/src/mca-manifest';
+import { validateMcaIcon } from './validate-icons';
 
 const MCAS_PATH = join(import.meta.dir, '../mcas');
 
@@ -27,26 +31,63 @@ function discoverMcas(): string[] {
 }
 
 /**
- * Validate a single MCA manifest
+ * Validate a single MCA — manifest schema + icon file
  */
-function validateMca(mcaId: string): { mcaId: string; valid: boolean; errors: string[] } {
+function validateMca(
+  mcaId: string,
+  options: { skipIcons?: boolean },
+): { mcaId: string; valid: boolean; errors: string[]; warnings: string[] } {
   const manifestPath = join(MCAS_PATH, mcaId, 'manifest.json');
 
   if (!existsSync(manifestPath)) {
-    return { mcaId, valid: false, errors: ['manifest.json not found'] };
+    return { mcaId, valid: false, errors: ['manifest.json not found'], warnings: [] };
   }
+
+  let data: any;
+  let manifestErrors: string[] = [];
+  let manifestWarnings: string[] = [];
 
   try {
     const content = readFileSync(manifestPath, 'utf-8');
-    const data = JSON.parse(content);
+    data = JSON.parse(content);
     const result = validateMCAManifest(data);
-    return { mcaId, ...result };
-  } catch (error: any) {
-    if (error.name === 'SyntaxError') {
-      return { mcaId, valid: false, errors: [`Invalid JSON: ${error.message}`] };
+
+    if (!result.valid) {
+      manifestErrors = result.errors.map((e) => `[manifest] ${e.path}: ${e.message}`);
     }
-    return { mcaId, valid: false, errors: [error.message] };
+    manifestWarnings = result.warnings.map((w) => `[manifest] ${w.path}: ${w.message}`);
+  } catch (error: any) {
+    const msg =
+      error.name === 'SyntaxError' ? `Invalid JSON: ${error.message}` : error.message;
+    return { mcaId, valid: false, errors: [`[manifest] ${msg}`], warnings: [] };
   }
+
+  // ── Icon validation ───────────────────────────────────────────────────────
+
+  const iconErrors: string[] = [];
+  const iconWarnings: string[] = [];
+
+  if (!options.skipIcons) {
+    const iconField = typeof data?.icon === 'string' ? data.icon : null;
+
+    if (!iconField) {
+      // manifest schema already catches missing icon; don't double-report
+    } else {
+      const iconResult = validateMcaIcon(mcaId, iconField);
+      iconErrors.push(...iconResult.errors.map((e) => `[icon] ${e}`));
+      iconWarnings.push(...iconResult.warnings.map((w) => `[icon] ${w}`));
+    }
+  }
+
+  const allErrors = [...manifestErrors, ...iconErrors];
+  const allWarnings = [...manifestWarnings, ...iconWarnings];
+
+  return {
+    mcaId,
+    valid: allErrors.length === 0,
+    errors: allErrors,
+    warnings: allWarnings,
+  };
 }
 
 /**
@@ -62,38 +103,48 @@ Validate MCA Manifests
 Usage:
   bun scripts/validate-manifests.ts                    # All MCAs
   bun scripts/validate-manifests.ts mca.google.gmail   # Specific MCA
+  bun scripts/validate-manifests.ts --skip-icons       # Skip icon validation
   bun scripts/validate-manifests.ts --help             # This help
 
-Validates manifest.json files against the MCA manifest schema.
+Validates:
+  1. manifest.json schema (id, version, auth, runtime, etc.)
+  2. Icon file: existence, PNG format, square, min 256×256, size limits,
+     and placeholder detection (solid-color / near-uniform fills).
+
+
 `);
     process.exit(0);
   }
 
+  const skipIcons = args.includes('--skip-icons');
+  const mcaArgs = args.filter((a) => !a.startsWith('--'));
+
   console.log('🔍 MCA Manifest Validator\n');
 
-  // Determine which MCAs to validate
-  let mcaIds: string[];
-
-  if (args.length > 0) {
-    mcaIds = args;
-  } else {
-    mcaIds = discoverMcas();
+  if (skipIcons) {
+    console.log('  ⚠️  Icon validation skipped (--skip-icons)\n');
   }
+
+  // Determine which MCAs to validate
+  const mcaIds = mcaArgs.length > 0 ? mcaArgs : discoverMcas();
 
   console.log(`Found ${mcaIds.length} MCA(s) to validate\n`);
 
   // Validate each MCA
-  const results: { mcaId: string; valid: boolean; errors: string[] }[] = [];
+  const results: { mcaId: string; valid: boolean; errors: string[]; warnings: string[] }[] = [];
 
   for (const mcaId of mcaIds) {
-    const result = validateMca(mcaId);
+    const result = validateMca(mcaId, { skipIcons });
     results.push(result);
 
     if (result.valid) {
-      console.log(`✅ ${mcaId}`);
+      const hasWarnings = result.warnings.length > 0;
+      console.log(`${hasWarnings ? '⚠️ ' : '✅'} ${mcaId}`);
+      result.warnings.forEach((w) => console.log(`   ⚠️  ${w}`));
     } else {
       console.log(`❌ ${mcaId}`);
       result.errors.forEach((err) => console.log(`   - ${err}`));
+      result.warnings.forEach((w) => console.log(`   ⚠️  ${w}`));
     }
   }
 
@@ -105,7 +156,7 @@ Validates manifest.json files against the MCA manifest schema.
   console.log(`\nSummary: ${valid.length} valid, ${invalid.length} invalid`);
 
   if (invalid.length > 0) {
-    console.log('\nInvalid manifests:');
+    console.log('\nInvalid MCAs:');
     invalid.forEach((r) => {
       console.log(`  - ${r.mcaId}`);
       r.errors.forEach((err) => console.log(`      ${err}`));
@@ -113,7 +164,7 @@ Validates manifest.json files against the MCA manifest schema.
     process.exit(1);
   }
 
-  console.log('\n✨ All manifests are valid!');
+  console.log('\n✨ All manifests and icons are valid!');
   process.exit(0);
 }
 

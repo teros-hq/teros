@@ -1,0 +1,89 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.hunter",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the Hunter API key presence and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "domain-search",
+      "description": "Find professional email addresses for a company domain. Returns the domain pattern, organization, and a list of emails with confidence, name, position and department. Returns { domain, organization, pattern, total, emails[] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Company domain to search (e.g. \"stripe.com\"). A full URL is also accepted."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max number of emails to return (1-100, default 10)."
+          },
+          "offset": {
+            "type": "number",
+            "description": "Number of emails to skip for pagination (>= 0, default 0)."
+          }
+        },
+        "required": [
+          "domain"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "email-finder",
+      "description": "Guess a specific person's professional email from their first/last name and company domain. Returns the most likely email with a confidence score (0-100). Returns { email, score, domain, firstName, lastName, position }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "domain": {
+            "type": "string",
+            "description": "Company domain (e.g. \"stripe.com\"). A full URL is also accepted."
+          },
+          "first_name": {
+            "type": "string",
+            "description": "The person's first name."
+          },
+          "last_name": {
+            "type": "string",
+            "description": "The person's last name."
+          }
+        },
+        "required": [
+          "domain",
+          "first_name",
+          "last_name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "email-verifier",
+      "description": "Verify whether an email address is deliverable. Returns a status (valid / invalid / accept_all / webmail / disposable / unknown), a result (deliverable / risky / undeliverable) and a 0-100 score plus the underlying checks. Returns { email, status, result, score }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "The email address to verify (e.g. \"patrick@stripe.com\")."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

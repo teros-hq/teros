@@ -1,186 +1,162 @@
 /**
- * AccessGate - Blocks access to the app until user has accessGranted: true
- * Shows the invitation status puzzle when access is not granted
+ * AccessGate - Blocks access to the app until user has accessGranted: true.
+ * Users without access see a clean private beta / waitlist screen.
+ * Terms acceptance (welcome.tsx) is only shown after access is granted.
+ *
+ * On mount (when access is not granted), fetches the latest profile from the
+ * backend so a reload is enough to pick up access without re-logging in.
  */
 
-import { LogOut } from '@tamagui/lucide-icons';
-import type React from 'react';
-import { useEffect, useState } from 'react';
-import { ScrollView, Text, View, XStack, YStack } from 'tamagui';
-import { useInvitations } from '../hooks/useInvitations';
-import { STORAGE_KEYS, storage } from '../services/storage';
-import type { TerosClient } from '../services/TerosClient';
-import { useAuthStore } from '../store/authStore';
-import { InvitationStatus } from './InvitationStatus';
+import { LogOut } from "@tamagui/lucide-icons"
+import { LinearGradient } from "expo-linear-gradient"
+import type React from "react"
+import { useEffect } from "react"
+import { useTranslation } from "react-i18next"
+import { Text, XStack, YStack } from "tamagui"
+import type { TerosClient } from "../services/TerosClient"
+import { useAuthStore } from "../store/authStore"
+import { TerosLogo } from "./TerosLogo"
+import { AppSpinner } from "./ui/AppSpinner"
+import { useColors } from "./mca/primitives/useColors"
+import { colors as semanticColors, controlsBar, indicators } from "./mca/primitives/colors"
 
 interface AccessGateProps {
-  client: TerosClient | null;
-  children: React.ReactNode;
+  client: TerosClient | null
+  children: React.ReactNode
 }
 
 export const AccessGate: React.FC<AccessGateProps> = ({ client, children }) => {
-  const { status, loading, loadStatus } = useInvitations(client);
-  const { logout: authLogout } = useAuthStore();
-  const [isCheckingAccess, setIsCheckingAccess] = useState(true);
-  const [isWaitingForConnection, setIsWaitingForConnection] = useState(true);
+  const { user, isHydrated, logout, updateProfile } = useAuthStore()
+  const { t } = useTranslation()
+  const c = useColors()
 
-  // Wait for WebSocket connection before checking access
+  // When access is not yet granted, refresh profile from backend on mount.
+  // This way a simple page reload is enough after a founder grants access —
+  // no need to log out and log back in.
   useEffect(() => {
-    if (!client) return;
+    if (!isHydrated || user?.accessGranted || !client) return
 
-    const checkConnection = () => {
-      if (client.isConnected()) {
-        setIsWaitingForConnection(false);
-        // Trigger status load if not already loaded
-        if (status === null && !loading) {
-          loadStatus();
-        }
-      }
-    };
-
-    // Check immediately
-    checkConnection();
-
-    // Also listen for connection event
-    const handleConnected = () => {
-      setIsWaitingForConnection(false);
-      loadStatus();
-    };
-
-    client.on('connected', handleConnected);
-
-    // Fallback: check periodically in case we missed the event
-    const interval = setInterval(checkConnection, 500);
-
-    return () => {
-      client.off('connected', handleConnected);
-      clearInterval(interval);
-    };
-  }, [client, status, loading, loadStatus]);
-
-  useEffect(() => {
-    // Wait for status to be loaded (only after connection is ready)
-    if (!isWaitingForConnection && !loading && status !== null) {
-      setIsCheckingAccess(false);
-    }
-  }, [isWaitingForConnection, loading, status]);
+    client.profile
+      .getProfile()
+      .then((profile) => {
+        updateProfile({
+          accessGranted: profile.accessGranted,
+          termsAcceptedAt: profile.termsAcceptedAt,
+        })
+      })
+      .catch((err) => {
+        console.warn("[AccessGate] Failed to refresh profile:", err)
+      })
+  }, [isHydrated, client])
 
   const handleLogout = async () => {
     try {
-      await storage.removeItem(STORAGE_KEYS.USER);
-      await authLogout();
-      client?.disconnect();
-      // Force reload to go to login
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login';
+      await logout()
+      client?.disconnect()
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
       }
     } catch (error) {
-      console.error('Error logging out:', error);
+      console.error("Error logging out:", error)
     }
-  };
+  }
 
-  // Show loading while checking access
-  if (isCheckingAccess || loading) {
+  // Wait for auth store to hydrate
+  if (!isHydrated) {
     return (
-      <YStack flex={1} backgroundColor="$background" alignItems="center" justifyContent="center">
-        <Text color="$gray11">Verificando acceso...</Text>
+      <YStack flex={1} backgroundColor={c.bgPage} alignItems="center" justifyContent="center">
+        <AppSpinner size="lg" variant="brand" />
       </YStack>
-    );
+    )
   }
 
-  // If user has access, render children (normal app)
-  if (status?.accessGranted) {
-    return <>{children}</>;
+  if (user?.accessGranted) {
+    return <>{children}</>
   }
 
-  // User doesn't have access - show invitation gate
+  // User is on the waitlist — show private beta screen
   return (
-    <YStack flex={1} backgroundColor="#09090b">
-      <ScrollView flex={1}>
-        <YStack
-          flex={1}
-          alignItems="center"
-          paddingVertical="$8"
-          paddingHorizontal="$4"
-          maxWidth={480}
-          marginHorizontal="auto"
-          width="100%"
-        >
-          {/* Header */}
-          <YStack alignItems="center" gap="$2" marginBottom="$6">
-            <Text fontSize={32} fontWeight="700" color="#06B6D4" letterSpacing={2}>
-              TEROS
-            </Text>
-            <Text fontSize={14} color="#71717A" textAlign="center">
-              Invitation-based access system
-            </Text>
-          </YStack>
-
-          {/* Invitation Status Card */}
-          <YStack
-            width="100%"
-            backgroundColor="rgba(20, 20, 22, 0.9)"
-            borderRadius="$4"
-            borderWidth={1}
-            borderColor="rgba(39, 39, 42, 0.5)"
-            overflow="hidden"
-          >
-            <InvitationStatus client={client} />
-          </YStack>
-
-          {/* Help text */}
-          <YStack
-            marginTop="$6"
-            gap="$3"
-            backgroundColor="rgba(20, 20, 22, 0.9)"
-            borderRadius="$3"
-            padding="$4"
-            borderWidth={1}
-            borderColor="rgba(39, 39, 42, 0.5)"
-            width="100%"
-          >
-            <Text fontSize={14} color="$color" fontWeight="600">
-              How to get access?
-            </Text>
-            <Text fontSize={13} color="$gray11" lineHeight={20}>
-              Ask users who already have access to TEROS to send you an invitation. You need
-              recibir invitaciones de 3 usuarios diferentes para desbloquear el acceso completo a la
-              plataforma.
-            </Text>
-            <Text fontSize={13} color="$gray11" lineHeight={20}>
-              Once you complete the 3 invitations, you will have access to all features and
-              you will also be able to invite other users.
-            </Text>
-          </YStack>
-
-          {/* Logout button */}
-          <XStack
-            marginTop="$6"
-            paddingVertical="$3"
-            paddingHorizontal="$4"
-            backgroundColor="rgba(239, 68, 68, 0.1)"
-            borderWidth={1}
-            borderColor="rgba(239, 68, 68, 0.2)"
-            borderRadius="$3"
-            alignItems="center"
-            gap="$2"
-            cursor="pointer"
-            hoverStyle={{ backgroundColor: 'rgba(239, 68, 68, 0.15)' }}
-            pressStyle={{ opacity: 0.8 }}
-            onPress={handleLogout}
-          >
-            <LogOut size={16} color="#EF4444" />
-            <Text fontSize={14} color="#EF4444" fontWeight="500">
-              Sign out
-            </Text>
-          </XStack>
-
-          {/* Footer */}
-          <Text fontSize={12} color="#3F3F46" marginTop="$6">
-            Teros
+    <LinearGradient
+      colors={[c.bgPage, c.bgCard, c.bgPage]}
+      locations={[0, 0.5, 1]}
+      style={{ flex: 1 }}
+    >
+      <YStack
+        flex={1}
+        alignItems="center"
+        justifyContent="center"
+        paddingHorizontal="$6"
+        maxWidth={420}
+        width="100%"
+        alignSelf="center"
+        gap="$8"
+      >
+        {/* Logo */}
+        <YStack alignItems="center" gap="$4">
+          <TerosLogo size={64} animated={true} />
+          <Text fontSize={28} fontWeight="200" color={c.text} letterSpacing={7}>
+            TEROS
           </Text>
         </YStack>
-      </ScrollView>
-    </YStack>
-  );
-};
+
+        {/* Card */}
+        <YStack
+          backgroundColor={semanticColors.indigoGlow}
+          borderWidth={1}
+          borderColor={c.badges.info.border}
+          borderRadius="$4"
+          padding="$6"
+          gap="$4"
+          width="100%"
+        >
+          <YStack gap="$2">
+            <Text fontSize={18} fontWeight="600" color={c.text} letterSpacing={0.3}>
+              {t("accessGate.privateBeta")}
+            </Text>
+            <Text fontSize={13} color={c.text3} lineHeight={20}>
+              {t("accessGate.description")}
+            </Text>
+          </YStack>
+
+          <YStack gap="$2" paddingTop="$2">
+            {[
+              t("accessGate.noActionNeeded"),
+              t("accessGate.reviewPersonally"),
+              t("accessGate.emailWhenIn"),
+            ].map((item) => (
+              <XStack key={item} gap="$2" alignItems="flex-start">
+                <Text color={semanticColors.indigo} fontSize={13} marginTop={1}>
+                  ·
+                </Text>
+                <Text fontSize={13} color={c.text2} flex={1} lineHeight={20}>
+                  {item}
+                </Text>
+              </XStack>
+            ))}
+          </YStack>
+        </YStack>
+
+        {/* Sign out */}
+        <XStack
+          paddingVertical="$3"
+          paddingHorizontal="$4"
+          backgroundColor={indicators.irreversible.bg}
+          borderWidth={1}
+          borderColor={indicators.irreversible.border}
+          borderRadius="$3"
+          alignItems="center"
+          gap="$2"
+          cursor="pointer"
+          hoverStyle={{ backgroundColor: controlsBar.deny.bg }}
+          pressStyle={{ opacity: 0.8 }}
+          onPress={handleLogout}
+        >
+          <LogOut size={15} color={semanticColors.red} />
+          <Text fontSize={13} color={semanticColors.red} fontWeight="500">
+            {t("accessGate.signOut")}
+          </Text>
+        </XStack>
+      </YStack>
+    </LinearGradient>
+  )
+}

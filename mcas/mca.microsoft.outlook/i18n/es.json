@@ -1,0 +1,190 @@
+{
+  "name": "Outlook",
+  "description": "Gestión de correo con Microsoft Outlook: enviar, leer, buscar y organizar emails vía la API de Microsoft Graph",
+  "changelog": [
+    {
+      "notes": "Versión inicial — enviar, leer, buscar y responder emails, gestionar borradores, carpetas, adjuntos y reglas de bandeja de entrada"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con Microsoft Graph."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "Lista mensajes de correo de la bandeja de entrada o de una carpeta específica. Soporta filtrado por no leídos, importancia, etc.",
+      "params": {
+        "maxResults": "Número máximo de mensajes a devolver (por defecto: 10, máximo: 100)",
+        "folderId": "ID de la carpeta de correo o nombre conocido (ej. \"Inbox\", \"SentItems\", \"Drafts\", \"DeletedItems\", \"Archive\"). Por defecto: Inbox.",
+        "filter": "Expresión $filter de OData (ej. \"isRead eq false\", \"importance eq 'high'\")"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "Obtiene los detalles completos de un mensaje de correo específico por ID, incluyendo cuerpo y adjuntos.",
+      "params": {
+        "messageId": "El ID del mensaje a recuperar"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Envía un mensaje de correo desde la cuenta de Outlook conectada.",
+      "params": {
+        "to": "Dirección de email del destinatario o destinatarios (separados por comas)",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email (texto plano, Markdown o HTML)",
+        "cc": "Destinatarios en copia (separados por comas)",
+        "bcc": "Destinatarios en copia oculta (separados por comas)",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false, detecta Markdown automáticamente)",
+        "importance": "Importancia del mensaje: low, normal, high (por defecto: normal)",
+        "attachments": "Array de adjuntos a incluir"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "Responde a un mensaje de correo existente.",
+      "params": {
+        "messageId": "El ID del mensaje al que responder",
+        "body": "Cuerpo de la respuesta",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)",
+        "replyAll": "Si responder a todos los destinatarios (por defecto: false)"
+      }
+    },
+    "forward-message": {
+      "name": "forward-message",
+      "description": "Reenvía un mensaje de correo a otros destinatarios.",
+      "params": {
+        "messageId": "El ID del mensaje a reenviar",
+        "to": "Dirección de email del destinatario o destinatarios (separados por comas)",
+        "comment": "Comentario opcional a incluir con el mensaje reenviado"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Busca mensajes de correo. Soporta búsqueda por asunto, cuerpo, remitente, etc.",
+      "params": {
+        "query": "Texto de búsqueda (busca en asunto, cuerpo, remitente, etc.)",
+        "maxResults": "Número máximo de resultados (por defecto: 10)"
+      }
+    },
+    "modify-message": {
+      "name": "modify-message",
+      "description": "Modifica un mensaje: marcar como leído/no leído, establecer importancia, añadir categorías o marcarlo con flag.",
+      "params": {
+        "messageId": "El ID del mensaje a modificar",
+        "isRead": "Marcar como leído (true) o no leído (false)",
+        "importance": "Establecer importancia: low, normal, high",
+        "categories": "Establecer etiquetas de categoría (reemplaza las existentes)",
+        "flag": "Establecer estado del flag: notFlagged, flagged, complete"
+      }
+    },
+    "move-message": {
+      "name": "move-message",
+      "description": "Mueve un mensaje a otra carpeta de correo.",
+      "params": {
+        "messageId": "El ID del mensaje a mover",
+        "destinationFolderId": "ID de la carpeta de destino o nombre conocido (ej. \"Inbox\", \"Archive\", \"DeletedItems\", \"JunkEmail\")"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Elimina un mensaje (lo mueve a Elementos Eliminados) o lo elimina permanentemente.",
+      "params": {
+        "messageId": "El ID del mensaje a eliminar",
+        "permanent": "Si es true, elimina permanentemente el mensaje. En caso contrario lo mueve a Elementos Eliminados (por defecto: false)"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "Lista todos los borradores de correo de la cuenta.",
+      "params": {
+        "maxResults": "Número máximo de borradores a devolver (por defecto: 10, máximo: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "Crea un borrador de correo.",
+      "params": {
+        "to": "Dirección de email del destinatario o destinatarios",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email",
+        "cc": "Destinatarios en copia (separados por comas)",
+        "bcc": "Destinatarios en copia oculta (separados por comas)",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)",
+        "importance": "Importancia del mensaje: low, normal, high"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "Actualiza un borrador existente reemplazando su contenido.",
+      "params": {
+        "draftId": "El ID del borrador a actualizar",
+        "to": "Dirección de email del destinatario o destinatarios",
+        "subject": "Asunto del email",
+        "body": "Cuerpo del email",
+        "cc": "Destinatarios en copia (separados por comas)",
+        "bcc": "Destinatarios en copia oculta (separados por comas)",
+        "isHtml": "Si el cuerpo es HTML (por defecto: false)"
+      }
+    },
+    "send-draft": {
+      "name": "send-draft",
+      "description": "Envía un borrador de correo existente.",
+      "params": {
+        "draftId": "El ID del borrador a enviar"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "Elimina un borrador de correo.",
+      "params": {
+        "draftId": "El ID del borrador a eliminar"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "Lista todas las carpetas de correo de la cuenta.",
+      "params": {
+        "includeChildFolders": "Si incluir subcarpetas (por defecto: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Crea una nueva carpeta de correo.",
+      "params": {
+        "displayName": "Nombre para la nueva carpeta",
+        "parentFolderId": "ID de la carpeta padre (opcional, se crea en el nivel superior si se omite)"
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "Elimina una carpeta de correo y todo su contenido.",
+      "params": {
+        "folderId": "El ID de la carpeta a eliminar"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "Obtiene el contenido de un adjunto de correo por su ID de adjunto.",
+      "params": {
+        "messageId": "El ID del mensaje que contiene el adjunto",
+        "attachmentId": "El ID del adjunto a recuperar",
+        "saveToFile": "Si es true, guarda el adjunto en /workspace/email-attachments/"
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "Descarga y almacena un adjunto de correo en el sistema de archivos local.",
+      "params": {
+        "messageId": "El ID del mensaje que contiene el adjunto",
+        "attachmentId": "El ID del adjunto a almacenar",
+        "outputPath": "Ruta opcional del directorio de salida"
+      }
+    },
+    "list-rules": {
+      "name": "list-rules",
+      "description": "Lista todas las reglas de bandeja de entrada (filtros de correo) de la cuenta."
+    }
+  }
+}

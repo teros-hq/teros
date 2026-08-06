@@ -6,7 +6,7 @@
   "description": "Gmail email management - send, read, search, label, and filter emails via Google Gmail API",
   "type": "integration",
   "icon": "icon.png",
-  "category": "productivity",
+  "category": "google",
   "entrypoint": "src/index.ts",
   "author": {
     "name": "Teros Team",
@@ -47,5 +47,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["gmail", "email", "google", "mail", "messages"]
+  "keywords": ["gmail", "email", "google", "mail", "messages"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — send, read, search and reply to emails, manage drafts, labels, filters, attachments, and watch for new mail"
+    }
+  ]
 }

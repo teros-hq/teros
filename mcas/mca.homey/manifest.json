@@ -14,7 +14,7 @@
   },
   "availability": {
     "enabled": true,
-    "multi": false,
+    "multi": true,
     "system": false,
     "hidden": false,
     "role": "user"
@@ -32,27 +32,24 @@
       "authorizeUrl": "https://api.athom.com/oauth2/authorise",
       "tokenUrl": "https://api.athom.com/oauth2/token",
       "scopes": [
-        "homey.app",
-        "homey.app.control",
-        "homey.dashboard",
-        "homey.device",
+        "account.homeys",
+        "homey.app.readonly",
+        "homey.device.readonly",
         "homey.device.control",
-        "homey.energy",
-        "homey.flow",
+        "homey.energy.readonly",
+        "homey.flow.readonly",
         "homey.flow.start",
-        "homey.geolocation",
-        "homey.insights",
+        "homey.insights.readonly",
         "homey.logic",
-        "homey.mood",
-        "homey.mood.set",
-        "homey.notifications",
-        "homey.presence",
+        "homey.logic.readonly",
+        "homey.notifications.readonly",
+        "homey.presence.readonly",
         "homey.presence.self",
-        "homey.system",
-        "homey.user",
+        "homey.user.readonly",
         "homey.user.self",
-        "homey.zone"
+        "homey.zone.readonly"
       ],
+      "scopeSeparator": ",",
       "pkce": false
     },
     "agent": false
@@ -63,5 +60,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["homey", "other", "home-automation", "iot", "devices", "flows", "athom"]
+  "keywords": ["homey", "other", "home-automation", "iot", "devices", "flows", "athom"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-03-16",
+      "notes": "Initial release — control smart home devices, run automation flows, manage rooms and variables, and monitor live energy"
+    }
+  ]
 }

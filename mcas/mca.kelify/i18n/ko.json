@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "kelify_create_conversation": {
+      "name": "kelify_create_conversation",
+      "description": "부동산 검색을 위한 새로운 대화 세션을 생성합니다. 각 대화는 여러 메시지 간의 맥락을 유지하여 자연스러운 후속 질문을 가능하게 합니다."
+    },
+    "kelify_send_message": {
+      "name": "kelify_send_message",
+      "description": "대화에 사용자 메시지를 보내고 부동산 검색 결과와 함께 AI 응답을 받습니다. 스트리밍 모드 또는 비스트리밍 모드를 사용할 수 있습니다.",
+      "params": {
+        "conversation_id": "메시지를 보낼 대화 UUID",
+        "message": "부동산 검색을 위한 AI 어시스턴트에 대한 사용자의 메시지",
+        "stream": "응답을 스트리밍할지 여부. 기본값은 true입니다."
+      }
+    },
+    "kelify_get_conversation": {
+      "name": "kelify_get_conversation",
+      "description": "모든 메시지, AI 응답, 검색 결과 및 사용 통계를 포함한 전체 대화 기록을 검색합니다.",
+      "params": {
+        "conversation_id": "검색할 대화 UUID"
+      }
+    }
+  },
+  "name": "Kelify AI 부동산 검색",
+  "description": "부동산 목록을 위한 AI 기반 대화형 부동산 검색 API",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — AI 대화를 통해 부동산 목록을 검색하고 후속 질문 및 전체 채팅 기록을 포함합니다."
+    }
+  ]
+}

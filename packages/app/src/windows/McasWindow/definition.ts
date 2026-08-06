@@ -5,8 +5,9 @@
  */
 
 import { Package } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { McasWindowContent } from './McasWindowContent';
+import { McasWindow } from './McasWindow';
 
 export type McasWindowProps = {};
 
@@ -15,15 +16,14 @@ export const mcasWindowDefinition: WindowTypeDefinition<McasWindowProps> = {
   displayName: 'MCAs',
   icon: Package,
   color: '#7A54A6',
-  component: McasWindowContent,
+  component: McasWindow,
 
   defaultSize: { width: 1000, height: 750 },
   minSize: { width: 600, height: 500 },
 
-  singleton: true,
 
-  getTitle: () => 'MCA Catalog',
-  getSubtitle: () => 'Manage MCA definitions',
+  getTitle: () => i18n.t("windows.mcaCatalog"),
+  getSubtitle: () => i18n.t("windows.mcaCatalogSub"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

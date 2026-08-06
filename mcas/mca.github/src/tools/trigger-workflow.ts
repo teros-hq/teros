@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const triggerWorkflow: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Trigger a workflow dispatch event',
   parameters: {
     type: 'object',

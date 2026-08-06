@@ -4,6 +4,7 @@ import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../
 const READ_MASK = 'names,emailAddresses,phoneNumbers,organizations,photos';
 
 export const searchContacts: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search for contacts by query.',
   parameters: {
     type: 'object',

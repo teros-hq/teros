@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Render API key and connectivity."
+    },
+    "render-get-user": {
+      "name": "render-get-user",
+      "description": "Get the authenticated Render user info."
+    },
+    "render-list-owners": {
+      "name": "render-list-owners",
+      "description": "List all workspaces/owners (personal and team accounts) accessible to the authenticated user."
+    },
+    "render-list-projects": {
+      "name": "render-list-projects",
+      "description": "List all projects in the Render account."
+    },
+    "render-get-project": {
+      "name": "render-get-project",
+      "description": "Get detailed information about a specific Render project.",
+      "params": {
+        "projectId": "The Render project ID"
+      }
+    },
+    "render-create-project": {
+      "name": "render-create-project",
+      "description": "Create a new project in Render. Use render-list-owners to get the ownerId.",
+      "params": {
+        "name": "Project name",
+        "ownerId": "Owner/workspace ID (use render-list-owners to get IDs)"
+      }
+    },
+    "render-delete-project": {
+      "name": "render-delete-project",
+      "description": "Delete a Render project. This action is irreversible!",
+      "params": {
+        "projectId": "The Render project ID to delete"
+      }
+    },
+    "render-list-environments": {
+      "name": "render-list-environments",
+      "description": "List all environments in a Render project.",
+      "params": {
+        "projectId": "The Render project ID"
+      }
+    },
+    "render-create-environment": {
+      "name": "render-create-environment",
+      "description": "Create a new environment in a Render project.",
+      "params": {
+        "projectId": "The Render project ID",
+        "name": "Environment name (e.g., \"staging\", \"production\")"
+      }
+    },
+    "render-list-services": {
+      "name": "render-list-services",
+      "description": "List all services in the Render account. Optionally filter by type or name.",
+      "params": {
+        "type": "Filter by service type: web_service, static_site, background_worker, private_service, cron_job",
+        "name": "Filter by service name (partial match)"
+      }
+    },
+    "render-get-service": {
+      "name": "render-get-service",
+      "description": "Get detailed information about a specific Render service.",
+      "params": {
+        "serviceId": "The Render service ID"
+      }
+    },
+    "render-create-service": {
+      "name": "render-create-service",
+      "description": "Create a new service on Render from a GitHub repository. Use render-list-owners to get ownerId.",
+      "params": {
+        "name": "Service name",
+        "ownerId": "Owner/workspace ID (use render-list-owners to get IDs)",
+        "type": "Service type: web_service, static_site, background_worker, private_service, cron_job",
+        "repoURL": "GitHub repository URL (e.g., \"https://github.com/owner/repo\")",
+        "branch": "Branch to deploy from (default: \"main\")",
+        "buildCommand": "Build command (e.g., \"npm run build\")",
+        "startCommand": "Start command for web/worker services (e.g., \"node server.js\")",
+        "plan": "Instance plan (e.g., \"free\", \"starter\", \"standard\", \"pro\")",
+        "region": "Deployment region (e.g., \"oregon\", \"frankfurt\", \"singapore\")",
+        "autoDeploy": "Auto-deploy on git push: \"yes\" or \"no\" (default: \"yes\")"
+      }
+    },
+    "render-delete-service": {
+      "name": "render-delete-service",
+      "description": "Delete a Render service. This action is irreversible!",
+      "params": {
+        "serviceId": "The Render service ID to delete"
+      }
+    },
+    "render-suspend-service": {
+      "name": "render-suspend-service",
+      "description": "Suspend a running Render service (stops billing for compute).",
+      "params": {
+        "serviceId": "The Render service ID to suspend"
+      }
+    },
+    "render-resume-service": {
+      "name": "render-resume-service",
+      "description": "Resume a suspended Render service.",
+      "params": {
+        "serviceId": "The Render service ID to resume"
+      }
+    },
+    "render-restart-service": {
+      "name": "render-restart-service",
+      "description": "Restart a running Render service.",
+      "params": {
+        "serviceId": "The Render service ID to restart"
+      }
+    },
+    "render-list-deploys": {
+      "name": "render-list-deploys",
+      "description": "List recent deploys for a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "limit": "Maximum number of deploys to return (default: 10, max: 100)"
+      }
+    },
+    "render-get-deploy": {
+      "name": "render-get-deploy",
+      "description": "Get the status and details of a specific Render deploy.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "deployId": "The Render deploy ID"
+      }
+    },
+    "render-trigger-deploy": {
+      "name": "render-trigger-deploy",
+      "description": "Trigger a new deploy for a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "clearCache": "Whether to clear the build cache: \"clear\" or \"do_not_clear\" (default: do_not_clear)"
+      }
+    },
+    "render-cancel-deploy": {
+      "name": "render-cancel-deploy",
+      "description": "Cancel a running Render deploy.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "deployId": "The Render deploy ID to cancel"
+      }
+    },
+    "render-rollback-deploy": {
+      "name": "render-rollback-deploy",
+      "description": "Roll back a Render service to a specific previous deploy.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "deployId": "The deploy ID to roll back to"
+      }
+    },
+    "render-list-env-vars": {
+      "name": "render-list-env-vars",
+      "description": "List environment variables for a Render service.",
+      "params": {
+        "serviceId": "The Render service ID"
+      }
+    },
+    "render-set-env-vars": {
+      "name": "render-set-env-vars",
+      "description": "Set (replace all) environment variables for a Render service. This replaces ALL existing variables. Use render-update-env-var to update a single variable.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "envVars": "Array of environment variables to set"
+      }
+    },
+    "render-update-env-var": {
+      "name": "render-update-env-var",
+      "description": "Add or update a single environment variable for a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "key": "Environment variable key",
+        "value": "Environment variable value"
+      }
+    },
+    "render-delete-env-var": {
+      "name": "render-delete-env-var",
+      "description": "Delete an environment variable from a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "key": "Environment variable key to delete"
+      }
+    },
+    "render-list-custom-domains": {
+      "name": "render-list-custom-domains",
+      "description": "List custom domains configured for a Render service.",
+      "params": {
+        "serviceId": "The Render service ID"
+      }
+    },
+    "render-add-custom-domain": {
+      "name": "render-add-custom-domain",
+      "description": "Add a custom domain to a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "domain": "The custom domain name (e.g., \"app.example.com\")"
+      }
+    },
+    "render-delete-custom-domain": {
+      "name": "render-delete-custom-domain",
+      "description": "Remove a custom domain from a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "domainId": "The custom domain ID to remove"
+      }
+    },
+    "render-verify-custom-domain": {
+      "name": "render-verify-custom-domain",
+      "description": "Verify DNS configuration for a custom domain on a Render service.",
+      "params": {
+        "serviceId": "The Render service ID",
+        "domainId": "The custom domain ID to verify"
+      }
+    },
+    "render-list-disks": {
+      "name": "render-list-disks",
+      "description": "List persistent disks attached to a Render service.",
+      "params": {
+        "serviceId": "The Render service ID"
+      }
+    },
+    "render-add-disk": {
+      "name": "render-add-disk",
+      "description": "Add a persistent disk to a Render service (useful for databases and stateful apps).",
+      "params": {
+        "serviceId": "The Render service ID",
+        "name": "Disk name",
+        "mountPath": "Mount path inside the container (e.g., \"/data\")",
+        "sizeGB": "Disk size in GB (minimum: 1)"
+      }
+    },
+    "render-get-logs": {
+      "name": "render-get-logs",
+      "description": "Get recent logs for one or more Render services. Requires the owner ID (use render-list-owners) and service IDs.",
+      "params": {
+        "ownerId": "The owner/workspace ID (use render-list-owners to get IDs)",
+        "serviceIds": "Array of service IDs to get logs from",
+        "limit": "Maximum number of log lines to return (default: 100)",
+        "text": "Filter logs containing this text",
+        "level": "Filter by log level: debug, info, warning, error"
+      }
+    }
+  },
+  "name": "Render",
+  "description": "Deploy and manage services on Render directly from Teros workspaces. Supports web services, static sites, deployments, environment variables, custom domains, and more.",
+  "changelog": [
+    {
+      "notes": "Initial release — deploy services from GitHub, trigger and roll back deploys, manage env vars, custom domains, disks and logs"
+    }
+  ]
+}

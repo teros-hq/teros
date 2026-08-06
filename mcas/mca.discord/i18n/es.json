@@ -1,0 +1,233 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de Discord y la conectividad con la API."
+    },
+    "list-guilds": {
+      "name": "list-guilds",
+      "description": "Lista los servidores (guilds) de los que el bot/usuario es miembro. Soporta paginación.",
+      "params": {
+        "limit": "Máximo de servidores por página (1-200). Por defecto: 100",
+        "before": "Obtener servidores anteriores a este ID de servidor (para paginación)",
+        "after": "Obtener servidores posteriores a este ID de servidor (para paginación)",
+        "withCounts": "Incluir recuentos aproximados de miembros y presencia. Por defecto: false"
+      }
+    },
+    "get-guild": {
+      "name": "get-guild",
+      "description": "Obtiene información detallada de un servidor (guild) específico por su ID.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "withCounts": "Incluir recuentos aproximados de miembros y presencia. Por defecto: false"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "Lista los canales de un servidor. Devuelve canales de texto, voz, categoría y otros tipos.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)"
+      }
+    },
+    "get-channel": {
+      "name": "get-channel",
+      "description": "Obtiene información detallada de un canal específico por su ID.",
+      "params": {
+        "channelId": "ID del canal (snowflake)"
+      }
+    },
+    "create-channel": {
+      "name": "create-channel",
+      "description": "Crea un nuevo canal en un servidor. Soporta canales de texto, voz, categoría, anuncios y foro.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "name": "Nombre del canal (1-100 caracteres)",
+        "type": "Tipo de canal. Por defecto: text",
+        "topic": "Tema/descripción del canal (máx. 1024 caracteres para texto, 4096 para foro)",
+        "parentId": "ID del canal de categoría padre",
+        "nsfw": "Marcar canal como NSFW. Por defecto: false",
+        "rateLimitPerUser": "Modo lento en segundos (0-21600). Por defecto: 0",
+        "bitrate": "Bitrate del canal de voz en bits (8000-96000/128000 para servidores con boost)",
+        "userLimit": "Límite de usuarios del canal de voz (0-99, 0 = ilimitado). Por defecto: 0",
+        "position": "Posición de ordenación del canal"
+      }
+    },
+    "delete-channel": {
+      "name": "delete-channel",
+      "description": "Elimina un canal o cierra un DM. Requiere el permiso Gestionar Canales para canales de servidor.",
+      "params": {
+        "channelId": "ID del canal (snowflake) a eliminar",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Envía un mensaje a un canal de Discord. Soporta texto, embeds, menciones y respuestas.",
+      "params": {
+        "channelId": "ID del canal (snowflake) al que enviar el mensaje",
+        "content": "Contenido de texto del mensaje (máx. 2000 caracteres, 4000 para nitro)",
+        "embeds": "Cadena JSON opcional con un array de objetos embed. Usa el helper buildEmbed o pasa JSON en bruto.",
+        "replyToMessageId": "ID de mensaje opcional al que responder",
+        "mentionEveryone": "Permitir menciones @everyone y @here. Por defecto: false",
+        "mentionRoles": "Permitir menciones @role. Por defecto: true",
+        "mentionUsers": "Permitir menciones @user. Por defecto: true",
+        "tts": "Enviar como texto-a-voz. Por defecto: false"
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "Lista los mensajes de un canal. Soporta paginación mediante IDs de mensaje before/after/around.",
+      "params": {
+        "channelId": "ID del canal (snowflake)",
+        "limit": "Número de mensajes a recuperar (1-100). Por defecto: 50",
+        "before": "Obtener mensajes anteriores a este ID de mensaje",
+        "after": "Obtener mensajes posteriores a este ID de mensaje",
+        "around": "Obtener mensajes alrededor de este ID de mensaje"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Elimina un mensaje de un canal. Requiere el permiso Gestionar Mensajes si no eres el autor del mensaje.",
+      "params": {
+        "channelId": "ID del canal (snowflake)",
+        "messageId": "ID del mensaje (snowflake) a eliminar",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "add-reaction": {
+      "name": "add-reaction",
+      "description": "Añade una reacción (emoji) a un mensaje. Usa emoji Unicode o el formato de emoji personalizado nombre:id.",
+      "params": {
+        "channelId": "ID del canal (snowflake)",
+        "messageId": "ID del mensaje (snowflake)",
+        "emoji": "Emoji con el que reaccionar. Emoji Unicode (ej. 👍) o formato de emoji personalizado nombre:id"
+      }
+    },
+    "list-members": {
+      "name": "list-members",
+      "description": "Lista los miembros de un servidor. Soporta paginación mediante limit y after (ID de usuario).",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "limit": "Máximo de miembros a recuperar (1-1000). Por defecto: 100",
+        "after": "Obtener miembros posteriores a este ID de usuario (snowflake) para paginación"
+      }
+    },
+    "get-member": {
+      "name": "get-member",
+      "description": "Obtiene un miembro específico de un servidor por su ID de usuario.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) del miembro"
+      }
+    },
+    "list-roles": {
+      "name": "list-roles",
+      "description": "Lista todos los roles de un servidor, ordenados por posición (el más alto primero).",
+      "params": {
+        "guildId": "ID del servidor (snowflake)"
+      }
+    },
+    "create-role": {
+      "name": "create-role",
+      "description": "Crea un nuevo rol en un servidor. Requiere el permiso Gestionar Roles.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "name": "Nombre del rol (máx. 100 caracteres)",
+        "color": "Color del rol como entero (0 = sin color). Usa el valor entero RGB.",
+        "hoist": "Mostrar los miembros del rol por separado en la lista de conectados. Por defecto: false",
+        "icon": "Imagen del icono del rol en base64 (PNG/JPEG, máx. 256x256)",
+        "unicodeEmoji": "Emoji Unicode para usar como icono del rol",
+        "mentionable": "Permitir que cualquiera pueda @mencionar este rol. Por defecto: false",
+        "permissions": "Campo de bits de permisos como cadena. Por defecto: '0'",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "assign-role": {
+      "name": "assign-role",
+      "description": "Añade un rol a un miembro del servidor. Requiere el permiso Gestionar Roles con el rol del bot por encima del rol objetivo.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) al que asignar el rol",
+        "roleId": "ID del rol (snowflake) a asignar",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "remove-role": {
+      "name": "remove-role",
+      "description": "Elimina un rol de un miembro del servidor. Requiere el permiso Gestionar Roles.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) al que quitar el rol",
+        "roleId": "ID del rol (snowflake) a eliminar",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "list-webhooks": {
+      "name": "list-webhooks",
+      "description": "Lista los webhooks de un servidor o canal. Requiere el permiso Gestionar Webhooks.",
+      "params": {
+        "guildId": "ID del servidor (snowflake) para listar todos los webhooks del servidor",
+        "channelId": "ID del canal (snowflake) para listar los webhooks de un canal específico"
+      }
+    },
+    "create-webhook": {
+      "name": "create-webhook",
+      "description": "Crea un nuevo webhook en un canal. Requiere el permiso Gestionar Webhooks. Devuelve el token del webhook para enviar mensajes.",
+      "params": {
+        "channelId": "ID del canal (snowflake) donde crear el webhook",
+        "name": "Nombre del webhook (1-80 caracteres, no puede contener 'clyde' o 'discord')",
+        "avatar": "Imagen del avatar en base64 (PNG/JPEG/GIF, máx. 128x128)",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    },
+    "send-webhook-message": {
+      "name": "send-webhook-message",
+      "description": "Envía un mensaje mediante un webhook usando la URL del webhook. Soporta texto, embeds y nombres de usuario.",
+      "params": {
+        "webhookId": "ID del webhook (snowflake)",
+        "webhookToken": "Token del webhook (de la respuesta de create-webhook)",
+        "content": "Contenido de texto del mensaje (máx. 2000 caracteres)",
+        "username": "Sobrescribir el nombre de usuario por defecto del webhook",
+        "avatarUrl": "Sobrescribir la URL del avatar por defecto del webhook",
+        "embeds": "Cadena JSON opcional con un array de objetos embed",
+        "threadId": "ID de hilo opcional para enviar el mensaje en un hilo de foro"
+      }
+    },
+    "kick-member": {
+      "name": "kick-member",
+      "description": "Expulsa a un miembro de un servidor. Requiere el permiso Expulsar Miembros.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) del miembro a expulsar",
+        "reason": "Motivo opcional para el registro de auditoría de la expulsión"
+      }
+    },
+    "ban-member": {
+      "name": "ban-member",
+      "description": "Banea a un miembro de un servidor. Opcionalmente elimina su historial de mensajes. Requiere el permiso Banear Miembros.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) del miembro a banear",
+        "deleteMessageSeconds": "Número de segundos de mensajes a eliminar (0-604800, máx. 7 días). Por defecto: 0",
+        "reason": "Motivo opcional para el registro de auditoría del baneo"
+      }
+    },
+    "timeout-member": {
+      "name": "timeout-member",
+      "description": "Silencia (timeout) a un miembro del servidor durante una duración especificada. Requiere el permiso Moderar Miembros.",
+      "params": {
+        "guildId": "ID del servidor (snowflake)",
+        "userId": "ID de usuario (snowflake) del miembro a silenciar",
+        "durationMinutes": "Duración del silencio en minutos (máx. 40320 = 28 días). Por defecto: 60",
+        "reason": "Motivo opcional para el registro de auditoría"
+      }
+    }
+  },
+  "name": "Discord",
+  "description": "Integración completa de Discord: servidores, canales, mensajes, miembros, roles, webhooks, hilos, reacciones y moderación. Usa la API REST de Discord con OAuth 2.0 / Bot Token.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — enviar y leer mensajes, gestionar servidores, canales, roles, miembros y webhooks, reaccionar y moderar"
+    }
+  ]
+}

@@ -1,0 +1,53 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la conectividad WebSocket con el backend."
+    },
+    "admin-infra-backend-status": {
+      "name": "admin-infra-backend-status",
+      "description": "Obtiene el estado actual del backend de Teros, incluyendo tiempo de actividad, uso de memoria, información del proceso y número de MCAs en ejecución."
+    },
+    "admin-infra-restart-backend": {
+      "name": "admin-infra-restart-backend",
+      "description": "Reinicia el servidor backend de Teros. Apagará de forma ordenada todos los procesos MCA y reiniciará el backend. Usar con precaución: esto interrumpirá temporalmente el servicio.",
+      "params": {
+        "confirm": "Bandera de confirmación: debe ser true para proceder con el reinicio"
+      }
+    },
+    "admin-infra-sync": {
+      "name": "admin-infra-sync",
+      "description": "Sincroniza MCAs, modelos y herramientas del sistema de archivos a la base de datos. Ejecutar esto después de añadir o modificar MCAs."
+    },
+    "admin-infra-mca-status": {
+      "name": "admin-infra-mca-status",
+      "description": "Obtiene el estado de todos los procesos MCA en ejecución. Solo super administrador."
+    },
+    "admin-infra-mca-kill": {
+      "name": "admin-infra-mca-kill",
+      "description": "Termina un proceso MCA en ejecución por su ID. Solo super administrador. DESTRUCTIVO: usar con precaución.",
+      "params": {
+        "id": "ID del proceso MCA a terminar",
+        "confirm": "Debe ser true para confirmar"
+      }
+    },
+    "admin-infra-mca-cleanup": {
+      "name": "admin-infra-mca-cleanup",
+      "description": "Limpia procesos MCA obsoletos o muertos. Solo super administrador. DESTRUCTIVO: usar con precaución.",
+      "params": {
+        "confirm": "Debe ser true para confirmar"
+      }
+    },
+    "admin-infra-mca-health": {
+      "name": "admin-infra-mca-health",
+      "description": "Ejecuta verificaciones de salud en todos los procesos MCA. Solo super administrador."
+    }
+  },
+  "name": "Teros Admin Infra",
+  "description": "Herramientas de infraestructura para gestionar el backend de Teros: estado del backend, reinicio, sincronización y gestión de procesos MCA (estado, terminación, limpieza, verificaciones de salud).",
+  "changelog": [
+    {
+      "notes": "Comprueba el estado del backend, reinicia y sincroniza el servidor, y monitoriza, termina, limpia y verifica la salud de los procesos de las apps"
+    }
+  ]
+}

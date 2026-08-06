@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCA Icons Preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0f0f14;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      color: #e2e8f0;
+      padding: 40px 32px;
+      min-height: 100vh;
+    }
+    h1 {
+      font-size: 22px;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 8px;
+    }
+    p.sub {
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 36px;
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #475569;
+      margin-bottom: 16px;
+      margin-top: 32px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: #1e1e2e;
+      border: 1px solid #2d2d3f;
+      border-radius: 12px;
+      padding: 20px 12px 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      transition: border-color 0.15s;
+    }
+    .card:hover { border-color: #4f46e5; }
+    .card img {
+      width: 80px;
+      height: 80px;
+      border-radius: 18px;
+      object-fit: cover;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .card .name {
+      font-size: 12px;
+      font-weight: 500;
+      color: #cbd5e1;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .card .id {
+      font-size: 10px;
+      color: #475569;
+      text-align: center;
+      font-family: monospace;
+    }
+    .badge {
+      font-size: 9px;
+      padding: 2px 7px;
+      border-radius: 99px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+    }
+    .badge.new { background: #1e3a5f; color: #60a5fa; }
+    .badge.fixed { background: #1a3a2a; color: #4ade80; }
+    .badge.ok { background: #1e1e2e; color: #475569; border: 1px solid #2d2d3f; }
+  </style>
+</head>
+<body>
+  <h1>MCA Icons Preview</h1>
+  <p class="sub">New and fixed icons for the Teros catalog</p>
+
+  <div class="section-title">🔧 Fixed — had "Not Found" (9 bytes)</div>
+  <div class="grid">
+    <div class="card">
+      <img src="./monday.png" alt="Monday">
+      <div class="name">Monday.com</div>
+      <div class="id">mca.monday</div>
+      <span class="badge fixed">fixed</span>
+    </div>
+    <div class="card">
+      <img src="./sentry.png" alt="Sentry">
+      <div class="name">Sentry</div>
+      <div class="id">mca.sentry</div>
+      <span class="badge fixed">fixed</span>
+    </div>
+    <div class="card">
+      <img src="./todoist.png" alt="Todoist">
+      <div class="name">Todoist</div>
+      <div class="id">mca.todoist</div>
+      <span class="badge fixed">fixed</span>
+    </div>
+    <div class="card">
+      <img src="./memory.png" alt="Memory">
+      <div class="name">Memory</div>
+      <div class="id">mca.teros.memory</div>
+      <span class="badge fixed">fixed</span>
+    </div>
+  </div>
+
+  <div class="section-title">➕ Nuevos — faltaba icon.png</div>
+  <div class="grid">
+    <div class="card">
+      <img src="./homey.png" alt="Homey">
+      <div class="name">Homey</div>
+      <div class="id">mca.homey</div>
+      <span class="badge new">new</span>
+    </div>
+    <div class="card">
+      <img src="./kelify.png" alt="Kelify">
+      <div class="name">Kelify</div>
+      <div class="id">mca.kelify</div>
+      <span class="badge new">new</span>
+    </div>
+    <div class="card">
+      <img src="./board_manager.png" alt="Board Manager">
+      <div class="name">Board Manager</div>
+      <div class="id">mca.teros.board-manager</div>
+      <span class="badge new">new</span>
+    </div>
+    <div class="card">
+      <img src="./board_runner.png" alt="Board Runner">
+      <div class="name">Board Runner</div>
+      <div class="id">mca.teros.board-runner</div>
+      <span class="badge new">new</span>
+    </div>
+    <div class="card">
+      <img src="./docker_env.png" alt="Docker Env">
+      <div class="name">Docker Env</div>
+      <div class="id">mca.teros.docker-env</div>
+      <span class="badge new">new</span>
+    </div>
+  </div>
+
+</body>
+</html>

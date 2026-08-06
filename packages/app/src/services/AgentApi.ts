@@ -5,7 +5,7 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Shared types
@@ -29,12 +29,14 @@ export interface AgentData {
 
 export interface AgentCoreData {
   coreId: string
+  coreType?: 'agent' | 'super-agent'
   name: string
   fullName: string
   version: string
   systemPrompt: string
   personality: string[]
   capabilities: string[]
+  defaultApps?: string[]
   avatarUrl: string
   modelId: string
   modelOverrides?: { temperature?: number; maxTokens?: number }
@@ -79,16 +81,15 @@ export interface AgentProvidersData {
 // ============================================================================
 
 export class AgentApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   /** List agent instances for the current user, or for a workspace */
   listAgents(workspaceId?: string): Promise<{ workspaceId?: string; agents: AgentData[] }> {
     return this.transport.request('agent.list', workspaceId ? { workspaceId } : {})
   }
 
-  /** Create a new agent instance */
+  /** Create a new agent instance. The core is assigned server-side by scope. */
   createAgent(data: {
-    coreId: string
     name: string
     fullName: string
     role: string
@@ -113,6 +114,7 @@ export class AgentApi {
     availableProviders?: string[]
     selectedProviderId?: string | null
     selectedModelId?: string | null
+    appearance?: { color?: string; icon?: string }
   }): Promise<{ agent: AgentData }> {
     return this.transport.request('agent.update', data as Record<string, unknown>)
   }
@@ -122,12 +124,16 @@ export class AgentApi {
     return this.transport.request('agent.delete', { agentId })
   }
 
-  /** Generate a unique agent profile via LLM */
+  /** Generate a unique agent profile via LLM. Core is resolved server-side by scope. */
   generateProfile(
-    coreId: string,
     excludeNames: string[] = [],
+    workspaceId?: string,
   ): Promise<{ profile: GeneratedProfile }> {
-    return this.transport.request('agent.generate-profile', { coreId, excludeNames }, 30_000)
+    return this.transport.request(
+      'agent.generate-profile',
+      { workspaceId, excludeNames },
+      { timeout: 30_000 },
+    )
   }
 
   /** List available agent cores (engines) */
@@ -135,12 +141,37 @@ export class AgentApi {
     return this.transport.request('agent.list-cores', status ? { status } : {})
   }
 
-  /** Update an agent core configuration */
+  /** Create a new agent core (engine). Created active by default. */
+  createCore(data: {
+    coreId: string
+    coreType: 'agent' | 'super-agent'
+    name: string
+    fullName: string
+    version?: string
+    systemPrompt: string
+    personality?: string[]
+    capabilities?: string[]
+    defaultApps?: string[]
+    avatarUrl?: string
+    modelId: string
+    modelOverrides?: { temperature?: number; maxTokens?: number }
+    status?: 'active' | 'inactive'
+  }): Promise<{ core: AgentCoreData }> {
+    return this.transport.request('agent.create-core', data as Record<string, unknown>)
+  }
+
+  /** Update an agent core configuration (coreId/coreType are immutable) */
   updateCore(
     coreId: string,
     updates: {
+      name?: string
+      fullName?: string
+      version?: string
       modelId?: string
       systemPrompt?: string
+      personality?: string[]
+      capabilities?: string[]
+      defaultApps?: string[]
       modelOverrides?: { temperature?: number; maxTokens?: number }
       status?: 'active' | 'inactive'
     },
@@ -149,8 +180,8 @@ export class AgentApi {
   }
 
   /** Get apps an agent has access to */
-  getApps(agentId: string): Promise<{ agentId: string; apps: AgentAppData[] }> {
-    return this.transport.request('agent.get-apps', { agentId })
+  getApps(agentId: string, workspaceId?: string): Promise<{ agentId: string; apps: AgentAppData[] }> {
+    return this.transport.request('agent.get-apps', { agentId, workspaceId })
   }
 
   /** List providers available for an agent */

@@ -1,0 +1,31 @@
+{
+  "name": "@teros/mca-testing",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts",
+      "types": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "//test:mca": "Pass MCA ID after --: npm run test:<type> -- <mca-id>",
+    "test:mca": "./bin/test-mca.sh",
+    "test:unit": "./bin/test-mca.sh --unit",
+    "test:smoke": "./bin/test-mca.sh --smoke",
+    "test:integration": "./bin/test-mca.sh --integration",
+    "test:quality-gates": "./bin/test-mca.sh --quality-gates"
+  },
+  "dependencies": {
+    "@teros/shared": "2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@types/bun": "^1.1.14",
+    "typescript": "^5.7.2"
+  }
+}

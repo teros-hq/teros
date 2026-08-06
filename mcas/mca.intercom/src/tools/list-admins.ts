@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const listAdmins: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all admins (agents) in the Intercom workspace with their IDs, names, emails, and seat status.',
   parameters: {
     type: 'object',

@@ -1,0 +1,18 @@
+{
+  "tools": {
+    "http-request": {
+      "name": "http-request",
+      "description": "공용 REST API(GET/POST/PUT/PATCH/DELETE)에 HTTP 요청을 하고 { status, ok, headers, body }를 반환합니다. API 키를 노출하지 않고 사용하려면 이 앱의 설정에 한 번 저장하고 URL, 쿼리 값 또는 헤더 값에서 {{NAME}}으로 참조하세요(예: 헤더 \"api-key: {{BREVO_API_KEY}}\", 쿼리 api_key=\"{{HUNTER_API_KEY}}\", 또는 URL \".../{{MAKE_WEBHOOK_TOKEN}}\"). 개인/내부 주소는 차단됩니다(SSRF 안전).",
+      "params": {
+        "method": "HTTP 메서드. 기본값은 GET입니다.",
+        "url": "전체 https:// URL ({{SECRET}} 자리 표시자를 포함할 수 있습니다). 프로덕션에서는 비밀을 포함하는 요청에 대해 일반 http://는 거부됩니다.",
+        "headers": "요청 헤더. 값에는 {{SECRET}} 자리 표시자가 포함될 수 있습니다. 본문이 전송될 때 Content-Type은 기본적으로 application/json입니다.",
+        "query": "URL에 추가된 쿼리 문자열 매개변수. 값에는 {{SECRET}} 자리 표시자가 포함될 수 있습니다.",
+        "body": "원시 요청 본문(예: JSON 문자열). GET 요청에는 무시됩니다. {{SECRET}} 자리 표시자를 포함할 수 있습니다.",
+        "timeoutMs": "밀리초 단위의 요청 타임아웃(기본값 30000, 최소 1000, 최대 120000)."
+      }
+    }
+  },
+  "name": "HTTP 요청",
+  "description": "에이전트에서 공용 REST API(GET/POST/PUT/PATCH/DELETE)를 호출합니다. 저장된 API 키를 {{PLACEHOLDER}}로 참조하여 모델에 도달하지 않도록 합니다. 개인/내부 주소는 차단됩니다(SSRF 안전)."
+}

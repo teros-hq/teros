@@ -19,13 +19,13 @@ describe('AppAuthCommands', () => {
       getApp: mock(() =>
         Promise.resolve({
           appId,
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           name: 'Test App',
         }),
       ),
       getMcaFromCatalog: mock(() =>
         Promise.resolve({
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           name: 'Test MCA',
         }),
       ),

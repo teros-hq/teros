@@ -1,0 +1,913 @@
+{
+  "name": "Slack",
+  "description": "Integración completa del espacio de trabajo de Slack: canales, mensajes, hilos, reacciones, archivos, usuarios, búsqueda y presencia. Utiliza la API web de Slack con OAuth 2.0.",
+  "changelog": [
+    {
+      "notes": "Lanzamiento inicial: enviar y leer mensajes, gestionar canales, hilos, archivos, reacciones, usuarios y buscar"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Chequeo de salud interno. Sondea las credenciales de OAuth de Slack y la accesibilidad de la API a través de auth.test."
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "Listar canales. Devuelve filas curadas { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created } + nextCursor. Params: types? (CSV public_channel|private_channel|mpim|im), limit (1-1000, def 100), cursor, excludeArchived (def true), fields?, includeRaw.",
+      "params": {
+        "types": "Tipos de canal separados por comas de public_channel, private_channel, mpim, im. Por defecto: public_channel,private_channel.",
+        "limit": "Resultados por página. Mín 1, máx 1000, por defecto 100.",
+        "cursor": "Cursor de Slack de la respuesta anterior.nextCursor.",
+        "excludeArchived": "Excluir canales archivados. Por defecto verdadero.",
+        "fields": "Sobrescribir la lista blanca por defecto por fila.",
+        "includeRaw": "Devolver objetos de canal de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "get-channel": {
+      "name": "get-channel",
+      "description": "Obtener un solo canal. Devuelve { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created, creator, isGeneral, isShared } + extras. Params: channelId, fields?, includeRaw.",
+      "params": {
+        "channelId": "ID del canal de Slack (C... / G... / D... / M...).",
+        "fields": "Sobrescribir la lista blanca por defecto.",
+        "includeRaw": "Devolver objeto de canal de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "create-channel": {
+      "name": "create-channel",
+      "description": "Crear un canal. Slack normaliza el nombre (minúsculas, sin espacios, solo [a-z0-9_-], ≤80). Devuelve el canal curado + ActionBadge('created'). No se puede reintentar. Params: name, isPrivate? (def false), topic?, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre del canal (minúsculas, ≤80 caracteres, solo letras/dígitos/guion bajo/guion).",
+        "isPrivate": "Crear como privado. Por defecto falso.",
+        "topic": "Tema opcional del canal, establecido después de la creación.",
+        "fields": "Sobrescribir la lista blanca por defecto en el canal devuelto.",
+        "includeRaw": "Devolver objeto de canal de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "archive-channel": {
+      "name": "archive-channel",
+      "description": "Archivar un canal (solo lectura después). Devuelve { id, name } de una llamada de información de seguimiento. No se puede reintentar. Params: channelId.",
+      "params": {
+        "channelId": "ID del canal de Slack (C... / G...)."
+      }
+    },
+    "join-channel": {
+      "name": "join-channel",
+      "description": "Unirse a un canal público. Devuelve el canal curado. Idempotente (already_in_channel genera BUSINESS_RULE). Params: channelId.",
+      "params": {
+        "channelId": "ID del canal de Slack (C...)."
+      }
+    },
+    "invite-to-channel": {
+      "name": "invite-to-channel",
+      "description": "Invitar usuarios a un canal. Devuelve { channel, invitedUserIds, alreadyInChannel? }. No se puede reintentar. Params: channelId, userIds[].",
+      "params": {
+        "channelId": "ID del canal de Slack (C... / G...).",
+        "userIds": "IDs de usuario de Slack (U... / W...) a invitar."
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Publicar un mensaje en un canal, DM o como un mensaje de nivel superior. Devuelve { ts, channel, message, permalink }. No se puede reintentar (sin clave de idempotencia — mensajes duplicados en reintento). Params: channel, text, blocks? (JSON), threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+      "params": {
+        "channel": "ID del canal (C... / G... / D... / M...) o ID de usuario (U... para DM).",
+        "text": "Cuerpo de texto plano. Requerido incluso cuando se proporcionan bloques (se utiliza como respaldo).",
+        "blocks": "Cadena JSON opcional de Slack Block Kit (será analizada).",
+        "threadTs": "Timestamp del mensaje padre para publicar como respuesta en hilo. Usa send-thread-reply para la API de hilo canónica.",
+        "unfurlLinks": "Desplegar enlaces en el mensaje. Por defecto verdadero.",
+        "unfurlMedia": "Desplegar medios en el mensaje. Por defecto verdadero."
+      }
+    },
+    "send-thread-reply": {
+      "name": "send-thread-reply",
+      "description": "Responder dentro de un hilo de Slack. Devuelve { ts, channel, threadTs, broadcast, message }. No se puede reintentar (sin clave de idempotencia). Params: channel, threadTs, text, blocks? (JSON), broadcast (def false).",
+      "params": {
+        "channel": "ID del canal donde vive el mensaje padre.",
+        "threadTs": "Timestamp del mensaje padre (1234567890.123456).",
+        "text": "Cuerpo de respuesta de texto plano.",
+        "blocks": "Cadena JSON opcional de Slack Block Kit.",
+        "broadcast": "También transmitir la respuesta al canal. Por defecto falso."
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "Listar mensajes de un canal o hilo (pasa threadTs para obtener respuestas). Devuelve filas curadas { ts, channel, user, text, threadTs, replyCount, reactions, permalink, createdAt } + nextCursor + isThread. Params: channel, threadTs?, limit (1-200, def 50), cursor, oldest, latest, inclusive, fields?, includeRaw.",
+      "params": {
+        "channel": "ID del canal de Slack (C... / G... / D... / M...).",
+        "threadTs": "Timestamp del mensaje padre para obtener respuestas del hilo. Formato 1234567890.123456.",
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de Slack de la respuesta anterior.nextCursor.",
+        "oldest": "Inicio del rango de tiempo (segundos Unix).",
+        "latest": "Fin del rango de tiempo (segundos Unix).",
+        "inclusive": "Incluir marcas de tiempo de límite. Por defecto falso.",
+        "fields": "Sobrescribir la lista blanca por defecto por fila.",
+        "includeRaw": "Devolver objetos de mensaje de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "add-reaction": {
+      "name": "add-reaction",
+      "description": "Agregar una reacción emoji a un mensaje. Devuelve { channel, timestamp, name }. Idempotente (already_reacted genera BUSINESS_RULE). Params: channel, timestamp, name (sin dos puntos).",
+      "params": {
+        "channel": "ID del canal donde está el mensaje.",
+        "timestamp": "Timestamp del mensaje (1234567890.123456).",
+        "name": "Nombre del emoji sin dos puntos (por ejemplo, 'thumbsup', 'fire')."
+      }
+    },
+    "remove-reaction": {
+      "name": "remove-reaction",
+      "description": "Eliminar una reacción emoji de un mensaje. Devuelve { channel, timestamp, name }. Idempotente (no_reaction genera BUSINESS_RULE). Params: channel, timestamp, name (sin dos puntos).",
+      "params": {
+        "channel": "ID del canal donde está el mensaje.",
+        "timestamp": "Timestamp del mensaje (1234567890.123456).",
+        "name": "Nombre del emoji sin dos puntos (por ejemplo, 'thumbsup')."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "Listar usuarios del espacio de trabajo. Devuelve filas curadas { id, name, realName, displayName, email, imageUrl, isBot, isAdmin, isOwner, deleted, tz } + nextCursor. Params: limit (1-200, def 100), cursor, includeDeleted (def false), includeBots (def true), fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 100.",
+        "cursor": "Cursor de Slack de la respuesta anterior.nextCursor.",
+        "includeDeleted": "Incluir usuarios desactivados. Por defecto falso.",
+        "includeBots": "Incluir usuarios bot. Por defecto verdadero.",
+        "fields": "Sobrescribir la lista blanca por defecto por fila.",
+        "includeRaw": "Devolver objetos de usuario de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtener un solo usuario por id o correo electrónico. Devuelve el usuario curado (id, name, realName, displayName, email, imageUrl, profile, tz). Proporcionar exactamente uno de userId/email. Params: userId?, email?, fields?, includeRaw.",
+      "params": {
+        "userId": "ID de usuario de Slack (U... / W...). Mutex con email.",
+        "email": "Correo electrónico del usuario. Mutex con userId.",
+        "fields": "Sobrescribir la lista blanca por defecto.",
+        "includeRaw": "Devolver objeto de usuario de Slack sin procesar. Por defecto falso."
+      }
+    },
+    "get-user-presence": {
+      "name": "get-user-presence",
+      "description": "Obtener presencia para un usuario de Slack. Devuelve { user, presence, online, autoAway, manualAway, connectionCount, lastActivity }. Params: userId.",
+      "params": {
+        "userId": "ID de usuario de Slack (U... o W...).",
+        "includeRaw": "Devolver respuesta de API sin procesar. Por defecto falso."
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Sube un archivo local a Slack y opcionalmente compártelo. Devuelve el archivo curado (id, nombre, mimetype, tamaño, permalink, thumbUrl). La ruta debe resolverse a una ruta absoluta. No es reintentable. Params: filePath, channels?[], title?, initialComment?, threadTs?, fields?, includeRaw.",
+      "params": {
+        "filePath": "Ruta absoluta al archivo local (≤100 MB).",
+        "channels": "IDs de los canales de Slack a los que compartir. Un solo id está bien.",
+        "title": "Título de archivo opcional (por defecto es el nombre base).",
+        "initialComment": "Comentario opcional publicado junto al archivo.",
+        "threadTs": "Timestamp del mensaje padre opcional para compartir dentro de un hilo.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el archivo devuelto.",
+        "includeRaw": "Devolver objeto de archivo Slack en bruto. Predeterminado falso."
+      }
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "Lista los archivos subidos. Devuelve filas curadas { id, nombre, título, mimetype, prettyType, tamaño, usuario, urlPrivate, permalink, thumbUrl, createdAt } + paginación. Params: channel?, user?, limit (1-100, def 20), page (def 1), tsFrom, tsTo, types? (CSV all|spaces|snippets|images|gdocs|zips|pdfs), fields?, includeRaw.",
+      "params": {
+        "channel": "Filtrar por ID de canal.",
+        "user": "Filtrar por ID de usuario que subió.",
+        "limit": "Resultados por página. Mínimo 1, máximo 100, predeterminado 20.",
+        "page": "Número de página (indexado en 1). Predeterminado 1.",
+        "tsFrom": "Filtrar archivos creados después de este timestamp Unix.",
+        "tsTo": "Filtrar archivos creados antes de este timestamp Unix.",
+        "types": "Tipos separados por comas de all, spaces, snippets, images, gdocs, zips, pdfs. Predeterminado all.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de archivo Slack en bruto. Predeterminado falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior."
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Buscar mensajes en todo el espacio de trabajo. Soporta la sintaxis de búsqueda de Slack (in:#channel, from:@user, before/after). Devuelve resultados curados { ts, channel, channelName, user, userName, text, permalink, score } + total + page. Params: query, sort? (score|timestamp), sortDirection? (asc|desc), count (1-100, def 20), page, highlight, fields?, includeRaw.",
+      "params": {
+        "query": "Consulta de búsqueda de Slack (soporta operadores como in:#channel, from:@user).",
+        "sort": "Ordenar por relevancia o tiempo. Predeterminado score.",
+        "sortDirection": "Dirección de ordenación. Predeterminado desc.",
+        "count": "Resultados por página. Mínimo 1, máximo 100, predeterminado 20.",
+        "page": "Número de página (indexado en 1). Predeterminado 1.",
+        "highlight": "Resaltar términos coincidentes en el texto devuelto. Predeterminado falso.",
+        "fields": "Sobrescribir la lista blanca predeterminada por coincidencia.",
+        "includeRaw": "Devolver raw Slack search.matches[]. Predeterminado falso."
+      }
+    },
+    "search-files": {
+      "name": "search-files",
+      "description": "Buscar archivos en todo el espacio de trabajo. Soporta la sintaxis de búsqueda de Slack (in:#channel, from:@user, type:pdf). Devuelve resultados curados { id, nombre, título, mimetype, permalink, thumbUrl, score, createdAt } + total + page. Params: query, sort? (score|timestamp), sortDirection?, count (1-100, def 20), page, highlight, fields?, includeRaw.",
+      "params": {
+        "query": "Consulta de búsqueda de Slack (soporta operadores como type:pdf, in:#channel).",
+        "sort": "Ordenar por relevancia o tiempo. Predeterminado score.",
+        "sortDirection": "Dirección de ordenación. Predeterminado desc.",
+        "count": "Resultados por página. Mínimo 1, máximo 100, predeterminado 20.",
+        "page": "Número de página (indexado en 1). Predeterminado 1.",
+        "highlight": "Resaltar términos coincidentes. Predeterminado falso.",
+        "fields": "Sobrescribir la lista blanca predeterminada por coincidencia.",
+        "includeRaw": "Devolver raw Slack search.files.matches[]. Predeterminado falso."
+      }
+    },
+    "get-team-info": {
+      "name": "get-team-info",
+      "description": "Obtener la información del espacio de trabajo de Slack conectado. Devuelve { id, nombre, dominio, emailDomain, iconUrl, enterpriseId, enterpriseName }. Params: fields?, includeRaw.",
+      "params": {
+        "fields": "Sobrescribir la lista blanca predeterminada en el equipo devuelto.",
+        "includeRaw": "Devolver objeto de equipo Slack en bruto. Predeterminado falso."
+      }
+    },
+    "update-message": {
+      "name": "update-message",
+      "description": "Editar un mensaje existente. El usuario del token debe ser el autor. Devuelve { ts, channel, text, message }. No es reintentable. Params: channel, ts, text? o blocks? (al menos uno requerido), attachments? (JSON).",
+      "params": {
+        "channel": "ID del canal donde vive el mensaje (C... / G... / D... / M...).",
+        "ts": "Timestamp del mensaje a editar (\"1234567890.123456\").",
+        "text": "Nuevo cuerpo de texto plano. Al menos uno de text/blocks debe proporcionarse.",
+        "blocks": "Nuevo string JSON de Slack Block Kit (será analizado). Reemplaza los bloques existentes.",
+        "attachments": "Nuevo string JSON de adjuntos (legado). Pasa [] para limpiar."
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Eliminar un mensaje. El usuario del token debe ser el autor o administrador del espacio de trabajo. Devuelve { channel, ts, deleted: true }. No es reintentable. Params: channel, ts, asUser? (predeterminado true).",
+      "params": {
+        "channel": "ID del canal donde vive el mensaje.",
+        "ts": "Timestamp del mensaje a eliminar.",
+        "asUser": "Eliminar como el usuario autenticado (predeterminado true). Establecer en falso solo si el token tiene alcance de administrador."
+      }
+    },
+    "get-permalink": {
+      "name": "get-permalink",
+      "description": "Obtener una URL permanente para un mensaje. Devuelve { channel, ts, permalink }. Idempotente, reintentable. Params: channel, ts.",
+      "params": {
+        "channel": "ID del canal.",
+        "ts": "Timestamp del mensaje.",
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "schedule-message": {
+      "name": "schedule-message",
+      "description": "Programar un mensaje para que se publique en un futuro timestamp en segundos Unix. Devuelve { channel, scheduledMessageId, postAt }. Slack rechaza postAt > 120 días adelante. No es reintentable. Params: channel, text, postAt (segundos Unix), blocks?, threadTs?, unfurlLinks (def true), unfurlMedia (def true).",
+      "params": {
+        "channel": "ID del canal o ID del usuario (DM).",
+        "text": "Cuerpo de texto plano (fallback para blocks).",
+        "postAt": "Segundos Unix cuando se debe publicar el mensaje. Debe ser futuro y ≤120 días adelante.",
+        "blocks": "String JSON opcional de Slack Block Kit.",
+        "threadTs": "Timestamp del mensaje padre para la respuesta en hilo.",
+        "unfurlLinks": "Desenrollar enlaces. Predeterminado true.",
+        "unfurlMedia": "Desenrollar medios. Predeterminado true."
+      }
+    },
+    "list-scheduled-messages": {
+      "name": "list-scheduled-messages",
+      "description": "Lista los mensajes programados pendientes para el usuario autenticado. Devuelve { messages: [{ id, channelId, postAt, postAtIso, text }], nextCursor, hasMore }. Reintentable. Params: channel?, latest?, oldest? (límites en segundos Unix), limit (1-100, def 100), cursor?.",
+      "params": {
+        "channel": "Filtrar a un solo ID de canal.",
+        "latest": "Límite superior (string en segundos Unix).",
+        "oldest": "Límite inferior (string en segundos Unix).",
+        "limit": "Máximo de elementos (1-100, predeterminado 100).",
+        "cursor": "Cursor de paginación de una llamada anterior.",
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "delete-scheduled-message": {
+      "name": "delete-scheduled-message",
+      "description": "Cancelar un mensaje programado. Devuelve { channel, scheduledMessageId, deleted: true }. No es reintentable. Params: channel, scheduledMessageId, asUser? (def true).",
+      "params": {
+        "channel": "ID del canal donde se programó el mensaje.",
+        "scheduledMessageId": "ID devuelto por chat.scheduleMessage / list-scheduled-messages.",
+        "asUser": "Eliminar como el usuario autenticado (predeterminado true)."
+      }
+    },
+    "send-ephemeral": {
+      "name": "send-ephemeral",
+      "description": "Publicar un mensaje efímero visible solo para un usuario en un canal. Devuelve { channel, user, messageTs }. No es reintentable. Params: channel, user (destinatario), text, blocks?, threadTs?.",
+      "params": {
+        "channel": "ID del canal.",
+        "user": "ID del usuario del destinatario (U... / W...). Solo ellos lo verán.",
+        "text": "Cuerpo de texto plano (fallback para blocks).",
+        "blocks": "String JSON opcional de Block Kit.",
+        "threadTs": "Timestamp del mensaje padre para la respuesta efímera en hilo."
+      }
+    },
+    "pin-message": {
+      "name": "pin-message",
+      "description": "Fijar un mensaje a un canal. Devuelve { channel, timestamp, pinned: true }. Idempotente (already_pinned no se trata como error). Params: channel, timestamp.",
+      "params": {
+        "channel": "ID del canal (C... / G... / D... / M...).",
+        "timestamp": "Timestamp del mensaje (\"1234567890.123456\")."
+      }
+    },
+    "unpin-message": {
+      "name": "unpin-message",
+      "description": "Desfijar un mensaje. Devuelve { channel, timestamp, unpinned: true }. Idempotente (no_pin no se trata como error). Params: channel, timestamp.",
+      "params": {
+        "channel": "ID del canal.",
+        "timestamp": "Timestamp del mensaje."
+      }
+    },
+    "list-pins": {
+      "name": "list-pins",
+      "description": "Lista los elementos fijados a un canal (mensajes y archivos). Devuelve { pins: [{ type, createdAt, createdBy, message? | file? }], count }. Reintentable. Params: channel.",
+      "params": {
+        "channel": "ID del canal cuyos fijados se deben listar.",
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "add-bookmark": {
+      "name": "add-bookmark",
+      "description": "Agregar un marcador a un canal (enlaces mostrados en el encabezado del canal). Devuelve el marcador curado. No es reintentable. Parámetros: canal, título, enlace (URL), emoji? (por ejemplo, ':notebook:').",
+      "params": {
+        "channel": "ID del canal.",
+        "title": "Título para mostrar.",
+        "link": "URL a la que apunta el marcador (solo http/https).",
+        "emoji": "Código corto de emoji opcional para el ícono del marcador."
+      }
+    },
+    "remove-bookmark": {
+      "name": "remove-bookmark",
+      "description": "Eliminar un marcador de canal por ID. Devuelve { channel, bookmarkId, removed: true }. No es reintentable. Parámetros: canal, bookmarkId.",
+      "params": {
+        "channel": "ID del canal.",
+        "bookmarkId": "ID del marcador de add-bookmark / list-bookmarks."
+      }
+    },
+    "list-bookmarks": {
+      "name": "list-bookmarks",
+      "description": "Listar marcadores adjuntos a un canal. Devuelve { bookmarks: [{ id, channelId, title, link, emoji, type, dateCreated, dateUpdated, rank }], count }. Reintentable. Parámetros: canal.",
+      "params": {
+        "channel": "ID del canal.",
+        "includeRaw": "Devolver respuesta API en bruto. Por defecto falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Obtener información completa de un archivo (canales compartidos, enlaces permanentes, comentarios opcionales). Devuelve el archivo curado + comentarios?[]. Reintentable. Parámetros: fileId (F...), includeComments (def falso), includeRaw.",
+      "params": {
+        "fileId": "ID del archivo de Slack (F...).",
+        "includeComments": "Incluir lista de comentarios (API heredada). Por defecto falso.",
+        "includeRaw": "Devolver objeto de archivo de Slack en bruto. Por defecto falso."
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Eliminar un archivo. El usuario del token debe ser propietario o administrador del espacio de trabajo. Devuelve { fileId, deleted: true }. No es reintentable. Parámetros: fileId (F...).",
+      "params": {
+        "fileId": "ID del archivo de Slack (F...)."
+      }
+    },
+    "leave-channel": {
+      "name": "leave-channel",
+      "description": "Salir de un canal público o privado. Devuelve { channelId, notInChannel }. No es reintentable. Parámetros: channelId.",
+      "params": {
+        "channelId": "ID del canal de Slack (C... / G...)."
+      }
+    },
+    "list-channel-members": {
+      "name": "list-channel-members",
+      "description": "Listar IDs de usuarios que son miembros de un canal. Devuelve { channelId, members: string[], nextCursor, hasMore }. Reintentable. Usa list-users + lookup si necesitas información del perfil. Parámetros: channelId, limit (1-1000, def 200), cursor?.",
+      "params": {
+        "channelId": "ID del canal (C... / G... / D... / M...).",
+        "limit": "Máximo de miembros por página (1-1000, por defecto 200).",
+        "cursor": "Cursor de paginación.",
+        "includeRaw": "Devolver respuesta API en bruto. Por defecto falso."
+      }
+    },
+    "open-dm": {
+      "name": "open-dm",
+      "description": "Abrir o recuperar una conversación directa. Un solo usuario → IM (D...); múltiples → MPIM (M...). Idempotente (reabre el canal existente). Devuelve el canal curado. Parámetros: users[] (1+ U.../W... ids), returnIm (def verdadero).",
+      "params": {
+        "users": "Array de IDs de usuarios de Slack. 1 usuario → IM. 2-8 usuarios → MPIM.",
+        "returnIm": "Devolver objeto de canal completo (def verdadero)."
+      }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "Obtener el perfil completo de Slack para un usuario (estado, campos personalizados, imagen, teléfono, título, zona horaria). Devuelve el perfil curado. Reintentable. Parámetros: userId? (por defecto: usuario autenticado), includeLabels (def falso), includeRaw.",
+      "params": {
+        "userId": "ID de usuario (U... / W...). Omitir para obtener el propio perfil del usuario autenticado.",
+        "includeLabels": "Incluir etiquetas de campos personalizados en la respuesta. Por defecto falso.",
+        "includeRaw": "Devolver objeto de perfil de Slack en bruto. Por defecto falso."
+      }
+    },
+    "update-user-profile": {
+      "name": "update-user-profile",
+      "description": "Actualizar el perfil de Slack del usuario autenticado (estado, campos de nombre, teléfono, título, campos personalizados). Devuelve el objeto de perfil actualizado. No es reintentable. Parámetros: statusText?, statusEmoji?, statusExpiration? (segundos unix), realName?, displayName?, phone?, title?, customFields? (mapa JSON de field_id → {value, alt?}), userId? (solo para administradores).",
+      "params": {
+        "statusText": "Estado corto (≤100 caracteres). Pasar cadena vacía para borrar.",
+        "statusEmoji": "Código corto de emoji para el estado. Pasar vacío para borrar.",
+        "statusExpiration": "Segundos unix cuando el estado se borra automáticamente. 0 = nunca expirar.",
+        "realName": "Nombre real.",
+        "displayName": "Nombre para mostrar (mostrado en mensajes).",
+        "phone": "Número de teléfono.",
+        "title": "Título del trabajo.",
+        "customFields": "Cadena JSON que mapea IDs de campos personalizados a {value, alt?}.",
+        "userId": "Solo para administradores: dirigir el perfil de otro usuario (requiere ámbito de administrador)."
+      }
+    },
+    "set-dnd": {
+      "name": "set-dnd",
+      "description": "Activar No Molestar para el usuario autenticado durante N minutos. Devuelve { snoozeEnabled, snoozeEndtime, snoozeRemaining }. No es reintentable. Parámetros: numMinutes (1-1440).",
+      "params": {
+        "numMinutes": "Cuánto tiempo silenciar (en minutos). Mínimo 1, máximo 1440 (24h)."
+      }
+    },
+    "end-dnd": {
+      "name": "end-dnd",
+      "description": "Finalizar el silenciado actual. Devuelve { snoozeEnabled: false }. Idempotente. Sin parámetros."
+    },
+    "get-dnd": {
+      "name": "get-dnd",
+      "description": "Obtener estado de DND para un usuario. Devuelve { snoozeEnabled, snoozeEndtime, snoozeRemaining, nextDndStart, nextDndEnd }. Reintentable. Parámetros: userId? (por defecto: usuario autenticado).",
+      "params": {
+        "userId": "ID de usuario (U... / W...). Omitir para el usuario autenticado.",
+        "includeRaw": "Devolver respuesta API en bruto. Por defecto falso."
+      }
+    },
+    "get-reactions": {
+      "name": "get-reactions",
+      "description": "Obtener reacciones en un mensaje o archivo. Proporcionar O BIEN (canal+timestamp) para un mensaje O (archivo) para un archivo. Devuelve { reactions: [{ name, count, users }], type, target }. Reintentable. Parámetros: channel?+timestamp? | file?, full (def verdadero).",
+      "params": {
+        "channel": "ID del canal (acompañado de timestamp para un mensaje).",
+        "timestamp": "Marca de tiempo del mensaje.",
+        "file": "ID del archivo (F...) — alternativa a canal+timestamp.",
+        "full": "Si es verdadero, se devuelven todos los reactores. Por defecto verdadero.",
+        "includeRaw": "Devolver respuesta API en bruto. Por defecto falso."
+      }
+    },
+    "get-team-preferences": {
+      "name": "get-team-preferences",
+      "description": "Obtener preferencias de política del espacio de trabajo (localización, canales predeterminados, quién puede crear/archivar canales, ventana de edición de mensajes, llamadas/reuniones habilitadas). Devuelve preferencias curadas. Reintentable. Sin parámetros.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Por defecto falso."
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Crear una lista de Slack (tabla colaborativa). Devuelve una lista curada con esquema. EXPERIMENTAL. Parámetros: name, description?, schema? (array JSON de {name, type}), todoMode (def false).",
+      "params": {
+        "name": "Nombre para mostrar.",
+        "description": "Descripción opcional.",
+        "schema": "Array JSON de columnas: [{\"name\":\"Título\",\"type\":\"texto\"}, ...]. Tipos: texto|número|fecha|usuario|casilla de verificación|seleccionar|seleccionar_múltiples.",
+        "todoMode": "Habilitar modo de tareas. Predeterminado falso."
+      }
+    },
+    "update-list": {
+      "name": "update-list",
+      "description": "Actualizar metadatos o esquema de la lista. Parcial. Devuelve una lista curada. EXPERIMENTAL. Parámetros: listId, name?, description?, schema?, todoMode?.",
+      "params": {
+        "listId": "ID de la lista.",
+        "schema": "Nuevo array JSON de esquema."
+      }
+    },
+    "delete-list": {
+      "name": "delete-list",
+      "description": "Eliminar una lista de Slack (y todos sus elementos). Devuelve { listId, deleted: true }. No es reintentable. EXPERIMENTAL. Parámetros: listId.",
+      "params": {
+        "listId": "ID de la lista."
+      }
+    },
+    "get-list": {
+      "name": "get-list",
+      "description": "Obtener detalles de la lista + esquema. Devuelve una lista curada. Reintentable. EXPERIMENTAL. Parámetros: listId.",
+      "params": {
+        "listId": "ID de la lista.",
+        "includeRaw": "Devolver respuesta API sin procesar. Predeterminado falso."
+      }
+    },
+    "list-list-items": {
+      "name": "list-list-items",
+      "description": "Listar elementos en una lista de Slack con paginación por cursor. Devuelve { listId, items, nextCursor, hasMore }. Reintentable. EXPERIMENTAL. Parámetros: listId, limit (1-100, def 50), cursor?.",
+      "params": {
+        "listId": "ID de la lista.",
+        "limit": "Elementos por página (1-100, predeterminado 50).",
+        "cursor": "Cursor de paginación.",
+        "includeRaw": "Devolver respuesta API sin procesar. Predeterminado falso."
+      }
+    },
+    "create-list-item": {
+      "name": "create-list-item",
+      "description": "Agregar una fila a una lista de Slack. fields es un objeto JSON que mapea column-id → valor. Devuelve un elemento curado. No es reintentable. EXPERIMENTAL. Parámetros: listId, fields (JSON).",
+      "params": {
+        "listId": "ID de la lista.",
+        "fields": "Objeto JSON que mapea el ID de columna al valor."
+      }
+    },
+    "update-list-item": {
+      "name": "update-list-item",
+      "description": "Actualizar campos de un elemento de la lista. Actualización parcial. Devuelve un elemento curado. No es reintentable. EXPERIMENTAL. Parámetros: listId, itemId, fields (JSON).",
+      "params": {
+        "listId": "ID de la lista.",
+        "itemId": "ID del elemento.",
+        "fields": "Objeto JSON — actualización parcial."
+      }
+    },
+    "delete-list-item": {
+      "name": "delete-list-item",
+      "description": "Eliminar un elemento de la lista. Devuelve { listId, itemId, deleted: true }. No es reintentable. EXPERIMENTAL. Parámetros: listId, itemId.",
+      "params": {
+        "listId": "ID de la lista.",
+        "itemId": "ID del elemento."
+      }
+    },
+    "create-canvas": {
+      "name": "create-canvas",
+      "description": "Crear un lienzo independiente de Slack (documento de texto enriquecido). Devuelve un lienzo curado. EXPERIMENTAL. Parámetros: title, contentMarkdown? (contenido inicial).",
+      "params": {
+        "title": "Título del lienzo.",
+        "contentMarkdown": "Contenido markdown inicial."
+      }
+    },
+    "edit-canvas": {
+      "name": "edit-canvas",
+      "description": "Editar un lienzo con una lista de cambios. changes es un array JSON de operaciones: [{operation:insertar|reemplazar|eliminar, sectionId?, document_content?:{type:markdown,markdown}}]. Devuelve un lienzo curado. No es reintentable. EXPERIMENTAL.",
+      "params": {
+        "canvasId": "ID del lienzo.",
+        "changes": "Array JSON de operaciones."
+      }
+    },
+    "delete-canvas": {
+      "name": "delete-canvas",
+      "description": "Eliminar un lienzo. Devuelve { canvasId, deleted: true }. No es reintentable. EXPERIMENTAL. Parámetros: canvasId.",
+      "params": {
+        "canvasId": "ID del lienzo."
+      }
+    },
+    "create-channel-canvas": {
+      "name": "create-channel-canvas",
+      "description": "Crear un lienzo adjunto a un canal (visible para todos los miembros). Devuelve un lienzo curado. EXPERIMENTAL. Parámetros: channelId, title?, contentMarkdown?.",
+      "params": {
+        "channelId": "ID del canal.",
+        "title": "Título opcional (def nombre del canal).",
+        "contentMarkdown": "Contenido markdown inicial."
+      }
+    },
+    "start-stream": {
+      "name": "start-stream",
+      "description": "Iniciar un mensaje de transmisión (respuestas de IA entregadas en partes en vivo). Devuelve { streamId, channel }. Usa append-stream + stop-stream para completar. EXPERIMENTAL. Parámetros: channel, threadTs?, recipientTeamId?.",
+      "params": {
+        "channel": "ID del canal.",
+        "threadTs": "Timestamp opcional del hilo padre.",
+        "recipientTeamId": "ID de equipo objetivo de Slack Connect."
+      }
+    },
+    "append-stream": {
+      "name": "append-stream",
+      "description": "Agregar un fragmento de contenido a un mensaje de transmisión activo. Devuelve { streamId, appended: true, length }. No es reintentable. EXPERIMENTAL. Parámetros: streamId, content.",
+      "params": {
+        "streamId": "ID de la transmisión de start-stream.",
+        "content": "Fragmento markdown para agregar."
+      }
+    },
+    "stop-stream": {
+      "name": "stop-stream",
+      "description": "Detener un mensaje de transmisión (vacía el estado final). Devuelve { streamId, stopped: true }. Idempotente. EXPERIMENTAL. Parámetros: streamId.",
+      "params": {
+        "streamId": "ID de la transmisión de start-stream."
+      }
+    },
+    "add-call": {
+      "name": "add-call",
+      "description": "Registrar una llamada (proveedor externo) con Slack. Devuelve la llamada curada. EXPERIMENTAL. Parámetros: externalUniqueId, joinUrl, desktopAppJoinUrl?, externalDisplayId?, title?, users? (array JSON), dateStart? (segundos unix).",
+      "params": {
+        "externalUniqueId": "Id único para la llamada en el proveedor externo.",
+        "joinUrl": "URL para unirse a la llamada.",
+        "desktopAppJoinUrl": "Enlace profundo para la aplicación de escritorio.",
+        "externalDisplayId": "Id de visualización mostrado a los usuarios.",
+        "title": "Título de la llamada.",
+        "users": "Array JSON de participantes.",
+        "dateStart": "Segundos unix cuando comenzó la llamada."
+      }
+    },
+    "end-call": {
+      "name": "end-call",
+      "description": "Marcar una llamada como finalizada. Devuelve { callId, ended: true }. No es reintentable. EXPERIMENTAL. Parámetros: callId, duration? (segundos).",
+      "params": {
+        "callId": "Id de llamada de Slack.",
+        "duration": "Duración de la llamada en segundos."
+      }
+    },
+    "update-call": {
+      "name": "update-call",
+      "description": "Actualizar los metadatos de la llamada (título o URLs de unión). Devuelve la llamada curada. No es reintentable. EXPERIMENTAL. Parámetros: callId, title?, joinUrl?, desktopAppJoinUrl?.",
+      "params": {
+        "callId": "Id de llamada de Slack."
+      }
+    },
+    "get-call": {
+      "name": "get-call",
+      "description": "Obtener detalles de la llamada (participantes, duración, estado). Devuelve la llamada curada. Reintentable. EXPERIMENTAL. Parámetros: callId.",
+      "params": {
+        "callId": "Id de llamada de Slack.",
+        "includeRaw": "Devolver respuesta API sin procesar. Por defecto falso."
+      }
+    },
+    "add-call-participants": {
+      "name": "add-call-participants",
+      "description": "Agregar participantes a una llamada activa. users es un array JSON de {slackId|externalId, displayName?, avatarUrl?}. Devuelve { callId, added: count }. No es reintentable. EXPERIMENTAL.",
+      "params": {
+        "callId": "Id de llamada de Slack.",
+        "users": "Array JSON de participantes."
+      }
+    },
+    "remove-call-participants": {
+      "name": "remove-call-participants",
+      "description": "Eliminar participantes de una llamada. users es un array JSON de {slackId|externalId}. Devuelve { callId, removed: count }. No es reintentable. EXPERIMENTAL.",
+      "params": {
+        "callId": "Id de llamada de Slack.",
+        "users": "Array JSON de participantes a eliminar."
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "Renombrar un canal. Nombre ≤80 caracteres, minúsculas, sin espacios/puntos (Slack normaliza). Devuelve el canal curado. No es reintentable. Parámetros: channelId, name.",
+      "params": {
+        "channelId": "Id del canal (C... / G...).",
+        "name": "Nuevo nombre."
+      }
+    },
+    "set-channel-purpose": {
+      "name": "set-channel-purpose",
+      "description": "Establecer el propósito de un canal (descripción en formato largo). Máx 250 caracteres. Devuelve { channelId, purpose }. No es reintentable. Parámetros: channelId, purpose.",
+      "params": {
+        "channelId": "Id del canal.",
+        "purpose": "Propósito del canal (≤250 caracteres)."
+      }
+    },
+    "set-channel-topic": {
+      "name": "set-channel-topic",
+      "description": "Establecer el tema de un canal (descripción corta en el encabezado). Máx 250 caracteres. Devuelve { channelId, topic }. No es reintentable. Parámetros: channelId, topic.",
+      "params": {
+        "channelId": "Id del canal.",
+        "topic": "Tema del canal (≤250 caracteres)."
+      }
+    },
+    "kick-from-channel": {
+      "name": "kick-from-channel",
+      "description": "Eliminar un usuario de un canal. Requiere permisos de administrador o propietario del canal. Devuelve { channelId, userId, kicked: true }. No es reintentable. Parámetros: channelId, userId.",
+      "params": {
+        "channelId": "Id del canal.",
+        "userId": "Id del usuario a eliminar."
+      }
+    },
+    "unarchive-channel": {
+      "name": "unarchive-channel",
+      "description": "Desarchivar un canal previamente archivado. Devuelve el canal curado. No es reintentable. Parámetros: channelId.",
+      "params": {
+        "channelId": "Id del canal."
+      }
+    },
+    "mark-channel-read": {
+      "name": "mark-channel-read",
+      "description": "Marcar todos los mensajes en un canal hasta e incluyendo la marca de tiempo como leídos. Devuelve { channelId, timestamp, marked: true }. Idempotente. Parámetros: channelId, timestamp.",
+      "params": {
+        "channelId": "Id del canal.",
+        "timestamp": "Marca de tiempo del mensaje como el cursor leído."
+      }
+    },
+    "get-upload-url": {
+      "name": "get-upload-url",
+      "description": "Paso 1 de la carga moderna de múltiples pasos: obtener URL externa prefirmada. PONER bytes y luego llamar a complete-upload. Devuelve { uploadUrl, fileId, filename, length }. Parámetros: filename, length (bytes), altTxt?, snippetType?.",
+      "params": {
+        "filename": "Nombre de archivo local.",
+        "length": "Tamaño del archivo en bytes.",
+        "altTxt": "Texto alternativo para imágenes.",
+        "snippetType": "Lenguaje para fragmentos de código.",
+        "includeRaw": "Devolver respuesta API sin procesar. Por defecto falso."
+      }
+    },
+    "complete-upload": {
+      "name": "complete-upload",
+      "description": "Paso 2 de la carga moderna: finalizar después de PONER bytes. files=[{id, title?}]. Opcionalmente compartir en canal/hilo. Devuelve archivo(s) curado(s). No es reintentable. Parámetros: files (array JSON), channelId?, initialComment?, threadTs?.",
+      "params": {
+        "files": "Array JSON de {id, title?}.",
+        "channelId": "Canal opcional para compartir.",
+        "initialComment": "Mensaje opcional.",
+        "threadTs": "Marca de tiempo del hilo padre opcional."
+      }
+    },
+    "share-file-public": {
+      "name": "share-file-public",
+      "description": "Hacer un archivo accesible públicamente a través de URL. Devuelve { fileId, permalinkPublic }. No es reintentable. Parámetros: fileId.",
+      "params": {
+        "fileId": "Id de archivo de Slack."
+      }
+    },
+    "revoke-file-public": {
+      "name": "revoke-file-public",
+      "description": "Revocar la URL pública de un archivo. Devuelve { fileId, revoked: true }. No es reintentable. Params: fileId.",
+      "params": {
+        "fileId": "ID de archivo de Slack."
+      }
+    },
+    "list-remote-files": {
+      "name": "list-remote-files",
+      "description": "Listar archivos remotos (almacenamiento externo como Google Drive). Devuelve { files, nextCursor, hasMore }. Reintentable. Params: channel?, tsFrom?, tsTo?, limit (1-200, def 100), cursor?.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "add-remote-file": {
+      "name": "add-remote-file",
+      "description": "Registrar un archivo externo (Google Drive, Dropbox) con Slack. Devuelve archivo remoto curado. No es reintentable. Params: externalId, externalUrl, title, fileType?, previewImage?, indexableFileContents?."
+    },
+    "update-remote-file": {
+      "name": "update-remote-file",
+      "description": "Actualizar los metadatos de un archivo remoto. Proporcionar externalId XOR fileId. Devuelve archivo remoto curado. No es reintentable."
+    },
+    "remove-remote-file": {
+      "name": "remove-remote-file",
+      "description": "Eliminar una referencia de archivo remoto (no se elimina en el proveedor externo). Proporcionar externalId XOR fileId. Devuelve { removed: true }. No es reintentable."
+    },
+    "share-remote-file": {
+      "name": "share-remote-file",
+      "description": "Compartir un archivo remoto en canales. Proporcionar externalId XOR fileId. Devuelve archivo remoto curado. No es reintentable. Params: channels (csv), externalId? | fileId?.",
+      "params": {
+        "channels": "IDs de canal separados por comas."
+      }
+    },
+    "get-remote-file": {
+      "name": "get-remote-file",
+      "description": "Obtener detalles de un archivo remoto. Proporcionar externalId XOR fileId. Devuelve archivo remoto curado. Reintentable.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "send-me-message": {
+      "name": "send-me-message",
+      "description": "Enviar un mensaje de acción /me (tercera persona en cursiva). Devuelve { ts, channel }. No es reintentable. Params: channel, text.",
+      "params": {
+        "channel": "ID del canal.",
+        "text": "Texto de acción."
+      }
+    },
+    "unfurl-link": {
+      "name": "unfurl-link",
+      "description": "Desenrollar personalizado para enlaces en un mensaje. unfurls es un mapa JSON url→{blocks, text}. Devuelve { channel, ts, unfurled: true, links }. No es reintentable.",
+      "params": {
+        "unfurls": "Mapa JSON url → {blocks, text}."
+      }
+    },
+    "list-user-channels": {
+      "name": "list-user-channels",
+      "description": "Listar los canales de los que un usuario es miembro. Devuelve { channels, nextCursor, hasMore }. Reintentable. Params: userId? (def authed), types? (csv), excludeArchived (def true), limit (1-1000, def 200), cursor?.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "delete-user-photo": {
+      "name": "delete-user-photo",
+      "description": "Eliminar la foto de perfil del usuario autenticado. Devuelve { deleted: true }. No es reintentable. Sin params."
+    },
+    "get-user-identity": {
+      "name": "get-user-identity",
+      "description": "Obtener la identidad del usuario autenticado desde OAuth (alcance identity.basic). Devuelve identidad curada. Reintentable. Sin params.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "list-my-reactions": {
+      "name": "list-my-reactions",
+      "description": "Listar todos los elementos a los que el usuario ha reaccionado. Devuelve { items, paging }. Reintentable. Params: userId? (def authed), count (1-1000, def 100), page, full (def true).",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "get-team-dnd": {
+      "name": "get-team-dnd",
+      "description": "Obtener el estado de DND para múltiples usuarios a la vez. Devuelve { users: [{ userId, snoozeEnabled, snoozeEndtime, nextDndStart, nextDndEnd }] }. Reintentable. Params: users (csv de IDs de usuario).",
+      "params": {
+        "users": "IDs de usuario separados por comas.",
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "star-item": {
+      "name": "star-item",
+      "description": "Guardar (marcar) un mensaje / archivo / comentario de archivo. Proporcionar exactamente uno de (channel+timestamp), file, fileComment. Devuelve { type, target, starred: true }. Idempotente."
+    },
+    "unstar-item": {
+      "name": "unstar-item",
+      "description": "Eliminar el elemento guardado. Mismo contrato de elección exclusiva que star-item. Devuelve { type, target, unstarred: true }. Idempotente."
+    },
+    "list-stars": {
+      "name": "list-stars",
+      "description": "Lista los elementos guardados del usuario. Devuelve { items, nextCursor, hasMore }. Reintentable. Params: count (1-1000, def 100), cursor?.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "list-emoji": {
+      "name": "list-emoji",
+      "description": "Lista emojis personalizados del espacio de trabajo. Devuelve { emojis: [{ name, url, isAlias, aliasFor }], count }. Reintentable.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "add-emoji": {
+      "name": "add-emoji",
+      "description": "Agregar un emoji personalizado al espacio de trabajo. Proporcionar O url O aliasFor. Devuelve { name, isAlias, aliasFor?, ok: true }. Solo para administradores del espacio de trabajo. No reintentable.",
+      "params": {
+        "name": "Nombre del emoji (sin dos puntos).",
+        "url": "URL de la imagen (PNG/JPG/GIF, ≤128KB).",
+        "aliasFor": "Nombre de emoji existente para alias."
+      }
+    },
+    "remove-emoji": {
+      "name": "remove-emoji",
+      "description": "Eliminar un emoji personalizado del espacio de trabajo. Solo para administradores del espacio de trabajo. Devuelve { name, removed: true }. No reintentable.",
+      "params": {
+        "name": "Nombre del emoji."
+      }
+    },
+    "get-access-logs": {
+      "name": "get-access-logs",
+      "description": "Registro de auditoría de inicio de sesión del espacio de trabajo (planes de pago). Devuelve { logs, paging }. Reintentable. Params: before? (unix), count (1-1000, def 100), page.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "get-integration-logs": {
+      "name": "get-integration-logs",
+      "description": "Registro de auditoría de integración (aplicaciones instaladas/cambios de alcance). Planes de pago. Devuelve { logs, paging }. Reintentable.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "get-team-profile": {
+      "name": "get-team-profile",
+      "description": "Esquema de campos de perfil de usuario personalizados para el espacio de trabajo. Devuelve { fields }. Reintentable. Params: visibility (all|visible|hidden).",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso."
+      }
+    },
+    "edit-bookmark": {
+      "name": "edit-bookmark",
+      "description": "Editar un marcador de canal (parcial). Devuelve el marcador actualizado. No reintentable. Params: channel, bookmarkId, title?, link?, emoji?."
+    },
+    "list-list-fields": {
+      "name": "list-list-fields",
+      "description": "Esquema de una lista de Slack como campos individuales. Devuelve { fields, count }. Reintentable. EXPERIMENTAL. Params: listId.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "create-list-field": {
+      "name": "create-list-field",
+      "description": "Agregar una columna a una lista de Slack. EXPERIMENTAL. Params: listId, name, type, required (def false)."
+    },
+    "update-list-field": {
+      "name": "update-list-field",
+      "description": "Renombrar una columna de lista o alternar requerido. tipo inmutable. EXPERIMENTAL. Params: listId, fieldId, name?, required?."
+    },
+    "delete-list-field": {
+      "name": "delete-list-field",
+      "description": "Eliminar una columna de una lista de Slack (elimina todos los valores). EXPERIMENTAL. Params: listId, fieldId."
+    },
+    "list-connect-invites": {
+      "name": "list-connect-invites",
+      "description": "Invitaciones pendientes de canal Slack Connect. Devuelve { invites, nextCursor, hasMore }. Reintentable.",
+      "params": {
+        "includeRaw": "Devolver respuesta API en bruto. Predeterminado falso.",
+        "limit": "Resultados máximos por página."
+      }
+    },
+    "invite-shared": {
+      "name": "invite-shared",
+      "description": "Enviar invitación de Slack Connect. emails (csv) O userIds (csv). Devuelve { channel, inviteId, link }."
+    },
+    "accept-shared-invite": {
+      "name": "accept-shared-invite",
+      "description": "Aceptar una invitación de Slack Connect. Proporcionar inviteId XOR channelId."
+    },
+    "decline-shared-invite": {
+      "name": "decline-shared-invite",
+      "description": "Rechazar una invitación de Slack Connect."
+    },
+    "approve-shared-invite": {
+      "name": "approve-shared-invite",
+      "description": "Aprobar una invitación de Slack Connect como administrador del espacio de trabajo."
+    },
+    "revoke-auth": {
+      "name": "revoke-auth",
+      "description": "Revocar el token OAuth actual. Destructivo. Params: test (def false)."
+    },
+    "list-auth-teams": {
+      "name": "list-auth-teams",
+      "description": "Espacios de trabajo de Slack a los que el token actual puede acceder (Enterprise Grid). Reintentable.",
+      "params": {
+        "includeRaw": "Devolver la respuesta API sin procesar. Por defecto falso."
+      }
+    }
+  }
+}

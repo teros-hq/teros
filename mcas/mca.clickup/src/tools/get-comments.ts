@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const getComments: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get all comments on a ClickUp task.',
   parameters: {
     type: 'object',

@@ -1,0 +1,347 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "search": {
+      "name": "search",
+      "description": "제목으로 페이지 및 데이터베이스 검색. 정리된 행 { id, object, url, title, icon, lastEditedTime }를 반환합니다. 매개변수: query, filter?, sort?, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "query": "검색 쿼리 텍스트",
+        "filter": "'page' (페이지 전용) 또는 'data_source' (데이터베이스 — 참고: Notion API 2025-09-03+는 'data_source'를 사용하며, 'database'는 사용하지 않습니다.)로 제한합니다.",
+        "sort": "'last_edited_time' (내림차순)으로 정렬합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Notion 페이지 매김 커서입니다.nextCursor.",
+        "fields": "기본 화이트리스트를 재정의합니다. 정리된 형태에서 필드 이름을 전달합니다.",
+        "includeRaw": "원시 Notion API 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "페이지를 검색합니다. 정리된 { id, url, title, icon, cover, properties, createdTime, lastEditedTime, parentType, parentId, archived }를 반환합니다. 매개변수: pageId, fields?, includeRaw.",
+      "params": {
+        "pageId": "페이지 UUID (대시 포함 또는 제외).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-page-markdown": {
+      "name": "get-page-markdown",
+      "description": "네이티브 Notion v5 엔드포인트를 사용하여 페이지의 전체 내용을 마크다운으로 검색합니다. `get-page-content`를 대체합니다 (2026-05에 제거됨). `includeTranscript=true`를 전달하여 meeting_notes 전사를 인라인으로 포함합니다. 응답: { markdown }.",
+      "params": {
+        "pageId": "페이지 UUID.",
+        "includeTranscript": "meeting_notes 블록의 인라인 전사. 기본값은 false입니다.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "페이지 (parentType='page') 또는 데이터베이스 (parentType='database') 아래에 새 페이지를 생성합니다. 데이터베이스 부모의 경우, `dataSourceId`가 제공되지 않는 한 첫 번째 데이터 소스에 행이 추가됩니다. 정리된 { id, url, title, icon, cover, parentType, parentId, createdTime }를 반환합니다. 재시도할 수 없습니다 (idempotency key 없음).",
+      "params": {
+        "parentId": "부모 페이지 또는 데이터베이스 UUID.",
+        "parentType": "'page' 또는 'database'.",
+        "dataSourceId": "다중 소스 DB의 경우, 아래에 삽입할 특정 데이터 소스 UUID. parentType=page일 때 무시됩니다.",
+        "title": "페이지 제목. 데이터베이스 페이지의 경우 `properties`가 제공되면 무시됩니다; 기본값은 \"Untitled\"입니다.",
+        "properties": "데이터베이스 페이지에 대한 전체 Notion 속성 객체 (있는 그대로 사용됨). 제목 열에 대한 `title`을 재정의합니다.",
+        "propertiesSimple": "에이전트 친화적인 평면 맵: `{ Status: 'Done', Tags: ['urgent'] }`. 스키마는 자동으로 해결됩니다. parentType=database에만 해당됩니다. `properties`와 `propertiesSimple`이 모두 전달되면 원시 `properties`가 우선합니다 (경고와 함께).",
+        "fields": "반환된 페이지의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-page": {
+      "name": "update-page",
+      "description": "페이지 속성 및/또는 아카이브 상태를 업데이트합니다. 정리된 업데이트된 페이지 { id, url, title, properties, icon, cover, archived, lastEditedTime }를 반환합니다. 필드별로 idempotent — 재시도가 안전합니다.",
+      "params": {
+        "pageId": "페이지 UUID.",
+        "properties": "업데이트할 Notion 속성 객체 (데이터베이스 스키마에 따라 다름). 있는 그대로 사용됩니다.",
+        "propertiesSimple": "에이전트 친화적인 평면 맵: `{ Status: 'Done' }`. 스키마는 자동으로 해결됩니다. 데이터베이스 행에만 해당됩니다. `properties`와 `propertiesSimple`이 모두 전달되면 원시 `properties`가 우선합니다.",
+        "archived": "휴지통으로 이동 (true) 또는 복원 (false). API 2026-03-11에 따라 `in_trash`로 전송됩니다. 선택적입니다.",
+        "fields": "반환된 페이지의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-page-markdown": {
+      "name": "update-page-markdown",
+      "description": "마크다운 작업을 사용하여 페이지를 편집합니다. 모드: 'replace' (기본값 — `markdown`으로 전체 본문을 덮어씌움), 'append' (끝에 `markdown` 추가, 선택적 `afterBlockId`), 'edit' (문자열별 편집을 `edits: [{oldStr, newStr, replaceAll?}]`를 통해 적용). { pageId, mode }를 반환합니다. `replace`는 파괴적입니다 — 재시도할 수 없습니다.",
+      "params": {
+        "pageId": "페이지 UUID.",
+        "mode": "'replace' (기본값) | 'append' | 'edit'.",
+        "markdown": "replace/append 모드를 위한 마크다운 본문. 제목 #/##/###/####, 목록, 코드, 호출, 테이블 지원.",
+        "afterBlockId": "append 모드 전용 — 삽입할 블록 UUID. 기본값: 페이지 끝.",
+        "edits": "edit 모드 전용 — 페이지의 현재 마크다운에 대해 순서대로 적용되는 [{ oldStr, newStr, replaceAll? }] 배열.",
+        "allowDeletingContent": "replace/edit 모드 — 페이지 축소를 허용하려면 true여야 합니다. 기본값은 true입니다."
+      }
+    },
+    "set-page-icon": {
+      "name": "set-page-icon",
+      "description": "페이지의 아이콘 (이모지 또는 외부 URL)을 설정합니다. 정리된 { id, url, title, icon, lastEditedTime }를 반환합니다. idempotent입니다.",
+      "params": {
+        "pageId": "페이지 UUID.",
+        "iconType": "'emoji' 또는 'external'.",
+        "icon": "아이콘 유형에 따라 이모지 문자 또는 이미지 URL.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "set-page-cover": {
+      "name": "set-page-cover",
+      "description": "외부 URL에서 페이지의 커버 이미지를 설정합니다. 정리된 { id, url, title, cover, lastEditedTime }를 반환합니다. idempotent입니다.",
+      "params": {
+        "pageId": "페이지 UUID.",
+        "coverUrl": "커버 이미지의 HTTPS URL.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "duplicate-page": {
+      "name": "duplicate-page",
+      "description": "아이콘/커버/속성/자식 블록을 포함하여 페이지를 복제합니다. 정리된 형태로 { sourcePage, duplicate }를 반환합니다. 재시도할 수 없습니다 — 각 호출마다 새 페이지를 생성합니다.",
+      "params": {
+        "pageId": "소스 페이지 UUID.",
+        "newTitle": "새 제목. 기본값: 'Copy of <original title>'.",
+        "targetParentId": "대상 부모 UUID. 기본값: 소스와 동일한 부모.",
+        "fields": "두 페이지 모두에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-database": {
+      "name": "get-database",
+      "description": "데이터베이스를 검색합니다. 정리된 { id, url, title, description, icon, cover, schema, createdTime, lastEditedTime, parentType, parentId, archived }를 반환합니다. 매개변수: databaseId, fields?, includeRaw.",
+      "params": {
+        "databaseId": "데이터베이스 UUID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 데이터베이스 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "query-database": {
+      "name": "query-database",
+      "description": "필터 + 정렬로 데이터베이스 행을 쿼리합니다. 정리된 행 { id, url, title, icon, properties, lastEditedTime }를 반환합니다. `properties` 화이트리스트는 어떤 열이 전송되는지를 제어합니다 (기본값: 제목만). 다중 소스 DB의 경우 `dataSourceId`를 직접 전달하십시오; 그렇지 않으면 첫 번째 데이터 소스가 사용됩니다. 필터는 표준 Notion 형태를 수용합니다: { property, <type>: { <op>: <value> } } — 단일 값 작업만 지원 (Notion v5는 equals_any를 지원하지 않습니다). N 값 중 하나와 일치시키려면 `or`로 구성합니다: { or: [ { property: 'Status', status: { equals: 'Done' } }, { property: 'Status', status: { equals: 'In review' } } ] }. 매개변수: databaseId | dataSourceId, filter?, sorts?, propertyNames?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "databaseId": "데이터베이스 UUID. 설정되지 않는 한 그 아래의 첫 번째 데이터 소스가 쿼리됩니다.",
+        "dataSourceId": "다중 소스 DB (위키, 연결된 DB)에 대한 특정 데이터 소스 UUID.",
+        "filter": "Notion 필터 객체. `or`/`and` 배열을 통해 다중 값을 구성합니다 — Notion은 equals_any를 지원하지 않습니다.",
+        "sorts": "정렬 객체 배열.",
+        "propertyNames": "각 행에 포함할 속성 이름의 화이트리스트. 기본값: 제목만. ['*']를 전달하여 모두 포함합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "Notion 페이지 매김 커서.",
+        "fields": "각 행 봉투의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion API 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-database": {
+      "name": "create-database",
+      "description": "페이지의 자식으로 새 데이터베이스를 생성합니다. 정리된 { id, url, title, schema, icon, cover, createdTime, parentType, parentId }를 반환합니다. 재시도할 수 없습니다 (idempotency key 없음).",
+      "params": {
+        "parentPageId": "부모 페이지 UUID.",
+        "title": "데이터베이스 제목.",
+        "properties": "Notion 스키마. 예: { Name: { title: {} }, Status: { select: { options: [...] } } }.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 데이터베이스 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-database-schema": {
+      "name": "update-database-schema",
+      "description": "데이터베이스 열을 추가/수정/제거하고 선택적으로 이름을 변경합니다. 스키마 변형은 데이터 소스를 대상으로 합니다 (Notion API 2025-09-03 분할). 다중 소스 DB의 경우 `dataSourceId`를 전달하십시오; 그렇지 않으면 첫 번째 것이 사용됩니다. 속성 값을 `null`로 설정하여 제거합니다. 정리된 업데이트된 데이터베이스 { id, schema, title, description, lastEditedTime }를 반환합니다. 필드별로 idempotent입니다.",
+      "params": {
+        "databaseId": "데이터베이스 UUID.",
+        "dataSourceId": "다중 소스 DB에 대한 특정 데이터 소스 UUID.",
+        "properties": "추가/수정할 속성. 제거하려면 값을 null로 설정합니다.",
+        "title": "새 제목. 선택적입니다. 데이터 소스에 전송됩니다.",
+        "description": "새 설명. 선택적입니다. 데이터 소스에 전송됩니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 데이터베이스 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-database-item": {
+      "name": "create-database-item",
+      "description": "Notion 데이터베이스에 새 행 (레코드)을 삽입합니다. 테이블에 추가하고, 테이블 항목을 생성하고, 데이터베이스 행을 추가합니다. 에이전트 친화적인 평면 맵으로 `properties`를 전달합니다: `{ Title: \"Spec\", Status: \"In review\", Tags: [\"urgent\"], Assignee: [\"<user-uuid>\"], DueDate: \"2026-05-06\" }`. 핸들러는 스키마를 해결하고 각 값을 Notion의 상세한 형태로 자동으로 직렬화합니다. 정리된 생성된 페이지를 반환합니다. 다중 소스 DB의 경우 특정 소스를 대상으로 하려면 `dataSourceId`를 전달합니다.",
+      "params": {
+        "databaseId": "데이터베이스 UUID.",
+        "dataSourceId": "다중 소스 DB에 대한 특정 데이터 소스 UUID.",
+        "properties": "열 이름 → 단순 값의 평면 맵. 스키마는 자동으로 해결됩니다.",
+        "fields": "반환된 페이지의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-database-item": {
+      "name": "update-database-item",
+      "description": "Notion 데이터베이스의 기존 행 (레코드)을 업데이트합니다. 행을 업데이트하고, 레코드를 수정하고, 관계를 변경하고, 담당자를 설정하고, 완료로 표시합니다. `pageId`와 `properties`를 에이전트 친화적인 평면 맵으로 전달합니다: `{ Status: \"Done\", Assignee: [\"<uuid>\"] }`. 핸들러는 부모 데이터베이스에서 스키마를 해결하고 각 값을 자동으로 직렬화합니다. `archived: true`를 전달하여 휴지통으로 이동합니다. idempotent — 재시도가 안전합니다. 다중 소스 DB의 경우 행의 `databaseId`는 페이지 부모에서 읽습니다.",
+      "params": {
+        "pageId": "데이터베이스 행 (페이지) UUID.",
+        "properties": "업데이트할 열 이름 → 단순 값의 평면 맵.",
+        "archived": "Notion 휴지통으로 이동 (true) 또는 복원 (false). `in_trash`로 전송됩니다.",
+        "fields": "반환된 페이지의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 페이지 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-block": {
+      "name": "get-block",
+      "description": "블록을 검색합니다. 정리된 { id, type, plainText, hasChildren, checked, language, caption, url, createdTime, lastEditedTime }를 반환합니다. 매개변수: blockId, fields?, includeRaw.",
+      "params": {
+        "blockId": "블록 UUID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-block-children": {
+      "name": "get-block-children",
+      "description": "더 이상 사용되지 않음 — `get-page-content` (마크다운) 또는 `get-blocks` (페이지 매김된 원시)를 선호하십시오. 이전 호환성을 위해 유지: { textContent }를 재귀 마크다운으로 반환합니다. 각 최상위 블록 앞에 `<!-- block: id -->` 주석을 포함하려면 includeBlockIds=true를 전달하십시오.",
+      "params": {
+        "blockId": "블록 또는 페이지 UUID.",
+        "includeBlockIds": "마크다운에 `<!-- block: id -->` 주석을 포함합니다. 기본값은 false입니다.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-blocks": {
+      "name": "get-blocks",
+      "description": "페이지/블록의 직접 자식을 페이지 매김으로 나열합니다. 정리된 { id, type, plainText, hasChildren, ... }를 반환합니다. 블록 ID + 구조가 필요할 때 사용합니다. 렌더링된 마크다운을 사용하려면 `get-block-children` 또는 `get-page-content`를 사용하십시오. 매개변수: blockId, limit (1-100, def 25), cursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "페이지 또는 부모 블록 UUID.",
+        "limit": "페이지당 블록 수. 최소 1, 최대 100, 기본 25.",
+        "cursor": "이전 nextCursor에서의 Notion 페이지 매김 커서.",
+        "fields": "각 블록에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록 객체를 반환합니다 (maxDepth=2, maxChars=10_000으로 잘림). 기본값은 false입니다."
+      }
+    },
+    "append-blocks": {
+      "name": "append-blocks",
+      "description": "페이지 또는 블록의 자식으로 블록을 추가합니다. 단락/제목_1..제목_4 (H4는 v5.16에 추가됨)를 지원하며 단락 블록은 인라인 이모지/외부/파일 아이콘을 위한 `icon`을 수용합니다. `position`은 배치를 선택합니다: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' (기본값) }. 정리된 { blocks, appendedCount, parentId }를 반환합니다. 재시도할 수 없습니다 (idempotency key 없음 — 재시도 시 중복 생성).",
+      "params": {
+        "blockId": "부모 페이지 또는 블록 UUID.",
+        "blocks": "표준 형태 `{ object: 'block', type: 'paragraph'|'heading_1'|...|'heading_4', <type>: { rich_text: [...] } }`의 Notion 블록 객체 배열. heading_4는 v5.16에 추가되었습니다. 단락 `icon` (v5.16)은 단락이 탭 블록의 직접 자식일 때만 작동합니다 — 일반 페이지에 아이콘을 추가하면 '탭 블록의 직접 자식이 아닌 단락 블록에 아이콘을 설정할 수 없습니다'라는 오류가 발생합니다. 다른 유형: bulleted_list_item, numbered_list_item, to_do, toggle, quote, callout, code, divider, image, video, file, pdf, bookmark, embed, equation, link_to_page, table, table_row, meeting_notes, synced_block.",
+        "position": "선택적 배치. 기본값 끝. 형태: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' }.",
+        "fields": "반환된 블록에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-block": {
+      "name": "update-block",
+      "description": "블록의 텍스트에서 `oldText`를 `newText`로 교체합니다. 블록을 읽고 `oldText`가 존재하는지 확인한 후 (정확히 일치) 주석을 보존하면서 업데이트합니다. oldText가 일치하지 않으면 '블록에서 텍스트를 찾을 수 없습니다. 변경 사항이 없습니다.'라는 오류가 발생합니다. 정리된 블록 { id, type, plainText, lastEditedTime }를 반환합니다.",
+      "params": {
+        "blockId": "블록 UUID.",
+        "oldText": "교체해야 하는 블록에 현재 있는 정확한 텍스트.",
+        "newText": "교체 텍스트.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "delete-block": {
+      "name": "delete-block",
+      "description": "블록을 삭제 (아카이브)합니다. 정리된 아카이브된 블록 { id, type, archived, lastEditedTime }를 반환합니다. idempotent — 재시도가 안전합니다.",
+      "params": {
+        "blockId": "블록 UUID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-column-layout": {
+      "name": "create-column-layout",
+      "description": "페이지에 N 열이 있는 column_list를 생성합니다. `columns`는 Notion 블록 객체의 배열 배열입니다 (각 내부 배열은 하나의 열에 해당). 재시도할 수 없습니다.",
+      "params": {
+        "pageId": "열 레이아웃을 추가할 페이지 UUID.",
+        "columns": "배열의 배열. 각 내부 배열은 하나의 열에 대한 블록입니다.",
+        "fields": "반환된 column_list 블록에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-advanced-blocks": {
+      "name": "create-advanced-blocks",
+      "description": "고급 블록을 생성합니다. 지원되는 유형: 'callout' (아이콘 + 색상), 'toggle' (자식), 'synced_block', 'meeting_notes' (요약 + 전사), 'paragraph' (v5.16에 따라 선택적 `icon` 포함). `content`는 주어진 `blockType`에 대한 Notion 형태와 일치해야 합니다. 재시도할 수 없습니다.",
+      "params": {
+        "pageId": "대상 페이지 UUID.",
+        "blockType": "'callout' | 'toggle' | 'synced_block' | 'meeting_notes' | 'paragraph'.",
+        "content": "Notion 블록 본문 (rich_text, children, icon, ...). 'paragraph'의 경우 `icon: { type: 'emoji'|'external'|'file', ... }`를 포함할 수 있습니다 (v5.16+).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 블록을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "워크스페이스 사용자를 나열합니다. 정리된 행 { id, name, type, avatarUrl, email, bot }를 반환합니다. 매개변수: limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "Notion 페이지 매김 커서.",
+        "fields": "각 행에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 응답을 반환합니다. 기본값은 false입니다.",
+        "cursor": "이전 응답의 페이지 매김 커서."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "ID로 사용자를 검색합니다. 정리된 { id, name, type, avatarUrl, email, bot }를 반환합니다. 매개변수: userId, fields?, includeRaw.",
+      "params": {
+        "userId": "사용자 UUID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 사용자 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-me": {
+      "name": "get-me",
+      "description": "봇 사용자 (이 통합)를 반환합니다. 정리된 { id, name, type, avatarUrl, email, bot }를 반환합니다. 매개변수: fields?, includeRaw.",
+      "params": {
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 사용자 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "페이지/블록의 주석을 나열합니다. 정리된 행 { id, pageId, parentBlockId, discussionId, authorId, plainText, createdTime }를 반환합니다. 매개변수: blockId, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "블록 또는 페이지 UUID.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "Notion 페이지 매김 커서.",
+        "fields": "각 행에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 응답을 반환합니다. 기본값은 false입니다.",
+        "cursor": "이전 응답의 페이지 매김 커서."
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "페이지에 댓글을 게시하거나 (pageId 전달) 토론에 답글을 답니다 (discussionId 전달). 정리된 댓글 { id, pageId, parentBlockId, authorId, plainText, createdTime }를 반환합니다. 재시도할 수 없습니다.",
+      "params": {
+        "pageId": "페이지 UUID. discussionId와 상호 배타적입니다.",
+        "discussionId": "답글을 달 토론 UUID. pageId와 상호 배타적입니다.",
+        "text": "댓글 텍스트 (일반).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 댓글을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "기존 댓글을 편집합니다. 단순 문자열 본문을 위해 일반 `text`를 전달하거나 전체 Notion 리치 텍스트 형식을 위해 `richText`를 전달합니다. 정리된 업데이트된 댓글 { id, plainText, lastEditedTime, ... }를 반환합니다. idempotent — 재시도가 안전합니다.",
+      "params": {
+        "commentId": "댓글 UUID.",
+        "text": "일반 텍스트 본문. richText와 상호 배타적입니다.",
+        "richText": "Notion 리치 텍스트 배열. text와 상호 배타적입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Notion 댓글 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "ID로 댓글을 삭제합니다. { id, deleted: true }를 반환합니다. 파괴적입니다: 삭제된 댓글은 복구할 수 없습니다. idempotent — 이미 삭제된 댓글을 다시 삭제하는 것은 에이전트 관점에서 no-op입니다 (Notion 404s, 우리는 deleted=true로 강제합니다).",
+      "params": {
+        "commentId": "댓글 UUID."
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Notion에 파일을 업로드합니다. 세 단계 생명주기: 생성 → 전송 → 완료 (내부적으로 처리됨). `dataUrl` (base64 인라인) 또는 `filePath` (서버 측 경로) 중 하나를 제공합니다. { fileUploadId, status, name, contentType }를 반환합니다. ID는 이후 블록 생성에 { type: 'file_upload', file_upload: { id } }로 포함될 수 있습니다. 하드 캡 20 MB.",
+      "params": {
+        "pageId": "업로드를 소유하는 페이지 UUID (필수).",
+        "name": "확장자를 포함한 파일 이름 (예: 'spec.pdf', 'cover.png').",
+        "contentType": "MIME 유형 (예: 'application/pdf', 'image/png').",
+        "dataUrl": "데이터 URI 스킴 — 정확한 형식 `data:<mime>;base64,<base64Payload>`. 원시 base64 문자열이 아닙니다. 이 중 하나 또는 filePath가 필요합니다.",
+        "filePath": "서버 측 파일의 절대 경로. 이 중 하나 또는 dataUrl이 필요합니다."
+      }
+    }
+  },
+  "name": "Notion",
+  "description": "Notion 작업 공간 - 페이지, 데이터베이스, 블록, 검색, 댓글",
+  "changelog": [
+    {
+      "notes": "페이지 검색, 생성 및 편집, 데이터베이스 및 행 관리, 블록, 댓글 및 파일 업로드를 통해 Notion 작업 공간을 관리합니다."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.http",
+  "tools": [
+    {
+      "name": "http-request",
+      "description": "Make an HTTP request to any public REST API (GET/POST/PUT/PATCH/DELETE) and return { status, ok, headers, body }. To use an API key without exposing it, save it once in this app's settings and reference it as {{NAME}} in the url, a query value, or a header value (e.g. header \"api-key: {{BREVO_API_KEY}}\", query api_key=\"{{HUNTER_API_KEY}}\", or url \".../{{MAKE_WEBHOOK_TOKEN}}\"). Private/internal addresses are blocked (SSRF-safe).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "type": "string",
+            "description": "HTTP method. Defaults to GET.",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "default": "GET"
+          },
+          "url": {
+            "type": "string",
+            "description": "Full https:// URL (may contain {{SECRET}} placeholders). In production, plain http:// is refused for requests that carry secrets."
+          },
+          "headers": {
+            "type": "object",
+            "description": "Request headers. Values may contain {{SECRET}} placeholders. Content-Type defaults to application/json when a body is sent.",
+            "additionalProperties": { "type": "string" }
+          },
+          "query": {
+            "type": "object",
+            "description": "Query-string parameters appended to the URL. Values may contain {{SECRET}} placeholders.",
+            "additionalProperties": { "type": "string" }
+          },
+          "body": {
+            "type": "string",
+            "description": "Raw request body (e.g. a JSON string). Ignored for GET. May contain {{SECRET}} placeholders."
+          },
+          "timeoutMs": {
+            "type": "number",
+            "description": "Request timeout in milliseconds (default 30000, min 1000, max 120000).",
+            "minimum": 1000,
+            "maximum": 120000,
+            "default": 30000
+          }
+        },
+        "required": ["url"]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true,
+        "irreversible": true
+      }
+    }
+  ]
+}

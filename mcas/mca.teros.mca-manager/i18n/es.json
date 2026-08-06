@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta interna de verificación de salud. Verifica la conectividad WebSocket con el backend."
+    },
+    "mca-status": {
+      "name": "mca-status",
+      "description": "Obtiene el estado de todos los procesos MCA en ejecución. Muestra appId, estado, número de herramientas, tiempo de inactividad y número de reinicios para cada MCA."
+    },
+    "mca-kill": {
+      "name": "mca-kill",
+      "description": "Detiene un proceso MCA específico por appId. El proceso se reiniciará en su próximo uso.",
+      "params": {
+        "appId": "El appId del MCA a detener (p. ej., 'app:mca-teros-bash-system')"
+      }
+    },
+    "mca-cleanup": {
+      "name": "mca-cleanup",
+      "description": "Activa la limpieza de procesos MCA inactivos. Detiene los MCAs que han estado inactivos durante demasiado tiempo."
+    },
+    "apps-list": {
+      "name": "apps-list",
+      "description": "Lista todas las apps instaladas (instancias MCA) con su configuración."
+    },
+    "agent-access-list": {
+      "name": "agent-access-list",
+      "description": "Lista todos los permisos de acceso a apps de los agentes. Muestra qué agentes tienen acceso a qué apps."
+    },
+    "catalog-list": {
+      "name": "catalog-list",
+      "description": "Lista todos los MCAs del catálogo (MCAs disponibles que se pueden instalar)."
+    }
+  },
+  "name": "MCA Manager",
+  "description": "Supervisa y gestiona procesos MCA. Visualiza MCAs en ejecución, detiene procesos, limpia los inactivos y gestiona el acceso a las apps.",
+  "changelog": [
+    {
+      "notes": "Supervisa apps en ejecución, detiene o limpia procesos inactivos, lista apps instaladas, explora el catálogo y revisa el acceso de los agentes"
+    }
+  ]
+}

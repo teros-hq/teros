@@ -8,7 +8,7 @@
  */
 
 import { create } from "zustand"
-import { STORAGE_KEYS, storage } from "../services/storage"
+import { STORAGE_KEYS, storage, persistedDriver } from "../services/storage"
 import { windowRegistry } from "../services/windowRegistry"
 
 // ============================================
@@ -25,8 +25,10 @@ export interface SplitNode {
   direction: SplitDirection
   /** Ratio of the first child (0-1) */
   ratio: number
-  first: LayoutNode
-  second: LayoutNode
+  // @todo nira - 2026-05-05: was LayoutNode — recursive type causes TS stack overflow.
+  // Refactor to a tagged/flat union or explicit depth-limited type once tsc is green.
+  first: any
+  second: any
 }
 
 /** Container node (holds tabs with windows) */
@@ -146,6 +148,16 @@ interface TilingActions {
   /** Count windows in a desktop */
   getDesktopWindowCount: (desktopIndex: number) => number
 
+  /** Restore desktops from persisted state (e.g. loaded from server) */
+  restoreDesktops: (
+    desktops: Desktop[],
+    activeDesktopIndex: number,
+    windows?: Record<string, unknown>,
+  ) => void
+
+  /** Reset all desktops to empty (e.g. when switching to a workspace with no saved state) */
+  resetDesktops: () => void
+
   // ========================================
   // WINDOW MANAGEMENT
   // ========================================
@@ -160,7 +172,7 @@ interface TilingActions {
     props: Record<string, any>,
     inNewTab?: boolean,
     sourceWindowId?: string,
-  ) => string
+  ) => string | null
 
   /** Close window */
   closeWindow: (windowId: string) => void
@@ -248,6 +260,19 @@ interface TilingActions {
   swapContainerWindows: (sourceContainerId: string, targetContainerId: string) => void
 
   // ========================================
+  // GLOBAL DRAG STATE (for cross-desktop drops)
+  // ========================================
+
+  /** windowId being dragged, null if none */
+  globalDragWindowId: string | null
+  /** windowIds being dragged (for group drags) */
+  globalDragWindowIds: string[]
+  /** whether it's a group drag */
+  globalDragIsGroup: boolean
+  setGlobalDrag: (windowId: string | null, windowIds: string[], isGroup: boolean) => void
+  clearGlobalDrag: () => void
+
+  // ========================================
   // NOTIFICATIONS
   // ========================================
 
@@ -274,17 +299,14 @@ interface TilingActions {
   // PERSISTENCE
   // ========================================
 
-  /** Save state to storage */
-  saveState: () => Promise<void>
+  /** Restore layout from PersistedDriver cache (call after persistedDriver.load) */
+  restoreFromStorage: () => Promise<void>
 
-  /** Load state from storage */
-  loadState: () => Promise<boolean>
+  /** Persist current layout to PersistedDriver (debounced write to backend) */
+  persistToStorage: () => Promise<void>
 
-  /** Reset state to empty */
+  /** Reset desktops to empty state */
   resetState: () => void
-
-  /** Get serializable state */
-  getSerializedState: () => SerializedWorkspaceState
 }
 
 // ============================================
@@ -311,7 +333,9 @@ function findNode(layout: LayoutNode | null, id: string): LayoutNode | null {
   if (layout.id === id) return layout
 
   if (layout.type === "split") {
-    return findNode(layout.first, id) || findNode(layout.second, id)
+    const firstResult: LayoutNode | null = findNode(layout.first, id)
+    if (firstResult) return firstResult
+    return findNode(layout.second, id)
   }
 
   return null
@@ -325,7 +349,9 @@ function findParent(layout: LayoutNode | null, id: string): SplitNode | null {
     return layout
   }
 
-  return findParent(layout.first, id) || findParent(layout.second, id)
+  const firstResult: SplitNode | null = findParent(layout.first, id)
+  if (firstResult) return firstResult
+  return findParent(layout.second, id)
 }
 
 /** Find all containers */
@@ -401,13 +427,22 @@ function computeDerivedState(desktops: Desktop[], activeDesktopIndex: number): T
 // STORE
 // ============================================
 
-export const useTilingStore = create<TilingState & TilingActions>()((set, get) => ({
+export const useTilingStore = create<TilingState & TilingActions>()((set, get): TilingState & TilingActions => ({
   // Initial state
   desktops: createEmptyDesktops(DEFAULT_MAX_DESKTOPS),
   windows: {},
   activeDesktopIndex: 0,
   maxDesktops: DEFAULT_MAX_DESKTOPS,
   nextId: 1,
+
+  // Global drag state
+  globalDragWindowId: null,
+  globalDragWindowIds: [],
+  globalDragIsGroup: false,
+  setGlobalDrag: (windowId, windowIds, isGroup) =>
+    set({ globalDragWindowId: windowId, globalDragWindowIds: windowIds, globalDragIsGroup: isGroup }),
+  clearGlobalDrag: () =>
+    set({ globalDragWindowId: null, globalDragWindowIds: [], globalDragIsGroup: false }),
 
   // ========================================
   // DESKTOP NAVIGATION
@@ -418,6 +453,12 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     if (index < 0 || index >= state.desktops.length) return
     if (index === state.activeDesktopIndex) return
     set({ activeDesktopIndex: index })
+    // tab-state (sessionStorage): per-tab active desktop
+    storage.set(STORAGE_KEYS.ACTIVE_DESKTOP_INDEX, index)
+    // ui-state (localStorage): fallback for new tabs / device-level last known
+    storage.set(STORAGE_KEYS.LAST_ACTIVE_DESKTOP_INDEX, index).catch((err) =>
+      console.error('[TilingStore] Failed to persist lastActiveDesktopIndex:', err),
+    )
   },
 
   nextDesktop: () => {
@@ -540,6 +581,76 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     return state.desktops[state.activeDesktopIndex]
   },
 
+  restoreDesktops: (desktops, activeDesktopIndex, rawWindows) => {
+    const safeIndex = Math.max(0, Math.min(activeDesktopIndex, desktops.length - 1))
+
+    // Deserialize windows if provided
+    let restoredWindows: Record<string, TilingWindow> = {}
+    if (rawWindows && Object.keys(rawWindows).length > 0) {
+      console.log('[DesktopStateSync] restoring windows:', Object.keys(rawWindows))
+      for (const [id, raw] of Object.entries(rawWindows)) {
+        const w = raw as any
+        if (!w || !w.type) continue
+
+        // Warn on unknown types but still restore with raw props
+        if (!windowRegistry.get(w.type)) {
+          console.warn(`[DesktopStateSync] unknown window type: ${w.type}`)
+        }
+
+        // Deserialize the active props — fall back to raw on error or unknown type
+        const props = deserializeProps(w.type, w.props ?? {})
+
+        // The history persists serialized props too, so each entry must be
+        // deserialized by ITS OWN type (a window can navigate across types).
+        const rawHistory = w.history as WindowHistoryEntry[] | undefined
+        const history = rawHistory
+          ? rawHistory.map((entry) => ({
+              type: entry.type,
+              props: deserializeProps(entry.type, entry.props ?? {}),
+            }))
+          : [{ type: w.type, props }]
+
+        // Always restore the window (never skip)
+        restoredWindows[id] = {
+          id,
+          type: w.type,
+          props,
+          containerId: w.containerId ?? '',
+          desktopIndex: w.desktopIndex ?? 0,
+          hasNotification: false,
+          notificationCount: undefined,
+          history,
+          historyIndex: w.historyIndex ?? 0,
+        }
+      }
+    }
+
+    // Clean layout refs against the restored windows
+    const validWindowIds = new Set(Object.keys(restoredWindows))
+    const cleanedDesktops = validWindowIds.size > 0
+      ? desktops.map((desktop) => ({
+          ...desktop,
+          layout: cleanLayoutWindowRefs(desktop.layout, validWindowIds),
+        }))
+      : desktops
+
+    set({
+      desktops: cleanedDesktops,
+      windows: restoredWindows,
+      activeDesktopIndex: safeIndex,
+      ...computeDerivedState(cleanedDesktops, safeIndex),
+    })
+  },
+
+  resetDesktops: () => {
+    const emptyDesktops = createEmptyDesktops(DEFAULT_MAX_DESKTOPS)
+    set({
+      desktops: emptyDesktops,
+      activeDesktopIndex: 0,
+      ...computeDerivedState(emptyDesktops, 0),
+    })
+  },
+
   getDesktopWindowCount: (desktopIndex) => {
     const state = get()
     return Object.values(state.windows).filter((w) => w.desktopIndex === desktopIndex).length
@@ -560,10 +671,13 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
 
     // Check if a window with same type and props already exists
     // For chat windows without channelId (drafts), we want to create a new window
-    // even if there's another draft with the same agentId
+    // even if there's another draft with the same agentId.
+    // Launcher windows are also always created fresh (never deduplicated),
+    // so that pressing + always opens a new launcher tab.
     const isDraftChat = type === "chat" && !props.channelId
+    const isLauncher = type === "launcher"
 
-    const existingWindow = isDraftChat
+    const existingWindow = (isDraftChat || isLauncher)
       ? null
       : Object.values(state.windows).find((w) => {
           if (w.type !== type) return false
@@ -626,7 +740,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     const activeWindow = activeWindowId ? state.windows[activeWindowId] : null
 
     // DEFAULT BEHAVIOR: Replace active tab (unless inNewTab=true or no active window)
-    if (!inNewTab && activeWindow) {
+    if (!inNewTab && activeWindow && activeWindowId) {
       // Use replaceWindow to swap the content
       get().replaceWindow(activeWindowId, type, props)
       return activeWindowId
@@ -1158,13 +1272,13 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     const newTargetWindowIds = [...targetContainer.windowIds, ...windowIds]
 
     // Update layout
-    let newLayout = replaceNode(desktop.layout, sourceContainer.id, {
+    let newLayout: LayoutNode | null = replaceNode(desktop.layout, sourceContainer.id, {
       ...sourceContainer,
       windowIds: newSourceWindowIds,
       activeWindowId: newSourceActiveWindowId,
     })
 
-    newLayout = replaceNode(newLayout, targetContainer.id, {
+    newLayout = replaceNode(newLayout!, targetContainer.id, {
       ...targetContainer,
       windowIds: newTargetWindowIds,
       activeWindowId: windowIds[0],
@@ -1235,7 +1349,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     }
 
     // Update layout
-    let newLayout = replaceNode(desktop.layout, targetContainerId, split)
+    let newLayout: LayoutNode | null = replaceNode(desktop.layout, targetContainerId, split)
 
     // Update source container if different
     if (sourceContainerId !== targetContainerId) {
@@ -1389,13 +1503,13 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     }
 
     // Update layout
-    let newLayout = replaceNode(desktop.layout, sourceContainer.id, {
+    let newLayout: LayoutNode | null = replaceNode(desktop.layout, sourceContainer.id, {
       ...sourceContainer,
       windowIds: newSourceWindowIds,
       activeWindowId: newSourceActiveWindowId,
     })
 
-    newLayout = replaceNode(newLayout, targetContainer.id, {
+    newLayout = replaceNode(newLayout!, targetContainer.id, {
       ...targetContainer,
       windowIds: newTargetWindowIds,
       activeWindowId: windowId,
@@ -1472,7 +1586,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
     }
 
     // Update layout: reemplazar target container con el split
-    let newLayout = replaceNode(desktop.layout, targetContainerId, split)
+    let newLayout: LayoutNode | null = replaceNode(desktop.layout, targetContainerId, split)
 
     // Update source container if different del target
     if (sourceContainer.id !== targetContainerId) {
@@ -1579,87 +1693,25 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
   // PERSISTENCE
   // ========================================
 
-  getSerializedState: () => {
-    const state = get()
-    return {
-      version: 2 as const,
-      desktops: state.desktops,
-      windows: state.windows,
-      activeDesktopIndex: state.activeDesktopIndex,
-      maxDesktops: state.maxDesktops,
-      nextId: state.nextId,
-    }
-  },
-
-  saveState: async () => {
-    const serialized = get().getSerializedState()
+  restoreFromStorage: async () => {
     try {
-      await storage.setItem(STORAGE_KEYS.WORKSPACE_STATE, JSON.stringify(serialized))
-      console.log("[TilingStore] State saved")
-    } catch (error) {
-      console.error("[TilingStore] Failed to save state:", error)
-    }
-  },
+      // Restore active desktop index: sessionStorage (per-tab) first, then localStorage fallback
+      let savedIndex = await storage.get<number>(STORAGE_KEYS.ACTIVE_DESKTOP_INDEX)
+      if (savedIndex === null) {
+        savedIndex = await storage.get<number>(STORAGE_KEYS.LAST_ACTIVE_DESKTOP_INDEX)
+      }
 
-  loadState: async () => {
-    try {
-      const saved = await storage.getItem(STORAGE_KEYS.WORKSPACE_STATE)
+      const saved = await storage.get<SerializedWorkspaceState>(STORAGE_KEYS.WORKSPACE_LAYOUT)
       if (!saved) {
-        console.log("[TilingStore] No saved state found")
-        return false
+        console.log("[TilingStore] No saved layout found — resetting to empty")
+        get().resetState()
+        if (savedIndex !== null) set({ activeDesktopIndex: savedIndex })
+        return
       }
-
-      const parsed = JSON.parse(saved)
-
-      // Handle version 1 (legacy) - migrate to version 2
-      if (parsed.version === 1) {
-        console.log("[TilingStore] Migrating from version 1 to 2")
-        // Version 1 had: layout, windows, activeContainerId, nextId
-        // Create desktops array with old layout in first desktop
-        const desktops = createEmptyDesktops(DEFAULT_MAX_DESKTOPS)
-        desktops[0] = {
-          id: "desktop_0",
-          name: undefined,
-          layout: parsed.layout,
-          activeContainerId: parsed.activeContainerId,
-        }
-
-        // Add desktopIndex to all windows (they're all on desktop 0)
-        const windows: Record<string, TilingWindow> = {}
-        for (const [id, window] of Object.entries(parsed.windows as Record<string, any>)) {
-          if (windowRegistry.has(window.type)) {
-            windows[id] = {
-              ...window,
-              desktopIndex: 0,
-              history: window.history ?? [{ type: window.type, props: window.props }],
-              historyIndex: window.historyIndex ?? 0,
-            }
-          }
-        }
-
-        set({
-          desktops,
-          windows,
-          activeDesktopIndex: 0,
-          maxDesktops: DEFAULT_MAX_DESKTOPS,
-          nextId: parsed.nextId,
-        })
-
-        console.log("[TilingStore] Migration complete:", Object.keys(windows).length, "windows")
-        return true
-      }
-
-      // Version 2
-      if (parsed.version !== 2) {
-        console.warn("[TilingStore] Unknown state version:", parsed.version)
-        return false
-      }
-
-      const typedParsed = parsed as SerializedWorkspaceState
 
       // Validate that window types exist in the registry
       const validWindows: Record<string, TilingWindow> = {}
-      for (const [id, window] of Object.entries(typedParsed.windows)) {
+      for (const [id, window] of Object.entries(saved.windows)) {
         if (windowRegistry.has(window.type)) {
           // Backwards-compat: add history if missing (pre-history saves)
           const withHistory: TilingWindow = {
@@ -1675,24 +1727,51 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
 
       // Clean up containers that reference invalid windows on each desktop
       const validWindowIds = new Set(Object.keys(validWindows))
-      const cleanedDesktops = typedParsed.desktops.map((desktop) => ({
+      const cleanedDesktops = saved.desktops.map((desktop) => ({
         ...desktop,
         layout: cleanLayoutWindowRefs(desktop.layout, validWindowIds),
       }))
 
+      // Sanitize: remove empty containers from restored layouts
+      const sanitizedDesktops = sanitizeDesktops(cleanedDesktops)
+
+      // activeDesktopIndex: sessionStorage takes precedence (per-tab) over persisted value
+      const activeDesktopIndex = savedIndex !== null
+        ? Math.max(0, Math.min(savedIndex, sanitizedDesktops.length - 1))
+        : Math.max(0, Math.min(saved.activeDesktopIndex ?? 0, sanitizedDesktops.length - 1))
+
       set({
-        desktops: cleanedDesktops,
+        desktops: sanitizedDesktops,
         windows: validWindows,
-        activeDesktopIndex: typedParsed.activeDesktopIndex,
-        maxDesktops: typedParsed.maxDesktops,
-        nextId: typedParsed.nextId,
+        activeDesktopIndex,
+        maxDesktops: saved.maxDesktops ?? DEFAULT_MAX_DESKTOPS,
+        nextId: saved.nextId,
       })
 
-      console.log("[TilingStore] State loaded:", Object.keys(validWindows).length, "windows")
-      return true
+      console.log("[TilingStore] Layout restored:", Object.keys(validWindows).length, "windows")
     } catch (error) {
-      console.error("[TilingStore] Failed to load state:", error)
-      return false
+      console.error("[TilingStore] Failed to restore layout:", error)
+    }
+  },
+
+  persistToStorage: async () => {
+    try {
+      const state = get()
+      const serializedWindows = serializeWindowsForPersistence(state.windows)
+
+      // Sanitize desktops before persisting (strip empty containers)
+      const sanitized = sanitizeDesktops(state.desktops)
+
+      await storage.set<SerializedWorkspaceState>(STORAGE_KEYS.WORKSPACE_LAYOUT, {
+        version: 2,
+        desktops: sanitized,
+        windows: serializedWindows as Record<string, TilingWindow>,
+        activeDesktopIndex: state.activeDesktopIndex,
+        maxDesktops: state.maxDesktops,
+        nextId: state.nextId,
+      })
+    } catch (error) {
+      console.error("[TilingStore] Failed to persist layout:", error)
     }
   },
 
@@ -1704,8 +1783,7 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
       maxDesktops: DEFAULT_MAX_DESKTOPS,
       nextId: 1,
     })
-    // Also clear from storage
-    storage.removeItem(STORAGE_KEYS.WORKSPACE_STATE).catch(console.error)
+    storage.remove(STORAGE_KEYS.WORKSPACE_LAYOUT).catch(console.error)
     console.log("[TilingStore] State reset")
   },
 }))
@@ -1713,6 +1791,140 @@ export const useTilingStore = create<TilingState & TilingActions>()((set, get) =
 // ============================================
 // PERSISTENCE HELPERS
 // ============================================
+
+/** Max history entries to persist per window (avoids bloating the payload) */
+const MAX_PERSIST_HISTORY = 10
+
+/**
+ * Serialize one window type's props through the registry, falling back to the raw
+ * props on error or unknown type. Shared by the active props and every history entry
+ * so they persist identically.
+ */
+function serializeProps(type: string, props: Record<string, any>): unknown {
+  const definition = windowRegistry.get(type)
+  if (!definition?.serialize) return props
+  try {
+    return definition.serialize(props)
+  } catch (error) {
+    console.error(`[TilingStore] serialize error for window type ${type}:`, error)
+    return props
+  }
+}
+
+/** Inverse of {@link serializeProps}: deserialize via the registry, raw fallback. */
+function deserializeProps(type: string, rawProps: Record<string, any>): Record<string, any> {
+  const definition = windowRegistry.get(type)
+  if (!definition?.deserialize) return rawProps
+  try {
+    return definition.deserialize(rawProps)
+  } catch (error) {
+    console.error(`[DesktopStateSync] deserialize error for window type ${type}:`, error)
+    return rawProps
+  }
+}
+
+/**
+ * Serialize the windows map for persistence.
+ * - Truncates history to MAX_PERSIST_HISTORY entries
+ * - Serializes both the active props AND every history entry's props (each by its
+ *   own type) via the registry, with a raw fallback on error/unknown type
+ */
+export function serializeWindowsForPersistence(
+  windows: Record<string, TilingWindow>,
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+
+  for (const [id, win] of Object.entries(windows)) {
+    if (!windowRegistry.get(win.type)) {
+      console.warn(`[TilingStore] unknown window type: ${win.type}`)
+    }
+
+    // Serialize the active props — fall back to raw on error
+    const serializedProps = serializeProps(win.type, win.props)
+
+    // Truncate history (keep most recent entries), then serialize each entry's props
+    // by ITS OWN type (a window can navigate across types) so the history survives
+    // reload identically to the active props.
+    const history = win.history ?? [{ type: win.type, props: win.props }]
+    const truncatedHistory = (
+      history.length > MAX_PERSIST_HISTORY ? history.slice(history.length - MAX_PERSIST_HISTORY) : history
+    ).map((entry) => ({ type: entry.type, props: serializeProps(entry.type, entry.props) }))
+
+    result[id] = {
+      id,
+      type: win.type,
+      props: serializedProps,
+      containerId: win.containerId,
+      desktopIndex: win.desktopIndex,
+      history: truncatedHistory,
+      historyIndex: Math.min(win.historyIndex ?? truncatedHistory.length - 1, truncatedHistory.length - 1),
+    }
+  }
+
+  return result
+}
+
+/**
+ * Recursively removes ContainerNodes with no windowIds from the layout tree.
+ * Returns null when the entire subtree collapses to nothing.
+ */
+function sanitizeLayout(node: LayoutNode | null): LayoutNode | null {
+  if (!node) return null
+
+  if (node.type === 'container') {
+    const container = node as ContainerNode
+    return container.windowIds.length > 0 ? container : null
+  }
+
+  // Split node — sanitize both children
+  const first = sanitizeLayout(node.first)
+  const second = sanitizeLayout(node.second)
+
+  if (!first && !second) return null
+  if (!first) return second
+  if (!second) return first
+
+  if (first === node.first && second === node.second) return node
+  return { ...node, first, second }
+}
+
+/**
+ * Sanitize all desktops: remove empty containers from their layouts.
+ * Resets activeContainerId when it no longer exists in the sanitized layout.
+ */
+function sanitizeDesktops(desktops: Desktop[]): Desktop[] {
+  return desktops.map((desktop) => {
+    const newLayout = sanitizeLayout(desktop.layout)
+
+    if (newLayout === desktop.layout) return desktop
+
+    // If the active container was removed, find a new one
+    let newActiveContainerId = desktop.activeContainerId
+    if (newActiveContainerId && newLayout) {
+      const stillExists = findContainerById(newLayout, newActiveContainerId)
+      if (!stillExists) newActiveContainerId = getFirstContainerId(newLayout)
+    } else if (!newLayout) {
+      newActiveContainerId = null
+    }
+
+    return { ...desktop, layout: newLayout, activeContainerId: newActiveContainerId }
+  })
+}
+
+function findContainerById(node: LayoutNode, id: string): boolean {
+  if (node.type === 'container') return node.id === id
+  const firstResult: boolean = findContainerById(node.first, id)
+  if (firstResult) return true
+  return findContainerById(node.second, id)
+}
+
+function getFirstContainerId(node: LayoutNode | null): string | null {
+  if (!node) return null
+  if (node.type === 'container') return node.id
+  const firstResult: string | null = getFirstContainerId(node.first)
+  if (firstResult !== null) return firstResult
+  return getFirstContainerId(node.second)
+}
 
 /** Clean up references to invalid windows in the layout */
 function cleanLayoutWindowRefs(
@@ -1769,3 +1981,14 @@ export const selectActiveContainerId = (state: TilingState): string | null => {
   const desktop = state.desktops[state.activeDesktopIndex]
   return desktop?.activeContainerId ?? null
 }
+
+// ── Session lifecycle registration ──────────────────────────────────────────
+// @todo nira - 2026-05-20: migrate to createSessionStore once circular deps resolved
+
+import { storeRegistry } from './session/StoreRegistry'
+
+storeRegistry.register('tiling', {
+  resetSession: () => {
+    useTilingStore.getState().resetState()
+  },
+})

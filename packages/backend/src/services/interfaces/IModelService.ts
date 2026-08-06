@@ -76,9 +76,11 @@ export interface IModelService {
         AgentCore,
         | 'name'
         | 'fullName'
+        | 'version'
         | 'systemPrompt'
         | 'personality'
         | 'capabilities'
+        | 'defaultApps'
         | 'modelId'
         | 'modelOverrides'
         | 'status'
@@ -103,5 +105,5 @@ export interface IModelService {
   /**
    * Get complete effective agent config (LLM + system prompt)
    */
-  getEffectiveAgentConfig(agentId: string): Promise<EffectiveAgentConfig | null>;
+  getEffectiveAgentConfig(agentId: string, channelId?: string): Promise<EffectiveAgentConfig | null>;
 }

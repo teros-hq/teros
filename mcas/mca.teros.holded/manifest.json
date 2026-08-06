@@ -1,0 +1,57 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.holded",
+  "name": "Holded",
+  "version": "1.0.0",
+  "description": "Holded integration for demo - manage contacts and invoices via Holded REST API v1 with API key authentication",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "other",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "holded",
+    "erp",
+    "invoicing",
+    "contacts",
+    "invoices",
+    "crm",
+    "accounting"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": [
+        "HOLDED_API_KEY"
+      ]
+    },
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-07",
+      "notes": "Initial release — browse and look up your Holded clients, suppliers and leads, and review invoices with statuses and totals"
+    }
+  ]
+}

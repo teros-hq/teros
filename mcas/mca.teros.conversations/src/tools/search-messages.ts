@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { CURRENT_CHANNEL_ID, getWsClient, isWsConnected, type SearchMessagesResult } from '../lib';
 
 export const searchMessages: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Search for text in messages across all past conversations. Returns matches grouped by channel with context snippets.',
   parameters: {

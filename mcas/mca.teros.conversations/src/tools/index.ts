@@ -1,6 +1,8 @@
 export { createConversation } from './create-conversation';
+export { delegateTask } from './delegate-task';
 export { getChannelMessages } from './get-channel-messages';
 export { getChannelSummary } from './get-channel-summary';
+export { importAttachment } from './import-attachment';
 export { listChannels } from './list-channels';
 export { renameChannel } from './rename-channel';
 export { searchMessages } from './search-messages';

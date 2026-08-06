@@ -24,6 +24,7 @@ import {
 } from "@tamagui/lucide-icons"
 import React, { useCallback, useRef, useState } from "react"
 import { Platform, View } from "react-native"
+import { useTranslation } from "react-i18next"
 import { Circle, Popover, Separator, Text, XStack, YStack } from "tamagui"
 import { useTabState } from "../../hooks/useTabState"
 import { windowRegistry } from "../../services/windowRegistry"
@@ -33,8 +34,12 @@ import {
   useTilingStore,
 } from "../../store/tilingStore"
 import { TerosLoading } from "../TerosLoading"
+import { useColors } from "../mca/primitives/useColors"
+import { colors as semanticColors, surface } from "../mca/primitives/colors"
 import { type DropZone, useDragDrop } from "./DragDropContext"
 import { WindowContent } from "./WindowContent"
+import { TabContext, type TabContextValue } from "./TabContext"
+import { ConcaveCorner, TAB_RADIUS } from "./ConcaveCorner"
 
 interface Props {
   container: ContainerNode
@@ -44,25 +49,92 @@ interface Props {
 const DROP_ZONE_SIZE = 60
 
 // Design tokens
-const TAB_RADIUS = 12
 const CONTENT_RADIUS = 4
-const COLORS = {
-  active: {
-    border: "#444",
-    background: "#111113",
-    tabText: "#e4e4e7",
-  },
-  inactive: {
-    border: "#222",
-    background: "#0a0a0b",
-    tabText: "#aaa",
-  },
-  tabBar: "#080809",
-  inactiveTab: "#0e0e10",
-  inactiveTabText: "#555",
+
+// Adaptive tab colors — built from theme tokens
+/**
+ * Composite a semi-transparent rgba color over an opaque hex background.
+ * Returns an opaque hex color. Eliminates transparency headaches in SVG/tab rendering.
+ */
+function compositeOver(rgba: string, bg: string): string {
+  const m = rgba.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/)
+  if (!m) return rgba
+  const r = Number(m[1]), g = Number(m[2]), b = Number(m[3])
+  const a = m[4] !== undefined ? Number(m[4]) : 1
+  if (a >= 1) return rgba
+  const bm = bg.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i)
+  if (!bm) return rgba
+  const br = parseInt(bm[1], 16), bg2 = parseInt(bm[2], 16), bb = parseInt(bm[3], 16)
+  const rr = Math.round(r * a + br * (1 - a))
+  const rg = Math.round(g * a + bg2 * (1 - a))
+  const rb = Math.round(b * a + bb * (1 - a))
+  return `#${rr.toString(16).padStart(2, "0")}${rg.toString(16).padStart(2, "0")}${rb.toString(16).padStart(2, "0")}`
 }
 
+function buildTabColors(c: ReturnType<typeof useColors>) {
+  const isDark = c.bgPage === surface.dark.bgPage
+  // Tab bar is always opaque — composite semi-transparent tokens over it
+  const tabBar = isDark ? "#080809" : "#C8C8C8"
+  const activeBg = compositeOver(c.bgCard, tabBar)
+  const activeBorder = compositeOver(c.borderStrong, tabBar)
+  return {
+    active: {
+      border: activeBorder,
+      background: activeBg,
+      tabText: c.text,
+    },
+    inactive: {
+      border: isDark ? "#222" : "#B8B8B8",
+      background: isDark ? "#0a0a0b" : "#D0D0D0",
+      tabText: isDark ? c.text3 : "#5A5A5A",
+    },
+    // Tab bar: clearly darker strip behind the tabs
+    tabBar,
+    // Inactive tabs: opaque, slightly lighter than tab bar
+    inactiveTab: isDark ? "#0e0e10" : "#D0D0D0",
+    inactiveTabText: isDark ? c.text3 : "#5A5A5A",
+    // Hover backgrounds for buttons in the tab bar
+    hoverBg: isDark ? "#1a1a1a" : "#D8D8D8",
+    // Icon color for tab bar buttons (grip, nav, close, menu)
+    iconDim: c.text3,
+    iconMid: c.text2,
+    // Menu popover
+    menuBg: c.bgCard,
+    menuBorder: c.borderStrong,
+    menuHover: isDark ? "#1f1f1f" : c.bgCardHover,
+    menuSeparator: c.borderStrong,
+    // Empty pane text
+    emptyText: c.text3,
+    emptySubtext: c.text3,
+    // Close button hover
+    closeHover: isDark ? "#333" : "#D8D8D8",
+    // Inactive tab hover
+    inactiveTabHover: isDark ? "#151515" : "#D8D8D8",
+    // Ghost drag image
+    ghostBg: isDark ? "#1a1a1a" : c.bgCard,
+    ghostBorder: isDark ? "rgba(255,255,255,0.12)" : c.border,
+    ghostText: c.text,
+    // Drop zone accent (was cyan #06B6D4 → indigo #5E6AD2)
+    dropAccent: semanticColors.indigo,
+    dropAccentBg: "rgba(94,106,210,0.15)",
+    dropAccentBgSubtle: "rgba(94,106,210,0.10)",
+    dropAccentBorder: "rgba(94,106,210,0.5)",
+    // Status dots
+    redDot: semanticColors.red,
+    blueDot: semanticColors.indigo,
+    // Lock icon on active tab
+    lockActive: semanticColors.indigo,
+    // Lock icon on inactive tab
+    lockInactive: c.text3,
+  }
+}
+
+type TabColors = ReturnType<typeof buildTabColors>
+
 export function TilingContainer({ container }: Props) {
+  const { t } = useTranslation()
+  const c = useColors()
+  const TC = buildTabColors(c)
   const [tabDropIndex, setTabDropIndex] = useState<number | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -91,7 +163,7 @@ export function TilingContainer({ container }: Props) {
   const containerWindows = container.windowIds.map((id) => windows[id]).filter(Boolean)
   const activeWindow = container.activeWindowId ? windows[container.activeWindowId] : null
 
-  const colors = isActive ? COLORS.active : COLORS.inactive
+  const colors = isActive ? TC.active : TC.inactive
 
   // Back / forward navigation state for the active window
   const canGoBack = activeWindow
@@ -260,6 +332,26 @@ export function TilingContainer({ container }: Props) {
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = "move"
         e.dataTransfer.setData("text/plain", "group")
+
+        // Custom ghost image
+        const ghost = document.createElement('div')
+        ghost.textContent = title
+        ghost.style.cssText = [
+          'position:absolute',
+          'top:-1000px',
+          'left:-1000px',
+          `background:${TC.ghostBg}`,
+          `border:1px solid ${TC.ghostBorder}`,
+          'border-radius:8px',
+          'padding:6px 12px',
+          'font-size:12px',
+          `color:${TC.ghostText}`,
+          'white-space:nowrap',
+          'pointer-events:none',
+        ].join(';')
+        document.body.appendChild(ghost)
+        e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2)
+        setTimeout(() => document.body.removeChild(ghost), 0)
       }
     },
     [container.id, container.windowIds, containerWindows, startGroupDrag],
@@ -298,18 +390,18 @@ export function TilingContainer({ container }: Props) {
             left={0}
             bottom={0}
             width="40%"
-            backgroundColor="rgba(6, 182, 212, 0.2)"
+            backgroundColor={TC.dropAccentBg}
             borderWidth={2}
-            borderColor="#06B6D4"
+            borderColor={TC.dropAccent}
             borderRadius={6}
             justifyContent="center"
             alignItems="center"
             pointerEvents="none"
             zIndex={100}
           >
-            <Columns size={24} color="#06B6D4" />
-            <Text color="#06B6D4" fontSize={11} marginTop={4}>
-              Split izquierda
+            <Columns size={24} color={TC.dropAccent} />
+            <Text color={TC.dropAccent} fontSize={11} marginTop={4}>
+              {t('windows.splitLeft')}
             </Text>
           </YStack>
         )}
@@ -322,18 +414,18 @@ export function TilingContainer({ container }: Props) {
             right={0}
             bottom={0}
             width="40%"
-            backgroundColor="rgba(6, 182, 212, 0.2)"
+            backgroundColor={TC.dropAccentBg}
             borderWidth={2}
-            borderColor="#06B6D4"
+            borderColor={TC.dropAccent}
             borderRadius={6}
             justifyContent="center"
             alignItems="center"
             pointerEvents="none"
             zIndex={100}
           >
-            <Columns size={24} color="#06B6D4" />
-            <Text color="#06B6D4" fontSize={11} marginTop={4}>
-              Split derecha
+            <Columns size={24} color={TC.dropAccent} />
+            <Text color={TC.dropAccent} fontSize={11} marginTop={4}>
+              {t('windows.splitRight')}
             </Text>
           </YStack>
         )}
@@ -346,18 +438,18 @@ export function TilingContainer({ container }: Props) {
             right={0}
             bottom={0}
             height="40%"
-            backgroundColor="rgba(6, 182, 212, 0.2)"
+            backgroundColor={TC.dropAccentBg}
             borderWidth={2}
-            borderColor="#06B6D4"
+            borderColor={TC.dropAccent}
             borderRadius={6}
             justifyContent="center"
             alignItems="center"
             pointerEvents="none"
             zIndex={100}
           >
-            <Rows size={24} color="#06B6D4" />
-            <Text color="#06B6D4" fontSize={11} marginTop={4}>
-              Split abajo
+            <Rows size={24} color={TC.dropAccent} />
+            <Text color={TC.dropAccent} fontSize={11} marginTop={4}>
+              {t('windows.splitBottom')}
             </Text>
           </YStack>
         )}
@@ -370,9 +462,9 @@ export function TilingContainer({ container }: Props) {
             left={0}
             right={0}
             height={34}
-            backgroundColor="rgba(6, 182, 212, 0.15)"
+            backgroundColor={TC.dropAccentBgSubtle}
             borderWidth={2}
-            borderColor="rgba(6, 182, 212, 0.5)"
+            borderColor={TC.dropAccentBorder}
             borderRadius={4}
             pointerEvents="none"
             zIndex={100}
@@ -387,9 +479,9 @@ export function TilingContainer({ container }: Props) {
             left={DROP_ZONE_SIZE}
             right={DROP_ZONE_SIZE}
             bottom={DROP_ZONE_SIZE}
-            backgroundColor="rgba(6, 182, 212, 0.15)"
+            backgroundColor={TC.dropAccentBgSubtle}
             borderWidth={2}
-            borderColor="rgba(6, 182, 212, 0.5)"
+            borderColor={TC.dropAccentBorder}
             borderRadius={6}
             justifyContent="center"
             alignItems="center"
@@ -397,10 +489,10 @@ export function TilingContainer({ container }: Props) {
             zIndex={100}
           >
             <XStack gap={8} alignItems="center">
-              <Text color="#06B6D4" fontSize={18}>
+              <Text color={TC.dropAccent} fontSize={18}>
                 ⇄
               </Text>
-              <Text color="#06B6D4" fontSize={12} fontWeight="600">
+              <Text color={TC.dropAccent} fontSize={12} fontWeight="600">
                 Intercambiar
               </Text>
             </XStack>
@@ -424,7 +516,7 @@ export function TilingContainer({ container }: Props) {
       <XStack
         ref={setTabBarRefCallback as any}
         height={39}
-        backgroundColor={COLORS.tabBar}
+        backgroundColor={TC.tabBar}
         alignItems="flex-end"
         position="relative"
         zIndex={2}
@@ -441,7 +533,7 @@ export function TilingContainer({ container }: Props) {
           opacity={containerWindows.length > 0 ? 0.4 : 0.2}
           cursor={containerWindows.length > 0 ? "grab" : "default"}
           hoverStyle={
-            containerWindows.length > 0 ? { backgroundColor: "#1a1a1a", opacity: 0.8 } : {}
+            containerWindows.length > 0 ? { backgroundColor: TC.hoverBg, opacity: 0.8 } : {}
           }
           alignSelf="center"
           // @ts-expect-error - Web drag events
@@ -449,7 +541,7 @@ export function TilingContainer({ container }: Props) {
           onDragStart={Platform.OS === "web" ? handleGripDragStart : undefined}
           onDragEnd={Platform.OS === "web" ? handleGripDragEnd : undefined}
         >
-          <GripVertical size={14} color="#aaa" />
+          <GripVertical size={14} color={TC.iconDim} />
         </XStack>
 
         {/* Back / Forward navigation buttons */}
@@ -462,10 +554,10 @@ export function TilingContainer({ container }: Props) {
             borderRadius={4}
             opacity={canGoBack ? 0.7 : 0.2}
             cursor={canGoBack ? "pointer" : "default"}
-            hoverStyle={canGoBack ? { backgroundColor: "#1a1a1a", opacity: 1 } : {}}
+            hoverStyle={canGoBack ? { backgroundColor: TC.hoverBg, opacity: 1 } : {}}
             onPress={canGoBack && activeWindow ? () => navigateBack(activeWindow.id) : undefined}
           >
-            <ChevronLeft size={14} color="#aaa" />
+            <ChevronLeft size={14} color={TC.iconDim} />
           </XStack>
           <XStack
             width={24}
@@ -475,10 +567,10 @@ export function TilingContainer({ container }: Props) {
             borderRadius={4}
             opacity={canGoForward ? 0.7 : 0.2}
             cursor={canGoForward ? "pointer" : "default"}
-            hoverStyle={canGoForward ? { backgroundColor: "#1a1a1a", opacity: 1 } : {}}
+            hoverStyle={canGoForward ? { backgroundColor: TC.hoverBg, opacity: 1 } : {}}
             onPress={canGoForward && activeWindow ? () => navigateForward(activeWindow.id) : undefined}
           >
-            <ChevronRight size={14} color="#aaa" />
+            <ChevronRight size={14} color={TC.iconDim} />
           </XStack>
         </XStack>
 
@@ -503,22 +595,23 @@ export function TilingContainer({ container }: Props) {
           {tabDropIndex === containerWindows.length && currentDropZone === "tabs" && (
             <TabDropIndicator />
           )}
-        </XStack>
 
-        {/* Launcher button (+) */}
-        <XStack
-          alignSelf="center"
-          width={26}
-          height={26}
-          justifyContent="center"
-          alignItems="center"
-          opacity={0.4}
-          hoverStyle={{ backgroundColor: "#1a1a1a", opacity: 0.8 }}
-          borderRadius={4}
-          cursor="pointer"
-          onPress={() => openWindow("launcher", {}, true, activeWindow?.id)}
-        >
-          <Plus size={14} color="#aaa" />
+          {/* Launcher button (+) - right after the last tab */}
+          <XStack
+            alignSelf="center"
+            width={26}
+            height={26}
+            justifyContent="center"
+            alignItems="center"
+            opacity={0.4}
+            hoverStyle={{ backgroundColor: TC.hoverBg, opacity: 0.8 }}
+            borderRadius={4}
+            cursor="pointer"
+            marginLeft={4}
+            onPress={() => openWindow("launcher", {}, true, activeWindow?.id)}
+          >
+            <Plus size={14} color={TC.iconDim} />
+          </XStack>
         </XStack>
 
         {/* Menu button */}
@@ -531,19 +624,19 @@ export function TilingContainer({ container }: Props) {
                 justifyContent="center"
                 alignItems="center"
                 opacity={0.4}
-                hoverStyle={{ backgroundColor: "#1a1a1a", opacity: 0.8 }}
+                hoverStyle={{ backgroundColor: TC.hoverBg, opacity: 0.8 }}
                 borderRadius={4}
                 cursor="pointer"
                 marginRight={4}
               >
-                <MoreVertical size={14} color="#aaa" />
+                <MoreVertical size={14} color={TC.iconDim} />
               </XStack>
             </Popover.Trigger>
 
             <Popover.Content
-              backgroundColor="#151515"
+              backgroundColor={TC.menuBg}
               borderWidth={1}
-              borderColor="#2a2a2a"
+              borderColor={TC.menuBorder}
               borderRadius={8}
               padding={4}
               elevate
@@ -560,15 +653,15 @@ export function TilingContainer({ container }: Props) {
                   alignItems="center"
                   borderRadius={4}
                   cursor="pointer"
-                  hoverStyle={{ backgroundColor: "#1f1f1f" }}
+                  hoverStyle={{ backgroundColor: TC.menuHover }}
                   onPress={() => {
                     splitContainer(container.id, "horizontal")
                     setMenuOpen(false)
                   }}
                 >
-                  <Columns size={14} color="#888" />
-                  <Text fontSize={12} color="#ccc">
-                    Split horizontal
+                  <Columns size={14} color={TC.iconMid} />
+                  <Text fontSize={12} color={c.text}>
+                    {t('windows.splitHorizontal')}
                   </Text>
                 </XStack>
 
@@ -580,19 +673,19 @@ export function TilingContainer({ container }: Props) {
                   alignItems="center"
                   borderRadius={4}
                   cursor="pointer"
-                  hoverStyle={{ backgroundColor: "#1f1f1f" }}
+                  hoverStyle={{ backgroundColor: TC.menuHover }}
                   onPress={() => {
                     splitContainer(container.id, "vertical")
                     setMenuOpen(false)
                   }}
                 >
-                  <Rows size={14} color="#888" />
-                  <Text fontSize={12} color="#ccc">
-                    Split vertical
+                  <Rows size={14} color={TC.iconMid} />
+                  <Text fontSize={12} color={c.text}>
+                    {t('windows.splitVertical')}
                   </Text>
                 </XStack>
 
-                <Separator marginVertical={4} backgroundColor="#2a2a2a" />
+                <Separator marginVertical={4} backgroundColor={TC.menuSeparator} />
 
                 {/* Close container */}
                 <XStack
@@ -602,15 +695,15 @@ export function TilingContainer({ container }: Props) {
                   alignItems="center"
                   borderRadius={4}
                   cursor="pointer"
-                  hoverStyle={{ backgroundColor: "#1f1f1f" }}
+                  hoverStyle={{ backgroundColor: TC.menuHover }}
                   onPress={() => {
                     closeContainer(container.id)
                     setMenuOpen(false)
                   }}
                 >
-                  <Trash2 size={14} color="#ef4444" />
-                  <Text fontSize={12} color="#ef4444">
-                    Cerrar panel
+                  <Trash2 size={14} color={semanticColors.red} />
+                  <Text fontSize={12} color={semanticColors.red}>
+                    {t('windows.closePanel')}
                   </Text>
                 </XStack>
               </YStack>
@@ -634,37 +727,45 @@ export function TilingContainer({ container }: Props) {
       >
         {containerWindows.length === 0 ? (
           <YStack flex={1} justifyContent="center" alignItems="center" gap={8}>
-            <Text color="#333" fontSize={12}>
+            <Text color={TC.emptyText} fontSize={12}>
               Empty pane
             </Text>
-            <Text color="#444" fontSize={10}>
+            <Text color={TC.emptySubtext} fontSize={10}>
               Drag a tab here
             </Text>
           </YStack>
         ) : (
-          containerWindows.map((win) => (
-            <YStack
-              key={win.id}
-              flex={1}
-              // @ts-expect-error - display:none keeps the component mounted without unmounting
-              display={win.id === container.activeWindowId ? "flex" : "none"}
-            >
-              <WindowContent
-                window={{
-                  id: win.id,
-                  type: win.type,
-                  props: win.props,
-                  mode: "docked",
-                  isMinimized: false,
-                  isMaximized: false,
-                  hasNotification: win.hasNotification,
-                  notificationCount: win.notificationCount,
-                  createdAt: 0,
-                  isPinned: false,
-                }}
-              />
-            </YStack>
-          ))
+          containerWindows.map((win) => {
+            const isTabActive = win.id === container.activeWindowId
+            const tabCtxValue: TabContextValue = {
+              tabBgColor: colors.background,
+              isContainerActive: isActive,
+              isTabActive,
+            }
+            return (
+              <TabContext.Provider key={win.id} value={tabCtxValue}>
+                <YStack
+                  flex={1}
+                  display={isTabActive ? "flex" : "none"}
+                >
+                  <WindowContent
+                    window={{
+                      id: win.id,
+                      type: win.type,
+                      props: win.props,
+                      mode: "docked",
+                      isMinimized: false,
+                      isMaximized: false,
+                      hasNotification: win.hasNotification,
+                      notificationCount: win.notificationCount,
+                      createdAt: 0,
+                      isPinned: false,
+                    }}
+                  />
+                </YStack>
+              </TabContext.Provider>
+            )
+          })
         )}
       </YStack>
 
@@ -683,7 +784,7 @@ function TabDropIndicator() {
     <YStack
       width={3}
       height={28}
-      backgroundColor="#06B6D4"
+      backgroundColor={semanticColors.indigo}
       borderRadius={2}
       marginHorizontal={-1}
       alignSelf="center"
@@ -694,31 +795,6 @@ function TabDropIndicator() {
 // ============================================
 // CONCAVE CORNER (for active tab)
 // ============================================
-
-interface ConcaveCornerProps {
-  side: "left" | "right"
-  borderColor: string
-  backgroundColor: string
-}
-
-function ConcaveCorner({ side, borderColor, backgroundColor }: ConcaveCornerProps) {
-  // Using radial gradient to create concave corner effect
-  const gradientPosition = side === "left" ? "0 0" : "100% 0"
-
-  return (
-    <View
-      style={{
-        position: "absolute",
-        [side]: -TAB_RADIUS,
-        bottom: 0,
-        width: TAB_RADIUS,
-        height: TAB_RADIUS,
-        // @ts-expect-error - web style
-        background: `radial-gradient(circle at ${gradientPosition}, transparent ${TAB_RADIUS - 1}px, ${borderColor} ${TAB_RADIUS - 1}px, ${borderColor} ${TAB_RADIUS}px, ${backgroundColor} ${TAB_RADIUS}px)`,
-      }}
-    />
-  )
-}
 
 // ============================================
 // DRAGGABLE TAB COMPONENT
@@ -749,6 +825,8 @@ function DraggableTab({
 }: DraggableTabProps) {
   const { startDrag, endDrag, isDragging } = useDragDrop()
   const [isDraggingThis, setIsDraggingThis] = useState(false)
+  const c = useColors()
+  const TC = buildTabColors(c)
 
   // Use shared hook for tab state
   const { Icon, iconColor, title, showSpinner, showRedDot, showBlueDot, showLock, showIcon } =
@@ -763,6 +841,26 @@ function DraggableTab({
       if (e.dataTransfer) {
         e.dataTransfer.effectAllowed = "move"
         e.dataTransfer.setData("text/plain", window.id)
+
+        // Custom ghost image
+        const ghost = document.createElement('div')
+        ghost.textContent = title
+        ghost.style.cssText = [
+          'position:absolute',
+          'top:-1000px',
+          'left:-1000px',
+          `background:${TC.ghostBg}`,
+          `border:1px solid ${TC.ghostBorder}`,
+          'border-radius:8px',
+          'padding:6px 12px',
+          'font-size:12px',
+          `color:${TC.ghostText}`,
+          'white-space:nowrap',
+          'pointer-events:none',
+        ].join(';')
+        document.body.appendChild(ghost)
+        e.dataTransfer.setDragImage(ghost, ghost.offsetWidth / 2, ghost.offsetHeight / 2)
+        setTimeout(() => document.body.removeChild(ghost), 0)
       }
     },
     [window.id, containerId, title, startDrag],
@@ -796,7 +894,7 @@ function DraggableTab({
   )
 
   // Get colors based on state
-  const colors = isContainerActive ? COLORS.active : COLORS.inactive
+  const colors = isContainerActive ? TC.active : TC.inactive
 
   // Active tab styling
   if (isActive) {
@@ -842,12 +940,12 @@ function DraggableTab({
           backgroundColor={colors.background}
         />
 
-        {/* Status indicator */}
-        {showSpinner && <TerosLoading size={16} color="#06B6D4" />}
-        {showRedDot && <Circle size={9} backgroundColor="#ef4444" />}
-        {showBlueDot && <Circle size={9} backgroundColor="#06B6D4" />}
-        {showLock && <Lock size={14} color="#06B6D4" />}
-        {showIcon && Icon && <Icon size={14} color={iconColor} />}
+        {/* Status indicator — fixed-size wrapper prevents icon from shrinking */}
+        {showSpinner && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><TerosLoading size={16} color={TC.dropAccent} /></View>}
+        {showRedDot && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Circle size={9} backgroundColor={semanticColors.red} /></View>}
+        {showBlueDot && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Circle size={9} backgroundColor={semanticColors.indigo} /></View>}
+        {showLock && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Lock size={14} color={TC.dropAccent} /></View>}
+        {showIcon && Icon && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Icon size={14} color={iconColor} /></View>}
 
         <Text flex={1} fontSize={12} color={colors.tabText} numberOfLines={1} pointerEvents="none">
           {title}
@@ -860,10 +958,10 @@ function DraggableTab({
           justifyContent="center"
           alignItems="center"
           opacity={0.5}
-          hoverStyle={{ backgroundColor: "#333", opacity: 1 }}
+          hoverStyle={{ backgroundColor: TC.closeHover, opacity: 1 }}
           onPress={handleCloseClick}
         >
-          <X size={14} color="#aaa" />
+          <X size={14} color={TC.iconDim} />
         </XStack>
       </XStack>
     )
@@ -881,29 +979,29 @@ function DraggableTab({
       paddingRight={4}
       gap={6}
       alignItems="center"
-      backgroundColor={COLORS.inactiveTab}
+      backgroundColor={TC.inactiveTab}
       borderTopLeftRadius={TAB_RADIUS}
       borderTopRightRadius={TAB_RADIUS}
       opacity={isDraggingThis ? 0.5 : 1}
       cursor="grab"
-      hoverStyle={{ backgroundColor: "#151515" }}
+      hoverStyle={{ backgroundColor: TC.inactiveTabHover }}
       onPress={handleClick}
       // @ts-expect-error - Web drag events
       draggable={Platform.OS === "web"}
       onDragStart={Platform.OS === "web" ? handleDragStart : undefined}
       onDragEnd={Platform.OS === "web" ? handleDragEnd : undefined}
     >
-      {/* Status indicator */}
-      {showSpinner && <TerosLoading size={16} color="#06B6D4" />}
-      {showRedDot && <Circle size={9} backgroundColor="#ef4444" />}
-      {showBlueDot && <Circle size={9} backgroundColor="#06B6D4" />}
-      {showLock && <Lock size={14} color="#666" />}
-      {showIcon && Icon && <Icon size={14} color={iconColor} />}
+      {/* Status indicator — fixed-size wrapper prevents icon from shrinking */}
+      {showSpinner && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><TerosLoading size={16} color={TC.dropAccent} /></View>}
+      {showRedDot && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Circle size={9} backgroundColor={semanticColors.red} /></View>}
+      {showBlueDot && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Circle size={9} backgroundColor={semanticColors.indigo} /></View>}
+      {showLock && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Lock size={14} color={c.text3} /></View>}
+      {showIcon && Icon && <View style={{ width: 16, height: 16, flexShrink: 0, alignItems: 'center', justifyContent: 'center' }}><Icon size={14} color={iconColor} /></View>}
 
       <Text
         flex={1}
         fontSize={12}
-        color={COLORS.inactiveTabText}
+        color={TC.inactiveTabText}
         numberOfLines={1}
         pointerEvents="none"
       >
@@ -917,10 +1015,10 @@ function DraggableTab({
         justifyContent="center"
         alignItems="center"
         opacity={0.5}
-        hoverStyle={{ backgroundColor: "#333", opacity: 1 }}
+        hoverStyle={{ backgroundColor: TC.closeHover, opacity: 1 }}
         onPress={handleCloseClick}
       >
-        <X size={14} color="#aaa" />
+        <X size={14} color={TC.iconDim} />
       </XStack>
     </XStack>
   )

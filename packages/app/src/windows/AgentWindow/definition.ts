@@ -7,6 +7,7 @@
 import { Bot } from '@tamagui/lucide-icons';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { AgentWindowContent } from './AgentWindowContent';
+import i18n from '../../i18n';
 
 export interface AgentWindowProps {
   agentId: string;
@@ -25,7 +26,7 @@ export const agentWindowDefinition: WindowTypeDefinition<AgentWindowProps> = {
 
   getKey: (props) => props.agentId,
 
-  getTitle: () => 'Configurar Agente',
+  getTitle: () => i18n.t("windows.configureAgent"),
   getSubtitle: (props) => props.agentId,
 
   serialize: (props) => ({ agentId: props.agentId, workspaceId: props.workspaceId }),

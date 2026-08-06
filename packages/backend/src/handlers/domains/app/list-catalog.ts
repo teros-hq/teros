@@ -39,7 +39,13 @@ export function createListCatalogHandler(mcaService: McaService, db: Db) {
         description: mca.description,
         icon: mca.icon,
         color: mca.color,
+        // Catalog presentation (TER-524) — light fields the card needs.
+        tagline: mca.tagline,
+        image: mca.image,
+        verified: mca.verified,
+        version: mca.version,
         category: mca.category,
+        i18n: mca.i18n ?? undefined,
         tools: mca.tools,
         availability: {
           enabled: mca.availability?.enabled ?? true,

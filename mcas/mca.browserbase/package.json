@@ -1,0 +1,11 @@
+{
+  "name": "mca.browserbase",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Browserbase cloud browser automation MCA",
+  "main": "src/index.ts",
+  "dependencies": {
+    "@browserbasehq/sdk": "^2.3.0",
+    "playwright-core": "^1.61.1"
+  }
+}

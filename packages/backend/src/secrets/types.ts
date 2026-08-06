@@ -20,6 +20,11 @@ export interface AuthSecret {
   sessionTokenSecret: string
 }
 
+export interface MCASecret {
+  /** Shared secret for internal service-to-service authentication (e.g., scheduler to /api/event) */
+  internalToken: string
+}
+
 export interface EncryptionSecret {
   masterKey: string // System encryption key for user keys
 }
@@ -63,6 +68,11 @@ export interface AdminSecret {
   apiKey: string
 }
 
+export interface LatitudeSecret {
+  apiKey: string
+  projectSlug: string
+}
+
 export interface EmailSecret {
   resendApiKey: string
 }
@@ -70,6 +80,39 @@ export interface EmailSecret {
 export interface TranscriptionSecret {
   /** Provider to use: 'whisper' (OpenAI) or 'elevenlabs' */
   provider: "whisper" | "elevenlabs"
+}
+
+export interface FireworksSecret {
+  apiKey: string
+}
+
+/**
+ * Together AI system secret — the failover upstream for the `teros` provider
+ * (TER-617/F3). Same shape as Fireworks (Together is OpenAI-compatible).
+ * Provisioned in prod via `.secrets/system/together.json` (auto-discovered at
+ * boot). The fallback only routes here when ZDR is asserted (see the resolver's
+ * `resolveRetention` guard).
+ */
+export interface TogetherSecret {
+  apiKey: string
+}
+
+export interface StripeSecret {
+  /** Stripe secret API key (sk_live_… / sk_test_…). */
+  secretKey: string
+  /** Signing secret for the /webhooks/stripe endpoint (whsec_…). */
+  webhookSecret: string
+  /**
+   * Publishable key (pk_live_… / pk_test_…). NOT secret — returned to the
+   * frontend so it can initialize Stripe.js / Elements for vaulting.
+   */
+  publishableKey?: string
+  /**
+   * Optional pinned Stripe API version. Omit to use the SDK's bundled default
+   * (the version its TypeScript types were generated for). Only set this to a
+   * value the installed SDK supports.
+   */
+  apiVersion?: string
 }
 
 // MCA secrets
@@ -86,6 +129,7 @@ export interface GmailSecret {
 // Registry of system secrets (for type-safety)
 export interface SystemSecretsRegistry {
   admin: AdminSecret
+  latitude: LatitudeSecret
   anthropic: AnthropicSecret
   "anthropic-oauth": AnthropicOAuthSecret
   openai: OpenAISecret
@@ -96,6 +140,10 @@ export interface SystemSecretsRegistry {
   auth: AuthSecret
   encryption: EncryptionSecret
   oauth: OAuthConfigSecret
+  mca: MCASecret
+  fireworks: FireworksSecret
+  together: TogetherSecret
+  stripe: StripeSecret
 }
 
 // Registry of MCA secrets (for type-safety)

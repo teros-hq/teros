@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const searchContacts: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search Intercom contacts by email, name, or phone number.',
   parameters: {
     type: 'object',

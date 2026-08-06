@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getWsClient, isWsConnected, type RenameChannelResult } from '../lib';
 
 export const renameChannel: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Rename a conversation. Changes the title/name of a channel.',
   parameters: {
     type: 'object',

@@ -1,42 +1,51 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { db, formatRecurringTask } from '../lib';
+import { z } from 'zod';
+import { db, formatRecurringTask, SchedulerError } from '../lib';
+import {
+  cleanupChannelSubscriptions,
+  requireUserId,
+  structured,
+  type SchedulerTool,
+  toToolError,
+  validateInput,
+} from './_shared';
 
-export const deleteRecurringTask: ToolConfig = {
-  description: 'Permanently delete a recurring task',
+const Schema = z.object({ taskId: z.number().int().positive() });
+
+export const deleteRecurringTask: SchedulerTool = {
+  description:
+    'Permanently delete a recurring task of the current user. Cleans up channel subscription if last one for the channel.',
   parameters: {
     type: 'object',
-    properties: {
-      taskId: {
-        type: 'number',
-        description: 'The ID of the task to delete',
-      },
-    },
+    properties: { taskId: { type: 'number', description: 'Recurring task ID.' } },
     required: ['taskId'],
   },
-  handler: async (args) => {
-    const { taskId } = args as { taskId: number };
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable', destructiveHint: true },
+  handler: async (args, context) => {
+    try {
+      const userId = requireUserId(context);
+      const input = validateInput(Schema, args);
 
-    const task = await db.getRecurringTask(taskId);
-    if (!task) {
-      throw new Error(`Task ${taskId} not found`);
+      // Atomic deleteOne con filter compuesto. Retorna el doc anterior si
+      // existía y era del user. null → NOT_FOUND.
+      const deleted = await db.deleteRecurringTask(input.taskId, userId);
+      if (!deleted) {
+        throw new SchedulerError('NOT_FOUND', `Recurring task ${input.taskId} not found.`);
+      }
+
+      // Cleanup subscription si era el último recurring task del user en ese channel.
+      const remaining = (
+        await db.listRecurringTasks({ userId, channelId: deleted.channel_id, limit: 1 })
+      ).items;
+      if (remaining.length === 0) {
+        await cleanupChannelSubscriptions(context, deleted.channel_id, ['scheduler.recurring_task']);
+      }
+
+      return structured({
+        action: 'deleted' as const,
+        task: formatRecurringTask(deleted),
+      });
+    } catch (error) {
+      toToolError(error);
     }
-
-    const channelId = task.channel_id;
-    const deletedTask = formatRecurringTask(task);
-
-    const deleted = await db.deleteRecurringTask(taskId);
-    if (!deleted) {
-      throw new Error(`Failed to delete task ${taskId}`);
-    }
-
-    const allTasks = (await db.getAllRecurringTasks(channelId)).map(formatRecurringTask);
-
-    return {
-      success: true,
-      message: 'Task deleted permanently',
-      affectedTaskId: taskId,
-      deletedTask,
-      tasks: allTasks,
-    };
   },
 };

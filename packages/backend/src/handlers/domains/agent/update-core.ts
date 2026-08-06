@@ -5,19 +5,21 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
-import { config } from '../../../config'
+import { requireSystemAdmin } from '../../../auth/auth-helpers'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
 import type { ModelService } from '../../../services/model-service'
-
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined
-  return `${config.static.baseUrl}/${avatarFilename}`
-}
 
 interface UpdateCoreData {
   coreId: string
   updates: {
+    name?: string
+    fullName?: string
+    version?: string
     modelId?: string
     systemPrompt?: string
+    personality?: string[]
+    capabilities?: string[]
+    defaultApps?: string[]
     modelOverrides?: {
       temperature?: number
       maxTokens?: number
@@ -27,9 +29,11 @@ interface UpdateCoreData {
 }
 
 export function createUpdateCoreHandler(db: Db, modelService: ModelService) {
-  void db // kept for symmetry; modelService already has its own db reference
+  return async function updateCore(ctx: WsHandlerContext, rawData: unknown) {
+    // Admin-only: editing a core's systemPrompt/model affects every agent that
+    // uses it. Without this gate any authenticated user could rewrite it (TER-513).
+    await requireSystemAdmin(db, ctx.userId)
 
-  return async function updateCore(_ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateCoreData
     const { coreId, updates } = data
 
@@ -44,12 +48,14 @@ export function createUpdateCoreHandler(db: Db, modelService: ModelService) {
     return {
       core: {
         coreId: updatedCore.coreId,
+        coreType: updatedCore.coreType,
         name: updatedCore.name,
         fullName: updatedCore.fullName,
         version: updatedCore.version,
         systemPrompt: updatedCore.systemPrompt,
         personality: updatedCore.personality,
         capabilities: updatedCore.capabilities,
+        defaultApps: updatedCore.defaultApps,
         avatarUrl: buildAvatarUrl(updatedCore.avatarUrl),
         modelId: updatedCore.modelId,
         modelOverrides: updatedCore.modelOverrides,

@@ -83,6 +83,9 @@ export interface WsHandlerContext {
   userId: string
   sessionId: string
   ip: string
+  /** The raw session token (opaque string) for the current authenticated session.
+   *  Available so handlers can hash it or reference the MongoDB user_session. */
+  sessionToken?: string
 }
 
 /** A handler function that processes a request and returns data */

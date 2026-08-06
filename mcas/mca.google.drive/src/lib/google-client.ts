@@ -1,7 +1,7 @@
 /**
  * Google API Client Manager
  *
- * Manages OAuth2 authentication and Google API clients for Drive, Sheets, Slides, and Docs.
+ * Manages OAuth2 authentication and Google API clients for Drive.
  */
 
 import type { HttpToolContext as ToolContext } from '@teros/mca-sdk';
@@ -15,9 +15,6 @@ import { google } from 'googleapis';
 export interface GoogleClients {
   oauth2Client: OAuth2Client;
   drive: ReturnType<typeof google.drive>;
-  sheets: ReturnType<typeof google.sheets>;
-  slides: ReturnType<typeof google.slides>;
-  docs: ReturnType<typeof google.docs>;
 }
 
 export interface DriveToolContext extends ToolContext {
@@ -67,9 +64,7 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
   }
 
   // Parse redirect URI
-  // Falls back to TEROS_BACKEND_URL env var, or localhost for self-hosted installs
-  const backendUrl = process.env.TEROS_BACKEND_URL || 'http://localhost:3000';
-  let redirectUri = `${backendUrl}/auth/callback`;
+  let redirectUri = 'https://be.teros.ai/auth/callback';
   if (redirectUrisRaw) {
     try {
       const uris = JSON.parse(redirectUrisRaw);
@@ -95,9 +90,6 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
   googleClients = {
     oauth2Client,
     drive: google.drive({ version: 'v3', auth: oauth2Client }),
-    sheets: google.sheets({ version: 'v4', auth: oauth2Client }),
-    slides: google.slides({ version: 'v1', auth: oauth2Client }),
-    docs: google.docs({ version: 'v1', auth: oauth2Client }),
   };
 
   return googleClients;

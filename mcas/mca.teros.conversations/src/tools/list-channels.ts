@@ -1,7 +1,8 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
 import { CURRENT_CHANNEL_ID, getWsClient, isWsConnected, type ListChannelsResult } from '../lib';
 
 export const listChannels: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List past conversations. Returns channel names, agents, and last message preview.',
   parameters: {
     type: 'object',
@@ -17,7 +18,7 @@ export const listChannels: ToolConfig = {
       },
     },
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
     const wsClient = getWsClient();
     if (!isWsConnected()) {
       throw new Error('Not connected to backend. Please try again in a moment.');
@@ -30,6 +31,7 @@ export const listChannels: ToolConfig = {
       status,
       limit,
       excludeChannelId: CURRENT_CHANNEL_ID,
+      agentId: context.execution.agentId,
     });
 
     return {

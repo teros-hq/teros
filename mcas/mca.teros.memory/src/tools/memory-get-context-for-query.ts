@@ -6,6 +6,7 @@ import { ensureQdrantInitialized } from '../qdrant-init';
 export const memoryGetContextForQuery: HttpToolConfig = {
   description:
     'Get relevant memory context for a user query (what would be injected into the prompt)',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {

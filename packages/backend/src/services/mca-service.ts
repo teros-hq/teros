@@ -33,11 +33,15 @@
  */
 
 import { generateAppId } from '@teros/core';
+import { type McaToolAnnotations, McaToolAnnotationsSchema } from '@teros/shared';
+import { readFileSync } from 'fs';
 import * as fs from 'fs/promises';
 import type { Db } from 'mongodb';
 import * as path from 'path';
 import type { AuthManager } from '../auth/auth-manager';
+import { config } from '../config';
 import type { SecretsManager } from '../secrets/secrets-manager';
+import { createInstallPermissions } from '../types/permissions';
 import type {
   AgentAppAccess,
   AgentApps,
@@ -89,10 +93,10 @@ export class McaService {
   private workspaceService?: WorkspaceService;
   private volumeService?: VolumeService;
 
-  // Cache for ensureSystemApps: agentId → timestamp of last run
+  // Cache for ensureProvisionedApps: agentId → timestamp of last run
   // Avoids re-running the full provisioning logic on every agent.get-apps call.
-  private ensureSystemAppsCache = new Map<string, number>();
-  private readonly ENSURE_SYSTEM_APPS_TTL_MS = 5 * 60 * 1000; // 5 minutes
+  private ensureProvisionedAppsCache = new Map<string, number>();
+  private readonly ENSURE_PROVISIONED_APPS_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
   constructor(
     private db: Db,
@@ -126,6 +130,15 @@ export class McaService {
    */
   setVolumeService(volumeService: VolumeService): void {
     this.volumeService = volumeService;
+  }
+
+  /**
+   * Set tool cache invalidation callback (late binding — the callback
+   * depends on MessageHandler which is created before this service is
+   * wired to the WebSocket layer).
+   */
+  setOnToolCacheInvalidate(cb: (agentId: string) => Promise<void>): void {
+    this.onToolCacheInvalidate = cb;
   }
 
   // ============================================================================
@@ -283,6 +296,13 @@ export class McaService {
   }
 
   /**
+   * Get app by mcaId and ownerId (used to detect duplicates before install)
+   */
+  async getAppByMcaIdAndOwner(mcaId: string, ownerId: string): Promise<App | null> {
+    return this.appsCollection.findOne({ mcaId, ownerId, status: 'active' });
+  }
+
+  /**
    * Get resolved app (with MCA catalog data)
    */
   async getResolvedApp(appId: string): Promise<ResolvedApp | null> {
@@ -307,7 +327,7 @@ export class McaService {
    * @param ownerId - User ID or Workspace ID
    * @param ownerType - Optional filter by owner type
    */
-  async listAppsByOwner(ownerId: string, ownerType?: 'user' | 'workspace'): Promise<App[]> {
+  async listAppsByOwner(ownerId: string, ownerType?: 'workspace'): Promise<App[]> {
     const filter: any = { ownerId, status: 'active' };
     if (ownerType) {
       filter.ownerType = ownerType;
@@ -334,7 +354,7 @@ export class McaService {
    */
   private async resolveAppVolumes(
     ownerId: string,
-    ownerType: 'user' | 'workspace',
+    ownerType: 'workspace',
     mountPath: string = '/workspace',
     readOnly: boolean = false,
   ): Promise<App['volumes']> {
@@ -342,54 +362,42 @@ export class McaService {
       return undefined;
     }
 
+    if (ownerType !== 'workspace') {
+      throw new Error(`Unsupported ownerType: ${ownerType}. Only 'workspace' is supported.`);
+    }
+
     try {
-      if (ownerType === 'workspace') {
-        // Get workspace volume
-        if (!this.workspaceService) {
-          return undefined;
-        }
-
-        const workspace = await this.workspaceService.getWorkspace(ownerId);
-        if (!workspace?.volumeId) {
-          console.warn(`[McaService] Workspace ${ownerId} has no volume configured`);
-          return undefined;
-        }
-
-        return [
-          {
-            volumeId: workspace.volumeId,
-            mountPath,
-            readOnly,
-          },
-        ];
-      } else {
-        // Get user volume
-        const userVolume = await this.volumeService.getUserVolume(ownerId);
-        if (!userVolume) {
-          console.warn(`[McaService] User ${ownerId} has no volume configured`);
-          return undefined;
-        }
-
-        return [
-          {
-            volumeId: userVolume.volumeId,
-            mountPath,
-            readOnly,
-          },
-        ];
+      // Get workspace volume
+      if (!this.workspaceService) {
+        return undefined;
       }
+
+      const workspace = await this.workspaceService.getWorkspace(ownerId);
+      if (!workspace?.volumeId) {
+        console.warn(`[McaService] Workspace ${ownerId} has no volume configured`);
+        return undefined;
+      }
+
+      return [
+        {
+          volumeId: workspace.volumeId,
+          mountPath,
+          readOnly,
+        },
+      ];
     } catch (error) {
-      console.error(`[McaService] Failed to resolve volume for ${ownerType} ${ownerId}:`, error);
+      console.error(`[McaService] Failed to resolve volume for workspace ${ownerId}:`, error);
       return undefined;
     }
   }
 
   /**
    * Create a new app (install MCA)
-   * @param app - App configuration (ownerType defaults to 'user' for backwards compatibility)
    *
-   * For user apps with containerized MCAs (per-app mode), automatically
-   * configures the user's volume mount using user.volumeId from the database.
+   * In the unified workspace model, ownerType is always 'workspace'.
+   *
+   * For containerized MCAs (per-app mode), automatically configures the owner's
+   * volume mount using the resolved volumeId from the database.
    */
   async createApp(app: Omit<App, 'createdAt' | 'updatedAt'>): Promise<App> {
     // Validate app name format
@@ -404,9 +412,9 @@ export class McaService {
       throw new Error(`MCA ${app.mcaId} not found in catalog`);
     }
 
-    // Build volume mounts - automatically resolve from owner (user or workspace)
+    // Build volume mounts - automatically resolve from workspace owner
     let volumes: App['volumes'] = app.volumes;
-    const ownerType = app.ownerType || 'user';
+    const ownerType = app.ownerType || 'workspace';
 
     // If volumes not explicitly provided, auto-resolve from owner
     if (!volumes?.length) {
@@ -425,12 +433,119 @@ export class McaService {
       ...app,
       ownerType,
       volumes: volumes?.length ? volumes : undefined,
+      // Seed explicit per-tool permissions from the manifest annotations
+      // (allow for read-only, ask for mutations) unless the caller already
+      // decided them. Permissions are pure data from here on — no runtime
+      // policy upgrades anything.
+      permissions: app.permissions ?? createInstallPermissions(this.loadStaticToolDefs(app.mcaId)),
+      // Core platform tools (messages, tasks, agent management) are used on
+      // nearly every turn — pin them out of the tool-execution proxy so they
+      // stay individually listed and skip the discovery round-trip.
+      // Migration 20260704_003 applies the same pin to existing installs.
+      toolExposure: app.toolExposure ?? (app.mcaId === 'mca.teros.core' ? 'direct' : undefined),
       createdAt: now,
       updatedAt: now,
     };
 
     await this.appsCollection.insertOne(newApp);
     return newApp;
+  }
+
+  /**
+   * Read the MCA's static tools.json (name + annotations) for the install
+   * permission seed. Best-effort: a missing or malformed file returns [] and
+   * the seed degrades to `defaultPermission: 'ask'` for every tool —
+   * conservative, never blocks the install.
+   */
+  private loadStaticToolDefs(mcaId: string): Array<{ name: string; annotations?: McaToolAnnotations }> {
+    try {
+      const toolsPath = path.join(config.mca.basePath, mcaId, 'tools.json');
+      const content = readFileSync(toolsPath, 'utf-8');
+      const parsed = JSON.parse(content) as {
+        tools?: Array<{ name: string; annotations?: unknown }>;
+      };
+      if (!Array.isArray(parsed.tools)) return [];
+      return parsed.tools.map((t) => {
+        const result = t.annotations ? McaToolAnnotationsSchema.safeParse(t.annotations) : null;
+        return { name: t.name, annotations: result?.success ? result.data : undefined };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * SEC-1 (TER-720 / B-4): single source of truth for "may this actor install
+   * this MCA?". Enforces `availability.enabled` and the role hierarchy
+   * ({ user, admin, super }). Every path that installs an MCA must call this so
+   * the gate cannot drift onto one path only — the exact "authz enforced on one
+   * layer, not the other" class of the scheduler cross-user incident.
+   * Throws a plain Error on denial (callers map it to their layer's error).
+   */
+  async assertInstallable(
+    mca: { availability?: { enabled?: boolean; role?: string } },
+    actorUserId: string,
+  ): Promise<void> {
+    if (mca.availability?.enabled === false) {
+      throw new Error('MCA is not available');
+    }
+    const requiredRole = mca.availability?.role || 'user';
+    if (requiredRole === 'user') return;
+
+    const user = await this.getUserRole(actorUserId);
+    const userRole = user?.role || 'user';
+    const roleHierarchy: Record<string, number> = { user: 0, admin: 1, super: 2 };
+    const userLevel = roleHierarchy[userRole] ?? 0;
+    const requiredLevel = roleHierarchy[requiredRole] ?? 0;
+    if (userLevel < requiredLevel) {
+      throw new Error(`This MCA requires ${requiredRole} role. You have ${userRole} role.`);
+    }
+  }
+
+  /**
+   * SEC-1 (TER-720 / A1): authorization for app.grant-access / app.revoke-access.
+   *
+   * Cross-tenant closure (the BOLA fix): the caller must be a member of the
+   * app's workspace — a foreign tenant is not a member and is denied here.
+   *
+   * Agent side: the caller may manage access for any agent the AppWindow offers
+   * — the workspace's own agents plus the caller's or workspace owner's
+   * superagents — i.e. the SAME roster `app.list-agent-access` renders. An
+   * owner-only check here (`agent.ownerId === userId`) diverged from that roster
+   * and denied managing access for shared-workspace agents the UI actively
+   * offers a toggle for (R1). The membership check above is what closes the
+   * cross-tenant BOLA, so widening the agent side does not reopen A1.
+   */
+  async canManageAppAccess(userId: string, agentId: string, appId: string): Promise<boolean> {
+    const app = await this.getApp(appId);
+    if (!app || !this.workspaceService) return false;
+
+    // Apps are workspace-scoped; list-agent-access renders an empty roster
+    // otherwise, so there is nothing to manage.
+    if (app.ownerType !== 'workspace') return false;
+    const workspaceId = app.ownerId;
+
+    // Membership closes the cross-tenant BOLA.
+    if (!(await this.workspaceService.canAccess(workspaceId, userId))) return false;
+
+    // The agent must be in this app's workspace roster — the predicate is kept
+    // identical to app.list-agent-access (workspace agents + caller/owner
+    // superagents) so the gate can never drift from what the UI offers.
+    const workspace = await this.db
+      .collection('workspaces')
+      .findOne({ workspaceId }, { projection: { ownerId: 1, _id: 0 } });
+    const workspaceOwnerId = (workspace?.ownerId as string | undefined) ?? undefined;
+    const superagentOwnerIds = Array.from(
+      new Set([userId, workspaceOwnerId].filter(Boolean) as string[]),
+    );
+    const agent = await this.db.collection('agents').findOne({
+      agentId,
+      $or: [
+        { workspaceId },
+        { ownerId: { $in: superagentOwnerIds }, workspaceId: { $in: [null, undefined] } },
+      ],
+    });
+    return Boolean(agent);
   }
 
   /**
@@ -473,6 +588,29 @@ export class McaService {
     const mca = await this.getMcaFromCatalog(mcaId);
     if (!mca) {
       throw new Error(`MCA ${mcaId} not found in catalog`);
+    }
+
+    // SEC-1 (TER-720 / B-4): enforce the availability gate on THIS install path
+    // too. `app.install` checks `availability.enabled`/`role`, but this parallel
+    // path (workspace.install-app, workspace-commands) only checked workspace
+    // write access — so any user could install a disabled/admin-only MCA
+    // (e.g. mca.teros.docker-env, which mounts the Docker socket) into their own
+    // workspace and reach host root. Gating here closes both callers at once.
+    await this.assertInstallable(mca, userId);
+
+    // Single-install MCAs (availability.multi=false) may have only one instance
+    // per workspace — block a second install (TER-528). Multi MCAs (e.g. Gmail
+    // with several accounts) are exempt.
+    if (!mca.availability?.multi) {
+      const existing = await this.appsCollection.findOne({
+        ownerId: workspaceId,
+        ownerType: 'workspace',
+        mcaId,
+        status: 'active',
+      });
+      if (existing) {
+        throw new Error(`MCA ${mcaId} is already installed in this workspace`);
+      }
     }
 
     // Generate app ID and validate name
@@ -564,29 +702,44 @@ export class McaService {
    */
   async renameApp(
     appId: string,
-    ownerId: string,
+    userId: string,
     newName: string,
   ): Promise<{ success: boolean; error?: string }> {
+    // Apps are workspace-owned (`ownerType: 'workspace'`, `ownerId === privateWorkspaceId`).
+    // The `userId` passed by callers is the auth-context user, not the app owner — so we
+    // must look up the app first and then verify the user is a writer of the owning
+    // workspace, mirroring the pattern used by deleteApp().
+    const app = await this.appsCollection.findOne({ appId, ownerType: 'workspace' });
+    if (!app) {
+      return { success: false, error: 'App not found or access denied' };
+    }
+    const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
+    const member = workspace?.members?.find((m: any) => m.userId === userId);
+    const isOwner = workspace?.ownerId === userId;
+    const isWriter = member?.role === 'admin' || member?.role === 'write';
+    if (!isOwner && !isWriter) {
+      return { success: false, error: 'App not found or access denied' };
+    }
+
     // Validate format
     const validation = this.validateAppName(newName);
     if (!validation.valid) {
       return { success: false, error: validation.error };
     }
 
-    // Check availability
-    const isAvailable = await this.isAppNameAvailable(ownerId, newName, appId);
+    // Check availability against the real owner (workspaceId)
+    const isAvailable = await this.isAppNameAvailable(app.ownerId, newName, appId);
     if (!isAvailable) {
       return { success: false, error: `Name "${newName}" is already in use` };
     }
 
-    // Update
     const result = await this.appsCollection.updateOne(
-      { appId, ownerId },
+      { appId, ownerId: app.ownerId },
       { $set: { name: newName, updatedAt: new Date().toISOString() } },
     );
 
     if (result.matchedCount === 0) {
-      return { success: false, error: 'App not found or access denied' };
+      return { success: false, error: 'App not found' };
     }
 
     return { success: true };
@@ -670,9 +823,17 @@ export class McaService {
    * Also removes all agent access grants for this app
    */
   async deleteApp(appId: string, ownerId: string): Promise<{ success: boolean; error?: string }> {
-    // Check app exists and belongs to user
-    const app = await this.appsCollection.findOne({ appId, ownerId });
+    // All apps are workspace-owned (ownerType='workspace'). Verify the user has owner/admin/write
+    // access to the workspace that owns this app.
+    const app = await this.appsCollection.findOne({ appId, ownerType: 'workspace' });
     if (!app) {
+      return { success: false, error: 'App not found or access denied' };
+    }
+    const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
+    const member = workspace?.members?.find((m: any) => m.userId === ownerId);
+    const isOwner = workspace?.ownerId === ownerId;
+    const isAdmin = member?.role === 'admin' || member?.role === 'write';
+    if (!isOwner && !isAdmin) {
       return { success: false, error: 'App not found or access denied' };
     }
 
@@ -685,8 +846,8 @@ export class McaService {
     // Remove all access grants for this app
     await this.accessCollection.deleteMany({ appId });
 
-    // Delete the app
-    const result = await this.appsCollection.deleteOne({ appId, ownerId });
+    // Delete the app (use app.ownerId to handle both user-owned and workspace-owned apps)
+    const result = await this.appsCollection.deleteOne({ appId, ownerId: app.ownerId });
 
     if (result.deletedCount === 0) {
       return { success: false, error: 'Failed to delete app' };
@@ -707,8 +868,7 @@ export class McaService {
    * Grant agent access to an app
    *
    * Validates scope compatibility:
-   * - Global agent (no workspaceId) can only access global apps (ownerType='user')
-   * - Workspace agent can only access apps from the same workspace
+   * - Workspace agent can only access apps from the same workspace (ownerType='workspace').
    */
   async grantAccess(access: Omit<AgentAppAccess, 'grantedAt'>): Promise<AgentAppAccess> {
     // Validate app exists
@@ -733,9 +893,9 @@ export class McaService {
         'Workspace agent cannot access global apps. Install the app in the workspace first.',
       );
     }
-    if (!agentWorkspaceId && appWorkspaceId) {
-      throw new Error('Global agent cannot access workspace apps.');
-    }
+    // Superagents (no workspaceId) can access workspace apps — they operate
+    // across workspaces and their grants are managed explicitly.
+    // if (!agentWorkspaceId && appWorkspaceId) { throw ... }
     if (agentWorkspaceId && appWorkspaceId && agentWorkspaceId !== appWorkspaceId) {
       throw new Error('Agent and app must belong to the same workspace.');
     }
@@ -758,6 +918,47 @@ export class McaService {
     }
 
     return newAccess;
+  }
+
+  /**
+   * Auto-grant an app to the user's superagents (global agents:
+   * ownerId = userId, no workspaceId). Called on app install so the
+   * superagent gets the app without manual assignment.
+   *
+   * Fail-soft: an install never fails because a grant fails — errors are
+   * logged and skipped. `grantAccess` is an upsert, so repeated calls
+   * (e.g. idempotent installs) are harmless.
+   */
+  async grantAccessToUserSuperagents(userId: string, appId: string): Promise<void> {
+    const agentsCollection = this.db.collection('agents');
+    const superagents = await agentsCollection
+      .find(
+        {
+          ownerId: userId,
+          workspaceId: { $in: [null, undefined] },
+          status: 'active',
+        },
+        { projection: { agentId: 1 } },
+      )
+      .toArray();
+
+    for (const agent of superagents) {
+      try {
+        await this.grantAccess({
+          agentId: agent.agentId as string,
+          appId,
+          grantedBy: userId,
+        });
+        console.log(
+          `[McaService] Auto-granted app ${appId} to superagent ${agent.agentId} (user ${userId})`,
+        );
+      } catch (error) {
+        console.error(
+          `[McaService] Failed to auto-grant app ${appId} to superagent ${agent.agentId}:`,
+          error,
+        );
+      }
+    }
   }
 
   /**
@@ -843,9 +1044,15 @@ export class McaService {
    *
    * SELF-HEALING: If duplicates are found, they are automatically removed
    * (keeping the oldest one) to maintain system integrity.
+   *
+   * ADD-ONLY for core defaults: this provisions system ∪ core.defaultApps and
+   * never deprovisions. If a core's `defaultApps` later shrinks, already-granted
+   * apps are intentionally left in place (no reconciliation of removals) — by
+   * design, so a config change can't silently strip an agent's tools. Removing a
+   * core default from existing agents is an explicit admin action.
    */
-  async ensureSystemApps(agentId: string): Promise<void> {
-    console.log(`[McaService] ensureSystemApps called for agent: ${agentId}`);
+  async ensureProvisionedApps(agentId: string, workspaceId?: string): Promise<void> {
+    console.log(`[McaService] ensureProvisionedApps called for agent: ${agentId}`);
 
     // Role hierarchy for comparison
     const roleHierarchy: Record<string, number> = { user: 0, admin: 1, super: 2 };
@@ -862,11 +1069,20 @@ export class McaService {
     const userId = agent.ownerId;
     const agentWorkspaceId = agent.workspaceId as string | undefined;
 
-    // Determine where to create/find system apps:
-    // - For global agents: apps owned by the user (ownerType='user')
-    // - For workspace agents: apps owned by the workspace (ownerType='workspace')
-    const appOwnerId = agentWorkspaceId || userId;
-    const appOwnerType = agentWorkspaceId ? 'workspace' : 'user';
+    // Determine where to create/find system apps using the unified workspace model.
+    // For Superagents (agentWorkspaceId = null), fall back to the active channel workspace.
+    const effectiveWorkspaceId = agentWorkspaceId || workspaceId;
+    const appOwnerId = effectiveWorkspaceId || userId;
+    const appOwnerType = 'workspace';
+
+    // Superagent without an active workspace — cannot provision system apps
+    if (!effectiveWorkspaceId) {
+      console.warn(
+        `[McaService] ensureSystemApps: Superagent ${agentId} has no active workspace. Skipping system app provisioning.`,
+      );
+      return;
+    }
+
 
     console.log(`[McaService] Agent ${agentId} scope: ${appOwnerType}, appOwnerId: ${appOwnerId}`);
 
@@ -894,11 +1110,39 @@ export class McaService {
       })
       .toArray();
 
+    // Core default apps: non-system MCAs declared by the agent's core.
+    // Provisioned with the same idempotent routine as system apps.
+    const core = agent.coreId
+      ? await this.db
+          .collection<{ defaultApps?: string[] }>('agent_cores')
+          .findOne({ coreId: agent.coreId })
+      : null;
+    const defaultAppIds = core?.defaultApps ?? [];
+    const defaultAppMcas = defaultAppIds.length
+      ? await this.mcaCatalogCollection
+          .find({
+            mcaId: { $in: defaultAppIds },
+            'availability.enabled': true,
+            status: 'active',
+          })
+          .toArray()
+      : [];
+
+    // Merge system + core-default MCAs, deduped by mcaId.
+    const seenMcaIds = new Set<string>();
+    const mcasToProvision = [...systemMcas, ...defaultAppMcas].filter((m) => {
+      if (seenMcaIds.has(m.mcaId)) return false;
+      seenMcaIds.add(m.mcaId);
+      return true;
+    });
+
     console.log(
-      `[McaService] Found ${systemMcas.length} system MCAs: ${systemMcas.map((m) => m.mcaId).join(', ')}`,
+      `[McaService] Provisioning ${mcasToProvision.length} MCAs for ${agentId} ` +
+        `(${systemMcas.length} system + ${defaultAppMcas.length} core-default): ` +
+        `${mcasToProvision.map((m) => m.mcaId).join(', ')}`,
     );
 
-    for (const mca of systemMcas) {
+    for (const mca of mcasToProvision) {
       const requiredRole = mca.availability?.role || 'user';
       const userHasAccess = hasRequiredRole(requiredRole);
 
@@ -987,6 +1231,20 @@ export class McaService {
           );
         }
       } else {
+        // App exists - update volume if missing
+        if (!existingApp.volumes || existingApp.volumes.length === 0) {
+          const volumes = await this.resolveAppVolumes(appOwnerId, appOwnerType);
+          if (volumes?.length) {
+            await this.appsCollection.updateOne(
+              { appId: existingApp.appId },
+              { $set: { volumes, updatedAt: new Date().toISOString() } },
+            );
+            console.log(
+              `[McaService] Updated missing volume for system app: ${existingApp.appId} (${mca.mcaId})`,
+            );
+          }
+        }
+
         // App exists - re-enable if disabled
         if (existingApp.status !== 'active') {
           await this.appsCollection.updateOne(
@@ -1096,14 +1354,21 @@ export class McaService {
    * Other apps (workspace or global) must be granted explicitly.
    *
    * Automatically ensures system apps are provisioned before resolving.
+   *
+   * Resolution strategy:
+   * - If the agent has a workspaceId: resolve apps filtered by workspaceId
+   *   (ownerId = workspaceId, ownerType = 'workspace') + agent_app_access grants.
+   *   This is the primary path for workspace agents.
+   * - If the agent has no workspaceId (Superagent or legacy global agent):
+   *   resolve apps by appId from agent_app_access only (legacy behaviour preserved).
    */
-  async getAgentApps(agentId: string): Promise<AgentApps> {
+  async getAgentApps(agentId: string, workspaceId?: string): Promise<AgentApps> {
     // Auto-provision system apps — throttled to once every 5 minutes per agent
     // to avoid running the full provisioning logic on every agent.get-apps call.
-    const lastRun = this.ensureSystemAppsCache.get(agentId) ?? 0;
-    if (Date.now() - lastRun > this.ENSURE_SYSTEM_APPS_TTL_MS) {
-      await this.ensureSystemApps(agentId);
-      this.ensureSystemAppsCache.set(agentId, Date.now());
+    const lastRun = this.ensureProvisionedAppsCache.get(agentId) ?? 0;
+    if (Date.now() - lastRun > this.ENSURE_PROVISIONED_APPS_TTL_MS) {
+      await this.ensureProvisionedApps(agentId, workspaceId);
+      this.ensureProvisionedAppsCache.set(agentId, Date.now());
     }
 
     // Get all access grants for this agent in one query
@@ -1112,12 +1377,37 @@ export class McaService {
 
     const appIds = accessList.map((a) => a.appId);
 
-    // Batch-fetch all apps in a single query instead of N sequential getResolvedApp calls
-    const appsRaw = await this.appsCollection
-      .find({ appId: { $in: appIds }, status: 'active' })
-      .toArray();
+    // Resolve the agent's workspaceId to determine resolution strategy
+    const agentsCollection = this.db.collection('agents');
+    const agent = await agentsCollection.findOne({ agentId }, { projection: { workspaceId: 1 } });
+    const agentWorkspaceId = agent?.workspaceId as string | undefined | null;
 
-    if (appsRaw.length === 0) return { agentId, apps: [] };
+    // Workspace always comes from the channel — no fallbacks (ENGINEERING-PRINCIPLES.md)
+    // For Superagents (agentWorkspaceId = null): use the channel's workspaceId
+    // For workspace agents (agentWorkspaceId = string): use their own workspaceId
+    const effectiveWorkspaceId = agentWorkspaceId ?? workspaceId;
+    if (!effectiveWorkspaceId) {
+      throw new Error(
+        `[McaService.getAgentApps] No workspaceId available for agent ${agentId}. ` +
+        `All tool executions must be scoped to a workspace.`
+      );
+    }
+    const appsFilter: Record<string, any> = {
+      appId: { $in: appIds },
+      status: 'active',
+      ownerId: effectiveWorkspaceId,
+      ownerType: 'workspace',
+    };
+
+    // Batch-fetch all apps in a single query instead of N sequential getResolvedApp calls
+    const appsRaw = await this.appsCollection.find(appsFilter).toArray();
+
+    if (appsRaw.length === 0) {
+      throw new Error(
+        `[McaService.getAgentApps] Agent ${agentId} has no apps in workspace ${effectiveWorkspaceId}. ` +
+        `Ensure the agent has been granted access to apps in this workspace.`
+      );
+    }
 
     // Batch-fetch all needed MCA catalog entries in a single query
     const mcaIds = [...new Set(appsRaw.map((a) => a.mcaId))];
@@ -1126,7 +1416,6 @@ export class McaService {
       .toArray();
 
     // Build lookup maps for O(1) access
-    const appById = new Map(appsRaw.map((a) => [a.appId, a]));
     const mcaById = new Map(mcaList.map((m) => [m.mcaId, m]));
     const accessByAppId = new Map(accessList.map((a) => [a.appId, a]));
 
@@ -1362,9 +1651,23 @@ export class McaService {
     context: string,
   ): Promise<{ success: boolean; error?: string }> {
     try {
+      // Same authorization model as renameApp/deleteApp: app is workspace-owned,
+      // user must be owner or writer of the owning workspace.
       const appsCollection = this.db.collection('apps');
+      const app = await appsCollection.findOne({ appId, ownerType: 'workspace' });
+      if (!app) {
+        return { success: false, error: 'App not found or no permission to update' };
+      }
+      const workspace = await this.workspaceService?.getWorkspace(app.ownerId);
+      const member = workspace?.members?.find((m: any) => m.userId === userId);
+      const isOwner = workspace?.ownerId === userId;
+      const isWriter = member?.role === 'admin' || member?.role === 'write';
+      if (!isOwner && !isWriter) {
+        return { success: false, error: 'App not found or no permission to update' };
+      }
+
       const result = await appsCollection.updateOne(
-        { appId, ownerId: userId },
+        { appId, ownerId: app.ownerId },
         { $set: { context, updatedAt: new Date().toISOString() } },
       );
 

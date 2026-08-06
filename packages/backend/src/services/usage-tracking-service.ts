@@ -11,7 +11,7 @@
  * - Support for multiple providers (OpenRouter, Anthropic, OpenAI, etc.)
  */
 
-import { generateId } from '@teros/core';
+import { estimateCostBreakdownUsd, generateId } from '@teros/core';
 import type { Collection, Db } from 'mongodb';
 import type { LLMUsage, Model } from '../types/database';
 
@@ -26,11 +26,20 @@ export interface TrackUsageParams {
   messageId: string;
   step?: number;
 
+  /**
+   * FK to agent_usage_sessions.sessionUsageId. Set when the LLM call ran
+   * inside an instrumented turn so analytics can group N llm_usage rows under
+   * the same session.
+   */
+  sessionUsageId?: string;
+
   // Model info
   provider: LLMUsage['provider'];
   modelId: string;
   modelString: string;
   actualModel?: string;
+  /** Real upstream provider (`fireworks` | `together` | …); telemetry dimension. TER-615 / C1. */
+  actualProvider?: string;
   providerMetadata?: Record<string, any>;
 
   // Token usage
@@ -47,6 +56,11 @@ export interface TrackUsageParams {
   stopReason?: 'end_turn' | 'tool_calls' | 'max_tokens' | 'error';
   toolCallsCount?: number;
   latencyMs?: number;
+  /** Time-to-first-token in ms (client-side wall clock). TER-615. */
+  ttftMs?: number;
+  /** Failover telemetry (TER-617/F3). */
+  fallbackUsed?: boolean;
+  primaryErrorClass?: string;
 
   // Optional metadata
   tags?: string[];
@@ -70,30 +84,42 @@ export class UsageTrackingService {
    * Calculates costs based on model pricing and saves to database.
    */
   async trackUsage(params: TrackUsageParams): Promise<LLMUsage> {
-    // Get model info for pricing
+    // Get model info for billingType (the `models.cost` column is unpopulated —
+    // pricing comes from the shared `estimateCostBreakdownUsd`, the SAME source
+    // the session projection uses, so llm_usage.costTotal and
+    // agent_usage_sessions.costUsd can never disagree). A2.4.
     const model = await this.modelsCollection.findOne({ modelId: params.modelId });
 
     if (!model) {
       console.warn(`[UsageTracking] Model not found: ${params.modelId}`);
-      // Continue anyway - we'll use zero costs
+      // Continue anyway — cost still resolves from the owned pricing table.
     }
 
-    // Calculate costs
-    const costs = this.calculateCosts(
-      {
-        promptTokens: params.promptTokens,
-        completionTokens: params.completionTokens,
-        cacheReadTokens: params.cacheReadTokens,
-        cacheWriteTokens: params.cacheWriteTokens,
-        reasoningTokens: params.reasoningTokens,
-      },
-      model?.cost,
-    );
+    // One cost source. `null` = subscription plan or no verified price → 0 in the
+    // schema (non-nullable), consistent with the session path's `cost ?? 0`; the
+    // UI distinguishes tokens>0 & cost==0 as "not priced"/"Subscription".
+    const breakdown = estimateCostBreakdownUsd({
+      provider: params.provider,
+      modelId: params.actualModel || params.modelId,
+      inputTokens: params.promptTokens,
+      outputTokens: params.completionTokens,
+      cachedReadTokens: params.cacheReadTokens,
+      cachedWriteTokens: params.cacheWriteTokens,
+      billingType: model?.billingType,
+    });
+    const costs = {
+      input: breakdown?.input ?? 0,
+      output: breakdown?.output ?? 0,
+      cacheRead: breakdown?.cacheRead,
+      cacheWrite: breakdown?.cacheWrite,
+      total: breakdown?.total ?? 0,
+    };
 
     // Create usage record
     const usage: LLMUsage = {
       usageId: generateId('usage'),
       generationId: params.generationId,
+      sessionUsageId: params.sessionUsageId,
       timestamp: new Date(),
 
       // Context
@@ -111,6 +137,7 @@ export class UsageTrackingService {
       modelId: params.modelId,
       modelString: params.modelString,
       actualModel: params.actualModel,
+      actualProvider: params.actualProvider,
       providerMetadata: params.providerMetadata,
 
       // Tokens
@@ -121,13 +148,14 @@ export class UsageTrackingService {
       cacheWriteTokens: params.cacheWriteTokens,
       reasoningTokens: params.reasoningTokens,
 
-      // Costs
+      // Costs. costReasoning/costRequest intentionally unset: reasoning tokens are
+      // a subset of output and already priced by the output rate (the old
+      // calculateCosts double-charged them), and the owned pricing has no
+      // per-request fee. A2.1 / A2.4.
       costInput: costs.input,
       costOutput: costs.output,
       costCacheRead: costs.cacheRead,
       costCacheWrite: costs.cacheWrite,
-      costReasoning: costs.reasoning,
-      costRequest: costs.request,
       costTotal: costs.total,
       currency: 'USD',
 
@@ -136,6 +164,9 @@ export class UsageTrackingService {
       stopReason: params.stopReason,
       toolCallsCount: params.toolCallsCount,
       latencyMs: params.latencyMs,
+      ttftMs: params.ttftMs,
+      fallbackUsed: params.fallbackUsed,
+      primaryErrorClass: params.primaryErrorClass,
 
       // Metadata
       billingType: model?.billingType,
@@ -156,68 +187,6 @@ export class UsageTrackingService {
     }
 
     return usage;
-  }
-
-  /**
-   * Calculate costs based on token usage and model pricing
-   */
-  private calculateCosts(
-    tokens: {
-      promptTokens: number;
-      completionTokens: number;
-      cacheReadTokens?: number;
-      cacheWriteTokens?: number;
-      reasoningTokens?: number;
-    },
-    pricing?: Model['cost'],
-  ): {
-    input: number;
-    output: number;
-    cacheRead?: number;
-    cacheWrite?: number;
-    reasoning?: number;
-    request?: number;
-    total: number;
-  } {
-    if (!pricing) {
-      return {
-        input: 0,
-        output: 0,
-        total: 0,
-      };
-    }
-
-    // Costs per million tokens
-    const costInput = (tokens.promptTokens / 1_000_000) * pricing.input;
-    const costOutput = (tokens.completionTokens / 1_000_000) * pricing.output;
-
-    const costCacheRead =
-      tokens.cacheReadTokens && pricing.cacheRead
-        ? (tokens.cacheReadTokens / 1_000_000) * pricing.cacheRead
-        : undefined;
-
-    const costCacheWrite =
-      tokens.cacheWriteTokens && pricing.cacheWrite
-        ? (tokens.cacheWriteTokens / 1_000_000) * pricing.cacheWrite
-        : undefined;
-
-    // Reasoning tokens typically cost the same as output tokens
-    // but some models may have different pricing
-    const costReasoning = tokens.reasoningTokens
-      ? (tokens.reasoningTokens / 1_000_000) * pricing.output
-      : undefined;
-
-    const total =
-      costInput + costOutput + (costCacheRead || 0) + (costCacheWrite || 0) + (costReasoning || 0);
-
-    return {
-      input: costInput,
-      output: costOutput,
-      cacheRead: costCacheRead,
-      cacheWrite: costCacheWrite,
-      reasoning: costReasoning,
-      total,
-    };
   }
 
   /**

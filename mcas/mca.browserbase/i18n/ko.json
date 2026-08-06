@@ -1,0 +1,152 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Browserbase API 자격 증명 및 연결성을 확인합니다."
+    },
+    "session-create": {
+      "name": "session-create",
+      "description": "새로운 Browserbase 클라우드 브라우저 세션을 생성합니다. 모든 도구에서 사용할 세션 ID를 반환하고, 브라우저를 실시간으로 볼 수 있도록 Live View 창을 엽니다.",
+      "params": {
+        "proxies": "은폐를 위한 주거용 프록시 활성화 (기본값: false)",
+        "proxyCountry": "프록시 지리적 위치를 위한 ISO 3166-1 alpha-2 국가 코드 (예: \"ES\"는 스페인, \"US\"는 미국). proxies가 true일 때만 사용됩니다.",
+        "proxyCity": "프록시 지리적 위치를 위한 도시 이름 (예: \"마드리드\", \"뉴욕\"). proxies가 true일 때만 사용됩니다.",
+        "stealth": "봇 탐지를 우회하기 위한 은폐 모드 활성화 (기본값: false)",
+        "advancedStealth": "더 강력한 봇 탐지 우회를 위한 고급 은폐 모드 활성화 (기본값: false)",
+        "blockAds": "브라우저에서 광고 차단 (기본값: false)",
+        "solveCaptchas": "CAPTCHA 자동 해결 (기본값: true)",
+        "os": "은폐 모드를 위한 시뮬레이션 운영 체제",
+        "region": "세션이 실행되는 서버 지역 (기본값: us-west-2)",
+        "keepAlive": "연결 끊김 후 세션 유지 (Hobby 플랜 이상 필요)",
+        "timeout": "세션 타임아웃(초) (기본값: 3600)",
+        "contextId": "저장된 브라우저 컨텍스트 ID 재사용 (쿠키, localStorage 등)",
+        "persistContext": "세션 종료 후 컨텍스트 유지 (기본값: false). contextId가 제공될 때만 사용됩니다."
+      }
+    },
+    "session-list": {
+      "name": "session-list",
+      "description": "이 인스턴스에서 모든 활성 Browserbase 세션을 나열합니다."
+    },
+    "session-close": {
+      "name": "session-close",
+      "description": "Browserbase 세션을 종료하고 클라우드 리소스를 해제합니다.",
+      "params": {
+        "sessionId": "종료할 세션 ID"
+      }
+    },
+    "navigate": {
+      "name": "navigate",
+      "description": "브라우저를 URL로 탐색합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "url": "탐색할 URL"
+      }
+    },
+    "navigate-back": {
+      "name": "navigate-back",
+      "description": "이전 페이지로 돌아갑니다.",
+      "params": {
+        "sessionId": "활성 세션 ID"
+      }
+    },
+    "snapshot": {
+      "name": "snapshot",
+      "description": "현재 페이지의 접근성 스냅샷을 캡처합니다. 상호작용을 위한 요소 참조와 함께 페이지 구조를 반환합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID"
+      }
+    },
+    "get-content": {
+      "name": "get-content",
+      "description": "현재 페이지 HTML 또는 일반 텍스트 콘텐츠를 가져옵니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "format": "전체 HTML 또는 일반 텍스트 반환 (기본값: text)"
+      }
+    },
+    "take-screenshot": {
+      "name": "take-screenshot",
+      "description": "현재 페이지의 스크린샷을 찍습니다. 공유 볼륨의 /workspace/에 저장됩니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "filename": "파일 이름 (예: \"screenshot.png\"). 기본값은 screenshot-{timestamp}.png입니다.",
+        "fullPage": "전체 스크롤 가능한 페이지 캡처",
+        "type": "이미지 형식 (기본값: png)"
+      }
+    },
+    "network-requests": {
+      "name": "network-requests",
+      "description": "현재 세션에서 수행된 네트워크 요청을 나열합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "includeStatic": "정적 리소스 포함 (이미지, 글꼴, 스크립트). 기본값: false"
+      }
+    },
+    "click": {
+      "name": "click",
+      "description": "페이지의 요소를 클릭합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "ref": "스냅샷의 요소 참조 (예: s1e3) 또는 CSS 선택자",
+        "element": "사람이 읽을 수 있는 요소 설명",
+        "button": "마우스 버튼 (기본값: left)",
+        "doubleClick": "더블 클릭 수행"
+      }
+    },
+    "type": {
+      "name": "type",
+      "description": "편집 가능한 요소에 텍스트를 입력합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "ref": "스냅샷의 요소 참조 또는 CSS 선택자",
+        "element": "사람이 읽을 수 있는 요소 설명",
+        "text": "입력할 텍스트",
+        "submit": "입력 후 Enter 키 누르기",
+        "slowly": "문자 단위로 입력 (키 핸들러 트리거)"
+      }
+    },
+    "fill-form": {
+      "name": "fill-form",
+      "description": "여러 양식 필드를 한 번에 채웁니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "fields": "채울 필드"
+      }
+    },
+    "evaluate": {
+      "name": "evaluate",
+      "description": "페이지 컨텍스트에서 JavaScript를 실행합니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "function": "() => { /* 코드 */ } 또는 (element) => { /* 코드 */ } ref가 제공될 때",
+        "ref": "인수로 전달할 선택적 요소 참조",
+        "element": "사람이 읽을 수 있는 요소 설명 (ref를 사용하는 경우)"
+      }
+    },
+    "press-key": {
+      "name": "press-key",
+      "description": "키보드 키를 누릅니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "key": "키 이름 또는 문자, 예: \"Enter\", \"ArrowDown\", \"a\""
+      }
+    },
+    "wait-for": {
+      "name": "wait-for",
+      "description": "페이지에 텍스트가 나타나거나 사라질 때까지 기다리거나 고정된 시간만큼 기다립니다.",
+      "params": {
+        "sessionId": "활성 세션 ID",
+        "time": "기다릴 초",
+        "text": "기다릴 텍스트 (나타남)",
+        "textGone": "사라질 텍스트를 기다림"
+      }
+    }
+  },
+  "name": "Browserbase",
+  "description": "대규모 클라우드 브라우저 자동화. 봇 우회, CAPTCHA 해결, 주거용 프록시, 세션 기록 및 병렬 브라우저. 브라우저를 실시간으로 볼 수 있는 Live View 포함.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 은폐 및 CAPTCHA 해결로 클라우드 브라우저 실행, 페이지 탐색, 스크린샷 캡처, 클릭, 입력 및 양식 채우기"
+    }
+  ]
+}

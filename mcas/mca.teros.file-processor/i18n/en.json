@@ -1,0 +1,77 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies API keys and connectivity."
+    },
+    "file-to-markdown": {
+      "name": "file-to-markdown",
+      "description": "Convert a file to text/Markdown (synchronous). PDF and Word .docx are extracted locally; scanned PDFs fall back to LLM OCR if a system key is set. Use file-to-markdown-async for long-running jobs.",
+      "params": {
+        "inputPath": "Path to the file to convert",
+        "outputPath": "Optional output path (defaults to input path with .md extension)",
+        "chunkSize": "Pages per chunk for large PDFs (default: 10). Only used for PDFs >3MB",
+        "maxRetries": "Maximum retries per chunk if processing fails (default: 3)",
+        "timeout": "Timeout in milliseconds per chunk (default: 120000 for chunks, 180000 for direct processing)"
+      }
+    },
+    "file-to-markdown-async": {
+      "name": "file-to-markdown-async",
+      "description": "Convert a file to Markdown asynchronously (non-blocking). Supports PDF and Word .docx. Returns a job ID immediately. Use get-job-status to check progress.",
+      "params": {
+        "inputPath": "Path to the file to convert",
+        "outputPath": "Optional output path (defaults to input path with .md extension)",
+        "chunkSize": "Pages per chunk for large PDFs (default: 10)",
+        "maxRetries": "Maximum retries per chunk if processing fails (default: 3)",
+        "timeout": "Timeout in milliseconds per chunk (default: 120000)"
+      }
+    },
+    "get-job-status": {
+      "name": "get-job-status",
+      "description": "Get the status of an async job. Returns current progress, status, and results when completed.",
+      "params": {
+        "jobId": "The job ID returned by file-to-markdown-async"
+      }
+    },
+    "list-jobs": {
+      "name": "list-jobs",
+      "description": "List all jobs with optional filters. Useful for checking active jobs or recent completions.",
+      "params": {
+        "status": "Filter by status: queued, processing, completed, failed, cancelled",
+        "limit": "Maximum number of jobs to return (default: 20)"
+      }
+    },
+    "cancel-job": {
+      "name": "cancel-job",
+      "description": "Cancel a queued or processing job. Cannot cancel completed/failed jobs.",
+      "params": {
+        "jobId": "The job ID to cancel"
+      }
+    },
+    "audio-to-text": {
+      "name": "audio-to-text",
+      "description": "Transcribe audio files to text using OpenAI Whisper API. Supports .m4a, .mp3, .wav, .ogg, .webm, .opus and other audio formats.",
+      "params": {
+        "inputPath": "Path to the audio file to transcribe",
+        "language": "Optional: Language code (e.g., 'es' for Spanish, 'en' for English). Auto-detected if not provided."
+      }
+    },
+    "svg-to-png": {
+      "name": "svg-to-png",
+      "description": "Convert SVG files to PNG with optional width/height constraints",
+      "params": {
+        "inputPath": "Path to the SVG file to convert",
+        "outputPath": "Optional output path (defaults to input path with .png extension)",
+        "width": "Optional: Target width in pixels",
+        "height": "Optional: Target height in pixels"
+      }
+    }
+  },
+  "name": "File Processor",
+  "description": "Convert files to Markdown, transcribe audio, convert Markdown to PDF",
+  "changelog": [
+    {
+      "notes": "Initial release — convert documents to Markdown, transcribe audio to text, and turn SVGs into PNG images"
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.google.forms",
+  "name": "Google Forms",
+  "version": "1.0.0",
+  "description": "Manage Google Forms - create forms, add questions, and read responses via Google Forms API",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "google",
+  "entrypoint": "./src/index.ts",
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+  "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "EMAIL", "EXPIRY_DATE"],
+  "auth": {
+    "type": "oauth2",
+    "provider": "google",
+    "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": [
+      "https://www.googleapis.com/auth/forms.body",
+      "https://www.googleapis.com/auth/forms.responses.readonly",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ],
+    "pkce": false,
+    "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+    "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "google",
+      "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "scopes": [
+        "https://www.googleapis.com/auth/forms.body",
+        "https://www.googleapis.com/auth/forms.responses.readonly",
+        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/userinfo.email"
+      ],
+      "pkce": false,
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
+    },
+    "agent": false
+  },
+  "keywords": ["google", "forms", "survey", "responses", "questions"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-12",
+      "notes": "Initial release — create and edit forms, add questions, list your forms, and read submitted responses"
+    }
+  ]
+}

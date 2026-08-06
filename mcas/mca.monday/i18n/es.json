@@ -1,0 +1,129 @@
+{
+  "tools": {
+    "monday_list_boards": {
+      "name": "monday_list_boards",
+      "description": "Lista todos los tableros de Monday.com",
+      "params": {
+        "limit": "Número de tableros a devolver"
+      }
+    },
+    "monday_get_board": {
+      "name": "monday_get_board",
+      "description": "Obtiene información detallada de un tablero",
+      "params": {
+        "boardId": "ID del tablero a obtener"
+      }
+    },
+    "monday_create_board": {
+      "name": "monday_create_board",
+      "description": "Crea un nuevo tablero",
+      "params": {
+        "name": "Nombre del tablero",
+        "description": "Descripción del tablero",
+        "templateId": "ID de la plantilla a utilizar"
+      }
+    },
+    "monday_list_items": {
+      "name": "monday_list_items",
+      "description": "Lista elementos de un tablero o grupo",
+      "params": {
+        "boardId": "ID del tablero",
+        "groupId": "ID del grupo (opcional)",
+        "limit": "Número de elementos a devolver"
+      }
+    },
+    "monday_get_item": {
+      "name": "monday_get_item",
+      "description": "Obtiene información detallada de un elemento",
+      "params": {
+        "itemId": "ID del elemento a obtener",
+        "boardId": "ID del tablero"
+      }
+    },
+    "monday_create_item": {
+      "name": "monday_create_item",
+      "description": "Crea un nuevo elemento",
+      "params": {
+        "boardId": "ID del tablero",
+        "groupId": "ID del grupo",
+        "itemName": "Nombre del elemento",
+        "values": "Valores de columna (columnId: valor)"
+      }
+    },
+    "monday_update_item": {
+      "name": "monday_update_item",
+      "description": "Actualiza un elemento existente",
+      "params": {
+        "itemId": "ID del elemento a actualizar",
+        "boardId": "ID del tablero",
+        "values": "Valores de columna actualizados (columnId: valor)"
+      }
+    },
+    "monday_delete_item": {
+      "name": "monday_delete_item",
+      "description": "Elimina un elemento",
+      "params": {
+        "itemId": "ID del elemento a eliminar",
+        "boardId": "ID del tablero"
+      }
+    },
+    "monday_list_groups": {
+      "name": "monday_list_groups",
+      "description": "Lista los grupos de un tablero",
+      "params": {
+        "boardId": "ID del tablero"
+      }
+    },
+    "monday_create_group": {
+      "name": "monday_create_group",
+      "description": "Crea un nuevo grupo",
+      "params": {
+        "boardId": "ID del tablero",
+        "name": "Nombre del grupo"
+      }
+    },
+    "monday_list_columns": {
+      "name": "monday_list_columns",
+      "description": "Lista las columnas de un tablero",
+      "params": {
+        "boardId": "ID del tablero"
+      }
+    },
+    "monday_add_update": {
+      "name": "monday_add_update",
+      "description": "Añade una actualización a un elemento",
+      "params": {
+        "itemId": "ID del elemento",
+        "updateValue": "Texto de la actualización"
+      }
+    },
+    "monday_list_updates": {
+      "name": "monday_list_updates",
+      "description": "Lista las actualizaciones de un elemento",
+      "params": {
+        "itemId": "ID del elemento",
+        "limit": "Número de actualizaciones a devolver"
+      }
+    },
+    "monday_search_items": {
+      "name": "monday_search_items",
+      "description": "Busca elementos en todos los tableros",
+      "params": {
+        "query": "Consulta de búsqueda",
+        "boardId": "ID del tablero donde buscar",
+        "limit": "Número de resultados"
+      }
+    },
+    "monday_get_me": {
+      "name": "monday_get_me",
+      "description": "Obtiene la información del usuario actual"
+    }
+  },
+  "name": "Monday.com",
+  "description": "Gestión de trabajo con Monday.com — tableros, elementos, grupos, columnas y actualizaciones",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear y gestionar tableros, elementos, grupos y columnas, publicar y leer actualizaciones, y buscar en todos los tableros"
+    }
+  ]
+}

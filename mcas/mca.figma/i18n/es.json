@@ -1,0 +1,143 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con Figma."
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Obtiene la estructura de un archivo de Figma (páginas, frames, componentes de nivel superior). Devuelve { name, lastModified, version, thumbnailUrl, document, componentCount, styleCount }. Parámetros: fileKey, depth (1-10, por defecto 2), geometry?, branchData?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "depth": "Profundidad del recorrido del árbol del documento. Mín 1, máx 10, por defecto 2.",
+        "geometry": "Establecer a 'paths' para incluir datos de trazados vectoriales (payload más pesado).",
+        "branchData": "Incluir metadatos de ramas cuando el archivo forma parte de un flujo de trabajo con ramificaciones.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-node": {
+      "name": "get-node",
+      "description": "Obtiene un único nodo de un archivo de Figma como árbol curado. Devuelve el nodo directamente (sin envolver). Úsalo para profundizar en un frame/componente más allá de la profundidad devuelta por get-file. Parámetros: fileKey, nodeId (acepta \"1-2\" o \"1:2\"), depth (1-10, por defecto 3), fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "nodeId": "ID del nodo. Acepta el formato de URL \"1-2\" o el formato REST \"1:2\".",
+        "depth": "Profundidad del recorrido de los hijos. Mín 1, máx 10, por defecto 3.",
+        "fields": "Sobrescribe la lista blanca de nodos por defecto.",
+        "includeRaw": "Devuelve el nodo sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-file-styles": {
+      "name": "get-file-styles",
+      "description": "Lista los estilos definidos en un archivo de Figma. Devuelve { styles: [{id, key, name, type, description}], count }. type ∈ FILL/TEXT/EFFECT/GRID. Parámetros: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-file-variables": {
+      "name": "get-file-variables",
+      "description": "Obtiene los design tokens (variables) de un archivo de Figma, agrupados por colección. Devuelve { collections: [{id, name, modes, variables, defaultModeId}] }. Cada variable tiene { id, name, type, values: { [modeId]: value } }. type ∈ COLOR/FLOAT/STRING/BOOLEAN. Parámetros: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "fields": "Sobrescribe la lista blanca de colecciones por defecto.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-components": {
+      "name": "get-components",
+      "description": "Lista los componentes definidos en un archivo de Figma. Devuelve { components: [{id, key, name, description, componentSetId?}], count }. Parámetros: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-component-sets": {
+      "name": "get-component-sets",
+      "description": "Lista los conjuntos de componentes (grupos de variantes) definidos en un archivo de Figma. Devuelve { componentSets: [{id, key, name, description}], count }. Parámetros: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "export-images": {
+      "name": "export-images",
+      "description": "Exporta nodos de Figma como imágenes. Devuelve { images: [{nodeId, url, format, scale}] }. Las URLs son enlaces S3 pre-firmados y caducan en ~30 minutos. Formatos: png|jpg|svg|pdf. Escala 0.01-4 (por defecto 1). Parámetros: fileKey, nodeIds, format?, scale?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "nodeIds": "IDs de los nodos a exportar. Acepta \"1-2\" o \"1:2\".",
+        "format": "Formato de exportación. Por defecto png.",
+        "scale": "Factor de escala (0.01–4). Por defecto 1.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Lista los comentarios de un archivo de Figma. Devuelve { comments: [{id, message, createdAt, user, resolved, parentId?, clientMeta?}], count }. parentId !== undefined indica que es una respuesta. Parámetros: fileKey, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Crea un nuevo comentario en un archivo de Figma, o responde a uno existente. Devuelve el comentario creado { id, message, createdAt, user, resolved, parentId? }. Para responder, establece parentCommentId. Para anclarlo a una posición del lienzo, establece clientMeta { x, y } o { node_id }. Parámetros: fileKey, message, parentCommentId?, clientMeta?, fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "message": "Cuerpo del comentario. Figma no renderiza Markdown — usa texto plano o menciones como @user.",
+        "parentCommentId": "Cuando se proporciona, el nuevo comentario es una respuesta a este ID de comentario.",
+        "clientMeta": "Ancla opcional en el lienzo. Puede ser { x, y } para una posición libre o { node_id } para adjuntarlo a un nodo.",
+        "fields": "Sobrescribe la lista blanca por defecto.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Elimina un comentario de un archivo de Figma. Devuelve { ok: true, fileKey, commentId } en caso de éxito. No es reversible — confirma con el usuario antes de invocarlo. Parámetros: fileKey, commentId.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "commentId": "ID del comentario a eliminar."
+      }
+    },
+    "list-file-versions": {
+      "name": "list-file-versions",
+      "description": "Lista el historial de versiones de un archivo de Figma. Devuelve { versions: [{id, createdAt, label, description, user, thumbnailUrl?}], count, nextPage? }. Útil para auditar cambios, comparar versiones o detectar cuándo un diseño se rompió. Parámetros: fileKey, pageSize (1-50, por defecto 30), before? (cursor del nextPage anterior), fields?, includeRaw.",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "pageSize": "Versiones por página. Mín 1, máx 50, por defecto 30.",
+        "before": "Cursor opaco del response.nextPage anterior.",
+        "fields": "Sobrescribe la lista blanca por defecto por fila.",
+        "includeRaw": "Devuelve el payload sin procesar del origen. Por defecto false."
+      }
+    },
+    "extract-colors": {
+      "name": "extract-colors",
+      "description": "Extrae colores sólidos de un archivo o nodo, formateados para variables CSS, configuración de Tailwind o JSON. Devuelve { count, output: string, format }. Parámetros: fileKey, nodeId? (limitar a un nodo), format? (por defecto css).",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "nodeId": "Opcional: limita la extracción a un único nodo.",
+        "format": "Formato de salida. Por defecto css."
+      }
+    },
+    "extract-typography": {
+      "name": "extract-typography",
+      "description": "Extrae los estilos tipográficos (familia de fuente, tamaño, peso, interlineado, espaciado de letras) usados en los nodos TEXT de un archivo de Figma. Devuelve { count, output: string, format }. Parámetros: fileKey, format? (por defecto css).",
+      "params": {
+        "fileKey": "La clave del archivo extraída de una URL de Figma.",
+        "format": "Formato de salida. Por defecto css."
+      }
+    }
+  },
+  "name": "Figma",
+  "description": "Accede a archivos de diseño de Figma, extrae estilos, componentes, design tokens y exporta recursos. Trabaja directamente con archivos mediante la clave de archivo — sin exploración de proyectos ni equipos. Ideal para flujos de trabajo de diseño a código.",
+  "changelog": [
+    {
+      "notes": "Inspecciona archivos de Figma, extrae design tokens, colores y tipografías como CSS o Tailwind, exporta imágenes y gestiona comentarios"
+    }
+  ]
+}

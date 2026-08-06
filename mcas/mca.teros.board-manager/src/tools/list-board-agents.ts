@@ -1,35 +1,53 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected, WORKSPACE_ID } from '../lib';
+import type { ToolConfig } from '@teros/mca-sdk';
+import { getWsClient, WORKSPACE_ID } from '../lib';
+import { BOARD_AGENT_FIELDS } from './_fields';
+import { assertBackendConnected, paginate, resolveFieldsList, withRetry, withTimeout } from './utils';
 
 export const listBoardAgents: ToolConfig = {
   description:
-    'List all agents in the workspace that have access to board-manager or board-runner apps, including their role (manager, runner, or both).',
+    'List agents in the workspace with access to board-manager or board-runner apps. Returns: { agents: [{ agentId, name, fullName, role, avatarUrl, capabilities }], nextCursor? }. Paginated: default 50, max 200.',
+  annotations: { readOnlyHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
-      workspaceId: {
-        type: 'string',
-        description: 'The workspace ID (optional, defaults to current workspace)',
+      workspaceId: { type: 'string', description: 'Workspace (optional, defaults to execution)' },
+      fields: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Custom subset of fields',
       },
+      includeRaw: { type: 'boolean', description: 'Return full agent documents' },
+      limit: { type: 'number', description: 'Max results (default 50, max 200)' },
+      cursor: { type: 'string', description: 'Pagination cursor' },
     },
   },
   handler: async (args) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const workspaceId = (args?.workspaceId as string) || WORKSPACE_ID;
-    if (!workspaceId) {
-      throw new Error('workspaceId is required');
-    }
+    if (!workspaceId) throw new Error('workspaceId is required');
 
-    const result = await wsClient.queryConversations<any>('list_board_agents', { workspaceId });
+    const result = await withRetry(
+      () =>
+        withTimeout(
+          wsClient.queryConversations<any>('list_board_agents', { workspaceId }),
+          15_000,
+          'list_board_agents',
+        ),
+      { retries: 2, delayMs: 500, label: 'list_board_agents' },
+    );
 
-    return {
-      success: true,
-      agents: result.agents,
-      count: result.agents?.length ?? 0,
-    };
+    const { items, nextCursor } = paginate(
+      (result.agents ?? []) as Record<string, unknown>[],
+      args?.limit as number | undefined,
+      args?.cursor as string | undefined,
+    );
+    const agents = resolveFieldsList(items, {
+      includeRaw: args?.includeRaw === true,
+      fields: args?.fields as string[] | undefined,
+      defaultFields: BOARD_AGENT_FIELDS,
+    });
+
+    return { agents, ...(nextCursor ? { nextCursor } : {}) };
   },
 };

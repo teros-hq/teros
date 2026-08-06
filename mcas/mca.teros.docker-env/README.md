@@ -87,7 +87,7 @@ Environment records are stored via `context.setData('envs', ...)` — the Teros 
 | Variable | Default | Description |
 |---|---|---|
 | `DOCKER_HOST` | `unix:///var/run/docker.sock` | Docker daemon socket or TCP |
-| `DOCKER_ENV_DOMAIN` | `pre-os.teros.ai` | Base domain for access URLs |
+| `DOCKER_ENV_DOMAIN` | `your-domain.com` | Base domain for access URLs |
 
 ## Deployment — Phase 1 (PoC pre-prod)
 
@@ -107,7 +107,7 @@ docker run -d \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v /workspace:/workspace \
   -e DOCKER_HOST=unix:///var/run/docker.sock \
-  -e DOCKER_ENV_DOMAIN=pre-os.teros.ai \
+  -e DOCKER_ENV_DOMAIN=your-domain.com \
   mca-docker-env
 ```
 
@@ -126,7 +126,7 @@ mca-docker-env:
     - /workspace:/workspace
   environment:
     - DOCKER_HOST=unix:///var/run/docker.sock
-    - DOCKER_ENV_DOMAIN=pre-os.teros.ai
+    - DOCKER_ENV_DOMAIN=your-domain.com
   restart: unless-stopped
 ```
 
@@ -136,7 +136,7 @@ mca-docker-env:
 Agent: "I'll spin up the teros-landing environment for development"
 
 1. env-create(localPath: "/workspace/teros-landing")
-   → { envId: "a1b2c3d4", urls: { app: "https://env-a1b2c3d4.pre-os.teros.ai" } }
+   → { envId: "a1b2c3d4", urls: { app: "https://env-a1b2c3d4.your-domain.com" } }
 
 [User edits /workspace/teros-landing/src/app/page.tsx]
 [The dev server detects the change and reloads automatically]
@@ -155,7 +155,7 @@ Agent: "I'll spin up the teros-landing environment for development"
 Agent: "I'll run the e2e tests for the project"
 
 1. env-create(localPath: "/workspace/my-app")
-   → { envId: "a1b2c3d4", urls: { app: "https://env-a1b2c3d4.pre-os.teros.ai" } }
+   → { envId: "a1b2c3d4", urls: { app: "https://env-a1b2c3d4.your-domain.com" } }
 
 2. env-exec(envId: "a1b2c3d4", service: "playwright", command: "npx playwright test --reporter=json")
    → { exitCode: 1, stdout: "... 3 tests failed ..." }

@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 
 export const sendHtmlFile: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send an HTML file to the user. The file will be rendered inline in the chat (fetched from its path) AND can be opened in a dedicated FileViewer window that auto-refreshes when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.',
   parameters: {
@@ -36,6 +37,7 @@ export const sendHtmlFile: ToolConfig = {
         type: 'html_file',
         filePath,
         caption,
+        workspaceId: process.env.MCA_OWNER_ID,
       },
       description: caption
         ? `HTML file sent: ${caption} (${filePath})`

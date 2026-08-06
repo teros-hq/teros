@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const listIssues: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List issues for a repository with optional filters',
   parameters: {
     type: 'object',

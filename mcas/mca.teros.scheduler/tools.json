@@ -3,22 +3,105 @@
   "mcaId": "mca.teros.scheduler",
   "tools": [
     {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies MongoDB connectivity. Use `get-stats` for per-user active counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-stats",
+      "description": "Live counters for the current user: active reminders, active recurring tasks, and next scheduled run timestamp.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for nextScheduledHumanReadable (default env)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "parse-time-expression",
+      "description": "Preview a time/cron expression without scheduling. Returns parsed timestamp, humanReadable, and next occurrences.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "Natural language (\"in 2 hours\", \"tomorrow at 9am\", ISO) or cron (\"0 9 * * 1-5\")."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE)."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Parser locale (default: en)."
+          },
+          "previewCount": {
+            "type": "number",
+            "description": "Next occurrences for cron (default 5, max 20)."
+          },
+          "reference": {
+            "type": "string",
+            "description": "ISO 8601 reference timestamp (default: now)."
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "schedule-reminder",
-      "description": "Schedule a reminder message to be sent at a specific time. Supports natural language time expressions.",
+      "description": "Schedule a one-shot reminder. time: natural (\"in 2 hours\", \"tomorrow at 9am\") or ISO 8601. timezone defaults to env. Returns the new reminder.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "time": {
             "type": "string",
-            "description": "Time expression. Examples: \"at 17:00\", \"at 5:30pm\", \"tomorrow at 9:00\", \"in 30 minutes\", \"in 2 hours\", \"in 1 hour and 30 minutes\", or ISO format \"2025-10-28T17:00:00\""
+            "description": "Natural (\"in 2 hours\", \"tomorrow at 9am\") or ISO 8601."
           },
           "message": {
             "type": "string",
-            "description": "The reminder message to send"
+            "description": "Message to deliver (max 4000 chars)."
           },
           "channelId": {
             "type": "string",
-            "description": "Channel ID where the reminder should be sent"
+            "description": "Channel that receives the wake event (must be owned by user)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE)."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Parser locale (default: en)."
+          },
+          "allowPast": {
+            "type": "boolean",
+            "description": "Allow scheduling in the past (default false)."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Optional idempotency key. If a reminder with the same key+user already exists, returns it instead of creating a duplicate."
           }
         },
         "required": [
@@ -26,58 +109,262 @@
           "message",
           "channelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "list-reminders",
-      "description": "List all pending reminders, optionally filtered by channel ID",
+      "description": "List reminders of the current user, paginated. Filter by channelId or status. Returns {items[], nextCursor?}.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "channelId": {
             "type": "string",
-            "description": "Optional channel ID to filter reminders"
+            "description": "Filter by channel."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "sent",
+              "cancelled",
+              "failed"
+            ],
+            "description": "Filter by status (default: all)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable (default env)."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "cancel-reminder",
-      "description": "Cancel a pending reminder by its ID",
+      "name": "list-upcoming",
+      "description": "List upcoming reminders and recurring tasks of the current user within a window (default 7 days). include: reminders|recurring|both. Paginated.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Filter by channel."
+          },
+          "days": {
+            "type": "number",
+            "description": "Window length in days (default 7, max 90)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max items per group (default 50, max 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor (applies to reminders only)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable."
+          },
+          "include": {
+            "type": "string",
+            "enum": [
+              "reminders",
+              "recurring",
+              "both"
+            ],
+            "description": "What to include (default both)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-reminder",
+      "description": "Get a reminder by ID (must belong to current user). Returns full reminder with humanReadable next-run.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "reminderId": {
             "type": "number",
-            "description": "The ID of the reminder to cancel"
+            "description": "Reminder ID."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable (default env)."
           }
         },
         "required": [
           "reminderId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-reminder",
+      "description": "Update a pending reminder of the current user. Provide time (re-parsed) or message (or both). Cancelled/sent reminders are not editable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reminderId": {
+            "type": "number",
+            "description": "ID of the reminder to update."
+          },
+          "time": {
+            "type": "string",
+            "description": "New time expression (natural or ISO)."
+          },
+          "message": {
+            "type": "string",
+            "description": "New message text (max 4000 chars)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone (default env)."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Parser locale."
+          },
+          "allowPast": {
+            "type": "boolean",
+            "description": "Allow scheduling in the past."
+          }
+        },
+        "required": [
+          "reminderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "snooze-reminder",
+      "description": "Postpone a pending reminder of the current user by a delay (e.g. \"30m\", \"2h\", \"1d\"). Adds delay on top of current time.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reminderId": {
+            "type": "number",
+            "description": "ID of the reminder to snooze."
+          },
+          "delay": {
+            "type": "string",
+            "description": "Delay expression (e.g. \"30m\", \"2h\", \"1d\")."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable (default env)."
+          }
+        },
+        "required": [
+          "reminderId",
+          "delay"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "cancel-reminder",
+      "description": "Cancel a pending reminder of the current user. Idempotent (returns noop if already cancelled). Cleans up channel subscription if last one.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reminderId": {
+            "type": "number",
+            "description": "ID of the reminder to cancel."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable (default env)."
+          }
+        },
+        "required": [
+          "reminderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "bulk-cancel",
+      "description": "Bulk-cancel pending reminders of the current user. Filter by channelId, before (ISO or epoch ms), or ids[]. Returns cancelled IDs and cleans subs for channels with no remaining pending.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Cancel all pending in this channel."
+          },
+          "before": {
+            "description": "Cancel pending scheduled before this time (ISO 8601 or epoch ms)."
+          },
+          "ids": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            },
+            "description": "Cancel by IDs (max 500)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for humanReadable."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "create-recurring-task",
-      "description": "Create a recurring task using cron expression. Examples: '0 9 * * *' (daily at 9am), '0 10-22 * * 1-5' (hourly on weekdays 10am-10pm)",
+      "description": "Create a recurring task using a 5-field cron expression. Examples: \"0 9 * * *\", \"*/15 * * * *\", \"0 10-22 * * 1-5\". timezone defaults to env.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "cronExpression": {
             "type": "string",
-            "description": "Cron expression (5 fields: minute hour day month weekday). Examples: \"0 9 * * *\", \"0 10-22 * * 1-5\", \"*/15 * * * *\""
+            "description": "Cron 5 fields: \"min hour day month weekday\"."
           },
           "message": {
             "type": "string",
-            "description": "The message to send on each execution"
+            "description": "Message delivered on each run (max 4000 chars)."
           },
           "channelId": {
             "type": "string",
-            "description": "Channel ID where messages should be sent"
+            "description": "Channel that receives the wake event (must be owned by user)."
           },
           "timezone": {
             "type": "string",
-            "description": "Timezone (default: \"Europe/Madrid\")"
+            "description": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE)."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Optional idempotency key. If a recurring task with the same key+user already exists, returns it instead of creating a duplicate."
           }
         },
         "required": [
@@ -85,67 +372,171 @@
           "message",
           "channelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "list-recurring-tasks",
-      "description": "List all recurring tasks, optionally filtered by channel ID",
+      "description": "List recurring tasks of the current user, paginated. Filter by channelId or enabled. Returns {items[], nextCursor?}.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "channelId": {
             "type": "string",
-            "description": "Optional channel ID to filter tasks"
+            "description": "Filter by channel."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Filter by enabled state."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-recurring-task",
+      "description": "Get a recurring task by ID (must belong to current user). Returns full task with cronDescription and humanReadable next-run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "Recurring task ID."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-recurring-task",
+      "description": "Update a recurring task of the current user. Provide cronExpression (re-validates and recomputes nextRun), message, or timezone.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "ID of the recurring task."
+          },
+          "cronExpression": {
+            "type": "string",
+            "description": "New cron expression (5 fields)."
+          },
+          "message": {
+            "type": "string",
+            "description": "New message text (max 4000 chars)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "New IANA timezone."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "enable-recurring-task",
-      "description": "Enable (resume) a recurring task",
+      "description": "Enable (resume) a recurring task of the current user. Recomputes nextRun. Idempotent if already enabled.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "number",
-            "description": "The ID of the task to enable"
+            "description": "Recurring task ID."
           }
         },
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "disable-recurring-task",
-      "description": "Disable (pause) a recurring task",
+      "description": "Disable (pause) a recurring task of the current user. Idempotent if already disabled.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "number",
-            "description": "The ID of the task to disable"
+            "description": "Recurring task ID."
           }
         },
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "delete-recurring-task",
-      "description": "Permanently delete a recurring task",
+      "description": "Permanently delete a recurring task of the current user. Cleans up channel subscription if last one for the channel.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "number",
-            "description": "The ID of the task to delete"
+            "description": "Recurring task ID."
           }
         },
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-executions",
+      "description": "List execution history of a recurring task of the current user. Most recent first. Returns {items[], nextCursor?}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "number",
+            "description": "Recurring task ID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor."
+          }
+        },
+        "required": [
+          "taskId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

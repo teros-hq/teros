@@ -1,26 +1,24 @@
 /**
  * board.list-board-agents — List agents with board-manager or board-runner access
  *
- * Returns all agents in the workspace that have access to at least one
- * board-manager or board-runner app, along with their board role:
+ * Returns all agents in the workspace (including superagents) that have access
+ * to at least one board-manager or board-runner app, along with their board role:
  *   - 'manager'  → has board-manager access only
  *   - 'runner'   → has board-runner access only
  *   - 'both'     → has both board-manager and board-runner access
+ *
+ * Superagents (workspaceId=null) are included: they use the workspace's board apps
+ * just like regular workspace agents do.
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import { config } from '../../../config'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
 
 interface ListBoardAgentsData {
   workspaceId: string
-}
-
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined
-  return `${config.static.baseUrl}/${avatarFilename}`
 }
 
 export function createListBoardAgentsHandler(
@@ -31,6 +29,7 @@ export function createListBoardAgentsHandler(
   const agentCoresCollection = db.collection('agent_cores')
   const appsCollection = db.collection('apps')
   const accessCollection = db.collection('agent_app_access')
+  const workspacesCollection = db.collection('workspaces')
 
   return async function listBoardAgents(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as ListBoardAgentsData
@@ -44,6 +43,10 @@ export function createListBoardAgentsHandler(
     if (role === null) {
       throw new HandlerError('FORBIDDEN', 'No access to this workspace')
     }
+
+    // Resolve workspace owner so we can include their superagents in the results
+    const workspace = await workspacesCollection.findOne({ workspaceId } as any) as any
+    const workspaceOwnerId = workspace?.ownerId
 
     // Find all board-manager and board-runner apps in this workspace
     const boardApps = await appsCollection
@@ -87,10 +90,19 @@ export function createListBoardAgentsHandler(
       agentRoleMap.set(record.agentId, current)
     }
 
-    // Fetch agent details
+    // Fetch agent details — include workspace agents AND superagents (workspaceId=null/undefined).
+    // Superagents are owned by ctx.userId or the workspace owner and have no workspaceId.
+    // Mirrors the query pattern used by agent.list to ensure superagents are not excluded.
     const agentIds = Array.from(agentRoleMap.keys())
+    const superagentOwnerIds = Array.from(new Set([ctx.userId, workspaceOwnerId].filter(Boolean)))
     const agents = await agentsCollection
-      .find({ agentId: { $in: agentIds }, workspaceId })
+      .find({
+        agentId: { $in: agentIds },
+        $or: [
+          { workspaceId },
+          { ownerId: { $in: superagentOwnerIds }, workspaceId: { $in: [null, undefined] } },
+        ],
+      } as any)
       .toArray() as any[]
 
     // Fetch agent cores for avatar fallback

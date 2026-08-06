@@ -1,11 +1,22 @@
 {
-  "name": "@teros/mca-filesystem",
-  "version": "2.0.0",
+  "name": "mca.teros.filesystem",
+  "version": "2.1.0",
   "type": "module",
   "main": "src/index.ts",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.4",
-    "@teros/mca-sdk": "file:../../packages/mca-sdk",
-    "glob": "^11.0.0"
+    "@teros/mca-sdk": "0.1.0",
+    "@vscode/ripgrep": "^1.15.9",
+    "diff": "^8.0.2",
+    "execa": "^9.5.2",
+    "file-type": "^19.6.0",
+    "ignore": "^6.0.2",
+    "picomatch": "^4.0.4",
+    "tinyglobby": "^0.2.10"
+  },
+  "devDependencies": {
+    "@types/diff": "^7.0.1",
+    "@types/node": "^22.10.1",
+    "@types/picomatch": "^3.0.1",
+    "tsx": "^4.19.2"
   }
 }

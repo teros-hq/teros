@@ -9,6 +9,13 @@
 
 import { type ILLMClient, LLMClientFactory } from '@teros/core';
 import type { EffectiveLLMConfig } from '../../services/model-service';
+import { PROVIDER_TYPES_WITHOUT_SECRETS } from '../../services/provider-service';
+import { secrets } from '../../secrets/secrets-manager';
+import {
+  TerosFallbackClient,
+  type TerosFallbackMode,
+} from '../../services/teros-fallback-client';
+import { resolveTerosUpstream } from '../../services/teros-upstream';
 
 // Cache for LLM clients per provider and model
 // Key format: "providerId:modelString"
@@ -21,9 +28,17 @@ const SUPPORTED_PROVIDERS = [
   'openai',
   'openai-codex-oauth',
   'openrouter',
+  'google',
   'zhipu',
   'zhipu-coding',
   'ollama',
+  'ollama-cloud',
+  'openai-compatible',
+  'minimax',
+  'teros',
+  'cloudflare',
+  'fireworks',
+  'together',
 ] as const;
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
@@ -61,16 +76,38 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
     async getClient(
       config: EffectiveLLMConfig,
       resolvedCredentials: ResolvedProviderCredentials,
+      opts: { terosFallbackMode?: TerosFallbackMode } = {},
     ): Promise<ILLMClient | null> {
       // If there's a mock LLM client (tests), use it
       if (mockClient) {
         return mockClient;
       }
 
+      // Teros failover (TER-617/F3): when armed AND a ZDR-safe Together target
+      // exists, the client wraps two upstreams and the policy varies per user
+      // (flag override / %rollout) → NOT cacheable. When armed but NO target
+      // exists (today always — Together is classified 'retains'), the result is
+      // the plain Fireworks client, which IS cacheable. Resolve the target ONCE
+      // here so an inert-but-armed flag doesn't rebuild + re-resolve + log every
+      // turn (R8.4).
+      const fallbackMode = opts.terosFallbackMode ?? 'off';
+      const terosFallbackArmed =
+        resolvedCredentials.providerType === 'teros' && fallbackMode !== 'off';
+      const failoverTarget = terosFallbackArmed
+        ? resolveTerosUpstream(
+            'together',
+            { modelId: config.modelId, modelString: config.modelString },
+            secrets,
+          )
+        : null;
+      const willWrap = failoverTarget !== null;
+
       // Cache key: providerId:modelString
       const cacheKey = `${resolvedCredentials.providerId}:${config.modelString}`;
 
-      if (llmClientCache.has(cacheKey)) {
+      // Cache hit only when we won't wrap (the wrapper is per-user; the plain
+      // client is shared). An armed-but-inert flag falls through to the cache.
+      if (!willWrap && llmClientCache.has(cacheKey)) {
         return llmClientCache.get(cacheKey)!;
       }
 
@@ -82,9 +119,9 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
         }
 
         // Get API key from resolved credentials
-        // Ollama doesn't require an API key
+        // Local Ollama doesn't require an API key; Ollama Cloud does (treated as regular API key provider)
         const apiKey = resolvedCredentials.apiKey;
-        if (!apiKey && !resolvedCredentials.accessToken && provider !== 'ollama') {
+        if (!apiKey && !resolvedCredentials.accessToken && !PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider as any)) {
           throw new Error(
             `No API key or access token found for provider ${resolvedCredentials.providerId}`,
           );
@@ -132,6 +169,14 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
                   ignoreProviders: config.providerConfig?.ignoreProviders,
                 }
               : undefined,
+          google:
+            provider === 'google'
+              ? {
+                  apiKey: apiKey!,
+                  model: config.modelString,
+                  maxTokens: config.maxTokens,
+                }
+              : undefined,
           zhipu: provider.startsWith('zhipu')
             ? {
                 apiKey: apiKey!,
@@ -147,7 +192,103 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
                   maxTokens: config.maxTokens,
                 }
               : undefined,
+          'ollama-cloud':
+            provider === 'ollama-cloud'
+              ? {
+                  apiKey: apiKey!,
+                  model: config.modelString,
+                  maxTokens: config.maxTokens,
+                }
+              : undefined,
+          'openai-compatible':
+            provider === 'openai-compatible'
+              ? {
+                  baseUrl: config.providerConfig?.baseUrl,
+                  model: config.modelString,
+                  apiKey: apiKey,
+                  customHeaders: config.providerConfig?.customHeaders,
+                  maxTokens: config.maxTokens,
+                }
+              : undefined,
+          minimax:
+            provider === 'minimax'
+              ? {
+                  apiKey: apiKey!,
+                  model: config.modelString,
+                  maxTokens: config.maxTokens,
+                }
+              : undefined,
+          teros: (() => {
+            if (provider !== 'teros') return undefined;
+            // Single source of truth (TER-617/F3): baseUrl/apiKey/modelString come
+            // from resolveTerosUpstream — never read the upstream system secret here.
+            const fw = resolveTerosUpstream(
+              'fireworks',
+              { modelId: config.modelId, modelString: config.modelString },
+              secrets,
+            );
+            return {
+              apiKey: fw?.apiKey ?? '',
+              model: fw?.modelString ?? config.modelString,
+              maxTokens: config.maxTokens,
+              baseUrl: fw?.baseUrl,
+              actualProvider: fw?.actualProvider ?? 'fireworks',
+            };
+          })(),
+          cloudflare: (() => {
+            if (provider !== 'cloudflare') return undefined;
+            return {
+              apiKey: apiKey ?? '',
+              accountId: config.providerConfig?.accountId ?? '',
+              model: config.modelString,
+              maxTokens: config.maxTokens,
+            };
+          })(),
+          fireworks: (() => {
+            if (provider !== 'fireworks') return undefined;
+            return {
+              apiKey: apiKey ?? '',
+              model: config.modelString,
+              maxTokens: config.maxTokens,
+            };
+          })(),
+          together: (() => {
+            if (provider !== 'together') return undefined;
+            return {
+              apiKey: apiKey ?? '',
+              model: config.modelString,
+              maxTokens: config.maxTokens,
+            };
+          })(),
         });
+
+        // Teros failover (TER-617/F3): wrap with a Together fallback when the flag
+        // is armed AND a ZDR-safe Together target exists (resolved once above).
+        if (willWrap && failoverTarget) {
+          const secondary = await LLMClientFactory.create({
+            provider: 'teros',
+            teros: {
+              apiKey: failoverTarget.apiKey,
+              model: failoverTarget.modelString,
+              maxTokens: config.maxTokens,
+              baseUrl: failoverTarget.baseUrl,
+              actualProvider: failoverTarget.actualProvider,
+            },
+          });
+          console.log(
+            `[LLMClientManager] Teros fallback armed (${fallbackMode}) → Together available for ${config.modelId}`,
+          );
+          // Not cached: the policy is per-user (flag override / %rollout).
+          return new TerosFallbackClient(client, secondary, fallbackMode);
+        }
+
+        // Armed but inert (no ZDR-safe target): log ONCE per built client — not
+        // per turn, since subsequent turns hit the cache below (R8.4).
+        if (terosFallbackArmed) {
+          console.log(
+            `[LLMClientManager] Teros fallback '${fallbackMode}' armed but no ZDR-safe Together target for ${config.modelId} — Fireworks-only (cached)`,
+          );
+        }
 
         llmClientCache.set(cacheKey, client);
         console.log(

@@ -304,6 +304,7 @@ server.tool('-health-check', {
 // =============================================================================
 
 server.tool('text-to-speech', {
+  annotations: { readOnlyHint: false },
   description:
     'Generate speech from text using ElevenLabs. Returns the audio file path. Use the default voice (do not specify voiceId) unless the user explicitly requests a different voice.',
   parameters: {
@@ -414,6 +415,7 @@ server.tool('text-to-speech', {
 // =============================================================================
 
 server.tool('list-voices', {
+  annotations: { readOnlyHint: true },
   description:
     'List available voices from ElevenLabs account. Supports filtering by name, category, and limiting results.',
   parameters: {
@@ -493,6 +495,7 @@ server.tool('list-voices', {
 // =============================================================================
 
 server.tool('get-voice', {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific voice including settings and samples.',
   parameters: {
     type: 'object',
@@ -528,6 +531,7 @@ server.tool('get-voice', {
 // =============================================================================
 
 server.tool('generate-conversation', {
+  annotations: { readOnlyHint: false },
   description:
     'Generate a multi-speaker conversation from a YAML script. Reads a YAML file with speaker voices and dialogue, generates audio for each line, and combines them into a single audio file. Requires ffmpeg installed.',
   parameters: {
@@ -569,6 +573,7 @@ server.tool('generate-conversation', {
 // =============================================================================
 
 server.tool('get-subscription', {
+  annotations: { readOnlyHint: true },
   description:
     'Get information about the current ElevenLabs subscription including character usage and limits.',
   parameters: {

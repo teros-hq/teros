@@ -6,9 +6,11 @@ import { ArrowRight, MessageSquare } from '@tamagui/lucide-icons';
 import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, TouchableOpacity } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
-import { CompactMarkdown } from './CompactMarkdown';
+import { colors } from '../../components/mca/primitives/colors';
+import { useColors } from '../../components/mca/primitives/useColors';
 import { AppSpinner } from '../../components/ui';
+import { getTerosClient } from '../../services/terosClientSingleton';
+import { CompactMarkdown } from './CompactMarkdown';
 
 interface ConversationPreviewProps {
   channelId: string;
@@ -88,49 +90,51 @@ function UserBubble({ text }: { text: string }) {
 // ─── Agent message (left-aligned, no bubble) ──────────────────────────────────
 
 function AgentMessage({ text, agentName }: { text: string; agentName: string }) {
+  const c = useColors();
   return (
     <YStack alignItems="flex-start" paddingRight={40} gap={2}>
-      <Text fontSize={11} fontWeight="600" color="#A78BFA">
+      <Text fontSize={11} fontWeight="600" color={colors.violet}>
         {agentName}
       </Text>
-      <CompactMarkdown text={text} fontSize={13} color="rgba(255,255,255,0.85)" />
+      <CompactMarkdown text={text} fontSize={13} color={c.text} />
     </YStack>
   );
 }
 
-// ─── Tool call card (compact dark card) ──────────────────────────────────────
+// ─── Tool call card (compact surface card) ─────────────────────────────────────
 
 function ToolCallCard({ content }: { content: any }) {
+  const c = useColors();
   const toolName = content?.toolName || 'Tool call';
   const status = content?.status;
   const statusIcon =
     status === 'completed' ? '✓' : status === 'failed' ? '✗' : status === 'running' ? '⏳' : '·';
   const statusColor =
     status === 'completed'
-      ? '#22C55E'
+      ? colors.green
       : status === 'failed'
-        ? '#EF4444'
-        : 'rgba(255,255,255,0.4)';
+        ? colors.red
+        : c.text3;
 
   return (
     <XStack
-      backgroundColor="rgba(255,255,255,0.05)"
+      backgroundColor={c.bgInner}
       borderRadius={8}
       paddingHorizontal={10}
       paddingVertical={6}
       borderWidth={1}
-      borderColor="rgba(255,255,255,0.08)"
+      borderColor={c.border}
       gap={6}
       alignItems="center"
     >
       <Text fontSize={11} color={statusColor} fontWeight="700">
         {statusIcon}
       </Text>
-      <Text fontSize={11} color="rgba(255,255,255,0.5)" fontFamily="$mono">
+      <Text fontSize={11} color={c.text2} fontFamily="$mono">
         {toolName}
       </Text>
       {content?.duration ? (
-        <Text fontSize={10} color="rgba(255,255,255,0.3)" marginLeft="auto">
+        <Text fontSize={10} color={c.text3} marginLeft="auto">
           {content.duration}ms
         </Text>
       ) : null}
@@ -145,6 +149,7 @@ export function ConversationPreview({
   onOpenConversation,
   agentMap,
 }: ConversationPreviewProps) {
+  const c = useColors();
   const client = getTerosClient();
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,12 +189,12 @@ export function ConversationPreview({
         paddingHorizontal={12}
         paddingVertical={8}
         borderBottomWidth={1}
-        borderBottomColor="rgba(255,255,255,0.05)"
+        borderBottomColor={c.border}
         flexShrink={0}
       >
         <XStack alignItems="center" gap={6}>
-          <MessageSquare size={13} color="#3B82F6" />
-          <Text fontSize={12} fontWeight="600" color="$color" opacity={0.5}>
+          <MessageSquare size={13} color={c.badges.info.text} />
+          <Text fontSize={12} fontWeight="600" color={c.text3}>
             Conversation
           </Text>
         </XStack>
@@ -199,16 +204,16 @@ export function ConversationPreview({
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            backgroundColor: 'rgba(59,130,246,0.12)',
+            backgroundColor: c.badges.info.bg,
             paddingHorizontal: 8,
             paddingVertical: 3,
             borderRadius: 4,
           }}
         >
-          <Text fontSize={10} color="#3B82F6" fontWeight="600">
+          <Text fontSize={10} color={c.badges.info.text} fontWeight="600">
             Abrir completa
           </Text>
-          <ArrowRight size={10} color="#3B82F6" />
+          <ArrowRight size={10} color={c.badges.info.text} />
         </TouchableOpacity>
       </XStack>
 
@@ -219,7 +224,7 @@ export function ConversationPreview({
         </YStack>
       ) : messages.length === 0 ? (
         <YStack flex={1} alignItems="center" justifyContent="center">
-          <Text fontSize={12} color="$color" opacity={0.3}>
+          <Text fontSize={12} color={c.text3}>
             No messages yet
           </Text>
         </YStack>

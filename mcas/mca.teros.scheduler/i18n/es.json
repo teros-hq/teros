@@ -1,0 +1,184 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna de salud. Verifica la conectividad con MongoDB. Usa `get-stats` para conteos activos por usuario."
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "Contadores en vivo del usuario actual: recordatorios activos, tareas recurrentes activas y marca de tiempo de la próxima ejecución programada.",
+      "params": {
+        "timezone": "Zona horaria IANA para nextScheduledHumanReadable (por defecto la del entorno)."
+      }
+    },
+    "parse-time-expression": {
+      "name": "parse-time-expression",
+      "description": "Previsualiza una expresión de tiempo/cron sin programarla. Devuelve la marca de tiempo parseada, humanReadable y las próximas ocurrencias.",
+      "params": {
+        "expression": "Lenguaje natural (\"en 2 horas\", \"mañana a las 9am\", ISO) o cron (\"0 9 * * 1-5\").",
+        "timezone": "Zona horaria IANA (por defecto: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "Idioma del parser (por defecto: en).",
+        "previewCount": "Próximas ocurrencias para cron (por defecto 5, máx 20).",
+        "reference": "Marca de tiempo de referencia ISO 8601 (por defecto: ahora)."
+      }
+    },
+    "schedule-reminder": {
+      "name": "schedule-reminder",
+      "description": "Programa un recordatorio de una sola vez. time: natural (\"en 2 horas\", \"mañana a las 9am\") o ISO 8601. timezone por defecto la del entorno. Devuelve el nuevo recordatorio.",
+      "params": {
+        "time": "Natural (\"en 2 horas\", \"mañana a las 9am\") o ISO 8601.",
+        "message": "Mensaje a entregar (máx 4000 caracteres).",
+        "channelId": "Canal que recibe el evento de activación (debe ser propiedad del usuario).",
+        "timezone": "Zona horaria IANA (por defecto: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "Idioma del parser (por defecto: en).",
+        "allowPast": "Permitir programar en el pasado (por defecto false).",
+        "idempotencyKey": "Clave de idempotencia opcional. Si ya existe un recordatorio con la misma clave+usuario, lo devuelve en lugar de crear un duplicado."
+      }
+    },
+    "list-reminders": {
+      "name": "list-reminders",
+      "description": "Lista los recordatorios del usuario actual, paginados. Filtra por channelId o status. Devuelve {items[], nextCursor?}.",
+      "params": {
+        "channelId": "Filtrar por canal.",
+        "status": "Filtrar por estado (por defecto: todos).",
+        "limit": "Resultados máximos (por defecto 50, máx 200).",
+        "cursor": "Cursor de paginación de la respuesta anterior.",
+        "timezone": "Zona horaria IANA para humanReadable (por defecto la del entorno)."
+      }
+    },
+    "list-upcoming": {
+      "name": "list-upcoming",
+      "description": "Lista los próximos recordatorios y tareas recurrentes del usuario actual dentro de una ventana (por defecto 7 días). include: reminders|recurring|both. Paginado.",
+      "params": {
+        "channelId": "Filtrar por canal.",
+        "days": "Duración de la ventana en días (por defecto 7, máx 90).",
+        "limit": "Elementos máximos por grupo (por defecto 50, máx 200).",
+        "cursor": "Cursor de paginación (solo aplica a recordatorios).",
+        "timezone": "Zona horaria IANA para humanReadable.",
+        "include": "Qué incluir (por defecto both)."
+      }
+    },
+    "get-reminder": {
+      "name": "get-reminder",
+      "description": "Obtiene un recordatorio por ID (debe pertenecer al usuario actual). Devuelve el recordatorio completo con humanReadable de la próxima ejecución.",
+      "params": {
+        "reminderId": "ID del recordatorio.",
+        "timezone": "Zona horaria IANA para humanReadable (por defecto la del entorno)."
+      }
+    },
+    "update-reminder": {
+      "name": "update-reminder",
+      "description": "Actualiza un recordatorio pendiente del usuario actual. Proporciona time (se re-parsea) o message (o ambos). Los recordatorios cancelados/enviados no son editables.",
+      "params": {
+        "reminderId": "ID del recordatorio a actualizar.",
+        "time": "Nueva expresión de tiempo (natural o ISO).",
+        "message": "Nuevo texto del mensaje (máx 4000 caracteres).",
+        "timezone": "Zona horaria IANA (por defecto la del entorno).",
+        "locale": "Idioma del parser.",
+        "allowPast": "Permitir programar en el pasado."
+      }
+    },
+    "snooze-reminder": {
+      "name": "snooze-reminder",
+      "description": "Pospone un recordatorio pendiente del usuario actual un tiempo determinado (ej. \"30m\", \"2h\", \"1d\"). Suma el retraso al tiempo actual.",
+      "params": {
+        "reminderId": "ID del recordatorio a posponer.",
+        "delay": "Expresión de retraso (ej. \"30m\", \"2h\", \"1d\").",
+        "timezone": "Zona horaria IANA para humanReadable (por defecto la del entorno)."
+      }
+    },
+    "cancel-reminder": {
+      "name": "cancel-reminder",
+      "description": "Cancela un recordatorio pendiente del usuario actual. Idempotente (devuelve noop si ya está cancelado). Limpia la suscripción del canal si es la última.",
+      "params": {
+        "reminderId": "ID del recordatorio a cancelar.",
+        "timezone": "Zona horaria IANA para humanReadable (por defecto la del entorno)."
+      }
+    },
+    "bulk-cancel": {
+      "name": "bulk-cancel",
+      "description": "Cancela en lote los recordatorios pendientes del usuario actual. Filtra por channelId, before (ISO o epoch ms) o ids[]. Devuelve los IDs cancelados y limpia suscripciones de canales sin pendientes restantes.",
+      "params": {
+        "channelId": "Cancelar todos los pendientes en este canal.",
+        "before": "Cancelar los pendientes programados antes de este tiempo (ISO 8601 o epoch ms).",
+        "ids": "Cancelar por IDs (máx 500).",
+        "timezone": "Zona horaria IANA para humanReadable."
+      }
+    },
+    "create-recurring-task": {
+      "name": "create-recurring-task",
+      "description": "Crea una tarea recurrente usando una expresión cron de 5 campos. Ejemplos: \"0 9 * * *\", \"*/15 * * * *\", \"0 10-22 * * 1-5\". timezone por defecto la del entorno.",
+      "params": {
+        "cronExpression": "Cron de 5 campos: \"min hora día mes día-semana\".",
+        "message": "Mensaje entregado en cada ejecución (máx 4000 caracteres).",
+        "channelId": "Canal que recibe el evento de activación (debe ser propiedad del usuario).",
+        "timezone": "Zona horaria IANA (por defecto: env MCA_DEFAULT_TIMEZONE).",
+        "idempotencyKey": "Clave de idempotencia opcional. Si ya existe una tarea recurrente con la misma clave+usuario, la devuelve en lugar de crear un duplicado."
+      }
+    },
+    "list-recurring-tasks": {
+      "name": "list-recurring-tasks",
+      "description": "Lista las tareas recurrentes del usuario actual, paginadas. Filtra por channelId o enabled. Devuelve {items[], nextCursor?}.",
+      "params": {
+        "channelId": "Filtrar por canal.",
+        "enabled": "Filtrar por estado de activación.",
+        "limit": "Resultados máximos (por defecto 50, máx 200).",
+        "cursor": "Cursor de paginación."
+      }
+    },
+    "get-recurring-task": {
+      "name": "get-recurring-task",
+      "description": "Obtiene una tarea recurrente por ID (debe pertenecer al usuario actual). Devuelve la tarea completa con cronDescription y humanReadable de la próxima ejecución.",
+      "params": {
+        "taskId": "ID de la tarea recurrente."
+      }
+    },
+    "update-recurring-task": {
+      "name": "update-recurring-task",
+      "description": "Actualiza una tarea recurrente del usuario actual. Proporciona cronExpression (se re-valida y recalcula nextRun), message o timezone.",
+      "params": {
+        "taskId": "ID de la tarea recurrente.",
+        "cronExpression": "Nueva expresión cron (5 campos).",
+        "message": "Nuevo texto del mensaje (máx 4000 caracteres).",
+        "timezone": "Nueva zona horaria IANA."
+      }
+    },
+    "enable-recurring-task": {
+      "name": "enable-recurring-task",
+      "description": "Activa (reanuda) una tarea recurrente del usuario actual. Recalcula nextRun. Idempotente si ya está activada.",
+      "params": {
+        "taskId": "ID de la tarea recurrente."
+      }
+    },
+    "disable-recurring-task": {
+      "name": "disable-recurring-task",
+      "description": "Desactiva (pausa) una tarea recurrente del usuario actual. Idempotente si ya está desactivada.",
+      "params": {
+        "taskId": "ID de la tarea recurrente."
+      }
+    },
+    "delete-recurring-task": {
+      "name": "delete-recurring-task",
+      "description": "Elimina permanentemente una tarea recurrente del usuario actual. Limpia la suscripción del canal si es la última para ese canal.",
+      "params": {
+        "taskId": "ID de la tarea recurrente."
+      }
+    },
+    "list-executions": {
+      "name": "list-executions",
+      "description": "Lista el historial de ejecuciones de una tarea recurrente del usuario actual. Las más recientes primero. Devuelve {items[], nextCursor?}.",
+      "params": {
+        "taskId": "ID de la tarea recurrente.",
+        "limit": "Resultados máximos (por defecto 50, máx 200).",
+        "cursor": "Cursor de paginación."
+      }
+    }
+  },
+  "name": "Scheduler & Reminders",
+  "description": "Programa recordatorios y tareas recurrentes. Horarios en lenguaje natural (chrono-node, en+es) y expresiones cron (croner). Consciente de zonas horarias.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — programa, pospone y cancela recordatorios de una sola vez y tareas recurrentes usando horarios en lenguaje natural o cron, con soporte de zonas horarias"
+    }
+  ]
+}

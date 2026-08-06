@@ -1,0 +1,235 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. Linear API 키와 연결성을 확인합니다."
+    },
+    "linear-list-issues": {
+      "name": "linear-list-issues",
+      "description": "선택적 필터와 함께 Linear 이슈 목록을 나열합니다. 정리된 행 { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }를 반환합니다. 매개변수: teamId?, status?, assigneeId?, priority?, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "팀 UUID로 필터링합니다.",
+        "status": "워크플로우 상태 유형으로 필터링합니다.",
+        "assigneeId": "담당자 UUID로 필터링합니다.",
+        "priority": "우선순위로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 이슈 노드를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-get-issue": {
+      "name": "linear-get-issue",
+      "description": "UUID 또는 식별자(예: \"TER-123\")로 Linear 이슈를 검색합니다. 정리된 { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }를 반환합니다. 매개변수: issueId, descriptionFormat ('full' | 'summary', 기본 'full'), fields?, includeRaw.",
+      "params": {
+        "issueId": "이슈 UUID 또는 인간 식별자(예: \"TER-123\").",
+        "descriptionFormat": "설명 크기를 제어합니다. 'full' (기본값)은 전체 마크다운을 반환하고; 'summary'는 500자로 잘라내고 descriptionTruncated=true를 추가합니다. 컨텍스트 크기를 스캔할 때 유용합니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 이슈 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-create-issue": {
+      "name": "linear-create-issue",
+      "description": "Linear 이슈를 생성합니다. 정리된 { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }를 반환합니다. 재시도할 수 없습니다(멱등성 키 없음). 매개변수: title, teamId, description?, assigneeId?, priority?, projectId?, labelIds?, stateId?, parentId? (UUID 또는 \"TER-123\"), fields?, includeRaw.",
+      "params": {
+        "title": "이슈 제목.",
+        "teamId": "팀 UUID (필수).",
+        "description": "마크다운 설명.",
+        "assigneeId": "담당자 UUID.",
+        "priority": "이슈 우선순위.",
+        "projectId": "프로젝트 UUID.",
+        "labelIds": "생성 시 첨부할 레이블 UUID.",
+        "stateId": "초기 설정할 워크플로우 상태 UUID.",
+        "parentId": "부모 이슈 UUID 또는 식별자(예: \"TER-123\"). 서브 태스크를 생성할 때만 설정; 그렇지 않으면 생략합니다.",
+        "fields": "반환된 이슈의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 이슈 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-update-issue": {
+      "name": "linear-update-issue",
+      "description": "Linear 이슈를 업데이트합니다. 정리된 업데이트된 이슈를 반환합니다. 필드별로 멱등적 — 재시도해도 안전합니다. 매개변수: issueId, title?, description?, stateId?, assigneeId?, priority?, projectId?, labelIds?, estimate?, dueDate?, fields?, includeRaw.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자.",
+        "title": "새 제목.",
+        "description": "새 마크다운 설명.",
+        "stateId": "워크플로우 상태 UUID.",
+        "assigneeId": "담당자 UUID (null로 해제).",
+        "priority": "새 우선순위.",
+        "projectId": "프로젝트 UUID (remove-issues-from-project를 통해 null-등가를 전달).",
+        "labelIds": "전체 레이블 ID 세트 (덮어씁니다). delta에 대해 add/remove-labels-to-issue를 사용합니다.",
+        "estimate": "포인트 추정.",
+        "dueDate": "ISO 날짜 문자열 (YYYY-MM-DD).",
+        "fields": "반환된 이슈의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 이슈 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-delete-issue": {
+      "name": "linear-delete-issue",
+      "description": "Linear 이슈를 영구적으로 삭제합니다. 되돌릴 수 없습니다. { success, issueId }를 반환합니다.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자."
+      }
+    },
+    "linear-archive-issue": {
+      "name": "linear-archive-issue",
+      "description": "Linear 이슈를 아카이브합니다 (소프트 삭제). 복원 가능. { success, issueId }를 반환합니다.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자."
+      }
+    },
+    "linear-add-comment": {
+      "name": "linear-add-comment",
+      "description": "Linear 이슈에 댓글을 추가합니다. 정리된 { id, body, authorId, authorName, issueId, url, createdAt }를 반환합니다. 재시도할 수 없습니다. 매개변수: issueId, body, fields?, includeRaw.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자.",
+        "body": "마크다운 댓글 본문. 비어있어서는 안 됩니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 댓글 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-list-projects": {
+      "name": "linear-list-projects",
+      "description": "Linear 프로젝트 목록을 나열합니다. 정리된 행 { id, name, url, state, icon, color, progress, startDate, targetDate, createdAt, updatedAt }를 반환합니다. 매개변수: teamId?, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "팀 UUID로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 프로젝트 노드를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-create-project": {
+      "name": "linear-create-project",
+      "description": "Linear 프로젝트를 생성합니다. 정리된 프로젝트 형태를 반환합니다. 재시도할 수 없습니다(멱등성 키 없음). 매개변수: name, teamIds, description?, leadId?, startDate?, targetDate?, fields?, includeRaw.",
+      "params": {
+        "name": "프로젝트 이름.",
+        "teamIds": "이 프로젝트를 소유한 팀 UUID.",
+        "description": "프로젝트 설명.",
+        "leadId": "프로젝트 리드 UUID.",
+        "startDate": "ISO 날짜 (YYYY-MM-DD).",
+        "targetDate": "ISO 날짜 (YYYY-MM-DD).",
+        "fields": "반환된 프로젝트의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 프로젝트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-delete-project": {
+      "name": "linear-delete-project",
+      "description": "Linear 프로젝트를 영구적으로 삭제합니다. 되돌릴 수 없습니다. 프로젝트의 이슈는 분리됩니다(삭제되지 않음). { success, projectId }를 반환합니다.",
+      "params": {
+        "projectId": "프로젝트 UUID."
+      }
+    },
+    "linear-add-issues-to-project": {
+      "name": "linear-add-issues-to-project",
+      "description": "하나 이상의 Linear 이슈를 프로젝트에 첨부합니다. { projectId, added, failed, results: [{ issueId, identifier?, success, error? }] }를 반환합니다.",
+      "params": {
+        "projectId": "프로젝트 UUID.",
+        "issueIds": "이슈 UUID 또는 식별자."
+      }
+    },
+    "linear-remove-issues-from-project": {
+      "name": "linear-remove-issues-from-project",
+      "description": "하나 이상의 Linear 이슈를 프로젝트에서 분리합니다. { removed, failed, results: [{ issueId, identifier?, success, error? }] }를 반환합니다.",
+      "params": {
+        "issueIds": "분리할 이슈 UUID 또는 식별자."
+      }
+    },
+    "linear-list-labels": {
+      "name": "linear-list-labels",
+      "description": "Linear 레이블 목록을 나열합니다. 정리된 행 { id, name, color, description, isGroup, parentId }를 반환합니다. 매개변수: teamId?, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "팀 UUID로 필터링합니다 (팀 범위 레이블).",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 레이블 노드를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-create-label": {
+      "name": "linear-create-label",
+      "description": "Linear 레이블을 생성합니다. 정리된 { id, name, color, description }를 반환합니다. 재시도할 수 없습니다. 매개변수: name, teamId, color?, description?, fields?, includeRaw.",
+      "params": {
+        "name": "레이블 이름.",
+        "teamId": "레이블을 소유한 팀 UUID.",
+        "color": "16진수 색상 (예: '#FF5733').",
+        "description": "레이블 설명.",
+        "fields": "반환된 레이블의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 레이블 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-update-label": {
+      "name": "linear-update-label",
+      "description": "Linear 레이블을 업데이트합니다. 정리된 업데이트된 레이블을 반환합니다. 필드별로 멱등적입니다. 매개변수: labelId, name?, color?, description?, fields?, includeRaw.",
+      "params": {
+        "labelId": "레이블 UUID.",
+        "name": "새 이름.",
+        "color": "새 16진수 색상 (예: '#FF5733').",
+        "description": "새 설명.",
+        "fields": "반환된 레이블의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 레이블 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-delete-label": {
+      "name": "linear-delete-label",
+      "description": "Linear 레이블을 영구적으로 삭제합니다. 되돌릴 수 없습니다. { success, labelId }를 반환합니다.",
+      "params": {
+        "labelId": "레이블 UUID."
+      }
+    },
+    "linear-add-labels-to-issue": {
+      "name": "linear-add-labels-to-issue",
+      "description": "Linear 이슈에 레이블을 추가합니다 (기존 레이블에 대해 서버 측에서 중복 제거됨). { issueId, added, total, labelIds }를 반환합니다.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자.",
+        "labelIds": "추가할 레이블 UUID."
+      }
+    },
+    "linear-remove-labels-from-issue": {
+      "name": "linear-remove-labels-from-issue",
+      "description": "Linear 이슈에서 레이블을 제거합니다. { issueId, removed, total, labelIds }를 반환합니다.",
+      "params": {
+        "issueId": "이슈 UUID 또는 식별자.",
+        "labelIds": "제거할 레이블 UUID."
+      }
+    },
+    "linear-list-teams": {
+      "name": "linear-list-teams",
+      "description": "Linear 팀 목록을 나열합니다. 정리된 행 { id, name, key, icon, color, description, private }를 반환합니다. 매개변수: limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 팀 노드를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-list-users": {
+      "name": "linear-list-users",
+      "description": "Linear 작업 공간 사용자를 나열합니다. 선택적으로 팀 구성원으로 필터링합니다. 정리된 행 { id, name, displayName, email, avatarUrl, active, admin }를 반환합니다. 매개변수: teamId?, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "팀 UUID로 필터링합니다 (해당 팀의 구성원만 반환).",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 사용자 노드를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "linear-list-workflow-states": {
+      "name": "linear-list-workflow-states",
+      "description": "팀의 워크플로우 상태를 나열합니다. 정리된 행 { id, name, type, color, position, description }를 반환합니다. 매개변수: teamId, limit (1-100, 기본 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "팀 UUID.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 50.",
+        "startCursor": "이전 응답의 Linear 릴레이 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Linear 상태 노드를 반환합니다. 기본값은 false입니다."
+      }
+    }
+  },
+  "name": "Linear",
+  "description": "Linear 이슈 추적 - 이슈 목록, 생성, 업데이트, 팀 및 사용자 관리",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 이슈 생성, 업데이트 및 댓글 추가, 프로젝트 및 레이블 관리, 팀 탐색"
+    }
+  ]
+}

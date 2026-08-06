@@ -1,0 +1,586 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.excalidraw",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Excalidraw API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-scenes",
+      "description": "List all Excalidraw scenes in the workspace with their metadata and links. Supports pagination via cursor.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response to get the next page."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of scenes to return per page (default: 50).",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-scene",
+      "description": "Get detailed metadata for a specific Excalidraw scene by its ID, including links and sharing settings.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "description": "The scene ID to retrieve."
+          }
+        },
+        "required": [
+          "sceneId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-scene-content",
+      "description": "Retrieve the complete drawing content of an Excalidraw scene: all elements (shapes, text, arrows, etc.), app state, and embedded files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "description": "The scene ID whose content to retrieve."
+          }
+        },
+        "required": [
+          "sceneId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-scene",
+      "description": "Create a new empty Excalidraw scene with specified metadata. Optionally assign it to a collection and pin it. Returns the created scene with its ID and sharing links.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name for the new scene."
+          },
+          "collectionId": {
+            "type": "string",
+            "description": "ID of the collection to place the scene in."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Whether to pin the scene (default: false).",
+            "default": false
+          }
+        },
+        "required": [
+          "name",
+          "collectionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-scene",
+      "description": "Update the metadata of an existing Excalidraw scene (name, pinned status, collection assignment).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "description": "The scene ID to update."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the scene."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Whether to pin the scene."
+          },
+          "collectionId": {
+            "type": "string",
+            "description": "Move the scene to a different collection by providing its ID."
+          }
+        },
+        "required": [
+          "sceneId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-scene-content",
+      "description": "Replace the complete drawing content of an Excalidraw scene with new elements. WARNING: this is a full replace — existing content is overwritten. Pass the full array of elements you want the scene to contain.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "description": "The scene ID to update."
+          },
+          "elements": {
+            "type": "array",
+            "description": "Array of Excalidraw element objects (shapes, text, arrows, etc.). This replaces all existing elements.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "appState": {
+            "type": "object",
+            "description": "Optional Excalidraw app state (viewport, theme, etc.)."
+          },
+          "files": {
+            "type": "object",
+            "description": "Optional embedded files map (e.g. images referenced in the scene)."
+          }
+        },
+        "required": [
+          "sceneId",
+          "elements"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-scene",
+      "description": "Soft-delete an Excalidraw scene by moving it to trash. The scene can be recovered from the Excalidraw Plus UI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sceneId": {
+            "type": "string",
+            "description": "The scene ID to delete."
+          }
+        },
+        "required": [
+          "sceneId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-collections",
+      "description": "List all collections in the Excalidraw Plus workspace. Collections are folders that group related scenes together.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of collections to return (default: 50).",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-collection",
+      "description": "Get detailed information about a specific Excalidraw collection by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string",
+            "description": "The collection ID to retrieve."
+          }
+        },
+        "required": [
+          "collectionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-collection-scenes",
+      "description": "List all scenes that belong to a specific Excalidraw collection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string",
+            "description": "The collection ID to list scenes from."
+          }
+        },
+        "required": [
+          "collectionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-collection",
+      "description": "Create a new collection (folder) in the Excalidraw Plus workspace to group related scenes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name for the new collection."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "create-collection-scene",
+      "description": "Create a new scene directly inside a specific Excalidraw collection.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string",
+            "description": "The collection ID to create the scene in."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name for the new scene."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Whether to pin the scene (default: false).",
+            "default": false
+          }
+        },
+        "required": [
+          "collectionId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-collection",
+      "description": "Update the metadata of an existing Excalidraw collection (e.g. rename it).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string",
+            "description": "The collection ID to update."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the collection."
+          }
+        },
+        "required": [
+          "collectionId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-collection",
+      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside are not deleted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "collectionId": {
+            "type": "string",
+            "description": "The collection ID to delete."
+          }
+        },
+        "required": [
+          "collectionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-workspace",
+      "description": "Retrieve the current Excalidraw Plus workspace's metadata, including name, users, and invites.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-workspace",
+      "description": "Update the current Excalidraw Plus workspace's metadata (e.g. rename it).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "New name for the workspace."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-users",
+      "description": "List all users in the Excalidraw Plus workspace with their roles and metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of users to return (default: 50).",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Get details for a specific user in the Excalidraw Plus workspace by their user ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "The user ID to retrieve."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-user",
+      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role or name).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "The user ID to update."
+          },
+          "role": {
+            "type": "string",
+            "description": "New role for the user (e.g. \"admin\", \"member\")."
+          },
+          "name": {
+            "type": "string",
+            "description": "New display name for the user."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "remove-user",
+      "description": "Remove a user from the Excalidraw Plus workspace, revoking their access.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "The user ID to remove from the workspace."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-invites",
+      "description": "List all pending and active invites for the Excalidraw Plus workspace.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of invites to return (default: 50).",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-invite",
+      "description": "Invite a user to the Excalidraw Plus workspace by email. Optionally specify their role.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Email address of the person to invite."
+          },
+          "role": {
+            "type": "string",
+            "description": "Role to assign (e.g. \"admin\", \"member\"). Defaults to workspace default."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-invite",
+      "description": "Get details for a specific Excalidraw Plus workspace invite by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "description": "The invite ID to retrieve."
+          }
+        },
+        "required": [
+          "inviteId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-invite",
+      "description": "Update an existing Excalidraw Plus workspace invite (e.g. change the assigned role).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "description": "The invite ID to update."
+          },
+          "role": {
+            "type": "string",
+            "description": "New role to assign to the invitee."
+          }
+        },
+        "required": [
+          "inviteId",
+          "role"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-invite",
+      "description": "Delete a pending Excalidraw Plus workspace invite, revoking the invitation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "inviteId": {
+            "type": "string",
+            "description": "The invite ID to delete."
+          }
+        },
+        "required": [
+          "inviteId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-logs",
+      "description": "Retrieve workspace audit logs from Excalidraw Plus. Useful for tracking activity, changes, and access history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of log entries to return (default: 50).",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

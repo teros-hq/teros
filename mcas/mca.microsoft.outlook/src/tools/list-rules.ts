@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const listRules: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all inbox rules (mail filters) for the account.',
   parameters: {
     type: 'object',

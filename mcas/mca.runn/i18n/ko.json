@@ -1,0 +1,251 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Runn API 키와 연결성을 확인합니다."
+    },
+    "runn-list-projects": {
+      "name": "runn-list-projects",
+      "description": "Runn 프로젝트 목록. { items: [{ id, name, clientId, isArchived, isConfirmed, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: clientId?, isArchived?, limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "clientId": "클라이언트 ID로 필터링합니다.",
+        "isArchived": "아카이브 상태로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 프로젝트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-get-project": {
+      "name": "runn-get-project",
+      "description": "ID로 단일 Runn 프로젝트를 가져옵니다. { id, name, clientId, teamId, isArchived, isConfirmed, pricingModel, rateType, budget, expensesBudget, tags, references, ... }의 세부 정보를 반환합니다. 매개변수: projectId (필수), fields?, includeRaw.",
+      "params": {
+        "projectId": "Runn 프로젝트 ID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 프로젝트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-project": {
+      "name": "runn-create-project",
+      "description": "처음부터 Runn 프로젝트를 생성합니다. 생성된 프로젝트를 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: name, clientId (둘 다 필수), isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel? (fp|tm|nb), rateType? (hours|days), rateCardId?, fields?, includeRaw.",
+      "params": {
+        "name": "프로젝트 이름.",
+        "clientId": "클라이언트 ID (필수). runn-list-clients를 사용하여 찾습니다.",
+        "isConfirmed": "확인된(대비 잠정적인) 프로젝트. 기본값은 false입니다.",
+        "teamId": "팀 ID.",
+        "budget": "프로젝트 예산(계정 통화로).",
+        "expensesBudget": "비용 예산.",
+        "pricingModel": "fp = 고정 가격, tm = 시간 및 자재, nb = 청구 불가.",
+        "rateType": "요금 단위.",
+        "rateCardId": "요금 카드 ID.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 프로젝트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-update-project": {
+      "name": "runn-update-project",
+      "description": "Runn 프로젝트를 업데이트합니다. 전달한 필드만 변경됩니다(PATCH 의미론). 아이템포턴트 — 재시도해도 안전합니다. 업데이트된 프로젝트를 반환합니다. 매개변수: projectId (필수), name?, clientId?, isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel?, rateType?, rateCardId?, fields?, includeRaw.",
+      "params": {
+        "projectId": "업데이트할 Runn 프로젝트 ID.",
+        "name": "새 프로젝트 이름.",
+        "clientId": "새 클라이언트 ID.",
+        "isConfirmed": "확인된(대비 잠정적인) 프로젝트.",
+        "teamId": "새 팀 ID.",
+        "budget": "프로젝트 예산.",
+        "expensesBudget": "비용 예산.",
+        "pricingModel": "fp | tm | nb.",
+        "rateType": "hours | days.",
+        "rateCardId": "요금 카드 ID.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 프로젝트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-people": {
+      "name": "runn-list-people",
+      "description": "Runn 사람 목록. { items: [{ id, firstName, lastName, email, isArchived, teamId, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 참고: 사람의 역할은 계약에 있으며, 개인에게는 없습니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 사람 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-get-person": {
+      "name": "runn-get-person",
+      "description": "ID로 단일 Runn 사람을 가져옵니다. { id, firstName, lastName, email, isArchived, teamId, tags, references, holidaysGroupId, managers, ... }의 세부 정보를 반환합니다. 매개변수: personId (필수), fields?, includeRaw.",
+      "params": {
+        "personId": "Runn 사람 ID.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 사람 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-person": {
+      "name": "runn-create-person",
+      "description": "Runn 사람을 생성합니다. 첫 번째 계약(역할)이 생성됩니다. 생성된 사람을 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: firstName, lastName, roleId (모두 필수), email?, teamId?, startDate? (YYYY-MM-DD), employmentType? (employee|contractor), costPerHour?, fields?, includeRaw.",
+      "params": {
+        "firstName": "이름.",
+        "lastName": "성.",
+        "roleId": "초기 계약을 위한 역할 ID (필수).",
+        "email": "이메일 주소.",
+        "teamId": "팀 ID.",
+        "startDate": "계약 시작일, YYYY-MM-DD. 기본값은 오늘입니다.",
+        "employmentType": "고용 유형. 기본값은 직원입니다.",
+        "costPerHour": "시간당 비용. 기본값은 역할 비용입니다.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 사람 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-placeholders": {
+      "name": "runn-list-placeholders",
+      "description": "Runn 자리 표시자 목록(실제 사람이 배정되기 전에 계획에 사용되는 이름 없는 역할 슬롯). { items: [{ id, firstName, lastName, isArchived, tags, references, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 자리 표시자 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-placeholder": {
+      "name": "runn-create-placeholder",
+      "description": "Runn 자리 표시자를 생성합니다(실제 사람이 고용/배정되기 전에 계획을 위한 이름 없는 역할 슬롯). 생성된 자리 표시자를 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: roleId (필수), teamId?, costPerHour?, fields?, includeRaw.",
+      "params": {
+        "roleId": "자리 표시자가 대신하는 역할 ID (필수).",
+        "teamId": "팀 ID.",
+        "costPerHour": "시간당 비용. 기본값은 역할 비용입니다.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 자리 표시자 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-assignments": {
+      "name": "runn-list-assignments",
+      "description": "Runn 할당 목록(날짜 범위에 걸쳐 프로젝트에 할당된 사람/자리 표시자). { items: [{ id, personId, projectId, roleId, startDate, endDate, minutesPerDay, isBillable, isPlaceholder, ... }], total, hasMore, nextCursor }를 반환합니다. personId 또는 projectId로 필터링합니다(둘 다는 안 됨). 매개변수: personId?, projectId?, limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "한 사람의 할당 범위.",
+        "projectId": "한 프로젝트의 할당 범위.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 할당 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-assignment": {
+      "name": "runn-create-assignment",
+      "description": "사람(또는 자리 표시자)을 날짜 범위에 걸쳐 프로젝트에 할당합니다. 생성된 할당을 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: personId, projectId, roleId, startDate, endDate (YYYY-MM-DD, 모두 필수), minutesPerDay (>= 0), isBillable?, note?, phaseId?, workstreamId?, isNonWorkingDay?, fields?, includeRaw.",
+      "params": {
+        "personId": "할당할 사람 또는 자리 표시자 ID.",
+        "projectId": "프로젝트 ID.",
+        "roleId": "이 할당에서 사람이 작업하는 역할 ID.",
+        "startDate": "시작일, YYYY-MM-DD.",
+        "endDate": "종료일, YYYY-MM-DD (시작일 이후).",
+        "minutesPerDay": "하루에 할당된 분(>= 0).",
+        "isBillable": "할당이 청구 가능한지 여부. 기본값은 true입니다.",
+        "note": "선택적 메모.",
+        "phaseId": "선택적 프로젝트 단계 ID.",
+        "workstreamId": "선택적 작업 흐름 ID.",
+        "isNonWorkingDay": "비근무일인지 여부.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 할당 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-delete-assignment": {
+      "name": "runn-delete-assignment",
+      "description": "ID로 Runn 할당을 삭제합니다. 되돌릴 수 없습니다. { success, assignmentId }를 반환합니다. 매개변수: assignmentId (필수).",
+      "params": {
+        "assignmentId": "삭제할 Runn 할당 ID."
+      }
+    },
+    "runn-list-actuals": {
+      "name": "runn-list-actuals",
+      "description": "Runn 실제 목록(일별로 기록된 타임시트 시간). { items: [{ id, date, personId, projectId, roleId, billableMinutes, nonbillableMinutes, ... }], total, hasMore, nextCursor }를 반환합니다. personId 또는 projectId로 필터링합니다(둘 다는 안 됨). 매개변수: personId?, projectId?, limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "한 사람의 실제 범위.",
+        "projectId": "한 프로젝트의 실제 범위.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 실제 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-actual": {
+      "name": "runn-create-actual",
+      "description": "Runn 실제를 기록합니다(하루에 실제로 작업한 시간). 분은 동일한 날/사람/프로젝트/역할/작업 흐름에 대한 기존 실제를 덮어씁니다. 세부 정보를 반환합니다. 매개변수: date (YYYY-MM-DD), billableMinutes, nonbillableMinutes, personId, projectId, roleId (모두 필수), billableNote?, nonbillableNote?, phaseId?, workstreamId?, fields?, includeRaw.",
+      "params": {
+        "date": "작업이 수행된 날, YYYY-MM-DD.",
+        "billableMinutes": "청구 가능한 분(>= 0).",
+        "nonbillableMinutes": "청구 불가한 분(>= 0).",
+        "personId": "사람 ID.",
+        "projectId": "프로젝트 ID.",
+        "roleId": "역할 ID.",
+        "billableNote": "청구 가능한 시간에 대한 선택적 메모.",
+        "nonbillableNote": "청구 불가한 시간에 대한 선택적 메모.",
+        "phaseId": "선택적 프로젝트 단계 ID.",
+        "workstreamId": "선택적 작업 흐름 ID.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 실제 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-clients": {
+      "name": "runn-list-clients",
+      "description": "Runn 클라이언트 목록. { items: [{ id, name, website, isArchived, references, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 클라이언트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-create-client": {
+      "name": "runn-create-client",
+      "description": "Runn 클라이언트를 생성합니다. 생성된 클라이언트를 반환합니다. 재시도할 수 없습니다(아이템포턴시 키 없음). 매개변수: name (필수), website?, fields?, includeRaw.",
+      "params": {
+        "name": "클라이언트 이름.",
+        "website": "클라이언트 웹사이트 URL.",
+        "fields": "결과에 대한 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 클라이언트 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-roles": {
+      "name": "runn-list-roles",
+      "description": "Runn 역할 목록(사람과 자리 표시자가 배정된 직무 역할). { items: [{ id, name, isArchived, defaultHourCost, standardRate, references, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 역할 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-teams": {
+      "name": "runn-list-teams",
+      "description": "Runn 팀 목록. { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 팀 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-list-skills": {
+      "name": "runn-list-skills",
+      "description": "Runn 기술 목록. { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }를 반환합니다. 매개변수: limit (1-200, 기본 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 기술 객체를 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "runn-project-totals": {
+      "name": "runn-project-totals",
+      "description": "프로젝트별 집계된 분 총계를 가져옵니다(청구 가능, 청구 불가, 총계 — 사용 가능한 경우 실제에서 가져오며, 할당으로 대체됨). { items: [{ id, billableMinutes, nonBillableMinutes, totalMinutes, assignments, actuals }], total, hasMore, nextCursor }를 반환합니다. 매개변수: includeArchived (기본값 false), limit (1-10, 기본 10), cursor?, fields?, includeRaw.",
+      "params": {
+        "includeArchived": "총계에 아카이브된 프로젝트를 포함합니다. 기본값은 false입니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 10, 기본 10.",
+        "cursor": "이전 응답의 페이지네이션 커서.nextCursor.",
+        "fields": "행별로 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Runn 집계 객체를 반환합니다. 기본값은 false입니다."
+      }
+    }
+  },
+  "name": "Runn",
+  "description": "Runn 자원 관리 - 프로젝트, 사람, 할당, 타임시트 및 용량 계획"
+}

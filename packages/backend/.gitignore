@@ -1,1 +1,6 @@
+# Ignore uploaded files (but keep the directory structure)
+static/uploads/*
+!static/uploads/.gitkeep
+
+# Legacy upload directory (if used elsewhere)
 uploads/

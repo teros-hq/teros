@@ -3,6 +3,11 @@
  *
  * Shows the authentication status of an installed app with visual indicators.
  * Used in app cards and app detail pages.
+ *
+ * Migrated to the Design System:
+ * - Uses `useColors()` for theme-adaptive surface/border tokens.
+ * - Uses `semanticColors` for status accents (green, amber, indigo, red, gray).
+ * - Uses Tamagui font tokens (`$body`, `$mono`).
  */
 
 import {
@@ -10,15 +15,21 @@ import {
   AlertTriangle,
   Check,
   Clock,
-  Key,
   Link,
   LogIn,
   Unlink,
 } from '@tamagui/lucide-icons';
 import type React from 'react';
 import { TouchableOpacity, View } from 'react-native';
-import { Text, XStack } from 'tamagui';
+import { Text, XStack, useThemeName } from 'tamagui';
 import { AppSpinner } from '../../components/ui';
+import {
+  badges,
+  colors as semanticColors,
+  surface,
+  type Theme,
+} from '../mca/primitives/colors';
+import { useColors } from '../mca/primitives/useColors';
 
 export type AppCredentialStatus =
   | 'ready' // All credentials configured and valid
@@ -68,75 +79,31 @@ interface AppAuthBadgeProps {
 }
 
 /**
- * Configuration for each status type
+ * Resolve a status to a Design System badge palette entry.
  */
-const statusConfig: Record<
-  AppCredentialStatus,
-  {
-    icon: React.ComponentType<{ size?: number; color?: string }>;
-    label: string;
-    shortLabel: string;
-    bgColor: string;
-    borderColor: string;
-    textColor: string;
-    iconColor: string;
+function getStatusBadge(
+  status: AppCredentialStatus,
+  theme: Theme,
+):
+  | { palette: keyof typeof badges.dark; label: string; shortLabel: string; icon: React.ComponentType<{ size?: number; color?: string }> }
+  | null {
+  switch (status) {
+    case 'ready':
+      return { palette: 'ok', label: 'Conectada', shortLabel: 'OK', icon: Check };
+    case 'needs_system_setup':
+      return { palette: 'warn', label: 'Requires configuration', shortLabel: 'Config', icon: AlertTriangle };
+    case 'needs_user_auth':
+      return { palette: 'info', label: 'Conectar cuenta', shortLabel: 'Conectar', icon: LogIn };
+    case 'expired':
+      return { palette: 'warn', label: 'Session expired', shortLabel: 'Expirado', icon: Clock };
+    case 'error':
+      return { palette: 'err', label: 'Error', shortLabel: 'Error', icon: AlertCircle };
+    case 'not_required':
+      return { palette: 'gray', label: 'Not authenticated', shortLabel: 'N/A', icon: Check };
+    default:
+      return null;
   }
-> = {
-  ready: {
-    icon: Check,
-    label: 'Conectada',
-    shortLabel: 'OK',
-    bgColor: 'rgba(16, 185, 129, 0.1)',
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-    textColor: '#10B981',
-    iconColor: '#10B981',
-  },
-  needs_system_setup: {
-    icon: AlertTriangle,
-    label: 'Requires configuration',
-    shortLabel: 'Config',
-    bgColor: 'rgba(245, 158, 11, 0.1)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    textColor: '#F59E0B',
-    iconColor: '#F59E0B',
-  },
-  needs_user_auth: {
-    icon: LogIn,
-    label: 'Conectar cuenta',
-    shortLabel: 'Conectar',
-    bgColor: 'rgba(59, 130, 246, 0.1)',
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    textColor: '#3B82F6',
-    iconColor: '#3B82F6',
-  },
-  expired: {
-    icon: Clock,
-    label: 'Session expired',
-    shortLabel: 'Expirado',
-    bgColor: 'rgba(245, 158, 11, 0.1)',
-    borderColor: 'rgba(245, 158, 11, 0.3)',
-    textColor: '#F59E0B',
-    iconColor: '#F59E0B',
-  },
-  error: {
-    icon: AlertCircle,
-    label: 'Error',
-    shortLabel: 'Error',
-    bgColor: 'rgba(239, 68, 68, 0.1)',
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-    textColor: '#EF4444',
-    iconColor: '#EF4444',
-  },
-  not_required: {
-    icon: Check,
-    label: 'Not authenticated',
-    shortLabel: 'N/A',
-    bgColor: 'rgba(113, 113, 122, 0.1)',
-    borderColor: 'rgba(113, 113, 122, 0.3)',
-    textColor: '#71717A',
-    iconColor: '#71717A',
-  },
-};
+}
 
 export function AppAuthBadge({
   authInfo,
@@ -145,17 +112,21 @@ export function AppAuthBadge({
   actionable = false,
   onPress,
 }: AppAuthBadgeProps) {
+  const c = useColors();
+  const themeName = useThemeName();
+  const theme: Theme = typeof themeName === 'string' && themeName.startsWith('light') ? 'light' : 'dark';
+
   // If loading, show loading state
   if (loading) {
     return (
       <View
         style={{
-          backgroundColor: 'rgba(113, 113, 122, 0.1)',
+          backgroundColor: c.badges.gray.bg,
           paddingHorizontal: size === 'small' ? 6 : 10,
           paddingVertical: size === 'small' ? 3 : 5,
           borderRadius: size === 'small' ? 4 : 6,
           borderWidth: 1,
-          borderColor: 'rgba(113, 113, 122, 0.2)',
+          borderColor: c.badges.gray.border,
         }}
       >
         <AppSpinner size="sm" variant="muted" />
@@ -168,9 +139,10 @@ export function AppAuthBadge({
     return null;
   }
 
-  const config = statusConfig[authInfo.status] || statusConfig.error;
-  const IconComponent = config.icon;
-  const label = size === 'small' ? config.shortLabel : config.label;
+  const statusMeta = getStatusBadge(authInfo.status, theme) ?? getStatusBadge('error', theme)!;
+  const badgePalette = badges[theme][statusMeta.palette];
+  const IconComponent = statusMeta.icon;
+  const label = size === 'small' ? statusMeta.shortLabel : statusMeta.label;
 
   // Determine if this should be clickable
   const isClickable =
@@ -184,16 +156,21 @@ export function AppAuthBadge({
       alignItems="center"
       gap={size === 'small' ? 4 : 6}
       style={{
-        backgroundColor: config.bgColor,
+        backgroundColor: badgePalette.bg,
         paddingHorizontal: size === 'small' ? 6 : 10,
         paddingVertical: size === 'small' ? 3 : 5,
         borderRadius: size === 'small' ? 4 : 6,
         borderWidth: 1,
-        borderColor: config.borderColor,
+        borderColor: badgePalette.border,
       }}
     >
-      <IconComponent size={size === 'small' ? 12 : 14} color={config.iconColor} />
-      <Text fontSize={size === 'small' ? 10 : 12} fontWeight="500" color={config.textColor}>
+      <IconComponent size={size === 'small' ? 12 : 14} color={badgePalette.text} />
+      <Text
+        fontSize={size === 'small' ? 10 : 12}
+        fontWeight="500"
+        color={badgePalette.text}
+        fontFamily="$body"
+      >
         {label}
       </Text>
     </XStack>
@@ -228,8 +205,13 @@ export function AppAuthStatusDetail({
   connecting = false,
   disconnecting = false,
 }: AppAuthStatusDetailProps) {
-  const config = statusConfig[authInfo.status] || statusConfig.error;
-  const IconComponent = config.icon;
+  const c = useColors();
+  const themeName = useThemeName();
+  const theme: Theme = typeof themeName === 'string' && themeName.startsWith('light') ? 'light' : 'dark';
+
+  const statusMeta = getStatusBadge(authInfo.status, theme) ?? getStatusBadge('error', theme)!;
+  const badgePalette = badges[theme][statusMeta.palette];
+  const IconComponent = statusMeta.icon;
 
   // For OAuth, show connected account info
   const isOAuth = authInfo.authType === 'oauth2';
@@ -238,11 +220,11 @@ export function AppAuthStatusDetail({
   return (
     <View
       style={{
-        backgroundColor: 'rgba(24, 24, 27, 0.9)',
+        backgroundColor: c.bgCard,
         borderRadius: 12,
         padding: 16,
         borderWidth: 1,
-        borderColor: config.borderColor,
+        borderColor: badgePalette.border,
       }}
     >
       {/* Status header */}
@@ -252,23 +234,23 @@ export function AppAuthStatusDetail({
             width: 36,
             height: 36,
             borderRadius: 8,
-            backgroundColor: config.bgColor,
+            backgroundColor: badgePalette.bg,
             justifyContent: 'center',
             alignItems: 'center',
           }}
         >
-          <IconComponent size={18} color={config.iconColor} />
+          <IconComponent size={18} color={badgePalette.text} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text fontSize={14} fontWeight="600" color="#FAFAFA">
+          <Text fontSize={14} fontWeight="600" color={c.text} fontFamily="$body">
             {authInfo.authType === 'oauth2'
               ? 'OAuth'
               : authInfo.authType === 'apikey'
                 ? 'API Key'
                 : 'Not authenticated'}
           </Text>
-          <Text fontSize={12} color={config.textColor}>
-            {config.label}
+          <Text fontSize={12} color={badgePalette.text} fontFamily="$body">
+            {statusMeta.label}
           </Text>
         </View>
         <AppAuthBadge authInfo={authInfo} size="medium" />
@@ -278,25 +260,25 @@ export function AppAuthStatusDetail({
       {isConnected && authInfo.oauth?.email && (
         <View
           style={{
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
+            backgroundColor: surface[theme].bgInner,
             borderRadius: 8,
             padding: 12,
             marginBottom: 12,
           }}
         >
           <XStack alignItems="center" gap={8}>
-            <Link size={14} color="#10B981" />
+            <Link size={14} color={semanticColors.green} />
             <View style={{ flex: 1 }}>
-              <Text fontSize={12} color="#71717A">
+              <Text fontSize={12} color={c.text2} fontFamily="$body">
                 Cuenta conectada
               </Text>
-              <Text fontSize={14} color="#FAFAFA">
+              <Text fontSize={14} color={c.text} fontFamily="$body">
                 {authInfo.oauth.email}
               </Text>
             </View>
           </XStack>
           {authInfo.oauth.expiresAt && (
-            <Text fontSize={11} color="#52525B" marginTop={4}>
+            <Text fontSize={11} color={c.text3} marginTop={4} fontFamily="$body">
               Expira: {new Date(authInfo.oauth.expiresAt).toLocaleDateString()}
             </Text>
           )}
@@ -305,12 +287,12 @@ export function AppAuthStatusDetail({
 
       {/* Message or error */}
       {authInfo.message && !isConnected && (
-        <Text fontSize={13} color="#A1A1AA" marginBottom={12}>
+        <Text fontSize={13} color={c.text2} marginBottom={12} fontFamily="$body">
           {authInfo.message}
         </Text>
       )}
       {authInfo.error && (
-        <Text fontSize={13} color="#EF4444" marginBottom={12}>
+        <Text fontSize={13} color={semanticColors.red} marginBottom={12} fontFamily="$body">
           {authInfo.error}
         </Text>
       )}
@@ -324,7 +306,7 @@ export function AppAuthStatusDetail({
             disabled={connecting}
             style={{
               flex: 1,
-              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+              backgroundColor: badges[theme].info.bg,
               paddingVertical: 10,
               paddingHorizontal: 16,
               borderRadius: 8,
@@ -333,14 +315,21 @@ export function AppAuthStatusDetail({
               justifyContent: 'center',
               gap: 8,
               opacity: connecting ? 0.6 : 1,
+              borderWidth: 1,
+              borderColor: badges[theme].info.border,
             }}
           >
             {connecting ? (
               <AppSpinner size="sm" variant="default" />
             ) : (
               <>
-                <LogIn size={16} color="#3B82F6" />
-                <Text fontSize={14} fontWeight="500" color="#3B82F6">
+                <LogIn size={16} color={badges[theme].info.text} />
+                <Text
+                  fontSize={14}
+                  fontWeight="500"
+                  color={badges[theme].info.text}
+                  fontFamily="$body"
+                >
                   {authInfo.authType === 'oauth2' ? 'Conectar cuenta' : 'Configurar'}
                 </Text>
               </>
@@ -355,7 +344,7 @@ export function AppAuthStatusDetail({
             disabled={disconnecting}
             style={{
               flex: 1,
-              backgroundColor: 'rgba(239, 68, 68, 0.1)',
+              backgroundColor: badges[theme].err.bg,
               paddingVertical: 10,
               paddingHorizontal: 16,
               borderRadius: 8,
@@ -364,14 +353,21 @@ export function AppAuthStatusDetail({
               justifyContent: 'center',
               gap: 8,
               opacity: disconnecting ? 0.6 : 1,
+              borderWidth: 1,
+              borderColor: badges[theme].err.border,
             }}
           >
             {disconnecting ? (
               <AppSpinner size="sm" variant="danger" />
             ) : (
               <>
-                <Unlink size={16} color="#EF4444" />
-                <Text fontSize={14} fontWeight="500" color="#EF4444">
+                <Unlink size={16} color={badges[theme].err.text} />
+                <Text
+                  fontSize={14}
+                  fontWeight="500"
+                  color={badges[theme].err.text}
+                  fontFamily="$body"
+                >
                   Desconectar
                 </Text>
               </>

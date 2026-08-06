@@ -16,6 +16,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -24,6 +27,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -32,6 +38,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -48,6 +57,9 @@
         "required": [
           "projectId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -73,6 +85,9 @@
           "name",
           "workspaceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -89,6 +104,10 @@
         "required": [
           "projectId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -105,6 +124,9 @@
         "required": [
           "projectId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -126,6 +148,9 @@
           "projectId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -142,6 +167,9 @@
         "required": [
           "projectId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -163,6 +191,9 @@
           "projectId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -179,6 +210,10 @@
         "required": [
           "serviceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -205,6 +240,9 @@
           "serviceId",
           "environmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -239,6 +277,9 @@
           "environmentId",
           "variables"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -265,6 +306,9 @@
           "serviceId",
           "environmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -281,6 +325,9 @@
         "required": [
           "deploymentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -297,6 +344,9 @@
         "required": [
           "deploymentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -323,6 +373,9 @@
           "serviceId",
           "environmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -344,6 +397,9 @@
           "serviceId",
           "environmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -369,6 +425,9 @@
           "serviceId",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -398,6 +457,9 @@
           "projectId",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -429,6 +491,9 @@
           "environmentId",
           "mountPath"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -454,6 +519,9 @@
         "required": [
           "deploymentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -479,6 +547,9 @@
         "required": [
           "deploymentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

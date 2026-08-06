@@ -1,0 +1,173 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies workspace roots are accessible and ripgrep binary is available."
+    },
+    "read": {
+      "name": "read",
+      "description": "Read a text file with optional line-based pagination. Returns content formatted as \"cat -n\" (numbered lines) plus metadata (name, size, lineCount, kind). Use offset+limit for ranges or head/tail for the first/last N lines. Returns text content; binary files are rejected.",
+      "params": {
+        "filePath": "Absolute or workspace-relative path",
+        "offset": "0-based line offset (default 0)",
+        "limit": "Max lines to return (default 2000, max 10000)",
+        "head": "Return only the first N lines (overrides offset/limit)",
+        "tail": "Return only the last N lines (overrides offset/limit)",
+        "includeRaw": "If true, include raw content (without line numbers) in addition to formatted"
+      }
+    },
+    "read-batch": {
+      "name": "read-batch",
+      "description": "Read multiple text files in a single call. Returns an array with one entry per requested path (ok, content/error). Each file is read with the same default limits as `read`; pass perFileLimit to override. Failures on individual paths do not abort the batch.",
+      "params": {
+        "paths": "Absolute or workspace-relative paths (max 50)",
+        "perFileLimit": "Max lines per file (default 2000, max 10000)"
+      }
+    },
+    "write": {
+      "name": "write",
+      "description": "Write content to a file, overwriting if it exists. Safety: an existing file must have been read first in this session (use `read` before overwriting). For new files, parent directories are created automatically. Use `edit` for in-place modifications and `append` for additions.",
+      "params": {
+        "filePath": "Absolute or workspace-relative path",
+        "content": "Content to write (UTF-8)"
+      }
+    },
+    "append": {
+      "name": "append",
+      "description": "Append content to the end of a file. Creates the file (and parents) if it does not exist. Does NOT require a prior read (appends are non-destructive to existing content). For replacing content, use `write` (after `read`) or `edit`.",
+      "params": {
+        "filePath": "Absolute or workspace-relative path",
+        "content": "Content to append (UTF-8)"
+      }
+    },
+    "edit": {
+      "name": "edit",
+      "description": "Replace exact string occurrence(s) in a file. By default fails if `oldString` appears zero or multiple times — pass `replaceAll: true` to rewrite every match. The replacement is literal (no regex). Returns a unified diff of the change. For structured hunks use `patch`; for larger rewrites use `write`.",
+      "params": {
+        "oldString": "Exact substring to match (whitespace-sensitive)",
+        "newString": "Replacement text",
+        "replaceAll": "Replace every occurrence (default false)",
+        "dryRun": "Preview the change (returns diff without writing). Default false"
+      }
+    },
+    "patch": {
+      "name": "patch",
+      "description": "Apply a unified diff (patch format) to a file atomically. Useful for multi-hunk fixes where several edits must go together. Uses fuzzy matching (fuzzFactor 2) so minor context drift is tolerated. Returns whether all hunks applied. For single-point changes prefer `edit`.",
+      "params": {
+        "filePath": "Target file to patch",
+        "unifiedDiff": "Unified diff content (standard diff -u format)",
+        "fuzzFactor": "Whitespace tolerance for context lines (default 2)",
+        "dryRun": "Preview the patch (returns diff without writing). Default false"
+      }
+    },
+    "list": {
+      "name": "list",
+      "description": "List directory entries with metadata (name, type, size, mtime, kind). Optionally recursive via `depth`. Honors `ignore` patterns (glob-style) and `respectGitignore`. Paginates with `limit` + `cursor`. For a hierarchical view use `tree`; for pattern-based search use `glob`.",
+      "params": {
+        "path": "Directory to list (default: workspace root)",
+        "depth": "Max recursion depth (0 = current dir only, default 0, max 20)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "respectGitignore": "If true, load .gitignore from the root and honor it. Requires the root to be a git repo (looks for .git/); standalone .gitignore files are not picked up",
+        "limit": "Max entries to return (default 50, max 200)",
+        "cursor": "Pagination cursor from previous response"
+      }
+    },
+    "tree": {
+      "name": "tree",
+      "description": "Return a hierarchical JSON tree of a directory up to `depth` levels. Files have size and mtime; directories have children. Honors `ignore` patterns and `respectGitignore`. Capped by maxNodes to prevent runaway output. Use `list` for flat pagination or `glob` for pattern match.",
+      "params": {
+        "path": "Root directory (default: workspace root)",
+        "depth": "Max depth to descend (default 3, max 20)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "maxNodes": "Hard cap on total nodes (default 500)"
+      }
+    },
+    "stat": {
+      "name": "stat",
+      "description": "Return metadata for a single path: exists, type (file/directory/symlink), size, mtime, permissions. Does NOT read content. Prefer this over `read` when you only need to check existence or size.",
+      "params": {
+        "path": "Absolute or workspace-relative path"
+      }
+    },
+    "glob": {
+      "name": "glob",
+      "description": "Find files matching a glob pattern (e.g. \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). Results sorted by mtime (most recently modified first). Honors `ignore` patterns and `respectGitignore`. Use `grep` for content search and `list` for flat directory listing.",
+      "params": {
+        "pattern": "Glob pattern",
+        "path": "Base directory (default: workspace root)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "includeDirs": "Include directories in results",
+        "dot": "Match dotfiles (default false)",
+        "limit": "Max results (default 50, max 1000)"
+      }
+    },
+    "grep": {
+      "name": "grep",
+      "description": "Search file contents for a regex pattern using ripgrep. `output_mode` controls the shape: \"content\" returns {file, line, match, context} objects; \"files\" returns one entry per matching file with matchCount; \"count\" returns only totals. Supports context lines (-B/-A), include glob, case insensitive, multiline. Shell-injection safe (args are not interpolated). For finding files by name use `glob`.",
+      "params": {
+        "pattern": "Regex pattern (Rust regex syntax via ripgrep)",
+        "path": "Base directory or file (default: workspace root)",
+        "output_mode": "Result shape (default \"content\")",
+        "contextBefore": "Lines of context before each match",
+        "contextAfter": "Lines of context after each match",
+        "include": "Glob to filter files (e.g. \"*.ts\", \"**/*.md\")",
+        "type": "Pre-defined file type filter passed to ripgrep --type (e.g. js, py, rust, ts, go, md). Faster than `include` when targeting a known language",
+        "multiline": "Allow pattern to match across newlines",
+        "respectGitignore": "Honor .gitignore (default false). Requires the root to be a git repo (looks for .git/); standalone .gitignore files are not picked up",
+        "limit": "Max matches or files to return (default 50, max 100)"
+      }
+    },
+    "delete": {
+      "name": "delete",
+      "description": "Delete a file or directory. Set `recursive: true` for non-empty directories. Idempotent: succeeds silently if the path does not exist (reports existed=false).",
+      "params": {
+        "recursive": "Required for non-empty directories"
+      }
+    },
+    "copy": {
+      "name": "copy",
+      "description": "Copy a file or directory. For directories set `recursive: true`. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically.",
+      "params": {
+        "recursive": "Required to copy directories",
+        "overwrite": "Overwrite destination if it exists"
+      }
+    },
+    "move": {
+      "name": "move",
+      "description": "Move or rename a file or directory. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically."
+    },
+    "mkdir": {
+      "name": "mkdir",
+      "description": "Create a directory. By default creates parent directories as needed (recursive). Idempotent: returns created=false if the directory already exists.",
+      "params": {
+        "recursive": "Create parents as needed (default true)"
+      }
+    },
+    "list-roots": {
+      "name": "list-roots",
+      "description": "List the workspace roots this MCA can access. Returns {count, roots[{path, exists, type}]}. Useful for auditing scope when a path is rejected by the sandbox."
+    },
+    "read-media": {
+      "name": "read-media",
+      "description": "Read a binary file (image, PDF, audio, archive, ...) and return base64 + detected MIME type via magic bytes. Returns {file, name, size, mimeType, base64, mtime}. Hard cap 10 MB; for text use `read`.",
+      "params": {
+        "filePath": "Absolute or workspace-relative path"
+      }
+    },
+    "hash": {
+      "name": "hash",
+      "description": "Compute the cryptographic hash of a file (default sha256). Streams the file so it works on large files without loading them. Returns {file, name, algorithm, hash, size}. Useful for integrity checks and detecting changes between reads.",
+      "params": {
+        "filePath": "Absolute or workspace-relative path",
+        "algorithm": "Hash algorithm (default sha256)"
+      }
+    }
+  },
+  "name": "Filesystem (Admin)",
+  "description": "Filesystem operations on host machine. Admin only. Same surface as mca.teros.filesystem but without workspace jail.",
+  "changelog": [
+    {
+      "notes": "Read, write, edit and patch files, search by name and content, and manage folders across the host machine"
+    }
+  ]
+}

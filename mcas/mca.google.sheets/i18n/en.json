@@ -1,0 +1,78 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "create-spreadsheet": {
+      "name": "create-spreadsheet",
+      "description": "Create a new Google Spreadsheet with a title and optional initial data. Returns the spreadsheet ID and URL.",
+      "params": {
+        "title": "Title of the new spreadsheet",
+        "sheets": "Optional: names of sheets (tabs) to create. Defaults to a single \"Sheet1\"."
+      }
+    },
+    "write-values": {
+      "name": "write-values",
+      "description": "Write data to a specific range in a Google Sheet. Overwrites existing values. Pass a 2D array of rows (each row is an array of cell values). Supports formulas (strings starting with =).",
+      "params": {
+        "spreadsheetId": "The ID of the spreadsheet",
+        "range": "A1 notation range to write to (e.g. \"Sheet1!A1:C3\" or \"A1:C3\")",
+        "values": "2D array of rows. Each row is an array of cell values (string, number, or boolean)."
+      }
+    },
+    "append-values": {
+      "name": "append-values",
+      "description": "Append rows of data to the end of a sheet in a Google Spreadsheet. Finds the last row with data and appends below it. Supports formulas (strings starting with =).",
+      "params": {
+        "spreadsheetId": "The ID of the spreadsheet",
+        "range": "A1 notation range to start appending from (e.g. \"Sheet1!A1\" or \"A1\"). The API finds the last row with data in this range and appends below.",
+        "values": "2D array of rows to append. Each row is an array of cell values."
+      }
+    },
+    "batch-update": {
+      "name": "batch-update",
+      "description": "Execute advanced operations on a Google Spreadsheet using the Sheets API batchUpdate endpoint. Supports: adding/deleting/renaming sheets, cell formatting (bold, colors, borders, number format), conditional formatting, formulas, frozen rows/columns, data validation, protected ranges, and more. Pass an array of request objects following the Google Sheets API batchUpdate schema.",
+      "params": {
+        "spreadsheetId": "The ID of the spreadsheet",
+        "requests": "Array of batchUpdate request objects. Each object is a key mapped to its request type. Common types: addSheet, deleteSheet, updateSheetProperties (rename, tabColor, gridProperties like frozenRowCount), repeatCell (formatting: textFormat with bold/italic/fontSize/foregroundColor, backgroundColor, numberFormat, borders), addConditionalFormatRule, setDataValidation, addProtectedRange, autoResizeDimensions, updateBorders, mergeCells, unmergeCells, addChart, addPivotTable. See https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/request for full schema."
+      }
+    },
+    "read-spreadsheet": {
+      "name": "read-spreadsheet",
+      "description": "Read data from a Google Sheet.",
+      "params": {
+        "spreadsheetId": "The ID of the spreadsheet",
+        "range": "The range to read (e.g., 'Sheet1!A1:D10', default: first sheet)"
+      }
+    },
+    "read-sheet-range": {
+      "name": "read-sheet-range",
+      "description": "Read a specific range from a Google Sheet. More efficient than reading the entire sheet.",
+      "params": {
+        "fileId": "ID of the Google Sheet file",
+        "range": "Range to read in A1 notation (e.g., 'Sheet1!A1:D10', 'Sheet2!A:A')",
+        "valueRenderOption": "How to render values: FORMATTED_VALUE (default), UNFORMATTED_VALUE, or FORMULA"
+      }
+    },
+    "list-sheet-tabs": {
+      "name": "list-sheet-tabs",
+      "description": "List all sheets (tabs) in a Google Spreadsheet with their metadata.",
+      "params": {
+        "fileId": "ID of the Google Sheet file"
+      }
+    },
+    "export-sheet": {
+      "name": "export-sheet",
+      "description": "Export a Google Sheet to a specific format (CSV, XLSX, PDF, ODS, TSV). Downloads the exported file to local filesystem.",
+      "params": {
+        "fileId": "ID of the Google Sheet file to export",
+        "format": "Export format: csv, xlsx, pdf, ods, tsv (default: csv)",
+        "outputPath": "Optional: Local path where to save the exported file. Defaults to ~/Downloads/",
+        "sheetName": "Optional: Name of specific sheet to export (for CSV/TSV only). If not provided, exports first sheet."
+      }
+    }
+  },
+  "name": "Google Sheets",
+  "description": "Create, read, write, append, format, and export Google Sheets spreadsheets - create, write data, append rows, batch update (formatting, formulas, conditional formatting), read data, ranges, list tabs, export to CSV/XLSX/PDF. To delete a spreadsheet, use the Google Drive MCA."
+}

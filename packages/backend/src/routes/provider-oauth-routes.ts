@@ -31,6 +31,7 @@ import { ProviderService } from '../services/provider-service';
 
 export interface ProviderOAuthRoutesConfig {
   db: Db;
+  providerService?: ProviderService;
 }
 
 interface OAuthSession {
@@ -184,8 +185,8 @@ async function handleAnthropicCallback(
     // Clean up session
     oauthSessions.delete(verifier);
 
-    // Create provider service and add the provider
-    const providerService = new ProviderService(config.db);
+    // Use injected ProviderService or fall back to direct construction
+    const providerService = config.providerService ?? new ProviderService(config.db);
 
     // Check if user already has an anthropic-oauth provider
     const existingProviders = await providerService.listUserProviders(session.userId);

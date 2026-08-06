@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const searchConversations: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Search conversations in Intercom with filters by state, date range, tags, and assignee. Returns paginated results with conversation metadata.',
   parameters: {

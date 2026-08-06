@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "Execute bash commands on the system. Provides shell access for automation and system tasks.",
   "type": "utility",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "development",
   "entrypoint": "src/index.ts",
   "author": {
@@ -31,7 +31,21 @@
     "transport": "http",
     "port": 3000,
     "healthCheck": "/health",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime-bash:latest",
+    "appDataMount": true,
+    "workspaceMount": true,
+    "resources": {
+      "cpus": 2,
+      "memoryMb": 2048
+    }
   },
-  "keywords": ["bash", "shell", "command", "terminal", "system"]
+  "keywords": ["bash", "shell", "command", "terminal", "system"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — run shell commands on the system, set a working directory and timeout, and capture the output"
+    }
+  ]
 }

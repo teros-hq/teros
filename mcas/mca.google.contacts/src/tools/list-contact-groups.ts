@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const listContactGroups: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'List all contact groups (labels) from Google Contacts. Returns group name, member count, and type.',
   parameters: {

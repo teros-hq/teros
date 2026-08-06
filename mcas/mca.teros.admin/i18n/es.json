@@ -1,0 +1,305 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta de verificación interna. Verifica la conectividad WebSocket con el backend."
+    },
+    "admin-agents-list": {
+      "name": "admin-agents-list",
+      "description": "Lista todos los agentes del sistema. Solo super administrador."
+    },
+    "admin-agents-get": {
+      "name": "admin-agents-get",
+      "description": "Obtiene un agente por su ID. Solo super administrador.",
+      "params": {
+        "agentId": "ID del agente"
+      }
+    },
+    "admin-agents-create": {
+      "name": "admin-agents-create",
+      "description": "Crea un nuevo agente. Solo super administrador.",
+      "params": {
+        "name": "Nombre del agente",
+        "coreId": "ID del núcleo del agente",
+        "workspaceId": "ID del espacio de trabajo",
+        "description": "Descripción opcional"
+      }
+    },
+    "admin-agents-update": {
+      "name": "admin-agents-update",
+      "description": "Actualiza un agente existente. Solo super administrador.",
+      "params": {
+        "agentId": "ID del agente a actualizar",
+        "name": "Nuevo nombre",
+        "description": "Nueva descripción",
+        "active": "Estado activo"
+      }
+    },
+    "admin-agents-delete": {
+      "name": "admin-agents-delete",
+      "description": "Elimina un agente. Solo super administrador. DESTRUCTIVO — usar con precaución.",
+      "params": {
+        "agentId": "ID del agente a eliminar",
+        "confirm": "Debe ser true para confirmar la eliminación"
+      }
+    },
+    "admin-workspaces-list": {
+      "name": "admin-workspaces-list",
+      "description": "Lista todos los espacios de trabajo. Solo super administrador."
+    },
+    "admin-workspaces-get": {
+      "name": "admin-workspaces-get",
+      "description": "Obtiene un espacio de trabajo por su ID. Solo super administrador.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo"
+      }
+    },
+    "admin-workspaces-create": {
+      "name": "admin-workspaces-create",
+      "description": "Crea un nuevo espacio de trabajo. Solo super administrador.",
+      "params": {
+        "name": "Nombre del espacio de trabajo",
+        "description": "Descripción opcional"
+      }
+    },
+    "admin-workspaces-update": {
+      "name": "admin-workspaces-update",
+      "description": "Actualiza un espacio de trabajo. Solo super administrador.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo",
+        "name": "Nuevo nombre",
+        "description": "Nueva descripción"
+      }
+    },
+    "admin-workspaces-archive": {
+      "name": "admin-workspaces-archive",
+      "description": "Archiva (eliminación suave) un espacio de trabajo. Solo super administrador. DESTRUCTIVO — usar con precaución.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo",
+        "confirm": "Debe ser true para confirmar"
+      }
+    },
+    "admin-workspaces-members-add": {
+      "name": "admin-workspaces-members-add",
+      "description": "Añade un miembro a un espacio de trabajo. Solo super administrador.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo",
+        "userId": "ID del usuario a añadir",
+        "role": "Rol (p. ej. member, admin)"
+      }
+    },
+    "admin-workspaces-members-remove": {
+      "name": "admin-workspaces-members-remove",
+      "description": "Elimina un miembro de un espacio de trabajo. Solo super administrador.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo",
+        "userId": "ID del usuario a eliminar"
+      }
+    },
+    "admin-workspaces-members-update": {
+      "name": "admin-workspaces-members-update",
+      "description": "Actualiza el rol de un miembro del espacio de trabajo. Solo super administrador.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo",
+        "userId": "ID del usuario",
+        "role": "Nuevo rol"
+      }
+    },
+    "admin-apps-list": {
+      "name": "admin-apps-list",
+      "description": "Lista todas las apps instaladas. Solo super administrador."
+    },
+    "admin-apps-get": {
+      "name": "admin-apps-get",
+      "description": "Obtiene una app instalada por su ID. Solo super administrador.",
+      "params": {
+        "appId": "ID de la app"
+      }
+    },
+    "admin-apps-create": {
+      "name": "admin-apps-create",
+      "description": "Instala/crea una instancia de app. Solo super administrador.",
+      "params": {
+        "mcaId": "ID del MCA a instalar",
+        "ownerId": "ID del usuario propietario",
+        "name": "Nombre de la instancia de la app",
+        "config": "Configuración de la app"
+      }
+    },
+    "admin-apps-update": {
+      "name": "admin-apps-update",
+      "description": "Actualiza una app instalada. Solo super administrador.",
+      "params": {
+        "appId": "ID de la app",
+        "name": "Nuevo nombre",
+        "config": "Configuración actualizada",
+        "active": "Estado activo"
+      }
+    },
+    "admin-apps-delete": {
+      "name": "admin-apps-delete",
+      "description": "Elimina una app instalada. Solo super administrador. DESTRUCTIVO — usar con precaución.",
+      "params": {
+        "appId": "ID de la app a eliminar",
+        "confirm": "Debe ser true para confirmar"
+      }
+    },
+    "admin-apps-get-access": {
+      "name": "admin-apps-get-access",
+      "description": "Obtiene los agentes que tienen acceso a una app. Solo super administrador.",
+      "params": {
+        "appId": "ID de la app"
+      }
+    },
+    "admin-apps-set-permissions": {
+      "name": "admin-apps-set-permissions",
+      "description": "Establece los permisos de una app (qué agentes pueden usarla). Solo super administrador.",
+      "params": {
+        "appId": "ID de la app",
+        "agentIds": "Lista de IDs de agentes permitidos para usar esta app"
+      }
+    },
+    "admin-access-list": {
+      "name": "admin-access-list",
+      "description": "Lista todas las concesiones de acceso agente-app. Solo super administrador."
+    },
+    "admin-access-grant": {
+      "name": "admin-access-grant",
+      "description": "Concede a un agente acceso a una app. Solo super administrador.",
+      "params": {
+        "agentId": "ID del agente",
+        "appId": "ID de la app"
+      }
+    },
+    "admin-access-revoke": {
+      "name": "admin-access-revoke",
+      "description": "Revoca el acceso de un agente a una app. Solo super administrador.",
+      "params": {
+        "agentId": "ID del agente",
+        "appId": "ID de la app"
+      }
+    },
+    "admin-catalog-list": {
+      "name": "admin-catalog-list",
+      "description": "Lista todos los MCAs disponibles en el catálogo. Solo super administrador."
+    },
+    "admin-usage-summary": {
+      "name": "admin-usage-summary",
+      "description": "Obtiene el resumen general de uso (mensajes, tokens, costes). Solo super administrador."
+    },
+    "admin-usage-by-user": {
+      "name": "admin-usage-by-user",
+      "description": "Obtiene el desglose de uso por usuario. Solo super administrador.",
+      "params": {
+        "limit": "Resultados máximos",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-usage-by-workspace": {
+      "name": "admin-usage-by-workspace",
+      "description": "Obtiene el desglose de uso por espacio de trabajo. Solo super administrador.",
+      "params": {
+        "limit": "Resultados máximos",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-usage-by-agent": {
+      "name": "admin-usage-by-agent",
+      "description": "Obtiene el desglose de uso por agente. Solo super administrador.",
+      "params": {
+        "limit": "Resultados máximos",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-usage-by-model": {
+      "name": "admin-usage-by-model",
+      "description": "Obtiene el desglose de uso por modelo LLM. Solo super administrador.",
+      "params": {
+        "limit": "Resultados máximos",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-usage-expensive-conversations": {
+      "name": "admin-usage-expensive-conversations",
+      "description": "Lista las conversaciones más costosas por precio. Solo super administrador.",
+      "params": {
+        "limit": "Resultados máximos (por defecto 50)",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-usage-timeline": {
+      "name": "admin-usage-timeline",
+      "description": "Obtiene la línea temporal de uso (agregados diarios/semanales). Solo super administrador.",
+      "params": {
+        "granularity": "Granularidad temporal",
+        "startDate": "Fecha de inicio (ISO)",
+        "endDate": "Fecha de fin (ISO)"
+      }
+    },
+    "admin-feature-flags-list": {
+      "name": "admin-feature-flags-list",
+      "description": "Lista todos los feature flags registrados con sus valores por defecto en BD y recuentos de anulaciones. Solo super administrador."
+    },
+    "admin-feature-flags-get": {
+      "name": "admin-feature-flags-get",
+      "description": "Obtiene un feature flag por su clave, incluyendo su valor por defecto actual y todas las anulaciones. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag"
+      }
+    },
+    "admin-feature-flags-update": {
+      "name": "admin-feature-flags-update",
+      "description": "Actualiza el valor por defecto de un feature flag. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag",
+        "defaultValue": "Nuevo valor por defecto (booleano, número o cadena)"
+      }
+    },
+    "admin-feature-flags-reset-default": {
+      "name": "admin-feature-flags-reset-default",
+      "description": "Restablece el valor por defecto de un feature flag al valor definido en el registro de código. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag a restablecer"
+      }
+    },
+    "admin-feature-flags-get-overrides": {
+      "name": "admin-feature-flags-get-overrides",
+      "description": "Lista todas las anulaciones de un feature flag específico. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag"
+      }
+    },
+    "admin-feature-flags-set-override": {
+      "name": "admin-feature-flags-set-override",
+      "description": "Crea o actualiza una anulación para un feature flag. Las anulaciones se aplican a un usuario, espacio de trabajo o empresa específica. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag",
+        "targetType": "Ámbito de la anulación",
+        "targetId": "ID del objetivo",
+        "value": "Valor de anulación",
+        "note": "Nota opcional que explica la anulación"
+      }
+    },
+    "admin-feature-flags-delete-override": {
+      "name": "admin-feature-flags-delete-override",
+      "description": "Elimina una anulación existente de un feature flag. Solo super administrador.",
+      "params": {
+        "key": "Clave del feature flag",
+        "targetType": "Ámbito de la anulación a eliminar",
+        "targetId": "ID del objetivo"
+      }
+    }
+  },
+  "name": "Teros Admin",
+  "description": "Panel de administración completo vía chat — gestiona agentes, espacios de trabajo, apps, accesos, uso, feature flags y exploración del catálogo.",
+  "changelog": [
+    {
+      "notes": "Gestiona agentes, espacios de trabajo, miembros y apps, controla accesos y feature flags, y monitoriza el uso y los costes"
+    }
+  ]
+}

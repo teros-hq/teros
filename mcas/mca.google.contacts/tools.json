@@ -25,6 +25,9 @@
             "description": "Token for pagination (from previous response)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -41,6 +44,9 @@
         "required": [
           "resourceName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -61,6 +67,9 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -101,6 +110,9 @@
         "required": [
           "givenName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -141,6 +153,9 @@
         "required": [
           "resourceName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -157,6 +172,10 @@
         "required": [
           "resourceName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -174,6 +193,9 @@
             "description": "Token for pagination (from previous response)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -194,6 +216,9 @@
         "required": [
           "resourceName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -210,6 +235,9 @@
         "required": [
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -231,6 +259,9 @@
           "resourceName",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -251,6 +282,10 @@
         "required": [
           "resourceName"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -275,6 +310,9 @@
           "resourceName",
           "contactResourceNames"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -299,6 +337,9 @@
           "resourceName",
           "contactResourceNames"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

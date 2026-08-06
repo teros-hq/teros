@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.messaging",
   "name": "Messaging",
-  "version": "0.9.0",
-  "description": "Send multimedia messages to the user: images, audio, video, and documents",
+  "version": "1.2.0",
+  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, and notification emails via Resend",
   "type": "system",
   "icon": "icon.png",
   "category": "communication",
@@ -23,7 +23,13 @@
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["messaging", "images", "audio", "video", "media"],
+  "keywords": [
+    "messaging",
+    "images",
+    "audio",
+    "video",
+    "media"
+  ],
   "layers": {
     "tools": true,
     "events": false,
@@ -31,5 +37,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — send images, audio, video, and documents to the chat, plus live HTML previews"
+    }
+  ]
 }

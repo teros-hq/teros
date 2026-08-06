@@ -22,20 +22,25 @@ import {
   Search,
   Trash2,
   Upload,
-} from '@tamagui/lucide-icons';
+} from '../../primitives';
 import type React from 'react';
-import { useState } from 'react';
 import { Linking, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import {
+  ActionBadge,
+  countBadgeVariant,
+  Empty,
+  ErrorBlock,
+  formatCountBadge,
+  SuccessBlock,
+  ToolCallCard,
+} from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
+  useDriveColors,
   type DriveFile,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
   FileRow,
   FileTypeBadge,
   formatDate,
@@ -43,9 +48,7 @@ import {
   formatFileSize,
   getFileTypeInfo,
   getShortToolName,
-  HeaderRow,
   parseOutput,
-  SuccessBlock,
   truncate,
 } from './shared';
 
@@ -57,8 +60,9 @@ interface ListFilesResult {
   files: DriveFile[];
 }
 
-export function ListFilesRenderer({ toolName, status, output, duration }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+export function ListFilesRenderer({ toolName, status, output, appIcon }: ToolCallRendererProps) {
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const shortName = getShortToolName(toolName);
 
   const parsed = parseOutput<ListFilesResult>(output || '');
@@ -68,45 +72,19 @@ export function ListFilesRenderer({ toolName, status, output, duration }: ToolCa
   // Determine badge
   let badge: React.ReactNode = null;
   if (status === 'completed') {
-    badge = <Badge text={`${count} file${count !== 1 ? 's' : ''}`} variant="gray" />;
+    badge = (
+      <Badge text={formatCountBadge(count, 'file')} variant={countBadgeVariant(count)} />
+    );
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
 
-  // Description
-  const description = status === 'running' ? 'List files' : 'List files';
-
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} verb="List files" badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && files.length === 0 && (
-          <Text color={colors.muted} fontSize={10}>
-            No files found
-          </Text>
+          <Empty message="No files found" hint="Try a different folder or filter" />
         )}
 
         {status === 'completed' && files.length > 0 && (
@@ -115,14 +93,13 @@ export function ListFilesRenderer({ toolName, status, output, duration }: ToolCa
               <FileRow key={file.id} file={file} />
             ))}
             {files.length > 10 && (
-              <Text color={colors.muted} fontSize={9} textAlign="center">
+              <Text color={c.text3} fontSize={9} textAlign="center">
                 +{files.length - 10} more files
               </Text>
             )}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -133,12 +110,12 @@ export function ListFilesRenderer({ toolName, status, output, duration }: ToolCa
 export function GetFileRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<DriveFile>(output || '');
   const file = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -158,31 +135,9 @@ export function GetFileRenderer({
         ? `Get file: ${truncate(file.name, 25)}`
         : 'Get file';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && file && (
@@ -192,40 +147,40 @@ export function GetFileRenderer({
             <YStack gap={4} paddingLeft={8}>
               {file.size && (
                 <XStack gap={8}>
-                  <Text color={colors.muted} fontSize={9} width={60}>
+                  <Text color={c.text3} fontSize={9} width={60}>
                     Size
                   </Text>
-                  <Text color={colors.secondary} fontSize={9}>
+                  <Text color={c.text2} fontSize={9}>
                     {formatFileSize(file.size)}
                   </Text>
                 </XStack>
               )}
               {file.createdTime && (
                 <XStack gap={8}>
-                  <Text color={colors.muted} fontSize={9} width={60}>
+                  <Text color={c.text3} fontSize={9} width={60}>
                     Created
                   </Text>
-                  <Text color={colors.secondary} fontSize={9}>
+                  <Text color={c.text2} fontSize={9}>
                     {formatDate(file.createdTime)}
                   </Text>
                 </XStack>
               )}
               {file.modifiedTime && (
                 <XStack gap={8}>
-                  <Text color={colors.muted} fontSize={9} width={60}>
+                  <Text color={c.text3} fontSize={9} width={60}>
                     Modified
                   </Text>
-                  <Text color={colors.secondary} fontSize={9}>
+                  <Text color={c.text2} fontSize={9}>
                     {formatDate(file.modifiedTime)}
                   </Text>
                 </XStack>
               )}
               {file.owners?.[0] && (
                 <XStack gap={8}>
-                  <Text color={colors.muted} fontSize={9} width={60}>
+                  <Text color={c.text3} fontSize={9} width={60}>
                     Owner
                   </Text>
-                  <Text color={colors.secondary} fontSize={9}>
+                  <Text color={c.text2} fontSize={9}>
                     {file.owners[0].displayName || file.owners[0].emailAddress}
                   </Text>
                 </XStack>
@@ -247,8 +202,7 @@ export function GetFileRenderer({
             </YStack>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -267,12 +221,12 @@ interface DownloadResult {
 export function DownloadFileRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<DownloadResult>(output || '');
   const result = typeof parsed === 'object' ? parsed : null;
 
@@ -292,31 +246,9 @@ export function DownloadFileRenderer({
         ? `Download: ${truncate(result.fileName, 20)}`
         : 'Download file';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {(status === 'failed' || (result && !result.success)) && (
           <ErrorBlock error={result?.error || output || 'Download failed'} />
         )}
@@ -326,28 +258,27 @@ export function DownloadFileRenderer({
             <SuccessBlock message={`Downloaded: ${result.fileName || 'file'}`} />
             {result.path && (
               <XStack gap={8} paddingLeft={8}>
-                <Text color={colors.muted} fontSize={9}>
+                <Text color={c.text3} fontSize={9}>
                   Path:
                 </Text>
-                <Text color={colors.secondary} fontSize={9} fontFamily="$mono">
+                <Text color={c.text2} fontSize={9} fontFamily="$mono">
                   {truncate(result.path, 40)}
                 </Text>
               </XStack>
             )}
             {result.size && (
               <XStack gap={8} paddingLeft={8}>
-                <Text color={colors.muted} fontSize={9}>
+                <Text color={c.text3} fontSize={9}>
                   Size:
                 </Text>
-                <Text color={colors.secondary} fontSize={9}>
+                <Text color={c.text2} fontSize={9}>
                   {formatFileSize(result.size)}
                 </Text>
               </XStack>
             )}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -355,33 +286,39 @@ export function DownloadFileRenderer({
 // Upload File Renderer
 // ============================================================================
 
-interface UploadResult {
-  success: boolean;
-  file?: DriveFile;
-  error?: string;
-}
-
 export function UploadFileRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+  // The handler returns the bare Drive file object (response.data:
+  // { id, name, mimeType, size, webViewLink }), NOT a { success, file } wrapper.
+  const parsed = parseOutput<DriveFile & { error?: string }>(output || '');
+  const file = typeof parsed === 'object' && parsed?.id ? (parsed as DriveFile) : null;
+  const errorText =
+    typeof parsed === 'object' && parsed !== null ? (parsed as { error?: string }).error : undefined;
 
-  const parsed = parseOutput<UploadResult>(output || '');
-  const result = typeof parsed === 'object' ? parsed : null;
+  // Filename from result, else from input fileName/filePath.
+  const inputParsed =
+    typeof input === 'string'
+      ? parseOutput<{ filePath?: string; fileName?: string }>(input)
+      : input;
+  const inputName =
+    typeof inputParsed === 'object' && inputParsed !== null
+      ? inputParsed.fileName || inputParsed.filePath?.split('/').pop()
+      : undefined;
+  const fileName = file?.name || inputName || 'file';
 
-  // Description - get filename from input
-  const inputParsed = typeof input === 'string' ? parseOutput<{ filePath?: string }>(input) : input;
-  const fileName = inputParsed?.filePath?.split('/').pop() || 'file';
+  const failed = status === 'failed' || (status === 'completed' && !file);
 
-  // Badge
+  // Badge — Badge (not ActionBadge) to stay consistent with the other
+  // create/move/copy file renderers in this MCA.
   let badge: React.ReactNode = null;
-  if (status === 'completed' && result?.success) {
-    badge = <Badge text="done" variant="success" />;
-  } else if (status === 'failed' || (result && !result.success)) {
+  if (status === 'completed' && file) {
+    badge = <Badge text="uploaded" variant="success" />;
+  } else if (failed) {
     badge = <Badge text="failed" variant="error" />;
   }
 
@@ -389,47 +326,78 @@ export function UploadFileRenderer({
   const description =
     status === 'running'
       ? `Upload: ${truncate(fileName, 20)}`
-      : result?.file?.name
-        ? `Upload: ${truncate(result.file.name, 20)}`
+      : file?.name
+        ? `Upload: ${truncate(file.name, 20)}`
         : 'Upload file';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {(status === 'failed' || (result && !result.success)) && (
-          <ErrorBlock error={result?.error || output || 'Upload failed'} />
-        )}
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+        {failed && <ErrorBlock error={errorText || output || 'Upload failed'} />}
 
-        {status === 'completed' && result?.success && result.file && (
+        {status === 'completed' && file && (
           <YStack gap={4}>
             <SuccessBlock message="File uploaded successfully" />
-            <FileRow file={result.file} />
+            <FileRow file={file} />
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
+  );
+}
+
+// ============================================================================
+// Create Document Renderer
+// ============================================================================
+
+export function CreateDocumentRenderer({
+  toolName,
+  status,
+  appIcon,
+  output,
+  input,
+}: ToolCallRendererProps) {
+  // Handler returns the bare Drive file ({ id, name, mimeType, webViewLink }).
+  const parsed = parseOutput<DriveFile & { error?: string }>(output || '');
+  const file = typeof parsed === 'object' && parsed?.id ? (parsed as DriveFile) : null;
+  const errorText =
+    typeof parsed === 'object' && parsed !== null ? (parsed as { error?: string }).error : undefined;
+
+  const inputParsed = typeof input === 'string' ? parseOutput<{ title?: string }>(input) : input;
+  const title =
+    file?.name ||
+    (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.title : undefined) ||
+    'document';
+
+  const failed = status === 'failed' || (status === 'completed' && !file);
+
+  // Badge — Badge (not ActionBadge) to match the sibling create-folder renderer.
+  let badge: React.ReactNode = null;
+  if (status === 'completed' && file) {
+    badge = <Badge text="created" variant="success" />;
+  } else if (failed) {
+    badge = <Badge text="failed" variant="error" />;
+  }
+
+  // Description
+  const description =
+    status === 'running'
+      ? `Create doc: ${truncate(title, 20)}`
+      : file?.name
+        ? `Create doc: ${truncate(file.name, 20)}`
+        : 'Create document';
+
+  return (
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+        {failed && <ErrorBlock error={errorText || output || 'Create document failed'} />}
+
+        {status === 'completed' && file && (
+          <YStack gap={4}>
+            <SuccessBlock message={`Document "${truncate(title, 30)}" created`} />
+            <FileRow
+              file={{ ...file, mimeType: file.mimeType || 'application/vnd.google-apps.document' }}
+            />
+          </YStack>
+        )}
+      </ToolCallCard>
   );
 }
 
@@ -443,64 +411,49 @@ interface DeleteResult {
   error?: string;
 }
 
-export function DeleteFileRenderer({
-  toolName,
-  status,
-  output,
-  duration,
-  input,
-}: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+export function DeleteFileRenderer(props: ToolCallRendererProps) {
+  const colors = useDriveColors();
+  const { status, output, irreversible, appIcon } = props;
 
   const parsed = parseOutput<DeleteResult>(output || '');
   const result = typeof parsed === 'object' ? parsed : null;
   const isSuccess = result?.success || (typeof output === 'string' && output.includes('success'));
 
-  // Badge
-  let badge: React.ReactNode = null;
-  if (status === 'completed' && isSuccess) {
-    badge = <Badge text="deleted" variant="warning" />;
-  } else if (status === 'failed' || (result && !result.success)) {
-    badge = <Badge text="failed" variant="error" />;
-  }
+  // Tense-correct description (guide §2 slot 3).
+  const description =
+    status === 'pending_permission' || status === 'pending'
+      ? 'Wants to delete file'
+      : status === 'running'
+        ? 'Deleting file'
+        : status === 'completed'
+          ? 'Deleted file'
+          : 'Failed to delete file';
 
-  // Description
-  const description = 'Delete file';
+  // Slot 4 badge — ActionBadge with verb for the mutation (guide §4).
+  const badge =
+    status === 'completed' && isSuccess ? <ActionBadge verb="deleted" /> : null;
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
+  // Body: only the SuccessBlock or ErrorBlock — the ToolCallCard owns
+  // the header, irreversibility indicator, and (during pending_permission)
+  // the ControlsBar.
+  const hasFailure = status === 'failed' || Boolean(result && !result.success);
+  const body =
+    hasFailure ? (
+      <ErrorBlock error={result?.error || output || 'Delete failed'} />
+    ) : status === 'completed' && isSuccess ? (
+      <SuccessBlock message={result?.message || 'File deleted successfully'} />
+    ) : null;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {(status === 'failed' || (result && !result.success)) && (
-          <ErrorBlock error={result?.error || output || 'Delete failed'} />
-        )}
-
-        {status === 'completed' && isSuccess && (
-          <SuccessBlock message={result?.message || 'File deleted successfully'} />
-        )}
-      </ExpandedBody>
-    </ExpandedContainer>
+    <ToolCallCard
+      status={status}
+      description={description}
+      iconUri={appIcon}
+      badge={badge}
+      irreversible={irreversible}
+    >
+      {body}
+    </ToolCallCard>
   );
 }
 
@@ -511,12 +464,12 @@ export function DeleteFileRenderer({
 export function SearchFilesRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<ListFilesResult>(output || '');
   const files = typeof parsed === 'object' && parsed?.files ? parsed.files : [];
   const count = files.length;
@@ -524,12 +477,14 @@ export function SearchFilesRenderer({
   // Get search term from input
   const inputParsed =
     typeof input === 'string' ? parseOutput<{ searchTerm?: string }>(input) : input;
-  const searchTerm = inputParsed?.searchTerm || '';
+  const searchTerm = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.searchTerm : undefined) || '';
 
   // Badge
   let badge: React.ReactNode = null;
   if (status === 'completed') {
-    badge = <Badge text={`${count} result${count !== 1 ? 's' : ''}`} variant="gray" />;
+    badge = (
+      <Badge text={formatCountBadge(count, 'result')} variant={countBadgeVariant(count)} />
+    );
   } else if (status === 'failed') {
     badge = <Badge text="failed" variant="error" />;
   }
@@ -542,37 +497,13 @@ export function SearchFilesRenderer({
         ? `Search: "${truncate(searchTerm, 20)}"`
         : 'Search files';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && files.length === 0 && (
-          <Text color={colors.muted} fontSize={10}>
-            No files found
-          </Text>
+          <Empty message="No files found" hint="Try a different folder or filter" />
         )}
 
         {status === 'completed' && files.length > 0 && (
@@ -581,14 +512,13 @@ export function SearchFilesRenderer({
               <FileRow key={file.id} file={file} />
             ))}
             {files.length > 10 && (
-              <Text color={colors.muted} fontSize={9} textAlign="center">
+              <Text color={c.text3} fontSize={9} textAlign="center">
                 +{files.length - 10} more files
               </Text>
             )}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -606,12 +536,11 @@ interface MoveResult {
 export function MoveFileRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<MoveResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -631,38 +560,15 @@ export function MoveFileRenderer({
         ? `Move: ${truncate(result.name, 25)}`
         : 'Move file';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
           <SuccessBlock message={`File "${result.name}" moved successfully`} />
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -679,12 +585,11 @@ interface CopyResult {
 export function CopyFileRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const colors = useDriveColors();
   const parsed = parseOutput<CopyResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.id ? parsed : null;
 
@@ -704,31 +609,9 @@ export function CopyFileRenderer({
         ? `Copy: ${truncate(result.name, 25)}`
         : 'Copy file';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -751,8 +634,7 @@ export function CopyFileRenderer({
             )}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -769,12 +651,12 @@ interface FileContentResult {
 export function GetFileContentRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<FileContentResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.content !== undefined ? parsed : null;
   const contentLength = result?.content?.length || 0;
@@ -799,56 +681,33 @@ export function GetFileContentRenderer({
         ? `Content: ${truncate(result.name, 20)}`
         : 'Get file content';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
           <YStack gap={4}>
             <XStack gap={8} alignItems="center">
               <FileText size={12} color={colors.document} />
-              <Text color={colors.primary} fontSize={10} fontWeight="500">
+              <Text color={c.text} fontSize={10} fontWeight="500">
                 {result.name}
               </Text>
             </XStack>
 
-            <YStack backgroundColor={colors.bgInner} borderRadius={5} padding={8} maxHeight={150}>
+            <YStack backgroundColor={c.bgInner} borderRadius={5} padding={8} maxHeight={150}>
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Text color={colors.secondary} fontSize={9} fontFamily="$mono" lineHeight={14}>
+                <Text color={c.text2} fontSize={9} fontFamily="$mono" lineHeight={14}>
                   {truncate(result.content, 1000)}
                 </Text>
               </ScrollView>
             </YStack>
 
-            <Text color={colors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               {contentLength.toLocaleString()} characters
             </Text>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }

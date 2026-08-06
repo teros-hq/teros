@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Homey API credentials and connectivity."
+    },
+    "homey-get-user": {
+      "name": "homey-get-user",
+      "description": "Get authenticated user information from Homey"
+    },
+    "homey-list-devices": {
+      "name": "homey-list-devices",
+      "description": "List all devices connected to Homey with their zone, class, capabilities, and availability status"
+    },
+    "homey-get-device": {
+      "name": "homey-get-device",
+      "description": "Get detailed information and current state of a specific Homey device by ID",
+      "params": {
+        "device_id": "Device ID"
+      }
+    },
+    "homey-set-capability": {
+      "name": "homey-set-capability",
+      "description": "Set a device capability value (e.g., turn on/off, set brightness, temperature). Use homey-list-devices to find device IDs and capabilities.",
+      "params": {
+        "device_id": "Device ID",
+        "capability": "Capability name (e.g., 'onoff', 'dim', 'target_temperature')",
+        "value": "Value to set (boolean for onoff, number 0-1 for dim, number for temperature)"
+      }
+    },
+    "homey-list-flows": {
+      "name": "homey-list-flows",
+      "description": "List all flows (automations) configured in Homey"
+    },
+    "homey-trigger-flow": {
+      "name": "homey-trigger-flow",
+      "description": "Trigger (run) a Homey flow by its ID",
+      "params": {
+        "flow_id": "Flow ID to trigger"
+      }
+    },
+    "homey-list-zones": {
+      "name": "homey-list-zones",
+      "description": "List all zones (rooms/areas) configured in Homey"
+    },
+    "homey-get-system-info": {
+      "name": "homey-get-system-info",
+      "description": "Get Homey system information including firmware version, model, uptime, Wi-Fi status, and more"
+    },
+    "homey-list-notifications": {
+      "name": "homey-list-notifications",
+      "description": "List notifications from Homey (alerts, warnings, system messages)"
+    },
+    "homey-get-variables": {
+      "name": "homey-get-variables",
+      "description": "List all logic variables configured in Homey. Logic variables are used in flows/automations for state tracking."
+    },
+    "homey-set-variable": {
+      "name": "homey-set-variable",
+      "description": "Set the value of a Homey logic variable by its ID. Use homey-get-variables to find variable IDs.",
+      "params": {
+        "variable_id": "Variable ID (UUID)",
+        "value": "New value for the variable (string, number, or boolean — must match the variable type)"
+      }
+    },
+    "homey-list-apps": {
+      "name": "homey-list-apps",
+      "description": "List all apps installed on Homey. Useful for diagnostics and checking which integrations are active."
+    },
+    "homey-get-energy": {
+      "name": "homey-get-energy",
+      "description": "Get live energy report from Homey including current power usage and generation across the home",
+      "params": {
+        "zone": "Optional zone ID to filter energy data for a specific zone"
+      }
+    }
+  },
+  "name": "Homey",
+  "description": "Homey smart home controller - Control devices, manage flows, and monitor your home via Athom Cloud API",
+  "changelog": [
+    {
+      "notes": "Initial release — control smart home devices, run automation flows, manage rooms and variables, and monitor live energy"
+    }
+  ]
+}

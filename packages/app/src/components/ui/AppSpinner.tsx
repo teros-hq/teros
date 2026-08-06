@@ -5,6 +5,11 @@
  * Tamagui's `Spinner`. Internally uses `TerosLoading` (the custom SVG
  * hexagon spinner) as the visual reference.
  *
+ * Colors are resolved from the design system: semantic colors (red, green,
+ * amber, violet, indigo) come from `semanticColors`, surface-adaptive tokens
+ * (muted text) come from `useColors()`, and the Teros brand color (indigo) is kept as
+ * a local constant since it is not part of the semantic palette.
+ *
  * Usage:
  *   <AppSpinner />
  *   <AppSpinner size="lg" variant="brand" />
@@ -12,6 +17,8 @@
  */
 
 import React from 'react';
+import { useColors } from '../mca/primitives/useColors';
+import { colors as semanticColors, surface } from '../mca/primitives/colors';
 import { TerosLoading } from '../TerosLoading';
 
 // ─── Size tokens ────────────────────────────────────────────────────────────
@@ -25,7 +32,11 @@ const spinnerSizes: Record<SpinnerSize, number> = {
   lg: 48,
 };
 
-// ─── Color tokens ────────────────────────────────────────────────────────────
+// ─── Brand color (Teros indigo) ─────────────────────────────────────────────
+
+const BRAND_COLOR = semanticColors.indigo;
+
+// ─── Variant type ───────────────────────────────────────────────────────────
 
 export type SpinnerVariant =
   | 'default'
@@ -36,17 +47,6 @@ export type SpinnerVariant =
   | 'warning'
   | 'board'
   | 'onDark';
-
-export const spinnerColors: Record<SpinnerVariant, string> = {
-  default: '#3B82F6', // blue
-  brand: '#06B6D4',   // cyan Teros
-  muted: '#71717A',   // grey
-  danger: '#EF4444',  // red
-  success: '#22C55E', // green
-  warning: '#F59E0B', // amber
-  board: '#8B5CF6',   // violet
-  onDark: '#FFFFFF',  // white
-};
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
@@ -64,8 +64,22 @@ export function AppSpinner({
   variant = 'brand',
   color,
 }: AppSpinnerProps) {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
+
+  const variantColors: Record<SpinnerVariant, string> = {
+    default: semanticColors.indigo,
+    brand: BRAND_COLOR,
+    muted: c.text3,
+    danger: semanticColors.red,
+    success: semanticColors.green,
+    warning: semanticColors.amber,
+    board: semanticColors.violet,
+    onDark: isDark ? '#FFFFFF' : c.text,
+  };
+
   const resolvedSize = spinnerSizes[size];
-  const resolvedColor = color ?? spinnerColors[variant];
+  const resolvedColor = color ?? variantColors[variant];
 
   return <TerosLoading size={resolvedSize} color={resolvedColor} />;
 }

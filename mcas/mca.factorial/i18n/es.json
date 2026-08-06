@@ -1,0 +1,170 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de Factorial."
+    },
+    "list-employees": {
+      "name": "list-employees",
+      "description": "Lista todos los empleados de la empresa con filtros opcionales (estado activo, equipo, ubicación, etc.).",
+      "params": {
+        "active": "Filtrar por estado activo (por defecto: true)",
+        "teamIds": "Filtrar por IDs de equipo",
+        "locationIds": "Filtrar por IDs de ubicación",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "get-employee": {
+      "name": "get-employee",
+      "description": "Obtiene información detallada de un empleado específico por ID.",
+      "params": {
+        "employeeId": "El ID del empleado"
+      }
+    },
+    "list-teams": {
+      "name": "list-teams",
+      "description": "Lista todos los equipos de la empresa."
+    },
+    "list-team-memberships": {
+      "name": "list-team-memberships",
+      "description": "Lista todas las pertenencias a equipos (asociaciones empleado-equipo).",
+      "params": {
+        "teamId": "Filtrar por ID de equipo",
+        "employeeId": "Filtrar por ID de empleado"
+      }
+    },
+    "list-leaves": {
+      "name": "list-leaves",
+      "description": "Lista las solicitudes de permiso (ausencias) con filtros opcionales (empleado, estado, rango de fechas, etc.).",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "status": "Filtrar por estado: pending, approved, rejected",
+        "from": "Fecha de inicio en formato ISO (YYYY-MM-DD)",
+        "to": "Fecha de fin en formato ISO (YYYY-MM-DD)",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "get-leave": {
+      "name": "get-leave",
+      "description": "Obtiene información detallada de una solicitud de permiso específica por ID.",
+      "params": {
+        "leaveId": "El ID del permiso"
+      }
+    },
+    "create-leave": {
+      "name": "create-leave",
+      "description": "Crea una nueva solicitud de permiso (vacaciones, baja por enfermedad, etc.).",
+      "params": {
+        "employeeId": "El ID del empleado que solicita el permiso",
+        "leaveTypeId": "El ID del tipo de permiso (p. ej., vacaciones, baja por enfermedad)",
+        "startOn": "Fecha de inicio en formato ISO (YYYY-MM-DD)",
+        "finishOn": "Fecha de fin en formato ISO (YYYY-MM-DD)",
+        "halfDayStart": "Si el día de inicio es medio día",
+        "halfDayFinish": "Si el día de fin es medio día",
+        "comment": "Comentario o motivo opcional del permiso"
+      }
+    },
+    "list-leave-types": {
+      "name": "list-leave-types",
+      "description": "Lista todos los tipos de permiso disponibles (vacaciones, baja por enfermedad, etc.)."
+    },
+    "list-shifts": {
+      "name": "list-shifts",
+      "description": "Lista todos los turnos de asistencia con filtros opcionales.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "from": "Fecha de inicio en formato ISO (YYYY-MM-DD)",
+        "to": "Fecha de fin en formato ISO (YYYY-MM-DD)",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "list-worked-times": {
+      "name": "list-worked-times",
+      "description": "Lista los registros de tiempo trabajado de los empleados.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "from": "Fecha de inicio en formato ISO (YYYY-MM-DD)",
+        "to": "Fecha de fin en formato ISO (YYYY-MM-DD)",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "list-overtime-requests": {
+      "name": "list-overtime-requests",
+      "description": "Lista las solicitudes de horas extra con filtros opcionales.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "status": "Filtrar por estado: pending, approved, rejected",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "approve-overtime": {
+      "name": "approve-overtime",
+      "description": "Aprueba una solicitud de horas extra por ID.",
+      "params": {
+        "overtimeRequestId": "El ID de la solicitud de horas extra a aprobar"
+      }
+    },
+    "reject-overtime": {
+      "name": "reject-overtime",
+      "description": "Rechaza una solicitud de horas extra por ID.",
+      "params": {
+        "overtimeRequestId": "El ID de la solicitud de horas extra a rechazar"
+      }
+    },
+    "list-documents": {
+      "name": "list-documents",
+      "description": "Lista todos los documentos de la empresa con filtros opcionales.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "folderId": "Filtrar por ID de carpeta",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "get-document": {
+      "name": "get-document",
+      "description": "Obtiene información detallada de un documento específico por ID.",
+      "params": {
+        "documentId": "El ID del documento"
+      }
+    },
+    "list-contract-versions": {
+      "name": "list-contract-versions",
+      "description": "Lista todas las versiones de contratos de empleados.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "list-compensations": {
+      "name": "list-compensations",
+      "description": "Lista todos los registros de compensación de empleados.",
+      "params": {
+        "employeeIds": "Filtrar por IDs de empleado",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "list-legal-entities": {
+      "name": "list-legal-entities",
+      "description": "Lista todas las entidades legales de la empresa."
+    },
+    "list-locations": {
+      "name": "list-locations",
+      "description": "Lista todas las ubicaciones y oficinas de trabajo de la empresa."
+    }
+  },
+  "name": "Factorial",
+  "description": "Factorial HR — administra empleados, permisos, asistencia, nóminas, documentos, contratos y equipos vía la API de Factorial con OAuth2",
+  "changelog": [
+    {
+      "notes": "Versión inicial — explorar empleados y equipos, solicitar y revisar permisos, seguir la asistencia y las horas extra, y ver documentos, contratos y salarios"
+    }
+  ]
+}

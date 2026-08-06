@@ -1,0 +1,817 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.odoo",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Odoo API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-models",
+      "description": "List all available Odoo models (ir.model).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results (default: 100)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search-records",
+      "description": "Search and read records from any Odoo model. Use filters like \"is_company=true,name=Acme\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name, e.g. res.partner"
+          },
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters: field=value, field!=value, field>value, etc."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields to return (default: all stored fields)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. name asc"
+          }
+        },
+        "required": [
+          "model"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-record",
+      "description": "Read a single Odoo record by model and ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "id": {
+            "type": "number",
+            "description": "Record ID"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Fields to return"
+          }
+        },
+        "required": [
+          "model",
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-record",
+      "description": "Create a new record in any Odoo model.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "values": {
+            "type": "object",
+            "description": "Field values for the new record",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "model",
+          "values"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-record",
+      "description": "Update an existing Odoo record by model and ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "id": {
+            "type": "number",
+            "description": "Record ID"
+          },
+          "values": {
+            "type": "object",
+            "description": "Field values to update",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "model",
+          "id",
+          "values"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-record",
+      "description": "Delete an Odoo record by model and ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "id": {
+            "type": "number",
+            "description": "Record ID"
+          }
+        },
+        "required": [
+          "model",
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "count-records",
+      "description": "Count records in an Odoo model matching the given filters.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters: field=value, field!=value, etc."
+          }
+        },
+        "required": [
+          "model"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "call-method",
+      "description": "Call any public method on an Odoo model.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Odoo model technical name"
+          },
+          "method": {
+            "type": "string",
+            "description": "Method name to call"
+          },
+          "args": {
+            "type": "array",
+            "description": "Positional arguments passed to the method",
+            "items": {}
+          },
+          "kwargs": {
+            "type": "object",
+            "description": "Keyword arguments passed to the method",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "model",
+          "method"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-partners",
+      "description": "List Odoo partners (contacts / companies).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters, e.g. is_company=true,name=Acme"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. name asc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-partner",
+      "description": "Get a specific Odoo partner by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "Partner ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-partner",
+      "description": "Create a new Odoo partner (contact or company).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Partner name"
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number"
+          },
+          "isCompany": {
+            "type": "boolean",
+            "description": "Whether this is a company"
+          },
+          "street": {
+            "type": "string",
+            "description": "Street address"
+          },
+          "city": {
+            "type": "string",
+            "description": "City"
+          },
+          "zip": {
+            "type": "string",
+            "description": "ZIP / postal code"
+          },
+          "countryId": {
+            "type": "number",
+            "description": "Country ID"
+          },
+          "parentId": {
+            "type": "number",
+            "description": "Parent company ID"
+          },
+          "values": {
+            "type": "object",
+            "description": "Additional field values",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-partner",
+      "description": "Update an existing Odoo partner by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "Partner ID"
+          },
+          "values": {
+            "type": "object",
+            "description": "Field values to update",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "id",
+          "values"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-products",
+      "description": "List Odoo products (product.template).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters, e.g. sale_ok=true"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. name asc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-sale-orders",
+      "description": "List Odoo sales orders.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters, e.g. state=sale"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. date_order desc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-sale-order",
+      "description": "Get a specific Odoo sales order by ID, including order lines.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "Sales order ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-sale-order",
+      "description": "Create a new Odoo sales order with optional order lines.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "partnerId": {
+            "type": "number",
+            "description": "Customer partner ID"
+          },
+          "orderLines": {
+            "type": "array",
+            "description": "Order lines as objects with productId, quantity, priceUnit",
+            "items": {
+              "type": "object",
+              "properties": {
+                "productId": {
+                  "type": "number"
+                },
+                "quantity": {
+                  "type": "number"
+                },
+                "priceUnit": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "productId",
+                "quantity"
+              ]
+            }
+          },
+          "dateOrder": {
+            "type": "string",
+            "description": "Order date (ISO 8601)"
+          },
+          "note": {
+            "type": "string",
+            "description": "Internal note"
+          }
+        },
+        "required": [
+          "partnerId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-invoices",
+      "description": "List Odoo customer invoices (account.move).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters, e.g. state=posted"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. invoice_date desc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-projects",
+      "description": "List Odoo projects.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. name asc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-tasks",
+      "description": "List Odoo project tasks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Filter by project ID"
+          },
+          "filters": {
+            "type": "string",
+            "description": "Additional comma-separated filters"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. date_deadline asc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-project-task",
+      "description": "Create a new task in an Odoo project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Task name"
+          },
+          "userId": {
+            "type": "number",
+            "description": "Assigned user ID"
+          },
+          "dateDeadline": {
+            "type": "string",
+            "description": "Deadline (ISO 8601)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description (HTML supported)"
+          },
+          "values": {
+            "type": "object",
+            "description": "Additional field values",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-employees",
+      "description": "List Odoo employees (hr.employee).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filters": {
+            "type": "string",
+            "description": "Comma-separated filters"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. name asc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-leaves",
+      "description": "List Odoo time-off requests (hr.leave).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "number",
+            "description": "Filter by employee ID"
+          },
+          "state": {
+            "type": "string",
+            "description": "Filter by state: draft, confirm, validate, refuse"
+          },
+          "filters": {
+            "type": "string",
+            "description": "Additional comma-separated filters"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. date_from desc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-leave",
+      "description": "Create a new Odoo time-off request (hr.leave).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "number",
+            "description": "Employee ID"
+          },
+          "holidayStatusId": {
+            "type": "number",
+            "description": "Leave type ID"
+          },
+          "dateFrom": {
+            "type": "string",
+            "description": "Start date/time (ISO 8601)"
+          },
+          "dateTo": {
+            "type": "string",
+            "description": "End date/time (ISO 8601)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Reason / description"
+          }
+        },
+        "required": [
+          "employeeId",
+          "holidayStatusId",
+          "dateFrom",
+          "dateTo"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-timesheets",
+      "description": "List Odoo timesheet entries (account.analytic.line).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Filter by project ID"
+          },
+          "taskId": {
+            "type": "number",
+            "description": "Filter by task ID"
+          },
+          "employeeId": {
+            "type": "number",
+            "description": "Filter by employee ID"
+          },
+          "dateFrom": {
+            "type": "string",
+            "description": "Start date (YYYY-MM-DD)"
+          },
+          "dateTo": {
+            "type": "string",
+            "description": "End date (YYYY-MM-DD)"
+          },
+          "filters": {
+            "type": "string",
+            "description": "Additional comma-separated filters"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum results (default: 50)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset"
+          },
+          "order": {
+            "type": "string",
+            "description": "Order clause, e.g. date desc"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-timesheet",
+      "description": "Create a new Odoo timesheet entry (account.analytic.line).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Project ID"
+          },
+          "taskId": {
+            "type": "number",
+            "description": "Task ID (optional)"
+          },
+          "employeeId": {
+            "type": "number",
+            "description": "Employee ID"
+          },
+          "date": {
+            "type": "string",
+            "description": "Date (YYYY-MM-DD)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Description of the work done"
+          },
+          "hours": {
+            "type": "number",
+            "description": "Hours spent"
+          }
+        },
+        "required": [
+          "projectId",
+          "employeeId",
+          "date",
+          "name",
+          "hours"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

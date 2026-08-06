@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.granola",
+  "name": "Granola",
+  "version": "1.0.0",
+  "description": "Access your Granola meeting notes, transcripts, and AI summaries.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["GRANOLA_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["granola", "meeting-notes", "transcripts", "ai-summary", "productivity"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-05",
+      "notes": "Initial release — browse your Granola meeting notes, read transcripts and AI summaries, and explore folders"
+    }
+  ]
+}

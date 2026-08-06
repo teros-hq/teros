@@ -15,6 +15,11 @@ describe('PermissionManager', () => {
     manager = createPermissionManager({
       broadcastToChannel: broadcastMock,
     });
+    // BUG: pendingPermissions is a module-level Map (not per-instance), so tests
+    // contaminate each other if pending requests are not cleared. clearAll() flushes
+    // the global state before each test. This should be fixed in the source by moving
+    // the Map inside the factory function.
+    manager.clearAll();
   });
 
   describe('createAskPermissionCallback', () => {
@@ -24,46 +29,101 @@ describe('PermissionManager', () => {
       // Start the permission request (don't await yet)
       const promise = callback('test_tool', 'app_123', { key: 'value' });
 
-      // Should have broadcast the request
-      expect(broadcastMock).toHaveBeenCalledTimes(1);
-      const call = broadcastMock.mock.calls[0];
-      expect(call[0]).toBe(channelId);
-      expect(call[1].type).toBe('tool_permission_request');
-      expect(call[1].toolName).toBe('test_tool');
-      expect(call[1].appId).toBe('app_123');
-      expect(call[1].input).toEqual({ key: 'value' });
-      expect(call[1].requestId).toMatch(/^perm_\d+_\d+$/);
+      // Should have broadcast the permission request.
+      // NOTE: The handler also calls broadcastToChannel with a 'channel_status' message
+      // (via notifyExternalActionChange), so there are 2 calls total, not 1.
+      // We find the tool_permission_request call explicitly.
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      expect(permCall).toBeDefined();
+      expect(permCall![0]).toBe(channelId);
+      expect(permCall![1].type).toBe('tool_permission_request');
+      expect(permCall![1].toolName).toBe('test_tool');
+      expect(permCall![1].appId).toBe('app_123');
+      expect(permCall![1].input).toEqual({ key: 'value' });
+      expect(permCall![1].requestId).toMatch(/^perm_[0-9a-f-]+$/);
 
       // Resolve the promise to avoid timeout
-      const requestId = call[1].requestId;
+      const requestId = permCall![1].requestId;
       manager.handleResponse(requestId, true);
 
       const result = await promise;
-      expect(result).toBe(true);
+      expect(result).toBe('granted');
     });
 
     it('should resolve with true when granted', async () => {
       const callback = manager.createAskPermissionCallback(channelId);
 
       const promise = callback('test_tool', 'app_123', {});
-      const requestId = broadcastMock.mock.calls[0][1].requestId;
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      const requestId = permCall![1].requestId;
 
       manager.handleResponse(requestId, true);
 
       const result = await promise;
-      expect(result).toBe(true);
+      expect(result).toBe('granted');
     });
 
     it('should resolve with false when denied', async () => {
       const callback = manager.createAskPermissionCallback(channelId);
 
       const promise = callback('test_tool', 'app_123', {});
-      const requestId = broadcastMock.mock.calls[0][1].requestId;
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      const requestId = permCall![1].requestId;
 
       manager.handleResponse(requestId, false);
 
       const result = await promise;
-      expect(result).toBe(false);
+      expect(result).toBe('denied');
+    });
+
+    it('should auto-forbid when getToolCallContext returns null (no messageId to link)', async () => {
+      const callback = manager.createAskPermissionCallback(
+        channelId,
+        'user_test',
+        () => null, // simulates: tool call not tracked in streamState
+      );
+
+      const result = await callback('test_tool', 'app_123', {});
+      expect(result).toBe('denied');
+
+      // Should NOT have broadcast a permission request — denied immediately
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      expect(permCall).toBeUndefined();
+    });
+
+    it('should auto-forbid when getToolCallContext returns a context without messageId', async () => {
+      const callback = manager.createAskPermissionCallback(
+        channelId,
+        'user_test',
+        () => ({ toolCallId: 'call_abc123' }), // TER-267 case: toolCallId known, messageId missing
+      );
+
+      const result = await callback('test_tool', 'app_123', {});
+      expect(result).toBe('denied');
+
+      // Should NOT have broadcast a permission request — denied immediately
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      expect(permCall).toBeUndefined();
+    });
+
+    it('should allow permission request when getToolCallContext returns valid context', async () => {
+      const callback = manager.createAskPermissionCallback(
+        channelId,
+        'user_test',
+        () => ({ messageId: 'msg_123', toolCallId: 'call_abc123' }),
+      );
+
+      const promise = callback('test_tool', 'app_123', {});
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      expect(permCall).toBeDefined();
+      expect(permCall![1].messageId).toBe('msg_123');
+      expect(permCall![1].toolCallId).toBe('call_abc123');
+
+      const requestId = permCall![1].requestId;
+      manager.handleResponse(requestId, true);
+
+      const result = await promise;
+      expect(result).toBe('granted');
     });
   });
 
@@ -80,7 +140,8 @@ describe('PermissionManager', () => {
       const promise = callback('test_tool', 'app_123', {});
       expect(manager.getPendingCount()).toBe(1);
 
-      const requestId = broadcastMock.mock.calls[0][1].requestId;
+      const permCall = broadcastMock.mock.calls.find((c: any[]) => c[1]?.type === 'tool_permission_request');
+      const requestId = permCall![1].requestId;
       manager.handleResponse(requestId, true);
 
       await promise;
@@ -100,9 +161,13 @@ describe('PermissionManager', () => {
       manager.clearAll();
 
       const [result1, result2] = await Promise.all([promise1, promise2]);
-      expect(result1).toBe(false);
-      expect(result2).toBe(false);
+      expect(result1).toBe('denied');
+      expect(result2).toBe('denied');
       expect(manager.getPendingCount()).toBe(0);
     });
   });
+
+  // bug tracker
+  // @todo alice - 2026-04-02: fix bug — move pendingPermissions inside createPermissionManager so each factory instance gets its own Map, eliminating cross-test contamination
+  it.todo('bug: pendingPermissions is module-level, causes cross-test contamination — should be local to factory (createPermissionManager)');
 });

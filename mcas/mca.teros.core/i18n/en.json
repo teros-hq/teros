@@ -1,0 +1,337 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies connectivity to backend."
+    },
+    "list-agents": {
+      "name": "list-agents",
+      "description": "List agents owned by the user or in their workspaces.",
+      "params": {
+        "workspaceId": "Optional: Filter agents by workspace ID. If not provided, lists all accessible agents."
+      }
+    },
+    "get-agent": {
+      "name": "get-agent",
+      "description": "Get detailed information about a specific agent.",
+      "params": {
+        "agentId": "The agent ID to retrieve"
+      }
+    },
+    "create-agent": {
+      "name": "create-agent",
+      "description": "Create a new agent instance. The core is assigned automatically by scope (no workspace → super-agent; workspace → agent).",
+      "params": {
+        "name": "Short name for the agent (e.g., 'Alice')",
+        "fullName": "Full name for the agent (e.g., 'Alice Evergreen')",
+        "role": "Role description (e.g., 'Personal Assistant')",
+        "intro": "Introduction text for the agent",
+        "workspaceId": "Optional: Workspace ID to create the agent in. If not provided, creates a global agent. Pass null explicitly to create a Superagent (a global agent with elevated capabilities not bound to any workspace)."
+      }
+    },
+    "update-agent": {
+      "name": "update-agent",
+      "description": "Update an existing agent's properties.",
+      "params": {
+        "agentId": "The agent ID to update",
+        "name": "New short name",
+        "fullName": "New full name",
+        "role": "New role description",
+        "intro": "New introduction text",
+        "responseStyle": "Response style (e.g., 'friendly', 'professional', 'concise')",
+        "avatarUrl": "URL of the agent avatar image",
+        "context": "Agent-specific context that gets injected into the system prompt. Use this to provide agent-specific instructions, guidelines, or knowledge. Supports markdown."
+      }
+    },
+    "delete-agent": {
+      "name": "delete-agent",
+      "description": "Delete an agent. This also removes all app access grants for the agent.",
+      "params": {
+        "agentId": "The agent ID to delete"
+      }
+    },
+    "list-agent-apps": {
+      "name": "list-agent-apps",
+      "description": "List all apps an agent has access to.",
+      "params": {
+        "agentId": "The agent ID"
+      }
+    },
+    "get-agent-providers": {
+      "name": "get-agent-providers",
+      "description": "Get the LLM provider configuration for an agent. Returns the agent's available providers, preferred provider, and selected model.",
+      "params": {
+        "agentId": "The agent ID to query"
+      }
+    },
+    "set-agent-providers": {
+      "name": "set-agent-providers",
+      "description": "Set the available LLM providers for an agent. This determines which providers the agent can use. Requires workspace access or agent ownership.",
+      "params": {
+        "agentId": "The agent ID to configure",
+        "providerIds": "Array of provider IDs to make available to this agent"
+      }
+    },
+    "set-agent-preferred-provider": {
+      "name": "set-agent-preferred-provider",
+      "description": "Set the preferred LLM provider for an agent. The provider must be in the agent's available providers list. Pass null to clear the preference.",
+      "params": {
+        "agentId": "The agent ID to configure",
+        "providerId": "Provider ID to set as preferred (must be in availableProviders), or null to clear"
+      }
+    },
+    "list-workspaces": {
+      "name": "list-workspaces",
+      "description": "List workspaces the user owns or is a member of."
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "Get detailed information about a specific workspace.",
+      "params": {
+        "workspaceId": "The workspace ID to retrieve"
+      }
+    },
+    "create-workspace": {
+      "name": "create-workspace",
+      "description": "Create a new workspace with its own volume.",
+      "params": {
+        "name": "Name for the workspace",
+        "description": "Optional description"
+      }
+    },
+    "update-workspace": {
+      "name": "update-workspace",
+      "description": "Update workspace properties including the context that gets injected into agent system prompts.",
+      "params": {
+        "workspaceId": "The workspace ID to update",
+        "name": "New name",
+        "description": "New description",
+        "context": "Context text that gets injected into agent system prompts. Use this to provide project-specific information, guidelines, coding standards, or any other context that agents should know. Supports markdown and can be long (multiple paragraphs)."
+      }
+    },
+    "archive-workspace": {
+      "name": "archive-workspace",
+      "description": "Archive a workspace (soft delete). Only the owner can archive.",
+      "params": {
+        "workspaceId": "The workspace ID to archive"
+      }
+    },
+    "add-workspace-member": {
+      "name": "add-workspace-member",
+      "description": "Add a member to a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID",
+        "userId": "The user ID to add",
+        "role": "Role for the member"
+      }
+    },
+    "remove-workspace-member": {
+      "name": "remove-workspace-member",
+      "description": "Remove a member from a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID",
+        "userId": "The user ID to remove"
+      }
+    },
+    "update-workspace-member-role": {
+      "name": "update-workspace-member-role",
+      "description": "Update a member's role in a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID",
+        "userId": "The user ID",
+        "role": "New role for the member"
+      }
+    },
+    "list-apps": {
+      "name": "list-apps",
+      "description": "List apps owned by the user.",
+      "params": {
+        "workspaceId": "Optional: Filter apps by workspace ID. If not provided, lists all apps owned by the user across all workspaces."
+      }
+    },
+    "get-app": {
+      "name": "get-app",
+      "description": "Get detailed information about a specific app.",
+      "params": {
+        "appId": "The app ID to retrieve"
+      }
+    },
+    "install-app": {
+      "name": "install-app",
+      "description": "Install an MCA from the catalog as an app. The installed app is auto-granted to the user's superagents. Apps are scoped to a workspace: their tools are only available in conversations of that workspace.",
+      "params": {
+        "mcaId": "The MCA ID to install (e.g., 'mca.teros.bash')",
+        "name": "Optional: Custom name for the app (lower-kebab-case). Auto-generated if not provided.",
+        "workspaceId": "Optional: Workspace ID to install the app in. Defaults to the user's Private Workspace. To use the app's tools in the current conversation, install it in the conversation's workspace."
+      }
+    },
+    "uninstall-app": {
+      "name": "uninstall-app",
+      "description": "Uninstall an app. This also removes all agent access grants.",
+      "params": {
+        "appId": "The app ID to uninstall"
+      }
+    },
+    "rename-app": {
+      "name": "rename-app",
+      "description": "Rename an installed app.",
+      "params": {
+        "appId": "The app ID to rename",
+        "name": "New name for the app (lower-kebab-case)"
+      }
+    },
+    "check-app-auth": {
+      "name": "check-app-auth",
+      "description": "Check an app's authentication status (connected, expired, missing credentials, not required) without showing anything to the user. Use it to verify auth before or after operating an app. If the status is broken, use show-app-auth so the user can fix it from the chat — never ask for credentials directly.",
+      "params": {
+        "appId": "The app whose authentication status to check"
+      }
+    },
+    "show-app-auth": {
+      "name": "show-app-auth",
+      "description": "Show an app's authentication widget to the user, inline in the chat, so they can connect or re-authenticate it right there (e.g. reconnect Gmail when the OAuth session expired). Use it when an app's tools fail for auth reasons (expired session, missing credentials). Returns the app's current auth status so you can tell the user what needs fixing. Never ask the user for credentials directly — the widget is the only place they should enter them.",
+      "params": {
+        "appId": "The app whose authentication section to show"
+      }
+    },
+    "list-app-access": {
+      "name": "list-app-access",
+      "description": "List all agents that have access to an app.",
+      "params": {
+        "appId": "The app ID"
+      }
+    },
+    "workspace-app-list": {
+      "name": "workspace-app-list",
+      "description": "List apps in a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID to list apps for"
+      }
+    },
+    "workspace-agent-list": {
+      "name": "workspace-agent-list",
+      "description": "List agents in a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID to list agents for"
+      }
+    },
+    "list-catalog": {
+      "name": "list-catalog",
+      "description": "List all MCAs available in the catalog.",
+      "params": {
+        "category": "Optional: Filter by category",
+        "includeHidden": "Include hidden MCAs (default: false)"
+      }
+    },
+    "list-providers": {
+      "name": "list-providers",
+      "description": "List all LLM providers available to the user. Returns providers with their models, status, and configuration."
+    },
+    "grant-app-access": {
+      "name": "grant-app-access",
+      "description": "Grant an agent access to an app.",
+      "params": {
+        "agentId": "The agent to grant access to",
+        "appId": "The app to grant access to"
+      }
+    },
+    "revoke-app-access": {
+      "name": "revoke-app-access",
+      "description": "Revoke an agent's access to an app.",
+      "params": {
+        "agentId": "The agent to revoke access from",
+        "appId": "The app to revoke access to"
+      }
+    },
+    "get-app-permissions": {
+      "name": "get-app-permissions",
+      "description": "Get the tool permissions of an app: each tool's configured permission ('allow' runs without asking, 'ask' requires user confirmation, 'forbid' is blocked), its manifest flags (readOnly, alwaysAsk), and a summary.",
+      "params": {
+        "appId": "The app whose permissions to read"
+      }
+    },
+    "set-app-permissions": {
+      "name": "set-app-permissions",
+      "description": "Set tool permissions for an app, in batch. Values: 'allow' (runs without asking), 'ask' (requires user confirmation), 'forbid' (blocked), 'default' (clear the explicit setting so the tool falls back to the app default). Use `tools` for per-tool changes and/or `all` to change every tool at once; `all: 'default'` resets the whole app to defaults.",
+      "params": {
+        "appId": "The app whose permissions to change",
+        "all": "Set every tool of the app at once; 'default' resets all tools to the app default",
+        "tools": "Per-tool changes: a map of tool name to 'allow' | 'ask' | 'forbid' | 'default'. Applied on top of `all` when both are given."
+      }
+    },
+    "skill-list": {
+      "name": "skill-list",
+      "description": "List all skills in a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID to list skills from"
+      }
+    },
+    "skill-create": {
+      "name": "skill-create",
+      "description": "Create a new skill in a workspace.",
+      "params": {
+        "workspaceId": "The workspace ID to create the skill in",
+        "name": "Name of the skill",
+        "description": "Optional description of the skill",
+        "content": "Markdown content / instructions for the skill"
+      }
+    },
+    "skill-update": {
+      "name": "skill-update",
+      "description": "Update an existing skill.",
+      "params": {
+        "skillId": "The skill ID to update",
+        "name": "New name for the skill",
+        "description": "New description for the skill",
+        "content": "New Markdown content / instructions for the skill"
+      }
+    },
+    "skill-delete": {
+      "name": "skill-delete",
+      "description": "Delete a skill and all its agent access entries.",
+      "params": {
+        "skillId": "The skill ID to delete"
+      }
+    },
+    "skill-grant-access": {
+      "name": "skill-grant-access",
+      "description": "Assign a skill to an agent.",
+      "params": {
+        "agentId": "The agent ID to assign the skill to",
+        "skillId": "The skill ID to assign"
+      }
+    },
+    "skill-revoke-access": {
+      "name": "skill-revoke-access",
+      "description": "Remove a skill assignment from an agent.",
+      "params": {
+        "agentId": "The agent ID to remove the skill from",
+        "skillId": "The skill ID to remove"
+      }
+    },
+    "skill-set-enabled": {
+      "name": "skill-set-enabled",
+      "description": "Enable or disable a skill for a specific agent.",
+      "params": {
+        "agentId": "The agent ID",
+        "skillId": "The skill ID",
+        "enabled": "Whether to enable (true) or disable (false) the skill for the agent"
+      }
+    },
+    "skill-get-agent-skills": {
+      "name": "skill-get-agent-skills",
+      "description": "Get all skills assigned to an agent.",
+      "params": {
+        "agentId": "The agent ID to get skills for"
+      }
+    }
+  },
+  "name": "Teros Core",
+  "description": "Manage Teros platform resources: agents, workspaces, apps, and access control. Provides tools to create, update, and configure the platform.",
+  "tagline": "Manage every Teros resource — agents, workspaces, apps and access — from one place.",
+  "changelog": [
+    {
+      "notes": "Initial release — create and manage agents, workspaces, apps, and skills, with member roles and access control"
+    }
+  ]
+}

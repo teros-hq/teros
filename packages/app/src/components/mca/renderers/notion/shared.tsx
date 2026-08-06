@@ -2,12 +2,9 @@
  * Notion Renderer - Shared Components & Utilities
  */
 
-import { ChevronRight, Circle } from '@tamagui/lucide-icons';
+import { Circle, type McaStatusType, statusDotColors, useColors } from '../../primitives';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing } from 'react-native';
-import { Image, Text, XStack, YStack } from 'tamagui';
-import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
+import { Image, Text, XStack } from 'tamagui';
 
 // ============================================================================
 // Constants
@@ -19,98 +16,178 @@ const NOTION_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/notion-icon.p
 // Colors
 // ============================================================================
 
-export const colors = {
-  // Notion brand
-  notionBlack: '#000000',
-  notionWhite: '#FFFFFF',
+// Renderer UX Guide v2 §5 — theme-adaptive Notion palette.
+//
+// Notion-specific brand colors (notionBlack/White, statusTodo/Backlog grays)
+// are theme-agnostic and kept as literal hex — they don't have DS equivalents.
+// All semantic status colors (success/running/pending/failed + glows) and page
+// status colors (done/inProgress) are sourced from the DS `statusDotColors`
+// tokens so they stay in sync with the rest of the platform.
+export function useNotionColors() {
+  const c = useColors();
+  return {
+    // Notion brand (theme-agnostic, no DS equivalent)
+    notionBlack: '#000000',
+    notionWhite: '#FFFFFF',
 
-  // Status dot
-  success: '#22c55e',
-  running: '#06b6d4',
-  pending: '#f59e0b',
-  failed: '#ef4444',
+    // Status dot — sourced from DS statusDotColors (theme-agnostic semantic)
+    success: statusDotColors.completed.fill,
+    running: statusDotColors.running.fill,
+    pending: statusDotColors.pending.fill,
+    failed: statusDotColors.failed.fill,
 
-  // Status glow
-  glowSuccess: 'rgba(34, 197, 94, 0.5)',
-  glowRunning: 'rgba(6, 182, 212, 0.5)',
-  glowPending: 'rgba(245, 158, 11, 0.4)',
-  glowFailed: 'rgba(239, 68, 68, 0.5)',
+    glowSuccess: statusDotColors.completed.glow,
+    glowRunning: statusDotColors.running.glow,
+    glowPending: statusDotColors.pending.glow,
+    glowFailed: statusDotColors.failed.glow,
 
-  // Badges
-  badgeSuccess: { text: '#86efac', bg: 'rgba(34,197,94,0.1)' },
-  badgeError: { text: '#fca5a5', bg: 'rgba(239,68,68,0.1)' },
-  badgeInfo: { text: '#93c5fd', bg: 'rgba(59,130,246,0.1)' },
-  badgeWarning: { text: '#fcd34d', bg: 'rgba(251,191,36,0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255,255,255,0.06)' },
+    // Badges (theme-adaptive via useColors)
+    badgeSuccess: c.badges.ok,
+    badgeError: c.badges.err,
+    badgeInfo: c.badges.info,
+    badgeWarning: c.badges.warn,
+    badgeGray: c.badges.gray,
 
-  // Page status (Notion style)
-  statusDone: '#22c55e',
-  statusInProgress: '#5E6AD2',
-  statusTodo: '#6b7280',
-  statusBacklog: '#52525b',
+    // Page status — done/inProgress from DS semantic tokens, todo/backlog are
+    // Notion-specific grays with no DS equivalent (kept as literal hex).
+    statusDone: statusDotColors.completed.fill,
+    statusInProgress: statusDotColors.running.fill,
+    statusTodo: '#6b7280',
+    statusBacklog: '#52525b',
 
-  // Text
-  primary: '#d4d4d8',
-  secondary: '#9ca3af',
-  muted: '#52525b',
-  bright: '#e4e4e7',
+    // Text (theme-adaptive via useColors)
+    primary: c.text,
+    secondary: c.text2,
+    muted: c.text3,
+    bright: c.text,
 
-  // Backgrounds
-  bgInner: 'rgba(0,0,0,0.2)',
-  bgFilter: 'rgba(0,0,0,0.15)',
-  bgDark: 'rgba(0,0,0,0.3)',
-  border: 'rgba(255,255,255,0.04)',
+    // Backgrounds (theme-adaptive via useColors)
+    bgFilter: c.bgInner,
+    bgDark: c.bgInner,
 
-  // Chevron
-  chevron: '#3f3f46',
-};
+    // Chevron (theme-adaptive via useColors)
+    chevron: c.text3,
+    ...c,
+  };
+}
 
 // ============================================================================
 // Types
 // ============================================================================
+//
+// Types cover both the old raw Notion API shape and the new curated shape
+// returned by mca.notion ≥1.1.0 (TER-272). Helpers below detect which shape
+// they receive and handle both until legacy callers are fully migrated.
+
+/** New curated icon shape (preferred). Old shape kept for back-compat. */
+export type NotionIconNew = { type: 'emoji' | 'external' | 'file'; value: string };
+export type NotionIconLegacy = {
+  type: 'emoji' | 'external' | 'file';
+  emoji?: string;
+  external?: { url: string };
+  file?: { url: string };
+};
+export type NotionIcon = NotionIconNew | NotionIconLegacy;
+
+export interface NotionRichText {
+  type: string;
+  text?: { content: string; link?: { url: string } | null };
+  plain_text?: string;
+  annotations?: Record<string, unknown>;
+  href?: string | null;
+}
 
 export interface NotionPage {
   id: string;
-  title?: string;
-  icon?: { type: 'emoji' | 'external'; emoji?: string; external?: { url: string } };
-  url?: string;
+  object?: 'page' | 'database';
+  title?: string | NotionRichText[];
+  icon?: NotionIcon | null;
+  cover?: NotionIcon | null;
+  url?: string | null;
+  /**
+   * Curated shape: `{ Name: 'X', Status: 'Active' }` (values already resolved).
+   * Legacy shape: full Notion property objects (walked by getStatusFromProperties).
+   */
   properties?: Record<string, unknown>;
-  createdTime?: string;
-  lastEditedTime?: string;
+  createdTime?: string | null;
+  lastEditedTime?: string | null;
+  parentType?: string;
+  parentId?: string | null;
+  archived?: boolean;
 }
 
 export interface NotionDatabase {
   id: string;
-  title?: string;
-  description?: string;
-  icon?: { type: 'emoji' | 'external'; emoji?: string; external?: { url: string } };
-  url?: string;
+  object?: 'database';
+  title?: string | NotionRichText[];
+  description?: string | NotionRichText[];
+  icon?: NotionIcon | null;
+  cover?: NotionIcon | null;
+  url?: string | null;
+  /** Legacy raw properties OR curated schema `{ name: { type, name } }`. */
   properties?: Record<string, unknown>;
+  /** Curated shape (TER-272): schema summary `{ Name: { type: 'title', name: 'Name' } }`. */
+  schema?: Record<string, { type: string; name?: string }>;
+  createdTime?: string | null;
+  lastEditedTime?: string | null;
 }
 
 export interface NotionUser {
   id: string;
-  name?: string;
-  avatarUrl?: string;
+  name?: string | null;
+  avatarUrl?: string | null;
   type?: 'person' | 'bot';
+  email?: string | null;
+  bot?: boolean;
 }
 
 export interface NotionBlock {
   id: string;
   type: string;
   hasChildren?: boolean;
+  /** New curated shape: plain text already extracted. */
+  plainText?: string;
+  language?: string;
+  checked?: boolean;
+  caption?: string;
+  url?: string;
+  createdTime?: string | null;
+  lastEditedTime?: string | null;
+  archived?: boolean;
 }
 
 export interface NotionComment {
   id: string;
+  /** Legacy field name. */
   text?: string;
-  createdTime?: string;
+  /** New curated field (TER-272). */
+  plainText?: string;
+  createdTime?: string | null;
   createdBy?: NotionUser;
+  /** New curated fields (TER-272). */
+  authorId?: string | null;
+  pageId?: string | null;
+  parentBlockId?: string | null;
+  discussionId?: string | null;
 }
 
 // ============================================================================
 // Utilities
 // ============================================================================
+
+/**
+ * Extracts plain text from a Notion field. Accepts:
+ *  - curated shape: already a string → passthrough.
+ *  - legacy shape: NotionRichText[] → concat plain_text.
+ */
+export function extractPlainText(field?: string | NotionRichText[] | null): string {
+  if (!field) return '';
+  if (typeof field === 'string') return field;
+  if (Array.isArray(field)) {
+    return field.map((rt) => rt.plain_text ?? rt.text?.content ?? '').join('');
+  }
+  return '';
+}
 
 export function formatDuration(ms?: number): string {
   if (ms === undefined) return '';
@@ -136,34 +213,152 @@ export function truncate(text: string, maxLength: number = 50): string {
   return text.slice(0, maxLength) + '...';
 }
 
-export function getPageTitle(page: NotionPage): string {
-  if (page.title) return page.title;
-  
-  // Try to extract from properties
-  if (page.properties) {
-    const titleProp = Object.values(page.properties).find(
-      (p: any) => p?.type === 'title' && p?.title?.[0]?.plain_text
+export function getPageTitle(page: NotionPage | NotionDatabase): string {
+  const title = (page as NotionPage).title;
+  // Curated shape: already a string.
+  if (typeof title === 'string') return title || 'Untitled';
+  // Legacy raw shape: rich_text array.
+  if (Array.isArray(title)) {
+    const extracted = extractPlainText(title);
+    if (extracted) return extracted;
+  }
+
+  // Legacy fallback: walk raw properties for a title field.
+  const props = (page as NotionPage).properties;
+  if (props) {
+    const titleProp = Object.values(props).find(
+      (p: any) => p?.type === 'title' && p?.title?.[0]?.plain_text,
     ) as any;
     if (titleProp) return titleProp.title[0].plain_text;
   }
-  
+
   return 'Untitled';
 }
 
-export function getPageIcon(page: NotionPage): string {
-  if (page.icon?.type === 'emoji' && page.icon.emoji) {
-    return page.icon.emoji;
+export function getPageIcon(page: NotionPage | NotionDatabase): string {
+  const icon = (page as any).icon as NotionIcon | null | undefined;
+  if (!icon) return '📄';
+  // Curated shape: { type, value }.
+  if ('value' in icon && typeof (icon as NotionIconNew).value === 'string') {
+    if (icon.type === 'emoji') return (icon as NotionIconNew).value;
+    // external/file URLs are not unicode — the caller should render an <Image>
+    // instead. Return the default emoji as a placeholder.
+    return '📄';
   }
+  // Legacy shape.
+  const legacy = icon as NotionIconLegacy;
+  if (legacy.type === 'emoji' && legacy.emoji) return legacy.emoji;
   return '📄';
 }
 
+/**
+ * Returns the icon image URL when the icon is external/file, else null.
+ * Useful for rendering an <Image> alongside/instead of the emoji fallback.
+ */
+export function getPageIconUrl(page: NotionPage | NotionDatabase): string | null {
+  const icon = (page as any).icon as NotionIcon | null | undefined;
+  if (!icon) return null;
+  if ('value' in icon) {
+    if (icon.type === 'external' || icon.type === 'file') return (icon as NotionIconNew).value;
+    return null;
+  }
+  const legacy = icon as NotionIconLegacy;
+  if (legacy.type === 'external' && legacy.external?.url) return legacy.external.url;
+  if (legacy.type === 'file' && legacy.file?.url) return legacy.file.url;
+  return null;
+}
+
+/**
+ * Given a page's properties, find a status-like value (string) regardless of
+ * shape. Curated properties are flat strings; legacy are Notion property
+ * objects with .status.name / .select.name.
+ */
+export function getStatusFromProperties(
+  properties: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!properties) return undefined;
+
+  for (const [key, value] of Object.entries(properties)) {
+    // Curated flat shape: value is a primitive; look for status-like keys.
+    if (typeof value === 'string') {
+      if (/^status$|^state$/i.test(key) && value.trim()) return value;
+    }
+    // Legacy raw shape.
+    if (value && typeof value === 'object') {
+      const v = value as any;
+      if (v?.type === 'status' && v.status?.name) return v.status.name;
+      if (v?.type === 'select' && v.select?.name) return v.select.name;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Given a page's properties, find a date-like ISO string regardless of shape.
+ */
+export function getDateFromProperties(
+  properties: Record<string, unknown> | undefined,
+): string | undefined {
+  if (!properties) return undefined;
+  for (const value of Object.values(properties)) {
+    if (value && typeof value === 'object') {
+      const v = value as any;
+      // Curated date shape: { start, end, timeZone }.
+      if (typeof v?.start === 'string') return v.start;
+      // Legacy raw shape.
+      if (v?.type === 'date' && v.date?.start) return v.date.start;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Extract a small, human-readable value from a property entry for a compact
+ * pill render. Returns null when nothing sensible is available.
+ */
+export function formatPropertyPreview(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'boolean') return value ? '✓' : '✗';
+  if (Array.isArray(value)) {
+    if (value.length === 0) return null;
+    const firstString = value.find((x) => typeof x === 'string');
+    if (firstString) return String(firstString);
+    return `${value.length} items`;
+  }
+  if (typeof value === 'object') {
+    const v = value as any;
+    // Curated date shape.
+    if (typeof v.start === 'string') return formatDate(v.start);
+    // Legacy property objects.
+    if (v.type === 'status' && v.status?.name) return v.status.name;
+    if (v.type === 'select' && v.select?.name) return v.select.name;
+    if (v.type === 'date' && v.date?.start) return formatDate(v.date.start);
+    if (v.type === 'checkbox') return v.checkbox ? '✓' : '✗';
+    if (v.type === 'number' && typeof v.number === 'number') return String(v.number);
+  }
+  return null;
+}
+
+// Notion page status colors (semantic enum, theme-agnostic).
+// Single source of truth — referenced by both useNotionColors() and
+// getStatusColor(). done/inProgress sourced from DS statusDotColors;
+// todo/backlog are Notion-specific grays with no DS equivalent.
+const NOTION_PAGE_STATUS = {
+  done: statusDotColors.completed.fill,
+  inProgress: statusDotColors.running.fill,
+  todo: '#6b7280',
+  backlog: '#52525b',
+} as const;
+
 export function getStatusColor(status?: string): string {
-  if (!status) return colors.statusBacklog;
+  if (!status) return NOTION_PAGE_STATUS.backlog;
   const lower = status.toLowerCase();
-  if (lower.includes('done') || lower.includes('complete')) return colors.statusDone;
-  if (lower.includes('progress') || lower.includes('started') || lower.includes('doing')) return colors.statusInProgress;
-  if (lower.includes('todo') || lower.includes('not started')) return colors.statusTodo;
-  return colors.statusBacklog;
+  if (lower.includes('done') || lower.includes('complete')) return NOTION_PAGE_STATUS.done;
+  if (lower.includes('progress') || lower.includes('started') || lower.includes('doing')) return NOTION_PAGE_STATUS.inProgress;
+  if (lower.includes('todo') || lower.includes('not started')) return NOTION_PAGE_STATUS.todo;
+  return NOTION_PAGE_STATUS.backlog;
 }
 
 export function isSuccessMessage(parsed: unknown): boolean {
@@ -192,81 +387,30 @@ export function NotionLogo({ size = 14 }: { size?: number }) {
   return <Image source={{ uri: NOTION_ICON }} width={size} height={size} borderRadius={2} />;
 }
 
-export type ToolStatusType = 'pending' | 'running' | 'completed' | 'failed' | 'pending_permission';
+export type ToolStatusType = McaStatusType;
 
-interface StatusDotProps {
-  status: ToolStatusType;
-}
-
-export function StatusDot({ status }: StatusDotProps) {
-  const color =
-    status === 'running'
-      ? colors.running
-      : status === 'pending' || status === 'pending_permission'
-        ? colors.pending
-        : status === 'completed'
-          ? colors.success
-          : colors.failed;
-
-  const glow =
-    status === 'running'
-      ? colors.glowRunning
-      : status === 'pending' || status === 'pending_permission'
-        ? colors.glowPending
-        : status === 'completed'
-          ? colors.glowSuccess
-          : colors.glowFailed;
-
-  const pulseAnim = usePulseAnimation(status === 'running' || status === 'pending' || status === 'pending_permission');
-
-  return (
-    <Animated.View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: color,
-        flexShrink: 0,
-        opacity: status === 'running' || status === 'pending' || status === 'pending_permission' ? pulseAnim : 1,
-        shadowColor: glow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 3,
-        elevation: 3,
-      }}
-    />
-  );
-}
-
-interface BadgeProps {
-  text: string;
-  variant: 'success' | 'error' | 'info' | 'warning' | 'gray';
-}
-
-export function Badge({ text, variant }: BadgeProps) {
-  const styles = {
-    success: colors.badgeSuccess,
-    error: colors.badgeError,
-    info: colors.badgeInfo,
-    warning: colors.badgeWarning,
-    gray: colors.badgeGray,
-  };
-  const { text: textColor, bg } = styles[variant];
-
-  return (
-    <XStack backgroundColor={bg} paddingHorizontal={4} paddingVertical={1} borderRadius={3}>
-      <Text color={textColor} fontSize={9} fontFamily="$mono">
-        {text}
-      </Text>
-    </XStack>
-  );
-}
+// StatusDot lives in `../../primitives`; ToolCallCard mounts it.
+// Badge re-exports the global theme-adaptive primitive.
+export {
+  Badge,
+  colors,
+  countBadgeVariant,
+  Empty,
+  ErrorBlock,
+  ExpandedBody,
+  ExpandedContainer,
+  formatCountBadge,
+  HeaderRow,
+  SuccessBlock,
+  ToolCallCard,
+} from '../../primitives';
 
 interface PageStatusBadgeProps {
   status?: string;
 }
 
 export function PageStatusBadge({ status }: PageStatusBadgeProps) {
+  const colors = useNotionColors();
   const color = getStatusColor(status);
 
   return (
@@ -278,7 +422,7 @@ export function PageStatusBadge({ status }: PageStatusBadgeProps) {
       alignItems="center"
       gap={4}
     >
-      <Circle size={5} color={color} fill={color} />
+      <Circle size={5} color={color} weight="fill" />
       <Text color={color} fontSize={8} fontFamily="$mono">
         {status || 'Backlog'}
       </Text>
@@ -286,159 +430,23 @@ export function PageStatusBadge({ status }: PageStatusBadgeProps) {
   );
 }
 
-export interface HeaderRowProps {
-  status: ToolStatusType;
-  description: string;
-  duration?: number;
-  badge?: React.ReactNode;
-  expanded: boolean;
-  onToggle: () => void;
-  isInContainer?: boolean;
-}
-
-export function HeaderRow({
-  status,
-  description,
-  duration,
-  badge,
-  expanded,
-  onToggle,
-  isInContainer,
-}: HeaderRowProps) {
-  const rotateAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(rotateAnim, {
-      toValue: expanded ? 1 : 0,
-      duration: 150,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, rotateAnim]);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg'],
-  });
-
-  return (
-    <XStack
-      alignItems="center"
-      gap={8}
-      paddingVertical={6}
-      paddingHorizontal={10}
-      backgroundColor={isInContainer ? 'transparent' : 'rgba(39,39,42,0.6)'}
-      borderRadius={isInContainer ? 0 : 8}
-      borderWidth={isInContainer ? 0 : 1}
-      borderColor={isInContainer ? 'transparent' : colors.border}
-      borderBottomWidth={isInContainer ? 1 : 1}
-      borderBottomColor={colors.border}
-      width={isInContainer ? undefined : '100%'}
-      pressStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-      }}
-      hoverStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-        borderColor: isInContainer ? 'transparent' : 'rgba(255,255,255,0.08)',
-      }}
-      onPress={onToggle}
-      cursor="pointer"
-    >
-      <StatusDot status={status} />
-      <NotionLogo size={14} />
-
-      <Text flex={1} color={colors.primary} fontSize={11} fontWeight="500" numberOfLines={1}>
-        {description}
-      </Text>
-
-      {status === 'running' || status === 'pending' || status === 'pending_permission' ? (
-        <Text color={status === 'running' ? colors.running : colors.pending} fontSize={9} fontFamily="$mono">
-          {status === 'pending_permission' ? 'approval' : status}
-        </Text>
-      ) : (
-        duration !== undefined && (
-          <Text color={colors.muted} fontSize={9} fontFamily="$mono">
-            {formatDuration(duration)}
-          </Text>
-        )
-      )}
-
-      {badge}
-
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <ChevronRight size={10} color={colors.chevron} />
-      </Animated.View>
-    </XStack>
-  );
-}
-
-export function ExpandedContainer({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack
-      backgroundColor="rgba(39,39,42,0.6)"
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={colors.border}
-      overflow="hidden"
-      width="100%"
-    >
-      {children}
-    </YStack>
-  );
-}
-
-export function ExpandedBody({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack padding={8} gap={6}>
-      {children}
-    </YStack>
-  );
-}
-
-export function ErrorBlock({ error }: { error: string }) {
-  return (
-    <YStack
-      backgroundColor="rgba(239,68,68,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-    >
-      <Text color={colors.badgeError.text} fontSize={10} fontFamily="$mono">
-        {error}
-      </Text>
-    </YStack>
-  );
-}
-
-export function SuccessBlock({ message }: { message: string }) {
-  return (
-    <XStack
-      backgroundColor="rgba(34,197,94,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-      alignItems="center"
-      gap={6}
-    >
-      <Circle size={12} color={colors.success} fill={colors.success} />
-      <Text color={colors.badgeSuccess.text} fontSize={10}>
-        {message}
-      </Text>
-    </XStack>
-  );
-}
+// HeaderRow / ExpandedContainer / ExpandedBody / ErrorBlock / SuccessBlock
+// live in `../../primitives`. Sub-renderers compose directly via
+// `<ToolCallCard>`.
 
 export function WarningBlock({ message }: { message: string }) {
+  const c = useNotionColors();
+  const colors = useNotionColors();
   return (
     <XStack
-      backgroundColor={colors.badgeWarning.bg}
+      backgroundColor={c.badges.warn.bg}
       borderRadius={5}
       paddingVertical={6}
       paddingHorizontal={8}
       alignItems="center"
       gap={6}
     >
-      <Text color={colors.badgeWarning.text} fontSize={10}>
+      <Text color={c.badges.warn.text} fontSize={10}>
         ⚠️ {message}
       </Text>
     </XStack>
@@ -451,6 +459,8 @@ interface FilterBlockProps {
 }
 
 export function FilterBlock({ filter, sorts }: FilterBlockProps) {
+  const c = useNotionColors();
+  const colors = useNotionColors();
   const filterTags: string[] = [];
   const sortInfo: string[] = [];
 
@@ -505,18 +515,18 @@ export function FilterBlock({ filter, sorts }: FilterBlockProps) {
     >
       {filterTags.length > 0 && (
         <>
-          <Text fontSize={9} color={colors.muted} textTransform="uppercase" letterSpacing={0.5}>
+          <Text fontSize={9} color={c.text3} textTransform="uppercase" letterSpacing={0.5}>
             Filter
           </Text>
           {filterTags.map((tag, idx) => (
             <XStack
               key={idx}
-              backgroundColor={colors.badgeInfo.bg}
+              backgroundColor={c.badges.info.bg}
               paddingHorizontal={6}
               paddingVertical={2}
               borderRadius={3}
             >
-              <Text fontSize={9} color={colors.badgeInfo.text}>
+              <Text fontSize={9} color={c.badges.info.text}>
                 {tag}
               </Text>
             </XStack>
@@ -526,10 +536,10 @@ export function FilterBlock({ filter, sorts }: FilterBlockProps) {
       {sortInfo.length > 0 && (
         <>
           <XStack flex={1} />
-          <Text fontSize={9} color={colors.muted} textTransform="uppercase" letterSpacing={0.5}>
+          <Text fontSize={9} color={c.text3} textTransform="uppercase" letterSpacing={0.5}>
             Sort
           </Text>
-          <Text fontSize={10} color={colors.secondary} fontFamily="$mono">
+          <Text fontSize={10} color={c.text2} fontFamily="$mono">
             {sortInfo.join(', ')}
           </Text>
         </>

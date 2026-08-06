@@ -1,7 +1,11 @@
 import { Download, FileText, Image as ImageIcon, Mic, Video } from '@tamagui/lucide-icons';
 import { useState } from 'react';
+import { getDateLocale } from '../../../i18n';
 import { Linking, Platform } from 'react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Text, View, XStack, YStack } from 'tamagui'
+import { useColors } from '../../mca/primitives/useColors'
+import { colors as semanticColors } from '../../mca/primitives/colors';
+import { QueuedIndicator, QueuedShimmer } from '../queuedDecorations';
 import { SelectableText } from './shared';
 
 /**
@@ -16,6 +20,7 @@ export function FileBubble({
   timestamp,
   isUser = false,
   showTimestamp = true,
+  status,
 }: {
   url: string;
   filename: string;
@@ -25,7 +30,9 @@ export function FileBubble({
   timestamp: Date;
   isUser?: boolean;
   showTimestamp?: boolean;
+  status?: 'sending' | 'sent' | 'failed' | 'queued';
 }) {
+  const c = useColors()
   const handleDownload = () => {
     if (Platform.OS === 'web') {
       window.open(url, '_blank');
@@ -44,34 +51,44 @@ export function FileBubble({
 
   // Get file icon based on mime type
   const getFileIcon = () => {
-    if (mimeType?.startsWith('image/')) return <ImageIcon size={20} color="#06B6D4" />;
-    if (mimeType?.startsWith('video/')) return <Video size={20} color="#06B6D4" />;
-    if (mimeType?.startsWith('audio/')) return <Mic size={20} color="#06B6D4" />;
-    return <FileText size={20} color="#06B6D4" />;
+    if (mimeType?.startsWith('image/')) return <ImageIcon size={20} color={semanticColors.indigo} />;
+    if (mimeType?.startsWith('video/')) return <Video size={20} color={semanticColors.indigo} />;
+    if (mimeType?.startsWith('audio/')) return <Mic size={20} color={semanticColors.indigo} />;
+    return <FileText size={20} color={semanticColors.indigo} />;
   };
 
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const isImage = mimeType?.startsWith('image/');
 
+  const isQueued = status === 'queued';
+
   return (
-    <YStack maxWidth="85%" gap="$2" alignSelf={isUser ? 'flex-end' : 'flex-start'}>
+    <YStack
+      maxWidth="85%"
+      gap="$2"
+      alignSelf={isUser ? 'flex-end' : 'flex-start'}
+      alignItems={isUser ? 'flex-end' : 'flex-start'}
+    >
       <XStack
         padding="$3"
         borderRadius="$4"
-        backgroundColor="rgba(255, 255, 255, 0.05)"
+        backgroundColor={c.bgInner}
         borderWidth={1}
-        borderColor="rgba(6, 182, 212, 0.3)"
+        borderColor={`rgba(94, 106, 210, 0.3)`}
         alignItems="center"
         gap="$3"
         onPress={handleDownload}
         cursor="pointer"
+        overflow={isQueued ? 'hidden' : undefined}
+        position={isQueued ? 'relative' : undefined}
       >
+        {isQueued && <QueuedShimmer />}
         <View
           width={40}
           height={40}
           borderRadius="$2"
-          backgroundColor="rgba(6, 182, 212, 0.1)"
+          backgroundColor={semanticColors.indigoGlow}
           alignItems="center"
           justifyContent="center"
         >
@@ -80,7 +97,7 @@ export function FileBubble({
 
         <YStack flex={1} gap="$1">
           <SelectableText
-            color="rgba(255, 255, 255, 0.9)"
+            color={c.text}
             fontSize="$3"
             fontWeight="500"
             selectable
@@ -89,7 +106,7 @@ export function FileBubble({
             {filename}
           </SelectableText>
           {(size || mimeType) && (
-            <Text color="rgba(255, 255, 255, 0.5)" fontSize="$2">
+            <Text color={c.text3} fontSize="$2">
               {[formatSize(size), mimeType?.split('/')[1]?.toUpperCase()]
                 .filter(Boolean)
                 .join(' • ')}
@@ -97,19 +114,24 @@ export function FileBubble({
           )}
         </YStack>
 
-        <Download size={18} color="rgba(6, 182, 212, 0.8)" />
+        <Download size={18} color={semanticColors.indigoLight} />
       </XStack>
 
       {caption && (
-        <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable paddingLeft="$1">
+        <SelectableText color={c.text2} fontSize="$3" selectable paddingLeft="$1">
           {caption}
         </SelectableText>
       )}
 
-      {showTimestamp && (
-        <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-          {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-        </SelectableText>
+      {(showTimestamp || isQueued) && (
+        <XStack alignItems="center" gap="$2">
+          {isQueued && <QueuedIndicator />}
+          {showTimestamp && (
+            <SelectableText fontSize="$2" color={c.text3} selectable>
+              {timestamp.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })}
+            </SelectableText>
+          )}
+        </XStack>
       )}
 
       {isImage && isModalOpen && (
@@ -117,7 +139,7 @@ export function FileBubble({
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.8)',
+            background: c.bgPage,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

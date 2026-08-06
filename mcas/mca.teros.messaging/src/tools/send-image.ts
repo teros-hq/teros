@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { resolveUrl } from '../lib';
 
 export const sendImage: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send an image to the user. The image will be displayed in the chat. Supports public URLs or local file paths.',
   parameters: {

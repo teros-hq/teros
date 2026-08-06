@@ -64,8 +64,11 @@ class ConsoleCapture {
       this.logs = this.logs.slice(-this.maxLogs);
     }
 
-    // Notificar listeners
-    this.listeners.forEach((fn) => fn(entry));
+    // Notificar listeners fuera del ciclo de render actual para evitar
+    // "Cannot update a component while rendering a different component"
+    setTimeout(() => {
+      this.listeners.forEach((fn) => fn(entry));
+    }, 0);
   }
 
   subscribe(listener: Listener): () => void {

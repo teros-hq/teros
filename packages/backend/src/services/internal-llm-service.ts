@@ -103,6 +103,18 @@ export class InternalLLMService {
         model: modelToUse.modelString,
         maxTokens: 200,
       }
+    } else if (provider.providerType === "google") {
+      llmConfig.google = {
+        apiKey: secrets.apiKey!,
+        model: modelToUse.modelString,
+        maxTokens: 200,
+      }
+    } else if (provider.providerType === "together") {
+      llmConfig.together = {
+        apiKey: secrets.apiKey,
+        model: modelToUse.modelString,
+        maxTokens: 200,
+      }
     } else {
       throw new Error(`[InternalLLM] Unsupported provider: ${provider.providerType}`)
     }

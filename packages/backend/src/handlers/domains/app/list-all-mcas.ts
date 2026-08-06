@@ -2,11 +2,16 @@
  * app.list-all-mcas — List ALL MCAs with full data (admin, no filters)
  */
 
+import type { Db } from 'mongodb'
 import type { WsHandlerContext } from '@teros/shared'
+import { requireSystemAdmin } from '../../../auth/auth-helpers'
 import type { McaService } from '../../../services/mca-service'
 
-export function createListAllMcasHandler(mcaService: McaService) {
-  return async function listAllMcas(_ctx: WsHandlerContext, _rawData: unknown) {
+export function createListAllMcasHandler(mcaService: McaService, db: Db) {
+  return async function listAllMcas(ctx: WsHandlerContext, _rawData: unknown) {
+    // Admin-only: exposes full catalog data (hidden/role) with no filters (TER-513).
+    await requireSystemAdmin(db, ctx.userId)
+
     const catalog = await mcaService.listCatalog()
 
     const mcas = catalog.map((mca) => ({

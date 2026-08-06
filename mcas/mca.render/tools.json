@@ -1,0 +1,742 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.render",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Render API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "render-get-user",
+      "description": "Get the authenticated Render user info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-list-owners",
+      "description": "List all workspaces/owners (personal and team accounts) accessible to the authenticated user.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-list-projects",
+      "description": "List all projects in the Render account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-get-project",
+      "description": "Get detailed information about a specific Render project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Render project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-create-project",
+      "description": "Create a new project in Render. Use render-list-owners to get the ownerId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name"
+          },
+          "ownerId": {
+            "type": "string",
+            "description": "Owner/workspace ID (use render-list-owners to get IDs)"
+          }
+        },
+        "required": [
+          "name",
+          "ownerId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-delete-project",
+      "description": "Delete a Render project. This action is irreversible!",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Render project ID to delete"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      }
+    },
+    {
+      "name": "render-list-environments",
+      "description": "List all environments in a Render project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Render project ID"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-create-environment",
+      "description": "Create a new environment in a Render project.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Render project ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Environment name (e.g., \"staging\", \"production\")"
+          }
+        },
+        "required": [
+          "projectId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-list-services",
+      "description": "List all services in the Render account. Optionally filter by type or name.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Filter by service type: web_service, static_site, background_worker, private_service, cron_job"
+          },
+          "name": {
+            "type": "string",
+            "description": "Filter by service name (partial match)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-get-service",
+      "description": "Get detailed information about a specific Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-create-service",
+      "description": "Create a new service on Render from a GitHub repository. Use render-list-owners to get ownerId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Service name"
+          },
+          "ownerId": {
+            "type": "string",
+            "description": "Owner/workspace ID (use render-list-owners to get IDs)"
+          },
+          "type": {
+            "type": "string",
+            "description": "Service type: web_service, static_site, background_worker, private_service, cron_job"
+          },
+          "repoURL": {
+            "type": "string",
+            "description": "GitHub repository URL (e.g., \"https://github.com/owner/repo\")"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to deploy from (default: \"main\")"
+          },
+          "buildCommand": {
+            "type": "string",
+            "description": "Build command (e.g., \"npm run build\")"
+          },
+          "startCommand": {
+            "type": "string",
+            "description": "Start command for web/worker services (e.g., \"node server.js\")"
+          },
+          "plan": {
+            "type": "string",
+            "description": "Instance plan (e.g., \"free\", \"starter\", \"standard\", \"pro\")"
+          },
+          "region": {
+            "type": "string",
+            "description": "Deployment region (e.g., \"oregon\", \"frankfurt\", \"singapore\")"
+          },
+          "autoDeploy": {
+            "type": "string",
+            "description": "Auto-deploy on git push: \"yes\" or \"no\" (default: \"yes\")"
+          }
+        },
+        "required": [
+          "name",
+          "ownerId",
+          "type",
+          "repoURL"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-delete-service",
+      "description": "Delete a Render service. This action is irreversible!",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID to delete"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      }
+    },
+    {
+      "name": "render-suspend-service",
+      "description": "Suspend a running Render service (stops billing for compute).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID to suspend"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-resume-service",
+      "description": "Resume a suspended Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID to resume"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-restart-service",
+      "description": "Restart a running Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID to restart"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-list-deploys",
+      "description": "List recent deploys for a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of deploys to return (default: 10, max: 100)",
+            "default": 10
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-get-deploy",
+      "description": "Get the status and details of a specific Render deploy.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "deployId": {
+            "type": "string",
+            "description": "The Render deploy ID"
+          }
+        },
+        "required": [
+          "serviceId",
+          "deployId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-trigger-deploy",
+      "description": "Trigger a new deploy for a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "clearCache": {
+            "type": "string",
+            "description": "Whether to clear the build cache: \"clear\" or \"do_not_clear\" (default: do_not_clear)"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-cancel-deploy",
+      "description": "Cancel a running Render deploy.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "deployId": {
+            "type": "string",
+            "description": "The Render deploy ID to cancel"
+          }
+        },
+        "required": [
+          "serviceId",
+          "deployId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "render-rollback-deploy",
+      "description": "Roll back a Render service to a specific previous deploy.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "deployId": {
+            "type": "string",
+            "description": "The deploy ID to roll back to"
+          }
+        },
+        "required": [
+          "serviceId",
+          "deployId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-list-env-vars",
+      "description": "List environment variables for a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-set-env-vars",
+      "description": "Set (replace all) environment variables for a Render service. This replaces ALL existing variables. Use render-update-env-var to update a single variable.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "envVars": {
+            "type": "array",
+            "description": "Array of environment variables to set",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ]
+            }
+          }
+        },
+        "required": [
+          "serviceId",
+          "envVars"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-update-env-var",
+      "description": "Add or update a single environment variable for a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "key": {
+            "type": "string",
+            "description": "Environment variable key"
+          },
+          "value": {
+            "type": "string",
+            "description": "Environment variable value"
+          }
+        },
+        "required": [
+          "serviceId",
+          "key",
+          "value"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-delete-env-var",
+      "description": "Delete an environment variable from a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "key": {
+            "type": "string",
+            "description": "Environment variable key to delete"
+          }
+        },
+        "required": [
+          "serviceId",
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-list-custom-domains",
+      "description": "List custom domains configured for a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-add-custom-domain",
+      "description": "Add a custom domain to a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "domain": {
+            "type": "string",
+            "description": "The custom domain name (e.g., \"app.example.com\")"
+          }
+        },
+        "required": [
+          "serviceId",
+          "domain"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-delete-custom-domain",
+      "description": "Remove a custom domain from a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "domainId": {
+            "type": "string",
+            "description": "The custom domain ID to remove"
+          }
+        },
+        "required": [
+          "serviceId",
+          "domainId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-verify-custom-domain",
+      "description": "Verify DNS configuration for a custom domain on a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "domainId": {
+            "type": "string",
+            "description": "The custom domain ID to verify"
+          }
+        },
+        "required": [
+          "serviceId",
+          "domainId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-list-disks",
+      "description": "List persistent disks attached to a Render service.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          }
+        },
+        "required": [
+          "serviceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "render-add-disk",
+      "description": "Add a persistent disk to a Render service (useful for databases and stateful apps).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "serviceId": {
+            "type": "string",
+            "description": "The Render service ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Disk name"
+          },
+          "mountPath": {
+            "type": "string",
+            "description": "Mount path inside the container (e.g., \"/data\")"
+          },
+          "sizeGB": {
+            "type": "number",
+            "description": "Disk size in GB (minimum: 1)"
+          }
+        },
+        "required": [
+          "serviceId",
+          "name",
+          "mountPath",
+          "sizeGB"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "render-get-logs",
+      "description": "Get recent logs for one or more Render services. Requires the owner ID (use render-list-owners) and service IDs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ownerId": {
+            "type": "string",
+            "description": "The owner/workspace ID (use render-list-owners to get IDs)"
+          },
+          "serviceIds": {
+            "type": "array",
+            "description": "Array of service IDs to get logs from",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of log lines to return (default: 100)",
+            "default": 100
+          },
+          "text": {
+            "type": "string",
+            "description": "Filter logs containing this text"
+          },
+          "level": {
+            "type": "string",
+            "description": "Filter by log level: debug, info, warning, error"
+          }
+        },
+        "required": [
+          "ownerId",
+          "serviceIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

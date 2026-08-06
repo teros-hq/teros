@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "description": "Full board management capabilities for coordinator and supervisor agents. Provides complete control over projects, boards, and tasks \u2014 including creating, assigning, updating, moving, and deleting tasks. Designed for agents that orchestrate work across multiple workers, manage priorities, and oversee the full lifecycle of a project board.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "productivity",
   "entrypoint": "./src/index.ts",
   "author": {
@@ -40,5 +40,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-03-01",
+      "notes": "Create and organize projects and Kanban boards, manage tasks and dependencies, assign agents, and orchestrate autonomous work"
+    }
+  ]
 }

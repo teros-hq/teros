@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceMemberAdd: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Add a member to a workspace.',
   parameters: {
     type: 'object',

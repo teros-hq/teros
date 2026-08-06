@@ -1,0 +1,81 @@
+{
+  "name": "Google Slides",
+  "description": "Crea, lee, actualiza y elimina presentaciones de Google Slides — soporte completo de lectura/escritura para diapositivas, texto y operaciones por lotes",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de Google Slides."
+    },
+    "read-presentation": {
+      "name": "read-presentation",
+      "description": "Lee el contenido de las diapositivas de una presentación de Google Slides.",
+      "params": {
+        "presentationId": "El ID de la presentación"
+      }
+    },
+    "read-slide": {
+      "name": "read-slide",
+      "description": "Lee una diapositiva específica de una presentación de Google Slides.",
+      "params": {
+        "fileId": "ID del archivo de Google Slides",
+        "slideIndex": "Índice basado en 0 de la diapositiva a leer (0 = primera diapositiva)"
+      }
+    },
+    "create-presentation": {
+      "name": "create-presentation",
+      "description": "Crea una nueva presentación de Google Slides con un título. Devuelve el ID de la presentación y la URL.",
+      "params": {
+        "title": "Título de la nueva presentación"
+      }
+    },
+    "add-slide": {
+      "name": "add-slide",
+      "description": "Añade una nueva diapositiva a una presentación de Google Slides. Devuelve el slideObjectId de la nueva diapositiva.",
+      "params": {
+        "presentationId": "El ID de la presentación",
+        "layout": "Opcional: diseño de la nueva diapositiva. Puede ser un nombre de diseño (blank, title-slide, title-and-body, title-and-two-columns, title-only, section-header, two-section) o un objectId de diseño sin procesar. Por defecto \"blank\".",
+        "insertionIndex": "Opcional: índice basado en 0 donde se debe insertar la diapositiva. Si se omite, la diapositiva se añade al final."
+      }
+    },
+    "update-slide": {
+      "name": "update-slide",
+      "description": "Actualiza el contenido de texto de una diapositiva en una presentación de Google Slides. Puede dirigirse a una diapositiva por su objectId o por índice de diapositiva basado en 0. Usa insertText para añadir texto al primer elemento de texto encontrado en la diapositiva, o replaceAllText para reemplazar texto en toda la presentación.",
+      "params": {
+        "presentationId": "El ID de la presentación",
+        "slideObjectId": "El objectId de la diapositiva a actualizar. Si se proporciona, tiene prioridad sobre slideIndex.",
+        "slideIndex": "Índice basado en 0 de la diapositiva a actualizar (se usa si no se proporciona slideObjectId).",
+        "text": "Texto a insertar en la diapositiva. Admite \\n para saltos de línea.",
+        "mode": "insert (por defecto): inserta texto en la primera forma de texto de la diapositiva. replace: reemplaza todas las apariciones de findText con text en toda la presentación.",
+        "findText": "Texto a buscar (obligatorio cuando mode=replace).",
+        "matchCase": "Si debe coincidir mayúsculas/minúsculas al reemplazar (por defecto: true). Solo se usa con mode=replace."
+      }
+    },
+    "delete-slide": {
+      "name": "delete-slide",
+      "description": "Elimina una diapositiva de una presentación de Google Slides por su objectId o índice basado en 0.",
+      "params": {
+        "presentationId": "El ID de la presentación",
+        "slideObjectId": "El objectId de la diapositiva a eliminar. Si se proporciona, tiene prioridad sobre slideIndex.",
+        "slideIndex": "Índice basado en 0 de la diapositiva a eliminar (se usa si no se proporciona slideObjectId)."
+      }
+    },
+    "batch-update": {
+      "name": "batch-update",
+      "description": "Ejecuta operaciones avanzadas en una presentación de Google Slides usando el endpoint batchUpdate de la API de Slides. Pasa un array de objetos de petición nativos de la API de Slides. Soporta: createSlide, deleteObject, insertText, replaceAllText, createShape, updateShapeProperties, createImage, createTable, updatePageProperties, updateTextStyle y más. Ver https://developers.google.com/slides/api/reference/rest/v1/presentations/batchUpdate para el esquema completo.",
+      "params": {
+        "presentationId": "El ID de la presentación",
+        "requests": "Array de objetos de petición batchUpdate de la API de Slides. Cada objeto es una clave mapeada a su tipo de petición. Tipos comunes: createSlide, deleteObject, insertText, replaceAllText, createShape, createImage, createTable, createLine, updateShapeProperties, updateTextStyle, updatePageProperties, updatePageElementsZOrder, updateSlidesPosition. Ver https://developers.google.com/slides/api/reference/rest/v1/presentations/request para el esquema completo."
+      }
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "Reemplaza todas las apariciones de una cadena de texto en toda una presentación de Google Slides. Usa la petición replaceAllText de la API de Slides para buscar y reemplazar texto en todas las diapositivas a la vez.",
+      "params": {
+        "presentationId": "El ID de la presentación",
+        "findText": "Texto a buscar y reemplazar",
+        "replaceText": "Texto de reemplazo. Admite \\n para saltos de línea.",
+        "matchCase": "Si debe coincidir mayúsculas/minúsculas (por defecto: true)"
+      }
+    }
+  }
+}

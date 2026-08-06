@@ -6,12 +6,18 @@
  * Each tool has a triple toggle: allow / ask / forbid
  */
 
-import { Check, ChevronRight, Shield, User, X } from '@tamagui/lucide-icons';
+import { Check, ChevronRight, Eye, Shield, User, X } from '@tamagui/lucide-icons';
 import type React from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, TouchableOpacity, View } from 'react-native';
 import { Text } from 'tamagui';
 import { AppSpinner } from '../../components/ui';
+import {
+  controlsBar,
+  indicators,
+} from '../../components/mca/primitives/colors';
+import { FONT_MONO, FONT_SANS } from '../../components/mca/primitives/fonts';
+import { type AdaptiveColors, useColors } from '../../components/mca/primitives/useColors';
 
 // ============================================================================
 // Types
@@ -23,6 +29,13 @@ export interface ToolWithPermission {
   name: string;
   description?: string;
   permission: ToolPermission;
+  /**
+   * The tool runs WITHOUT asking purely because of the read-only auto-allow
+   * policy (it's read-only and its `ask` is inherited from the default, not
+   * pinned). Drives the "solo lectura" badge. The backend sets this to `false`
+   * the moment the tool is pinned explicitly, so the badge never lies.
+   */
+  autoAllowed?: boolean;
 }
 
 export interface PermissionsPanelProps {
@@ -47,51 +60,61 @@ export interface PermissionsPanelProps {
 }
 
 // ============================================================================
-// Colors
+// Palette
 // ============================================================================
+//
+// Theme-adaptive palette derived from `useColors()` (surface/text/border) plus
+// the theme-agnostic permission signals (allow/ask/forbid → green/amber/red,
+// read-only → violet). Same shape as the pre-redesign hardcoded `colors`
+// object so the sub-components keep reading `p.<token>`. Each sub-component
+// calls `useColors()` and builds its own palette (the hook is memoized).
 
-const colors = {
-  // Status
-  ready: '#22c55e',
-  glowReady: 'rgba(34, 197, 94, 0.5)',
+function makePalette(c: AdaptiveColors) {
+  return {
+    // Status
+    ready: controlsBar.allow.fg,
+    glowReady: 'rgba(34, 197, 94, 0.5)',
 
-  // Section
-  iconShield: '#06b6d4',
+    // Section / read-only accent (violet = permission signal)
+    iconShield: controlsBar.permission.fg,
+    readOnlyBg: 'rgba(139, 92, 246, 0.12)',
 
-  // Permissions
-  allow: '#86efac',
-  allowBg: 'rgba(34, 197, 94, 0.2)',
-  ask: '#fcd34d',
-  askBg: 'rgba(251, 191, 36, 0.2)',
-  forbid: '#fca5a5',
-  forbidBg: 'rgba(239, 68, 68, 0.2)',
+    // Permissions (theme-agnostic signals)
+    allow: c.badges.ok.text,
+    allowBg: controlsBar.allow.bg,
+    ask: c.badges.warn.text,
+    askBg: indicators.risk.bg,
+    forbid: c.badges.err.text,
+    forbidBg: controlsBar.deny.bg,
 
-  // Badges
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255, 255, 255, 0.06)' },
+    // Badges (theme-adaptive)
+    badgeGray: c.badges.gray,
 
-  // Text
-  textPrimary: '#e4e4e7',
-  textSecondary: '#a1a1aa',
-  textMuted: '#52525b',
+    // Text (theme-adaptive)
+    textPrimary: c.text,
+    textSecondary: c.text2,
+    textMuted: c.text3,
 
-  // Backgrounds
-  panelBg: 'rgba(39, 39, 42, 0.6)',
-  sectionBg: 'rgba(0, 0, 0, 0.15)',
-  summaryBg: 'rgba(0, 0, 0, 0.2)',
-  toggleBg: 'rgba(0, 0, 0, 0.3)',
+    // Backgrounds (theme-adaptive)
+    panelBg: c.bgCard,
+    sectionBg: c.bgInner,
+    summaryBg: c.bgInner,
+    toggleBg: c.bgInner,
 
-  // Borders
-  border: 'rgba(255, 255, 255, 0.04)',
+    // Borders (theme-adaptive)
+    border: c.border,
 
-  // Chevron
-  chevron: '#3f3f46',
-};
+    // Chevron
+    chevron: c.text3,
+  };
+}
 
 // ============================================================================
 // Status Dot Component
 // ============================================================================
 
 function StatusDot() {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
@@ -119,16 +142,19 @@ interface BadgeProps {
 }
 
 function Badge({ text }: BadgeProps) {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
         backgroundColor: colors.badgeGray.bg,
+        borderWidth: 1,
+        borderColor: colors.badgeGray.border,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 4,
       }}
     >
-      <Text color={colors.badgeGray.text} fontSize={11} fontFamily="$mono" fontWeight="500">
+      <Text color={colors.badgeGray.text} fontSize={11} fontFamily={FONT_MONO} fontWeight="500">
         {text}
       </Text>
     </View>
@@ -146,6 +172,7 @@ interface TripleToggleProps {
 }
 
 function TripleToggle({ value, onChange, disabled }: TripleToggleProps) {
+  const colors = makePalette(useColors());
   const options: {
     key: ToolPermission;
     icon: React.ReactNode;
@@ -214,6 +241,8 @@ interface BulkActionsProps {
 }
 
 function BulkActions({ onSetAll, disabled }: BulkActionsProps) {
+  const c = useColors();
+  const colors = makePalette(c);
   const buttons: { key: ToolPermission; icon: React.ReactNode }[] = [
     { key: 'allow', icon: <Check size={12} color={colors.textMuted} /> },
     { key: 'ask', icon: <User size={12} color={colors.textMuted} /> },
@@ -234,7 +263,7 @@ function BulkActions({ onSetAll, disabled }: BulkActionsProps) {
             borderRadius: 6,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+            backgroundColor: c.bgCardHover,
             opacity: disabled ? 0.5 : 1,
           }}
         >
@@ -256,6 +285,7 @@ interface SummaryBarProps {
 }
 
 function SummaryBar({ summary, onSetAll, disabled }: SummaryBarProps) {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
@@ -273,19 +303,19 @@ function SummaryBar({ summary, onSetAll, disabled }: SummaryBarProps) {
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <Check size={12} color={colors.allow} />
-          <Text fontSize={12} fontFamily="$mono" color={colors.allow}>
+          <Text fontSize={12} fontFamily={FONT_MONO} color={colors.allow}>
             {summary.allow}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <User size={12} color={colors.ask} />
-          <Text fontSize={12} fontFamily="$mono" color={colors.ask}>
+          <Text fontSize={12} fontFamily={FONT_MONO} color={colors.ask}>
             {summary.ask}
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
           <X size={12} color={colors.forbid} />
-          <Text fontSize={12} fontFamily="$mono" color={colors.forbid}>
+          <Text fontSize={12} fontFamily={FONT_MONO} color={colors.forbid}>
             {summary.forbid}
           </Text>
         </View>
@@ -308,7 +338,32 @@ interface ToolRowProps {
   isLast?: boolean;
 }
 
+/** "solo lectura · no pregunta" — shown when the read-only policy auto-allows. */
+function ReadOnlyBadge() {
+  const colors = makePalette(useColors());
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 4,
+        backgroundColor: colors.readOnlyBg,
+        flexShrink: 0,
+      }}
+    >
+      <Eye size={10} color={colors.iconShield} />
+      <Text fontFamily={FONT_SANS} fontSize={10} color={colors.iconShield} fontWeight="500">
+        solo lectura · no pregunta
+      </Text>
+    </View>
+  );
+}
+
 function ToolRow({ tool, onPermissionChange, disabled, isLast }: ToolRowProps) {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
@@ -321,15 +376,26 @@ function ToolRow({ tool, onPermissionChange, disabled, isLast }: ToolRowProps) {
         borderBottomColor: colors.border,
       }}
     >
-      <Text
-        fontSize={13}
-        fontFamily="$mono"
-        color={colors.textSecondary}
-        numberOfLines={1}
-        style={{ flex: 1, marginRight: 12 }}
+      <View
+        style={{
+          flex: 1,
+          marginRight: 12,
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 8,
+        }}
       >
-        {tool.name}
-      </Text>
+        <Text
+          fontSize={13}
+          fontFamily={FONT_MONO}
+          color={colors.textSecondary}
+          numberOfLines={1}
+          style={{ flexShrink: 1 }}
+        >
+          {tool.name}
+        </Text>
+        {tool.autoAllowed && <ReadOnlyBadge />}
+      </View>
       <TripleToggle value={tool.permission} onChange={onPermissionChange} disabled={disabled} />
     </View>
   );
@@ -340,6 +406,7 @@ function ToolRow({ tool, onPermissionChange, disabled, isLast }: ToolRowProps) {
 // ============================================================================
 
 function Legend() {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
@@ -354,19 +421,19 @@ function Legend() {
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <Check size={10} color={colors.textMuted} />
-        <Text fontSize={11} color={colors.textMuted}>
+        <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted}>
           Auto
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <User size={10} color={colors.textMuted} />
-        <Text fontSize={11} color={colors.textMuted}>
+        <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted}>
           Confirmar
         </Text>
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
         <X size={10} color={colors.textMuted} />
-        <Text fontSize={11} color={colors.textMuted}>
+        <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted}>
           Bloquear
         </Text>
       </View>
@@ -387,6 +454,7 @@ export function PermissionsPanel({
   onSetAllPermissions,
   defaultExpanded = true,
 }: PermissionsPanelProps) {
+  const colors = makePalette(useColors());
   const [expanded, setExpanded] = useState(defaultExpanded);
   const rotateAnim = useRef(new Animated.Value(defaultExpanded ? 1 : 0)).current;
 
@@ -404,12 +472,14 @@ export function PermissionsPanel({
     outputRange: ['0deg', '90deg'],
   });
 
-  // Calculate summary if not provided
+  // Calculate summary if not provided. Counts the EFFECTIVE permission
+  // (effective = autoAllowed ? 'allow' : permission) to match the backend
+  // summary and the per-row badges.
   const summary =
     propSummary ||
     tools.reduce(
       (acc, tool) => {
-        acc[tool.permission]++;
+        acc[tool.autoAllowed ? 'allow' : tool.permission]++;
         return acc;
       },
       { allow: 0, ask: 0, forbid: 0 },
@@ -441,7 +511,7 @@ export function PermissionsPanel({
       >
         <StatusDot />
         <Shield size={18} color={colors.iconShield} />
-        <Text flex={1} fontSize={14} fontWeight="500" color={colors.textPrimary}>
+        <Text flex={1} fontFamily={FONT_SANS} fontSize={14} fontWeight="500" color={colors.textPrimary}>
           Permisos
         </Text>
         {loading ? (

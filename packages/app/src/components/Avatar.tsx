@@ -5,6 +5,9 @@
 import React from 'react';
 import { Image, Platform } from 'react-native';
 import { Text, View } from 'tamagui';
+import { useImageWithFallback } from '../hooks/useImageWithFallback';
+import { useColors } from './mca/primitives/useColors';
+import { colors as semanticColors } from './mca/primitives/colors';
 
 interface AvatarProps {
   /** Display name (used for initials fallback) */
@@ -31,12 +34,18 @@ function getInitials(name: string): string {
 export function Avatar({ name, imageUrl, size = 32, isAgent = false }: AvatarProps) {
   const initials = getInitials(name);
   const fontSize = Math.max(10, Math.floor(size * 0.4));
+  const c = useColors();
 
-  // Agent: cyan background, User: gray background
-  const bgColor = isAgent ? 'rgba(6, 182, 212, 0.3)' : 'rgba(255, 255, 255, 0.15)';
-  const textColor = isAgent ? '#06B6D4' : 'rgba(255, 255, 255, 0.7)';
+  // Fall back to initials when the image fails to load (404, broken URL…) instead
+  // of showing the browser's broken-image glyph. Without this, the initials branch
+  // only renders when imageUrl is falsy — a present-but-404 URL stayed broken.
+  const { showImage, onError } = useImageWithFallback(imageUrl);
 
-  if (imageUrl) {
+  // Agent: cyan background, User: muted background
+  const bgColor = isAgent ? semanticColors.indigoGlow : c.bgInner;
+  const textColor = isAgent ? semanticColors.indigo : c.text2;
+
+  if (showImage) {
     return (
       <View
         width={size}
@@ -55,6 +64,7 @@ export function Avatar({ name, imageUrl, size = 32, isAgent = false }: AvatarPro
               borderRadius: size / 2,
               objectFit: 'cover',
             }}
+            onError={onError}
           />
         ) : (
           <Image
@@ -64,6 +74,7 @@ export function Avatar({ name, imageUrl, size = 32, isAgent = false }: AvatarPro
               height: size,
               borderRadius: size / 2,
             }}
+            onError={onError}
           />
         )}
       </View>

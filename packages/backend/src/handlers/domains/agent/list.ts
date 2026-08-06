@@ -4,8 +4,9 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
-import type { Collection, Db } from 'mongodb'
-import { config } from '../../../config'
+import type { Collection, Db, Filter } from 'mongodb'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
+import { usableAgentFilter } from '../../../services/channel-authz'
 import type { WorkspaceService } from '../../../services/workspace-service'
 
 interface Agent {
@@ -23,6 +24,7 @@ interface Agent {
   availableProviders?: string[]
   selectedProviderId?: string | null
   selectedModelId?: string | null
+  appearance?: { color?: string; icon?: string }
 }
 
 interface AgentCore {
@@ -32,11 +34,6 @@ interface AgentCore {
 
 interface ListAgentData {
   workspaceId?: string
-}
-
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined
-  return `${config.static.baseUrl}/${avatarFilename}`
 }
 
 export function createListAgentsHandler(
@@ -62,15 +59,25 @@ export function createListAgentsHandler(
       console.log(`[agent.list] Listing global agents for user: ${ctx.userId}`)
     }
 
-    const query: Record<string, unknown> = {}
+    let agentList: Agent[]
     if (workspaceId) {
-      query.workspaceId = workspaceId
-    } else {
-      query.ownerId = ctx.userId
-      query.workspaceId = null
-    }
+      // Fetch workspace owner to also include their superagents
+      const workspacesCol = db.collection('workspaces')
+      const workspace = await workspacesCol.findOne({ workspaceId } as any)
+      const workspaceOwnerId = (workspace as any)?.ownerId
+      console.log(`[agent.list] ctx.userId=${ctx.userId}, workspaceOwnerId=${workspaceOwnerId}`)
 
-    const agentList = await agents.find(query).toArray()
+      // Return workspace agents + the caller's / workspace owner's superagents.
+      // Shared predicate with channel-creation authz (services/channel-authz.ts)
+      // so "agents you can list" and "agents you can start a channel with" can
+      // never drift apart — a drift would silently re-open the SEC-2 A2 hole.
+      agentList = await agents
+        .find(usableAgentFilter(ctx.userId, workspaceId, workspaceOwnerId) as Filter<Agent>)
+        .toArray()
+    } else {
+      // No workspaceId: return only superagents (global agents)
+      agentList = await agents.find({ ownerId: ctx.userId, workspaceId: { $in: [null, undefined] } } as any).toArray()
+    }
     console.log(`[agent.list] Found ${agentList.length} agents`)
 
     const cores = await agentCores.find({}).toArray()
@@ -95,6 +102,7 @@ export function createListAgentsHandler(
           availableProviders: a.availableProviders || [],
           selectedProviderId: a.selectedProviderId || null,
           selectedModelId: a.selectedModelId || null,
+          appearance: a.appearance,
         }
       }),
     }

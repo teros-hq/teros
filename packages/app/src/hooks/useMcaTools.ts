@@ -15,7 +15,7 @@
  */
 
 import { useCallback, useState } from 'react';
-import { getTerosClient } from '../../app/_layout';
+import { getTerosClient } from '../services/terosClientSingleton';
 
 interface UseMcaToolsOptions {
   /** Called when a tool execution starts */

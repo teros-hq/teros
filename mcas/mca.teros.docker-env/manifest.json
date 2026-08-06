@@ -13,11 +13,11 @@
     "email": "nira@teros.ai"
   },
   "availability": {
-    "enabled": true,
+    "enabled": false,
     "multi": false,
     "system": false,
     "hidden": true,
-    "role": "admin"
+    "role": "user"
   },
   "layers": {
     "tools": true,
@@ -44,8 +44,23 @@
       "DOCKER_HOST": "unix:///var/run/docker.sock",
       "DOCKER_ENV_BASE_DIR": "/tmp/teros-envs",
       "DOCKER_ENV_DOMAIN": "${DOCKER_ENV_DOMAIN}",
-      "WORKSPACE_HOST_PATH": "/data/volumes/users"
+      "WORKSPACE_HOST_PATH": "/data/volumes/workspaces"
     }
   },
-  "keywords": ["docker", "docker-compose", "environments", "ephemeral", "qa", "testing", "containers"]
+  "keywords": [
+    "docker",
+    "docker-compose",
+    "environments",
+    "ephemeral",
+    "qa",
+    "testing",
+    "containers"
+  ],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-26",
+      "notes": "Initial release — spin up live Docker environments from your projects, run commands, view logs, restart, rename, and tear them down"
+    }
+  ]
 }

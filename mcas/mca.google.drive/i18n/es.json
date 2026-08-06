@@ -1,0 +1,180 @@
+{
+  "name": "Google Drive",
+  "description": "Gestiona archivos y carpetas de Google Drive: sube, descarga, comparte, busca y lee contenido",
+  "changelog": [
+    {
+      "notes": "Versión inicial — navegar, subir, compartir y organizar archivos de Drive, leer Sheets y Slides, y editar Docs"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de Google Drive."
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "Lista archivos y carpetas de Google Drive. Soporta filtrado por carpeta, tipo de archivo y consulta de búsqueda.",
+      "params": {
+        "folderId": "Opcional: Lista los archivos dentro de una carpeta específica (usa el ID de la carpeta)",
+        "query": "Opcional: coincidencia de nombre de archivo (Drive `name contains`: prefijo/token, ej. 'Hola' coincide con 'HolaMundo' pero 'Mundo' no). NO es una consulta raw de Drive — para filtros de propietario/fecha/fullText usa `driveQuery`.",
+        "pageSize": "Opcional: Número de resultados a devolver (por defecto: 10, máximo: 100)",
+        "mimeType": "Opcional: Filtrar por tipo MIME (ej., 'application/pdf', 'application/vnd.google-apps.folder')",
+        "driveQuery": "Opcional avanzado: cláusula de consulta raw de la API v3 de Google Drive, combinada con AND junto al resto de filtros. Úsalo para filtros que `query` no puede expresar, ej. \"not 'me' in owners\", \"modifiedTime > '2024-01-01T00:00:00'\", \"fullText contains 'presupuesto'\". Dentro de un literal, escapa las comillas simples como \\' (sintaxis de Drive, NO '' ) — para una coincidencia simple de nombre de archivo prefiere el parámetro `query`, que escapa por ti."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Obtiene información detallada sobre un archivo o carpeta específica.",
+      "params": {
+        "fileId": "El ID del archivo o carpeta del que obtener información"
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "Descarga un archivo de Google Drive.",
+      "params": {
+        "fileId": "El ID del archivo a descargar",
+        "outputPath": "Opcional: Ruta local donde guardar el archivo (por defecto: directorio actual)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Sube un archivo local a Google Drive. Por defecto el archivo se guarda tal cual con su tipo real. Pasa convertTo para importarlo como un archivo nativo de Google (ej. un archivo HTML/Word → Google Doc editable).",
+      "params": {
+        "filePath": "Ruta local del archivo a subir",
+        "parentFolderId": "Opcional: ID de la carpeta de destino (por defecto: raíz)",
+        "fileName": "Opcional: Nombre personalizado para el archivo (por defecto: nombre original)",
+        "convertTo": "Opcional: convierte la subida en un archivo nativo de Google. \"document\" (ej. desde HTML/Word/Markdown) → Google Doc editable; \"spreadsheet\" (desde CSV/Excel) → Google Sheet; \"presentation\" (desde PPTX) → Google Slides. Omítelo para conservar el formato original."
+      }
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Crea un Google Doc nativo y editable a partir de contenido de texto. Pasa el cuerpo como HTML (por defecto, mejor formato), Markdown o texto plano — Drive lo convierte en un Google Doc real, NO en un archivo .html. Usa esta herramienta para crear documentos; usa upload-file solo para archivos locales existentes.",
+      "params": {
+        "title": "Título (nombre de archivo) del nuevo Google Doc",
+        "content": "El cuerpo del documento. Se interpreta según contentType.",
+        "contentType": "Cómo interpretar el contenido: \"html\" (por defecto, formato más rico), \"markdown\" o \"text\" (plano). Drive lo convierte en un Google Doc nativo.",
+        "parentFolderId": "Opcional: ID de la carpeta donde crear el documento (por defecto: raíz)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Crea una nueva carpeta en Google Drive.",
+      "params": {
+        "name": "Nombre de la carpeta a crear",
+        "parentFolderId": "Opcional: ID de la carpeta padre (por defecto: raíz)"
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Elimina un archivo o carpeta de Google Drive.",
+      "params": {
+        "fileId": "El ID del archivo o carpeta a eliminar"
+      }
+    },
+    "share-file": {
+      "name": "share-file",
+      "description": "Comparte un archivo o carpeta con permisos específicos.",
+      "params": {
+        "fileId": "El ID del archivo o carpeta a compartir",
+        "emailAddress": "Dirección de email con la que compartir",
+        "role": "Rol del permiso (por defecto: reader)"
+      }
+    },
+    "search-files": {
+      "name": "search-files",
+      "description": "Busca archivos en Google Drive por nombre, contenido o propiedades.",
+      "params": {
+        "searchTerm": "Coincidencia de nombre de archivo (Drive `name contains`: prefijo/token, no subcadena). Para filtros avanzados (propietarios, fechas, fullText) usa el parámetro `driveQuery` de list-files.",
+        "mimeType": "Opcional: Filtrar por tipo MIME",
+        "maxResults": "Número máximo de resultados (por defecto: 20)"
+      }
+    },
+    "move-file": {
+      "name": "move-file",
+      "description": "Mueve un archivo o carpeta a una ubicación diferente en Google Drive.",
+      "params": {
+        "fileId": "ID del archivo/carpeta a mover",
+        "newParentId": "ID de la carpeta de destino"
+      }
+    },
+    "copy-file": {
+      "name": "copy-file",
+      "description": "Crea una copia de un archivo en Google Drive.",
+      "params": {
+        "fileId": "ID del archivo a copiar",
+        "name": "Opcional: Nombre para la copia",
+        "parentFolderId": "Opcional: Copiar a una carpeta específica"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Obtiene el contenido en texto plano de un Google Doc o archivo de texto. NO extrae texto de archivos binarios (PDF, Word, etc.) — para esos, descarga el archivo y usa la herramienta \"file-to-markdown\" del file-processor.",
+      "params": {
+        "fileId": "ID del archivo a leer",
+        "mimeType": "Opcional: Tipo MIME de exportación para Google Docs (ej., 'text/plain', 'text/html')"
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "Lista todos los comentarios de un archivo.",
+      "params": {
+        "fileId": "ID del archivo",
+        "includeDeleted": "Opcional: Incluir comentarios eliminados (por defecto: false)",
+        "pageSize": "Opcional: Número máximo de comentarios a devolver (por defecto: 100)"
+      }
+    },
+    "get-comment": {
+      "name": "get-comment",
+      "description": "Obtiene un comentario específico por su ID.",
+      "params": {
+        "fileId": "ID del archivo",
+        "commentId": "ID del comentario"
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Crea un comentario en un archivo.",
+      "params": {
+        "fileId": "ID del archivo donde comentar",
+        "content": "El contenido de texto del comentario"
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "Actualiza el contenido de un comentario.",
+      "params": {
+        "fileId": "ID del archivo",
+        "commentId": "ID del comentario a actualizar",
+        "content": "Nuevo contenido del comentario"
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Elimina un comentario.",
+      "params": {
+        "fileId": "ID del archivo",
+        "commentId": "ID del comentario a eliminar"
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "Crea una respuesta a un comentario. También se puede usar para resolver un comentario.",
+      "params": {
+        "fileId": "ID del archivo",
+        "commentId": "ID del comentario al que responder",
+        "content": "El contenido de texto de la respuesta",
+        "action": "Opcional: Acción a realizar. Usa 'resolve' para resolver el comentario."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "Lista todas las respuestas a un comentario.",
+      "params": {
+        "fileId": "ID del archivo",
+        "commentId": "ID del comentario",
+        "pageSize": "Opcional: Número máximo de respuestas a devolver (por defecto: 100)"
+      }
+    }
+  }
+}

@@ -1,0 +1,362 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con Canva."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtiene el usuario autenticado de Canva. Devuelve { userId, teamId }. Parámetros: fields?, includeRaw.",
+      "params": {
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva /users/me. Por defecto false."
+      }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "Obtiene el perfil del usuario autenticado. Devuelve { displayName }. Parámetros: fields?, includeRaw.",
+      "params": {
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del perfil de Canva. Por defecto false."
+      }
+    },
+    "get-user-capabilities": {
+      "name": "get-user-capabilities",
+      "description": "Obtiene las capacidades del usuario autenticado (plan Canva + control por rol). Devuelve { capabilities: string[] }. Útil para determinar si funciones como plantillas de marca o autofill están disponibles antes de llamarlas. Parámetros: fields?, includeRaw.",
+      "params": {
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de capacidades de Canva. Por defecto false."
+      }
+    },
+    "list-designs": {
+      "name": "list-designs",
+      "description": "Lista diseños de la cuenta del usuario con búsqueda/ordenación/paginación. Devuelve filas curadas con URL de miniatura para vista previa inline. Parámetros: query?, ownership? (any|owned|shared), sortBy?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "Término de búsqueda para filtrar diseños.",
+        "ownership": "Filtrar por propiedad.",
+        "limit": "Resultados máximos. Mín 1, máx 100, por defecto 25.",
+        "continuation": "Token de paginación de la respuesta anterior.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-design": {
+      "name": "get-design",
+      "description": "Obtiene un diseño de Canva por ID. Devuelve detalle curado (id, title, ownerUserId/teamId, thumbnail*, edit/view URLs, pageCount, dates). Parámetros: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del diseño de Canva. Por defecto false."
+      }
+    },
+    "create-design": {
+      "name": "create-design",
+      "description": "Crea un nuevo diseño de Canva. Usa designType=custom con width+height para un lienzo personalizado, o uno de los nombres predefinidos (doc, whiteboard, presentation, email). Devuelve diseño curado. No reintentable. Parámetros: designType, title?, width?, height?, assetId?, fields?, includeRaw.",
+      "params": {
+        "designType": "Nombre predefinido o \"custom\" con width+height.",
+        "title": "Nombre opcional para el nuevo diseño.",
+        "width": "Ancho del lienzo en píxeles (solo custom).",
+        "height": "Alto del lienzo en píxeles (solo custom).",
+        "assetId": "ID opcional de asset para insertar en el nuevo diseño.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-design-pages": {
+      "name": "get-design-pages",
+      "description": "Obtiene las páginas de un diseño de Canva con miniaturas (devuelve dimensiones para diseños acotados). Devuelve { pages: [{ index, thumbnailUrl, width, height }] }. Parámetros: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de páginas de Canva. Por defecto false."
+      }
+    },
+    "get-design-export-formats": {
+      "name": "get-design-export-formats",
+      "description": "Lista los formatos de exportación soportados por un diseño específico. Úsalo antes de export-design para evitar errores 400 en formatos no soportados. Devuelve { formats: string[] }. Parámetros: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de formatos de Canva. Por defecto false."
+      }
+    },
+    "export-design": {
+      "name": "export-design",
+      "description": "Inicia un trabajo de exportación para un diseño. Devuelve trabajo curado (consulta get-export-job por id). Formatos: pdf, png, jpg, gif, pptx, mp4, html_bundle, html_standalone. transparentBackground solo para png. No reintentable. Parámetros: designId, format, quality?, width?, height?, pages?, transparentBackground?, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "quality": "Calidad JPEG 1-100 (solo jpg).",
+        "width": "Ancho de exportación en píxeles (png/jpg).",
+        "height": "Alto de exportación en píxeles (png/jpg).",
+        "pages": "Páginas a exportar (indexadas desde 1).",
+        "transparentBackground": "Solo PNG — mantener el lienzo transparente. Por defecto false.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-export-job": {
+      "name": "get-export-job",
+      "description": "Obtiene el estado/resultado de un trabajo de exportación. Devuelve trabajo curado { id, status, error, result.urls? }. Parámetros: exportId, fields?, includeRaw.",
+      "params": {
+        "exportId": "ID del trabajo de exportación devuelto por export-design.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "create-resize-job": {
+      "name": "create-resize-job",
+      "description": "Redimensiona un diseño a un nuevo tamaño (predefinido o personalizado). Asíncrono — devuelve trabajo curado (consulta get-resize-job). Usa designType=\"custom\" con width+height O un nombre predefinido. El resultado es un NUEVO diseño de nivel superior. No reintentable. Parámetros: designId, designType, width?, height?, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva de origen.",
+        "designType": "Nombre predefinido o \"custom\" con width+height.",
+        "width": "Nuevo ancho en píxeles (solo custom).",
+        "height": "Nuevo alto en píxeles (solo custom).",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-resize-job": {
+      "name": "get-resize-job",
+      "description": "Obtiene el estado/resultado de un trabajo de redimensionamiento. Devuelve trabajo curado { id, status, error, result: design? }. Parámetros: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "ID del trabajo devuelto por create-resize-job.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "import-design": {
+      "name": "import-design",
+      "description": "Importa un archivo externo (ej. PDF, PPTX, DOCX) como un nuevo diseño de Canva. Asíncrono — devuelve trabajo curado (consulta get-import-job por id). url debe ser http/https. No reintentable. Parámetros: title, url, mimeType?, fields?, includeRaw.",
+      "params": {
+        "title": "Título para el diseño importado.",
+        "url": "URL http/https públicamente accesible del archivo origen.",
+        "mimeType": "Sobrescritura opcional del tipo MIME.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-import-job": {
+      "name": "get-import-job",
+      "description": "Obtiene el estado/resultado de un trabajo de importación de diseño por URL. Devuelve trabajo curado { id, status, error, result.designId? }. Parámetros: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "ID del trabajo devuelto por import-design.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "Lista elementos en una carpeta (diseños, subcarpetas, imágenes, vídeos). Usa folderId=\"root\" para el nivel superior. Devuelve filas curadas con URL de miniatura. Parámetros: folderId, itemTypes?, sortBy?, pinStatus? (pinned|unpinned), limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "folderId": "ID de carpeta ('root' para nivel superior).",
+        "itemTypes": "Filtrar por tipo (ej. [\"design\", \"image\", \"video\", \"folder\"]).",
+        "sortBy": "ej. modified_descending, title_ascending.",
+        "pinStatus": "Filtrar elementos fijados.",
+        "limit": "Resultados máximos. Mín 1, máx 100, por defecto 50.",
+        "continuation": "Token de paginación.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-folder": {
+      "name": "get-folder",
+      "description": "Obtiene metadatos de una carpeta. Devuelve { id, name, thumbnailUrl, dates }. Parámetros: folderId, fields?, includeRaw.",
+      "params": {
+        "folderId": "ID de carpeta de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de carpeta de Canva. Por defecto false."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Crea una nueva carpeta bajo un padre. Usa parentFolderId=\"root\" para el nivel superior. Devuelve carpeta curada. No reintentable. Parámetros: name, parentFolderId, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre de la carpeta.",
+        "parentFolderId": "ID de carpeta padre (\"root\" para nivel superior).",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de carpeta de Canva. Por defecto false."
+      }
+    },
+    "update-folder": {
+      "name": "update-folder",
+      "description": "Renombra una carpeta. Idempotente. Devuelve carpeta curada. Parámetros: folderId, name, fields?, includeRaw.",
+      "params": {
+        "folderId": "ID de carpeta de Canva.",
+        "name": "Nuevo nombre de la carpeta.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de carpeta de Canva. Por defecto false."
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "Elimina una carpeta. Los elementos de la carpeta se mueven al padre. Idempotente — eliminaciones repetidas devuelven 404. Devuelve { folderId, deleted: true }. Parámetros: folderId.",
+      "params": {
+        "folderId": "ID de carpeta de Canva."
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "Mueve un elemento (diseño / carpeta / asset) a otra carpeta. Idempotente si el destino no cambia. Devuelve { itemId, toFolderId, moved: true }. Parámetros: itemId, toFolderId.",
+      "params": {
+        "itemId": "ID del elemento a mover.",
+        "toFolderId": "ID de carpeta de destino (usa \"root\" para nivel superior)."
+      }
+    },
+    "upload-asset": {
+      "name": "upload-asset",
+      "description": "Sube un asset (imagen, vídeo, audio) a la biblioteca del usuario desde una URL pública. Asíncrono — devuelve trabajo curado (consulta get-asset-upload-job por id). url debe ser http/https. No reintentable. Parámetros: name, url, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre visible para el nuevo asset.",
+        "url": "URL http/https públicamente accesible del archivo.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-asset-upload-job": {
+      "name": "get-asset-upload-job",
+      "description": "Obtiene el estado/resultado de un trabajo de subida de asset por URL. Devuelve trabajo curado { id, status, error, result: {forma de asset con thumbnailUrl}? }. Parámetros: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "ID del trabajo devuelto por upload-asset.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-asset": {
+      "name": "get-asset",
+      "description": "Obtiene metadatos de un asset. Devuelve { id, name, type, thumbnail*, tags, metadata, dates }. Parámetros: assetId, fields?, includeRaw.",
+      "params": {
+        "assetId": "ID de asset de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de asset de Canva. Por defecto false."
+      }
+    },
+    "update-asset": {
+      "name": "update-asset",
+      "description": "Actualiza metadatos de un asset (renombrar, reetiquetar). Idempotente — el mismo payload produce el mismo estado final. Devuelve asset curado. Parámetros: assetId, name?, tags?, fields?, includeRaw.",
+      "params": {
+        "assetId": "ID de asset de Canva.",
+        "name": "Nuevo nombre visible.",
+        "tags": "Reemplazar etiquetas en su totalidad (semántica PATCH de Canva).",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de asset de Canva. Por defecto false."
+      }
+    },
+    "delete-asset": {
+      "name": "delete-asset",
+      "description": "Elimina un asset (se mueve a la papelera). Idempotente — eliminaciones repetidas devuelven 404 (ya eliminado). Devuelve { assetId, deleted: true }. Parámetros: assetId.",
+      "params": {
+        "assetId": "ID de asset de Canva."
+      }
+    },
+    "list-brand-templates": {
+      "name": "list-brand-templates",
+      "description": "Lista plantillas de marca a las que el usuario tiene acceso (requiere Canva Enterprise). Devuelve filas curadas con URL de miniatura. Parámetros: query?, ownership?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "Término de búsqueda para filtrar plantillas.",
+        "ownership": "Filtrar por propiedad.",
+        "limit": "Resultados máximos. Mín 1, máx 100, por defecto 25.",
+        "continuation": "Token de paginación.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-brand-template": {
+      "name": "get-brand-template",
+      "description": "Obtiene metadatos de una plantilla de marca. Devuelve detalle curado (id, title, thumbnailUrl, viewUrl, createUrl, dates). Parámetros: brandTemplateId, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "ID de plantilla de marca de Canva.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-brand-template-dataset": {
+      "name": "get-brand-template-dataset",
+      "description": "Obtiene el dataset de autofill (campos con nombre como {title}, {body}, {image}) para una plantilla de marca. La estructura devuelta refleja Canva — útil antes de llamar a autofill-design. Parámetros: brandTemplateId.",
+      "params": {
+        "brandTemplateId": "ID de plantilla de marca de Canva."
+      }
+    },
+    "autofill-design": {
+      "name": "autofill-design",
+      "description": "Crea un diseño autorellenando una plantilla de marca con campos con nombre. Las claves de data deben coincidir con el dataset de la plantilla (llama primero a get-brand-template-dataset). columnConfigs: definiciones opcionales de campos para datos de gráficos. Asíncrono — devuelve trabajo curado (consulta get-autofill-job). No reintentable. Parámetros: brandTemplateId, data, title?, columnConfigs?, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "ID de plantilla de marca de Canva.",
+        "title": "Título para el nuevo diseño.",
+        "data": "Nombre de campo → objeto de valor que coincide con el dataset de la plantilla.",
+        "columnConfigs": "Configuraciones opcionales de columnas para campos de gráficos (añadido 2026-03). Mapa nombre de campo → { type, ... }.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "get-autofill-job": {
+      "name": "get-autofill-job",
+      "description": "Obtiene el estado/resultado de un trabajo de autofill. Devuelve trabajo curado { id, status, error, result: design? }. Parámetros: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "ID del trabajo devuelto por autofill-design.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del trabajo de Canva. Por defecto false."
+      }
+    },
+    "create-thread": {
+      "name": "create-thread",
+      "description": "Crea un hilo de comentarios en un diseño. message ≤ 2048 caracteres. Devuelve hilo curado. No reintentable. Parámetros: designId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "message": "Cuerpo del comentario (texto plano, máx 2048 caracteres).",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del hilo de Canva. Por defecto false."
+      }
+    },
+    "get-thread": {
+      "name": "get-thread",
+      "description": "Obtiene un hilo de comentarios por ID. Devuelve hilo curado. Parámetros: designId, threadId, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva al que pertenece el hilo.",
+        "threadId": "ID del hilo de comentarios.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda del hilo de Canva. Por defecto false."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "Lista respuestas a un hilo de comentarios. Devuelve filas curadas. Parámetros: designId, threadId, limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva al que pertenece el hilo.",
+        "threadId": "ID del hilo de comentarios.",
+        "limit": "Resultados máximos. Mín 1, máx 100, por defecto 50.",
+        "continuation": "Token de paginación.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "Responde a un hilo de comentarios. message ≤ 2048 caracteres. Devuelve respuesta curada. No reintentable. Parámetros: designId, threadId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva al que pertenece el hilo.",
+        "threadId": "ID del hilo de comentarios.",
+        "message": "Cuerpo de la respuesta (texto plano, máx 2048 caracteres).",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    },
+    "get-reply": {
+      "name": "get-reply",
+      "description": "Obtiene una única respuesta dentro de un hilo de comentarios. Devuelve respuesta curada. Parámetros: designId, threadId, replyId, fields?, includeRaw.",
+      "params": {
+        "designId": "ID del diseño de Canva.",
+        "threadId": "ID del hilo de comentarios.",
+        "replyId": "ID de la respuesta.",
+        "fields": "Sobrescribir la whitelist por defecto.",
+        "includeRaw": "Devolver la respuesta cruda de Canva. Por defecto false."
+      }
+    }
+  },
+  "name": "Canva",
+  "description": "Gestión de diseños de Canva — diseños, exportaciones, redimensionamientos, carpetas, assets, plantillas de marca, autofill y comentarios vía la API Canva Connect.",
+  "changelog": [
+    {
+      "notes": "Crear, exportar, redimensionar e importar diseños, organizar carpetas y assets, autorellenar plantillas de marca y gestionar comentarios"
+    }
+  ]
+}

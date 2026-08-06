@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest, formatTask } from '../lib';
 
 export const getTasks: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get tasks from a ClickUp list with optional filters.',
   parameters: {
     type: 'object',
