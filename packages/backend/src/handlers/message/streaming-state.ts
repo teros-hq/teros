@@ -10,6 +10,7 @@
 
 import type { Message } from '@teros/shared';
 import type { ChannelManager } from '../../services/channel-manager';
+import type { EventHandler } from '../event-handler';
 
 /**
  * Represents a single tool call being tracked
@@ -22,22 +23,37 @@ interface TrackedToolCall {
   input?: Record<string, any>;
 }
 
+type ToolStatus = 'running' | 'pending_permission' | 'pending_user_input';
+
+export interface UpdateToolStatusOptions {
+  toolCallId?: string;
+  /** Bypass channel for callers that already resolved the binding via `McaToolExecutor.getToolCallContext`. */
+  messageId?: string;
+  /** Bypass companion to `messageId`: display name from the executor's stable map. */
+  toolName?: string;
+  permissionRequestId?: string;
+  appId?: string;
+  irreversible?: boolean;
+  /** Inline user form (request-user-input) — set with status 'pending_user_input'. */
+  formRequestId?: string;
+}
+
+export interface ToolCallInput {
+  toolCallId: string;
+  toolName: string;
+  mcaId?: string;
+  input?: Record<string, any>;
+}
+
 export interface StreamingState {
   currentTextMessageId: string | null;
   currentTextContent: string;
-  /** @deprecated Use activeToolCalls Map instead */
-  currentToolMessageId: string | null;
-  /** @deprecated Use activeToolCalls Map instead */
-  currentToolCall: {
-    toolCallId: string;
-    toolName: string;
-    mcaId?: string;
-    input?: Record<string, any>;
-  } | null;
   /** Map of active tool calls keyed by toolCallId */
   activeToolCalls: Map<string, TrackedToolCall>;
   savedMessages: Array<{ messageId: string; type: string }>;
   lastContentType: 'text' | 'tool' | null;
+  /** Pre-reserved id for the first bubble of the turn; shared with `PromptInput.assistantTurnId`. */
+  pendingSeedId: string | null;
 }
 
 export interface StreamingStateDeps {
@@ -47,28 +63,218 @@ export interface StreamingStateDeps {
   broadcastToChannel: (channelId: string, message: any) => void;
   /** Sender info for assistant messages */
   agentSender?: { type: 'agent'; id: string; name: string };
+  /** EventHandler for emitting observer events (channel_permission, etc.) */
+  eventHandler?: EventHandler;
+  /** Mirror toolCallId → messageId in McaToolExecutor's stable store to survive concurrent closure rebinds. */
+  trackToolCall?: (toolCallId: string, messageId: string, toolName: string) => void;
+  untrackToolCall?: (toolCallId: string) => void;
 }
 
 /**
- * Creates initial streaming state
+ * TER-321 invariant: each call to `processAgentResponse` MUST create its
+ * own state instance — sharing would re-introduce the cross-session race
+ * that TER-321/267 fixed.
  */
-export function createStreamingState(): StreamingState {
+export function createStreamingState(assistantTurnSeedId?: string): StreamingState {
   return {
     currentTextMessageId: null,
     currentTextContent: '',
-    currentToolMessageId: null,
-    currentToolCall: null,
     activeToolCalls: new Map(),
     savedMessages: [],
     lastContentType: null,
+    pendingSeedId: assistantTurnSeedId ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Layered helpers — TER-351
+// ---------------------------------------------------------------------------
+// `updateToolStatus` mixes 4 concerns: state lookup (Map), DB persist, WS
+// broadcast, and optional observer event. Each is a separate, testable layer.
+// `updateToolStatus` is the orchestrator that composes them in the right order.
+
+/** Shape returned by `buildToolStatusContent`. Used as both the DB write payload
+ * and the basis of the broadcast event. */
+export interface ToolStatusContent {
+  type: 'tool_execution';
+  toolCallId: string;
+  toolName: string;
+  mcaId?: string;
+  input?: Record<string, any>;
+  status: 'pending' | 'pending_permission' | 'pending_user_input' | 'running' | 'completed' | 'failed';
+  permissionRequestId?: string;
+  appId?: string;
+  permissionRequestedAt?: string;
+  irreversible?: boolean;
+  formRequestId?: string;
+  formRequestedAt?: string;
+}
+
+interface ToolStatusOptions {
+  toolCallId?: string;
+  permissionRequestId?: string;
+  appId?: string;
+  irreversible?: boolean;
+  formRequestId?: string;
+}
+
+/**
+ * Pure builder: produces the persisted content + permissionRequestedAt timestamp
+ * (only when status = 'pending_permission').
+ */
+export function buildToolStatusContent(
+  tool: { toolCallId: string; toolName: string; mcaId?: string; input?: Record<string, any> },
+  status: ToolStatusContent['status'],
+  options: ToolStatusOptions | undefined,
+  now: Date = new Date(),
+): { content: ToolStatusContent; permissionRequestedAt?: string } {
+  const content: ToolStatusContent = {
+    type: 'tool_execution',
+    toolCallId: tool.toolCallId,
+    toolName: tool.toolName,
+    mcaId: tool.mcaId,
+    input: tool.input,
+    status,
+  };
+  let permissionRequestedAt: string | undefined;
+  if (status === 'pending_permission' && options) {
+    if (options.permissionRequestId) content.permissionRequestId = options.permissionRequestId;
+    if (options.appId) content.appId = options.appId;
+    if (options.irreversible) content.irreversible = true;
+    permissionRequestedAt = now.toISOString();
+    content.permissionRequestedAt = permissionRequestedAt;
+  }
+  if (status === 'pending_user_input' && options?.formRequestId) {
+    content.formRequestId = options.formRequestId;
+    content.formRequestedAt = now.toISOString();
+  }
+  return { content, permissionRequestedAt };
+}
+
+/**
+ * Builds the WS chunk emitted to the channel when a tool's status changes.
+ * Pure — no side effects.
+ */
+export function buildToolStatusChunk(args: {
+  channelId: string;
+  messageId: string;
+  toolCallId: string;
+  status: ToolStatusContent['status'];
+  permissionRequestId?: string;
+  appId?: string;
+  permissionRequestedAt?: string;
+  irreversible?: boolean;
+  formRequestId?: string;
+  now?: number;
+}): Record<string, any> {
+  const includePermFields =
+    args.status === 'pending_permission' && !!args.permissionRequestId;
+  const includeFormFields =
+    args.status === 'pending_user_input' && !!args.formRequestId;
+  return {
+    type: 'message_chunk',
+    channelId: args.channelId,
+    messageId: args.messageId,
+    chunkType: 'tool_status_update',
+    toolCallId: args.toolCallId,
+    toolStatus: args.status,
+    ...(includePermFields
+      ? {
+          permissionRequestId: args.permissionRequestId,
+          appId: args.appId,
+          ...(args.permissionRequestedAt ? { permissionRequestedAt: args.permissionRequestedAt } : {}),
+          ...(args.irreversible ? { irreversible: true } : {}),
+        }
+      : {}),
+    ...(includeFormFields ? { formRequestId: args.formRequestId } : {}),
+    timestamp: args.now ?? Date.now(),
+  };
+}
+
+/**
+ * DB persist layer. Pure delegation — kept as a function for testability
+ * (swap channelManager mock in tests).
+ */
+export async function persistToolStatus(
+  channelManager: ChannelManager,
+  messageId: string,
+  content: ToolStatusContent,
+): Promise<void> {
+  await channelManager.updateMessageContent(messageId, content);
+}
+
+/**
+ * Field-level persist for the desynced-map case: writes only the status
+ * transition (+ permission fields), leaving the toolName/mcaId/input that
+ * were persisted at tool_call_start untouched. Used when the tool is absent
+ * from THIS streamState — a full-content write would clobber those fields
+ * with blanks.
+ */
+export async function persistToolStatusFields(
+  channelManager: ChannelManager,
+  messageId: string,
+  content: ToolStatusContent,
+): Promise<void> {
+  const fields: Record<string, any> = { status: content.status };
+  if (content.permissionRequestId) fields.permissionRequestId = content.permissionRequestId;
+  if (content.appId) fields.appId = content.appId;
+  if (content.permissionRequestedAt) fields.permissionRequestedAt = content.permissionRequestedAt;
+  if (content.irreversible) fields.irreversible = true;
+  if (content.formRequestId) fields.formRequestId = content.formRequestId;
+  if (content.formRequestedAt) fields.formRequestedAt = content.formRequestedAt;
+  await channelManager.updateMessageContentFields(messageId, fields);
+}
+
+/**
+ * Observer notification layer — emits `channel_permission` event to the parent
+ * channel when the executing channel has an `originChannelId` (delegate-task,
+ * voice worker, etc.). Errors are logged but never propagate (fire-and-forget).
+ */
+export async function notifyObserverPermission(args: {
+  channelManager: ChannelManager;
+  eventHandler: EventHandler;
+  channelId: string;
+  toolName: string;
+  appId?: string;
+  permissionRequestId?: string;
+}): Promise<void> {
+  try {
+    const channel = await args.channelManager.getChannel(args.channelId);
+    const observerChannelId = channel?.originChannelId;
+    if (!observerChannelId) return;
+    const observedChannelName = channel?.metadata?.name || args.channelId;
+    await args.eventHandler.handleScheduledEvent({
+      channelId: observerChannelId,
+      message: `${observedChannelName} needs approval for: ${args.toolName}`,
+      eventType: 'channel_permission',
+      metadata: {
+        observedChannelId: args.channelId,
+        observedChannelName,
+        toolName: args.toolName,
+        appId: args.appId,
+        permissionRequestId: args.permissionRequestId,
+      },
+    });
+    console.log(`🔔 channel_permission event sent to observer channel ${observerChannelId}`);
+  } catch (err) {
+    console.error('[StreamingState] Error sending channel_permission event:', err);
+  }
 }
 
 /**
  * Creates streaming state helpers for completing messages
  */
 export function createStreamingHelpers(state: StreamingState, deps: StreamingStateDeps) {
-  const { channelManager, channelId, agentId, broadcastToChannel, agentSender } = deps;
+  const {
+    channelManager,
+    channelId,
+    agentId,
+    broadcastToChannel,
+    agentSender,
+    eventHandler,
+    trackToolCall,
+    untrackToolCall,
+  } = deps;
 
   /**
    * Handle __teros_message__ in tool output (multimedia messages)
@@ -140,6 +346,15 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
           mediaContent = {
             type: 'html_file',
             filePath: mediaMsg.filePath,
+            caption: mediaMsg.caption,
+            workspaceId: mediaMsg.workspaceId,
+          };
+          break;
+        case 'browser_live_view':
+          mediaContent = {
+            type: 'browser_live_view',
+            sessionId: mediaMsg.sessionId,
+            url: mediaMsg.url,
             caption: mediaMsg.caption,
           };
           break;
@@ -222,86 +437,88 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
      * @param options - Additional options for pending_permission status
      */
     async updateToolStatus(
-      status: 'running' | 'pending_permission',
-      options?: { permissionRequestId?: string; appId?: string; toolCallId?: string },
+      status: ToolStatus,
+      options?: UpdateToolStatusOptions,
     ): Promise<void> {
-      // Get the tool call - prefer explicit toolCallId, fall back to current (for backwards compat)
-      const toolCallId = options?.toolCallId || state.currentToolCall?.toolCallId;
+      const toolCallId = options?.toolCallId;
       if (!toolCallId) {
         console.warn('[StreamingState] updateToolStatus called without toolCallId');
         return;
       }
 
+      // The streamState tool map is per-turn and ephemeral: a reload/resume
+      // (TER-267 isolation) can leave it empty while the tool is still tracked
+      // by the longer-lived McaToolExecutor. `messageId` therefore falls back to
+      // the value the caller already resolved via getToolCallContext — the
+      // `options.messageId` "bypass channel". Without this, pending_permission
+      // updates were silently dropped and the ControlsBar never appeared. TER-369.
       const trackedTool = state.activeToolCalls.get(toolCallId);
-      if (!trackedTool) {
-        // Fallback to legacy behavior for backwards compatibility
-        const toolCall = state.currentToolCall;
-        const messageId = state.currentToolMessageId;
-
-        if (messageId && toolCall && toolCall.toolCallId === toolCallId) {
-          const content: Record<string, any> = {
-            type: 'tool_execution',
-            toolCallId: toolCall.toolCallId,
-            toolName: toolCall.toolName,
-            mcaId: toolCall.mcaId,
-            input: toolCall.input,
-            status,
-          };
-
-          if (status === 'pending_permission' && options) {
-            if (options.permissionRequestId) {
-              content.permissionRequestId = options.permissionRequestId;
-            }
-            if (options.appId) {
-              content.appId = options.appId;
-            }
-          }
-
-          await channelManager.updateMessageContent(messageId, content);
-          broadcastToChannel(channelId, {
-            type: 'message_chunk',
-            channelId,
-            messageId,
-            chunkType: 'tool_status_update',
-            toolCallId: toolCall.toolCallId,
-            toolStatus: status,
-            timestamp: Date.now(),
-          });
-          console.log(`🔧 Updated tool status to: ${status} (legacy path)`);
-        }
+      const messageId = trackedTool?.messageId ?? options?.messageId;
+      if (!messageId) {
+        console.warn(
+          '[StreamingState] updateToolStatus: no messageId (tool absent from streamState and no options.messageId)',
+          { toolCallId, status },
+        );
         return;
       }
-
-      const content: Record<string, any> = {
-        type: 'tool_execution',
-        toolCallId: trackedTool.toolCallId,
-        toolName: trackedTool.toolName,
-        mcaId: trackedTool.mcaId,
-        input: trackedTool.input,
-        status,
+      const target = {
+        messageId,
+        tool: {
+          toolCallId,
+          toolName: trackedTool?.toolName ?? options?.toolName ?? '',
+          mcaId: trackedTool?.mcaId,
+          input: trackedTool?.input,
+        },
       };
 
-      // Include permission info for pending_permission status (needed for reload recovery)
-      if (status === 'pending_permission' && options) {
-        if (options.permissionRequestId) {
-          content.permissionRequestId = options.permissionRequestId;
-        }
-        if (options.appId) {
-          content.appId = options.appId;
-        }
+      const { content, permissionRequestedAt } = buildToolStatusContent(
+        target.tool,
+        status,
+        options,
+      );
+
+      if (trackedTool) {
+        await persistToolStatus(channelManager, target.messageId, content);
+      } else {
+        // Desynced map: the long-lived ChannelWorker replays turns ≥2 through
+        // the first turn's turnDriver, so the tool was registered in ANOTHER
+        // turn's streamState (same frozen-dep disease as TER-386). A full
+        // write here would clobber the record created at tool_call_start, but
+        // skipping the persist (the old behavior) left the DB on 'pending'
+        // forever: the permission widget never survived a reload and restart
+        // restore couldn't find the request. Write just the status fields.
+        await persistToolStatusFields(channelManager, target.messageId, content);
       }
 
-      await channelManager.updateMessageContent(trackedTool.messageId, content);
-      broadcastToChannel(channelId, {
-        type: 'message_chunk',
+      broadcastToChannel(
         channelId,
-        messageId: trackedTool.messageId,
-        chunkType: 'tool_status_update',
-        toolCallId: trackedTool.toolCallId,
-        toolStatus: status,
-        timestamp: Date.now(),
-      });
-      console.log(`🔧 Updated tool ${trackedTool.toolName} (${toolCallId}) status to: ${status}`);
+        buildToolStatusChunk({
+          channelId,
+          messageId: target.messageId,
+          toolCallId: target.tool.toolCallId,
+          status,
+          permissionRequestId: options?.permissionRequestId,
+          appId: options?.appId,
+          permissionRequestedAt,
+          irreversible: options?.irreversible,
+          formRequestId: options?.formRequestId,
+        }),
+      );
+      console.log(
+        `🔧 Updated tool ${target.tool.toolName || toolCallId} (${toolCallId}) status to: ${status}`,
+      );
+
+      if (status === 'pending_permission' && eventHandler) {
+        await notifyObserverPermission({
+          channelManager,
+          eventHandler,
+          channelId,
+          toolName: target.tool.toolName,
+          appId: options?.appId,
+          permissionRequestId: options?.permissionRequestId,
+        });
+
+      }
     },
 
     /**
@@ -317,61 +534,19 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
       output?: string;
       error?: string;
       duration?: number;
+      attachments?: Array<{ url: string; mime: string; filename?: string }>;
     }): Promise<void> {
-      // Get the tool call - prefer explicit toolCallId, fall back to current (for backwards compat)
-      const toolCallId = toolData.toolCallId || state.currentToolCall?.toolCallId;
+      const toolCallId = toolData.toolCallId;
       if (!toolCallId) {
         console.warn('[StreamingState] completeToolMessage called without toolCallId');
         return;
       }
-
       const trackedTool = state.activeToolCalls.get(toolCallId);
       if (!trackedTool) {
-        // Fallback to legacy behavior for backwards compatibility
-        const toolCall = state.currentToolCall;
-        const messageId = state.currentToolMessageId;
-
-        if (messageId && toolCall && toolCall.toolCallId === toolCallId) {
-          const toolMessage: Message = {
-            messageId,
-            channelId,
-            role: 'assistant',
-            agentId,
-            sender: agentSender,
-            content: {
-              type: 'tool_execution',
-              toolCallId: toolCall.toolCallId,
-              toolName: toolCall.toolName,
-              mcaId: toolCall.mcaId,
-              input: toolCall.input,
-              status: toolData.status,
-              output: toolData.output,
-              error: toolData.error,
-              duration: toolData.duration,
-            },
-            timestamp: new Date().toISOString(),
-          };
-
-          await channelManager.updateMessageContent(messageId, toolMessage.content);
-          broadcastToChannel(channelId, {
-            type: 'message',
-            channelId,
-            message: toolMessage,
-          });
-
-          state.savedMessages.push({ messageId, type: 'tool_execution' });
-          console.log(`🔧 Updated tool message: ${messageId} (legacy path)`);
-
-          await handleTerosMessage(toolData.output);
-
-          // Reset legacy state
-          state.currentToolMessageId = null;
-          state.currentToolCall = null;
-        }
+        // tool_result for a turn we never owned — silent drop.
         return;
       }
 
-      // Use the tracked tool call data
       const toolMessage: Message = {
         messageId: trackedTool.messageId,
         channelId,
@@ -391,29 +566,14 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
         },
         timestamp: new Date().toISOString(),
       };
-
-      // Update existing message (was saved with 'pending' status in startToolMessage)
       await channelManager.updateMessageContent(trackedTool.messageId, toolMessage.content);
-      broadcastToChannel(channelId, {
-        type: 'message',
-        channelId,
-        message: toolMessage,
-      });
-
+      broadcastToChannel(channelId, { type: 'message', channelId, message: toolMessage });
       state.savedMessages.push({ messageId: trackedTool.messageId, type: 'tool_execution' });
       console.log(`🔧 Completed tool ${trackedTool.toolName} (${toolCallId}): ${toolData.status}`);
-
-      // Check for __teros_message__ (multimedia message from agent)
       await handleTerosMessage(toolData.output);
 
-      // Remove from active tool calls
       state.activeToolCalls.delete(toolCallId);
-
-      // Also clear legacy state if it matches
-      if (state.currentToolCall?.toolCallId === toolCallId) {
-        state.currentToolMessageId = null;
-        state.currentToolCall = null;
-      }
+      if (untrackToolCall) untrackToolCall(toolCallId);
     },
 
     /**
@@ -430,7 +590,12 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
      * Start a new text message block
      */
     startTextMessage(): string {
-      state.currentTextMessageId = channelManager.createMessageId();
+      if (state.pendingSeedId) {
+        state.currentTextMessageId = state.pendingSeedId;
+        state.pendingSeedId = null;
+      } else {
+        state.currentTextMessageId = channelManager.createMessageId();
+      }
       state.currentTextContent = '';
       console.log(`📝 New text message started: ${state.currentTextMessageId}`);
       return state.currentTextMessageId;
@@ -451,15 +616,16 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
      * 
      * Now tracks multiple concurrent tool calls using a Map keyed by toolCallId.
      */
-    async startToolMessage(toolCall: StreamingState['currentToolCall']): Promise<string> {
-      const messageId = channelManager.createMessageId();
-      
-      // Legacy state (for backwards compatibility)
-      state.currentToolMessageId = messageId;
-      state.currentToolCall = toolCall;
+    async startToolMessage(toolCall: ToolCallInput | null): Promise<string> {
+      let messageId: string;
+      if (state.pendingSeedId) {
+        messageId = state.pendingSeedId;
+        state.pendingSeedId = null;
+      } else {
+        messageId = channelManager.createMessageId();
+      }
       state.lastContentType = 'tool';
 
-      // Track in the Map for concurrent tool support
       if (toolCall) {
         state.activeToolCalls.set(toolCall.toolCallId, {
           messageId,
@@ -468,6 +634,10 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
           mcaId: toolCall.mcaId,
           input: toolCall.input,
         });
+
+        if (trackToolCall) {
+          trackToolCall(toolCall.toolCallId, messageId, toolCall.toolName);
+        }
 
         console.log(`🔧 New tool message started: ${messageId} for ${toolCall.toolName} (${toolCall.toolCallId})`);
         console.log(`🔧 Active tool calls: ${state.activeToolCalls.size}`);

@@ -6,7 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface LinkConversationData {
   taskId: string
@@ -16,19 +16,8 @@ interface LinkConversationData {
 export function createLinkConversationHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function linkConversation(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as LinkConversationData
     const { taskId, channelId } = data
@@ -58,7 +47,7 @@ export function createLinkConversationHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task })
 
     return { task }
   }

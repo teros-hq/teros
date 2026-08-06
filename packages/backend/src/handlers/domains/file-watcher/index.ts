@@ -5,7 +5,7 @@
  *   file.watch   → Start watching a file; subscribes client to `file:<path>` channel
  *   file.unwatch → Stop watching a file; unsubscribes client from `file:<path>` channel
  *
- * Real-time events (pushed via SubscriptionManager):
+ * Real-time events (pushed via PubSubService):
  *   { type: 'event', event: 'file.changed', channel: 'file:<path>', data: { filePath, content } }
  *
  * Lifecycle:
@@ -18,7 +18,7 @@ import type { WsRouter } from '../../../ws-framework/WsRouter'
 import type { Db } from 'mongodb'
 import type { VolumeService } from '../../../services/volume-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SubscriptionManager } from '../../../ws-framework/SubscriptionManager'
+import type { PubSubService } from '../../../services/pubsub-service'
 import type { WebSocket } from 'ws'
 import type { WatcherRegistry } from './watch'
 import { createWatchFileHandler } from './watch'
@@ -35,7 +35,9 @@ export interface FileWatcherDomainDeps {
   db: Db
   volumeService: VolumeService
   workspaceService: WorkspaceService | null
-  subscriptionManager: SubscriptionManager
+  pubSubService: PubSubService
+  /** Resolve sessionId from a WebSocket connection */
+  getSessionId: (ws: WebSocket) => string | undefined
   /** Returns (or lazily creates) the per-connection watcher registry */
   getRegistry: (ws: WebSocket) => WatcherRegistry
 }

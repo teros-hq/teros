@@ -4,7 +4,6 @@
 
 import {
   Archive,
-  ChevronRight,
   File,
   FileCode,
   FileSpreadsheet,
@@ -14,12 +13,13 @@ import {
   Image as ImageIcon,
   Music,
   Presentation,
-} from '@tamagui/lucide-icons';
+  colors,
+  useColors,
+  useMcaTheme,
+} from '../../primitives';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Linking } from 'react-native';
+import { Linking } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
-import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
 
 // ============================================================================
 // Constants
@@ -28,17 +28,12 @@ import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
 const DRIVE_ICON = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
 
 // ============================================================================
-// Colors
+// File-type colors — semantic theme-agnostic (file format identity,
+// same hue across themes by design). Single source of truth: both
+// `getFileTypeInfo()` and `useDriveColors()` reference this object.
 // ============================================================================
 
-export const colors = {
-  // Google Drive brand colors
-  driveBlue: '#4285F4',
-  driveGreen: '#0F9D58',
-  driveYellow: '#F4B400',
-  driveRed: '#DB4437',
-
-  // File type colors
+const FILE_TYPE_COLORS = {
   folder: '#F4B400',
   document: '#4285F4',
   spreadsheet: '#0F9D58',
@@ -50,38 +45,48 @@ export const colors = {
   archive: '#607D8B',
   code: '#795548',
   other: '#9E9E9E',
+} as const;
 
-  // Status
-  success: '#22c55e',
-  running: '#4285F4',
-  failed: '#ef4444',
+// ============================================================================
+// Colors — Renderer UX Guide v2 §5 (theme-adaptive).
+// ============================================================================
 
-  // Status glow
-  glowSuccess: 'rgba(34, 197, 94, 0.5)',
-  glowRunning: 'rgba(66, 133, 244, 0.5)',
-  glowFailed: 'rgba(239, 68, 68, 0.5)',
+export function useDriveColors() {
+  const c = useColors();
+  const theme = useMcaTheme();
+  const isDark = theme === 'dark';
 
-  // Badges
-  badgeSuccess: { text: '#86efac', bg: 'rgba(34,197,94,0.1)' },
-  badgeError: { text: '#fca5a5', bg: 'rgba(239,68,68,0.1)' },
-  badgeInfo: { text: '#93c5fd', bg: 'rgba(66,133,244,0.1)' },
-  badgeWarning: { text: '#fcd34d', bg: 'rgba(251,191,36,0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255,255,255,0.06)' },
+  return {
+    // Google Drive brand (theme-agnostic — official Google brand kit)
+    driveBlue: '#4285F4',
 
-  // Text
-  primary: '#d4d4d8',
-  secondary: '#9ca3af',
-  muted: '#52525b',
-  bright: '#e4e4e7',
+    // File type colors (semantic theme-agnostic — spread from FILE_TYPE_COLORS
+    // so there is a single source of truth for file-format identity hues)
+    ...FILE_TYPE_COLORS,
 
-  // Backgrounds
-  bgInner: 'rgba(0,0,0,0.2)',
-  bgDark: 'rgba(0,0,0,0.3)',
-  border: 'rgba(255,255,255,0.04)',
+    // Status (semantic — from design system palette, theme-agnostic)
+    success: colors.green,
 
-  // Chevron
-  chevron: '#3f3f46',
-};
+    // Badges (theme-adaptive)
+    badgeSuccess: c.badges.ok,
+    badgeError: c.badges.err,
+    badgeInfo: c.badges.info,
+    badgeWarning: c.badges.warn,
+    badgeGray: c.badges.gray,
+
+    // Text (theme-adaptive)
+    primary: c.text,
+    secondary: c.text2,
+    muted: c.text3,
+
+    // Backgrounds (theme-adaptive)
+
+    // Press overlay (theme-adaptive — rgba(255,255,255,0.05) is invisible
+    // on light surfaces, so we switch to a dark overlay in light mode)
+    pressOverlay: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)',
+    ...c,
+  };
+}
 
 // ============================================================================
 // Types
@@ -171,53 +176,38 @@ export function getFileTypeInfo(mimeType: string): {
   color: string;
   label: string;
 } {
-  // Folders
   if (mimeType === 'application/vnd.google-apps.folder') {
-    return { icon: Folder, color: colors.folder, label: 'Folder' };
+    return { icon: Folder, color: FILE_TYPE_COLORS.folder, label: 'Folder' };
   }
-
-  // Google Docs
   if (mimeType === 'application/vnd.google-apps.document') {
-    return { icon: FileText, color: colors.document, label: 'Doc' };
+    return { icon: FileText, color: FILE_TYPE_COLORS.document, label: 'Doc' };
   }
   if (mimeType === 'application/vnd.google-apps.spreadsheet') {
-    return { icon: FileSpreadsheet, color: colors.spreadsheet, label: 'Sheet' };
+    return { icon: FileSpreadsheet, color: FILE_TYPE_COLORS.spreadsheet, label: 'Sheet' };
   }
   if (mimeType === 'application/vnd.google-apps.presentation') {
-    return { icon: Presentation, color: colors.presentation, label: 'Slides' };
+    return { icon: Presentation, color: FILE_TYPE_COLORS.presentation, label: 'Slides' };
   }
-
-  // PDFs
   if (mimeType === 'application/pdf') {
-    return { icon: FileText, color: colors.pdf, label: 'PDF' };
+    return { icon: FileText, color: FILE_TYPE_COLORS.pdf, label: 'PDF' };
   }
-
-  // Images
   if (mimeType.startsWith('image/')) {
-    return { icon: ImageIcon, color: colors.image, label: 'Image' };
+    return { icon: ImageIcon, color: FILE_TYPE_COLORS.image, label: 'Image' };
   }
-
-  // Videos
   if (mimeType.startsWith('video/')) {
-    return { icon: Film, color: colors.video, label: 'Video' };
+    return { icon: Film, color: FILE_TYPE_COLORS.video, label: 'Video' };
   }
-
-  // Audio
   if (mimeType.startsWith('audio/')) {
-    return { icon: Music, color: colors.audio, label: 'Audio' };
+    return { icon: Music, color: FILE_TYPE_COLORS.audio, label: 'Audio' };
   }
-
-  // Archives
   if (
     mimeType.includes('zip') ||
     mimeType.includes('tar') ||
     mimeType.includes('rar') ||
     mimeType.includes('7z')
   ) {
-    return { icon: Archive, color: colors.archive, label: 'Archive' };
+    return { icon: Archive, color: FILE_TYPE_COLORS.archive, label: 'Archive' };
   }
-
-  // Code files
   if (
     mimeType.includes('javascript') ||
     mimeType.includes('typescript') ||
@@ -226,11 +216,9 @@ export function getFileTypeInfo(mimeType: string): {
     mimeType.includes('css') ||
     mimeType.includes('xml')
   ) {
-    return { icon: FileCode, color: colors.code, label: 'Code' };
+    return { icon: FileCode, color: FILE_TYPE_COLORS.code, label: 'Code' };
   }
-
-  // Default
-  return { icon: File, color: colors.other, label: 'File' };
+  return { icon: File, color: FILE_TYPE_COLORS.other, label: 'File' };
 }
 
 // ============================================================================
@@ -241,71 +229,9 @@ export function DriveLogo({ size = 14 }: { size?: number }) {
   return <Image source={{ uri: DRIVE_ICON }} width={size} height={size} borderRadius={2} />;
 }
 
-export type ToolStatusType = 'running' | 'completed' | 'failed' | 'pending_permission';
-
-interface StatusDotProps {
-  status: ToolStatusType;
-}
-
-export function StatusDot({ status }: StatusDotProps) {
-  const color =
-    status === 'running' || status === 'pending_permission'
-      ? colors.running
-      : status === 'completed'
-        ? colors.success
-        : colors.failed;
-
-  const glow =
-    status === 'running' || status === 'pending_permission'
-      ? colors.glowRunning
-      : status === 'completed'
-        ? colors.glowSuccess
-        : colors.glowFailed;
-
-  const pulseAnim = usePulseAnimation(status === 'running' || status === 'pending_permission');
-
-  return (
-    <Animated.View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: color,
-        flexShrink: 0,
-        opacity: status === 'running' || status === 'pending_permission' ? pulseAnim : 1,
-        shadowColor: glow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 3,
-        elevation: 3,
-      }}
-    />
-  );
-}
-
-interface BadgeProps {
-  text: string;
-  variant: 'success' | 'error' | 'info' | 'warning' | 'gray';
-}
-
-export function Badge({ text, variant }: BadgeProps) {
-  const styles = {
-    success: colors.badgeSuccess,
-    error: colors.badgeError,
-    info: colors.badgeInfo,
-    warning: colors.badgeWarning,
-    gray: colors.badgeGray,
-  };
-  const { text: textColor, bg } = styles[variant];
-
-  return (
-    <XStack backgroundColor={bg} paddingHorizontal={4} paddingVertical={1} borderRadius={3}>
-      <Text color={textColor} fontSize={9} fontFamily="$mono">
-        {text}
-      </Text>
-    </XStack>
-  );
-}
+// StatusDot lives in `../../primitives` — ToolCallCard mounts it. The
+// Badge re-export uses the canonical theme-adaptive primitive.
+export { Badge } from '../../primitives';
 
 interface FileTypeBadgeProps {
   mimeType: string;
@@ -329,146 +255,9 @@ export function FileTypeBadge({ mimeType }: FileTypeBadgeProps) {
   );
 }
 
-export interface HeaderRowProps {
-  status: ToolStatusType;
-  description: string;
-  duration?: number;
-  badge?: React.ReactNode;
-  expanded: boolean;
-  onToggle: () => void;
-  isInContainer?: boolean;
-}
-
-export function HeaderRow({
-  status,
-  description,
-  duration,
-  badge,
-  expanded,
-  onToggle,
-  isInContainer,
-}: HeaderRowProps) {
-  const rotateAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(rotateAnim, {
-      toValue: expanded ? 1 : 0,
-      duration: 150,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, rotateAnim]);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg'],
-  });
-
-  return (
-    <XStack
-      alignItems="center"
-      gap={8}
-      paddingVertical={6}
-      paddingHorizontal={10}
-      backgroundColor={isInContainer ? 'transparent' : 'rgba(39,39,42,0.6)'}
-      borderRadius={isInContainer ? 0 : 8}
-      borderWidth={isInContainer ? 0 : 1}
-      borderColor={isInContainer ? 'transparent' : colors.border}
-      borderBottomWidth={isInContainer ? 1 : 1}
-      borderBottomColor={colors.border}
-      width={isInContainer ? undefined : '100%'}
-      pressStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-      }}
-      hoverStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-        borderColor: isInContainer ? 'transparent' : 'rgba(255,255,255,0.08)',
-      }}
-      onPress={onToggle}
-      cursor="pointer"
-    >
-      <StatusDot status={status} />
-      <DriveLogo size={14} />
-
-      <Text flex={1} color={colors.primary} fontSize={11} fontWeight="500" numberOfLines={1}>
-        {description}
-      </Text>
-
-      {status === 'running' || status === 'pending_permission' ? (
-        <Text color={colors.running} fontSize={9} fontFamily="$mono">
-          {status === 'pending_permission' ? 'awaiting' : 'running'}
-        </Text>
-      ) : (
-        duration !== undefined && (
-          <Text color={colors.muted} fontSize={9} fontFamily="$mono">
-            {formatDuration(duration)}
-          </Text>
-        )
-      )}
-
-      {badge}
-
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <ChevronRight size={10} color={colors.chevron} />
-      </Animated.View>
-    </XStack>
-  );
-}
-
-export function ExpandedContainer({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack
-      backgroundColor="rgba(39,39,42,0.6)"
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={colors.border}
-      overflow="hidden"
-      width="100%"
-    >
-      {children}
-    </YStack>
-  );
-}
-
-export function ExpandedBody({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack padding={8} gap={6}>
-      {children}
-    </YStack>
-  );
-}
-
-export function ErrorBlock({ error }: { error: string }) {
-  return (
-    <YStack
-      backgroundColor="rgba(239,68,68,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-    >
-      <Text color={colors.badgeError.text} fontSize={10} fontFamily="$mono">
-        {error}
-      </Text>
-    </YStack>
-  );
-}
-
-export function SuccessBlock({ message }: { message: string }) {
-  return (
-    <XStack
-      backgroundColor="rgba(34,197,94,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-      alignItems="center"
-      gap={6}
-    >
-      <Text color={colors.badgeSuccess.text} fontSize={10}>
-        {message}
-      </Text>
-    </XStack>
-  );
-}
+// HeaderRow / ExpandedContainer / ExpandedBody / ErrorBlock / SuccessBlock
+// live in `../../primitives`. Sub-renderers compose directly via
+// `<ToolCallCard>`. Removed local re-implementations to enforce DRY.
 
 interface FileRowProps {
   file: DriveFile;
@@ -476,6 +265,8 @@ interface FileRowProps {
 }
 
 export function FileRow({ file, onPress }: FileRowProps) {
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const { icon: Icon, color } = getFileTypeInfo(file.mimeType);
 
   const handlePress = () => {
@@ -492,26 +283,26 @@ export function FileRow({ file, onPress }: FileRowProps) {
       gap={8}
       paddingVertical={6}
       paddingHorizontal={8}
-      backgroundColor={colors.bgInner}
+      backgroundColor={c.bgInner}
       borderRadius={5}
-      pressStyle={{ backgroundColor: 'rgba(255,255,255,0.05)' }}
+      pressStyle={{ backgroundColor: colors.pressOverlay }}
       onPress={handlePress}
       cursor="pointer"
     >
       <Icon size={14} color={color} />
 
       <YStack flex={1} gap={2}>
-        <Text color={colors.primary} fontSize={11} numberOfLines={1}>
+        <Text color={c.text} fontSize={11} numberOfLines={1}>
           {file.name}
         </Text>
         <XStack gap={8}>
           {file.size && (
-            <Text color={colors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               {formatFileSize(file.size)}
             </Text>
           )}
           {file.modifiedTime && (
-            <Text color={colors.muted} fontSize={9}>
+            <Text color={c.text3} fontSize={9}>
               {formatDate(file.modifiedTime)}
             </Text>
           )}

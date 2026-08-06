@@ -1,0 +1,125 @@
+{
+  "tools": {
+    "todoist_list_tasks": {
+      "name": "todoist_list_tasks",
+      "description": "List tasks with optional filtering",
+      "params": {
+        "projectId": "Filter by project ID",
+        "filter": "Filter string (e.g., 'today', 'overdue')",
+        "limit": "Number of tasks to return"
+      }
+    },
+    "todoist_get_task": {
+      "name": "todoist_get_task",
+      "description": "Get a specific task",
+      "params": {
+        "taskId": "Task ID to retrieve"
+      }
+    },
+    "todoist_create_task": {
+      "name": "todoist_create_task",
+      "description": "Create a new task",
+      "params": {
+        "content": "Task content/description",
+        "projectId": "Project ID (defaults to inbox)",
+        "dueString": "Due date (e.g., 'tomorrow', '2025-01-01')",
+        "priority": "Priority (1=urgent, 4=none)",
+        "labels": "Label IDs"
+      }
+    },
+    "todoist_update_task": {
+      "name": "todoist_update_task",
+      "description": "Update an existing task",
+      "params": {
+        "taskId": "Task ID to update",
+        "content": "Updated task content",
+        "dueString": "Updated due date",
+        "priority": "Updated priority"
+      }
+    },
+    "todoist_complete_task": {
+      "name": "todoist_complete_task",
+      "description": "Mark a task as completed",
+      "params": {
+        "taskId": "Task ID to complete"
+      }
+    },
+    "todoist_delete_task": {
+      "name": "todoist_delete_task",
+      "description": "Delete a task",
+      "params": {
+        "taskId": "Task ID to delete"
+      }
+    },
+    "todoist_list_projects": {
+      "name": "todoist_list_projects",
+      "description": "List all projects"
+    },
+    "todoist_get_project": {
+      "name": "todoist_get_project",
+      "description": "Get a specific project",
+      "params": {
+        "projectId": "Project ID to retrieve"
+      }
+    },
+    "todoist_create_project": {
+      "name": "todoist_create_project",
+      "description": "Create a new project",
+      "params": {
+        "name": "Project name",
+        "parentId": "Parent project ID for sub-projects",
+        "color": "Project color"
+      }
+    },
+    "todoist_update_project": {
+      "name": "todoist_update_project",
+      "description": "Update an existing project",
+      "params": {
+        "projectId": "Project ID to update",
+        "name": "Updated project name",
+        "color": "Updated project color"
+      }
+    },
+    "todoist_delete_project": {
+      "name": "todoist_delete_project",
+      "description": "Delete a project",
+      "params": {
+        "projectId": "Project ID to delete"
+      }
+    },
+    "todoist_list_labels": {
+      "name": "todoist_list_labels",
+      "description": "List all labels"
+    },
+    "todoist_create_label": {
+      "name": "todoist_create_label",
+      "description": "Create a new label",
+      "params": {
+        "name": "Label name",
+        "color": "Label color"
+      }
+    },
+    "todoist_add_comment": {
+      "name": "todoist_add_comment",
+      "description": "Add comment to a task",
+      "params": {
+        "taskId": "Task ID to comment on",
+        "content": "Comment content"
+      }
+    },
+    "todoist_list_sections": {
+      "name": "todoist_list_sections",
+      "description": "List sections in a project",
+      "params": {
+        "projectId": "Project ID"
+      }
+    }
+  },
+  "name": "Todoist",
+  "description": "Todoist task management - tasks, projects, labels, comments",
+  "changelog": [
+    {
+      "notes": "Initial release — create, update, complete and delete tasks, organize projects, sections, labels and comments"
+    }
+  ]
+}

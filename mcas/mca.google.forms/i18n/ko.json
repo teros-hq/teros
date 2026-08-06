@@ -1,0 +1,64 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 점검 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "create-form": {
+      "name": "create-form",
+      "description": "제목이 있는 새로운 Google Form을 생성합니다. 폼 ID와 응답자 URL을 반환합니다.",
+      "params": {
+        "title": "응답자에게 표시되는 폼의 제목",
+        "documentTitle": "선택 사항: Google Drive에 표시되는 문서 제목 (제공되지 않으면 폼 제목이 기본값으로 사용됨)"
+      }
+    },
+    "get-form": {
+      "name": "get-form",
+      "description": "ID로 Google Form의 전체 구조를 가져옵니다. 모든 항목과 질문을 포함합니다.",
+      "params": {
+        "formId": "가져올 폼의 ID"
+      }
+    },
+    "update-form": {
+      "name": "update-form",
+      "description": "배치 업데이트 요청을 사용하여 Google Form을 업데이트합니다. 항목 추가, 편집 및 삭제, 폼 정보 및 설정 업데이트를 지원합니다.\n\n`requests` 배열에서 사용 가능한 요청 유형:\n\n- **createItem**: 특정 위치에 새 항목(질문, 섹션 등)을 추가합니다.\n  `{ createItem: { item: { title, questionItem: { question: { required, choiceQuestion | textQuestion | scaleQuestion | dateQuestion | timeQuestion } } }, location: { index: 0 } } }`\n\n- **updateItem**: ID로 기존 항목을 수정합니다.\n  `{ updateItem: { item: { itemId, title, ... }, location: { index: 0 }, updateMask: \"title,description\" } }`\n\n- **deleteItem**: 위치 인덱스로 항목을 제거합니다.\n  `{ deleteItem: { location: { index: 0 } } }`\n\n- **updateFormInfo**: 폼 제목, 설명 또는 문서 제목을 업데이트합니다.\n  `{ updateFormInfo: { info: { title, description, documentTitle }, updateMask: \"title,description\" } }`\n\n- **updateSettings**: 퀴즈 모드 또는 응답 수집과 같은 폼 설정을 변경합니다.\n  `{ updateSettings: { settings: { quizSettings: { isQuiz: true } }, updateMask: \"quizSettings.isQuiz\" } }`\n\n전체 스키마는 https://developers.google.com/forms/api/reference/rest/v1/forms/batchUpdate를 참조하세요.",
+      "params": {
+        "formId": "업데이트할 폼의 ID",
+        "requests": "업데이트 요청 배열. 각 요청은 createItem, updateItem, deleteItem, updateFormInfo 또는 updateSettings 중 하나입니다."
+      }
+    },
+    "list-forms": {
+      "name": "list-forms",
+      "description": "드라이브에 있는 모든 Google Form을 나열합니다. Google Forms MIME 유형의 파일을 찾기 위해 Drive API를 사용합니다.",
+      "params": {
+        "pageSize": "반환할 최대 폼 수 (기본값: 10, 최대: 100)",
+        "pageToken": "다음 페이지를 가져오기 위한 이전 응답의 페이지 토큰"
+      }
+    },
+    "list-responses": {
+      "name": "list-responses",
+      "description": "Google Form에 제출된 응답을 나열합니다. 제출 타임스탬프에 따라 페이지 매김 및 필터링을 지원합니다.",
+      "params": {
+        "formId": "응답을 가져올 폼의 ID",
+        "pageSize": "반환할 최대 응답 수 (기본값: 10, 최대: 5000)",
+        "pageToken": "다음 페이지를 가져오기 위한 이전 응답의 페이지 토큰",
+        "filter": "RFC3339 형식의 선택적 타임스탬프 필터. 예: \"timestamp > 2024-01-01T00:00:00Z\" — 해당 시간 이후에 제출된 응답만 반환합니다."
+      }
+    },
+    "get-response": {
+      "name": "get-response",
+      "description": "응답 ID로 Google Form에 대한 특정 응답을 가져옵니다.",
+      "params": {
+        "formId": "폼의 ID",
+        "responseId": "가져올 응답의 ID"
+      }
+    }
+  },
+  "name": "Google Forms",
+  "description": "Google Forms 관리 - 폼 생성, 질문 추가 및 Google Forms API를 통해 응답 읽기",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 폼 생성 및 편집, 질문 추가, 폼 나열 및 제출된 응답 읽기"
+    }
+  ]
+}

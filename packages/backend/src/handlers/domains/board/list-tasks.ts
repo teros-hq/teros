@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import { enrichTasksWithColumns } from './_helpers'
 
 interface ListTasksData {
   projectId: string
@@ -38,11 +39,13 @@ export function createListTasksHandler(
     }
 
     const tasks = await boardService.listTasks(project.boardId, filters as any)
+    const board = await boardService.getBoard(project.boardId)
+    const enriched = enrichTasksWithColumns(tasks, board)
 
     // Resolve agent names/avatars
     const agentIds = boardService.collectAgentIds(tasks)
     const agents = await boardService.resolveAgents(agentIds)
 
-    return { projectId, tasks, agents }
+    return { projectId, projectName: project.name, tasks: enriched, agents }
   }
 }

@@ -1,0 +1,190 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "List email messages from inbox or specific labels. Supports filtering by unread, starred, etc.",
+      "params": {
+        "maxResults": "Maximum number of messages to return (default: 10, max: 100)",
+        "labelIds": "Label IDs to filter by",
+        "query": "Gmail search query"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "Get full details of a specific email message by ID.",
+      "params": {
+        "messageId": "The ID of the message to retrieve"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Send an email message from the specified account.",
+      "params": {
+        "to": "Recipient email address",
+        "subject": "Email subject",
+        "body": "Email body (plain text or HTML)",
+        "bodyFile": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string.",
+        "cc": "CC recipients (comma-separated)",
+        "bcc": "BCC recipients (comma-separated)",
+        "isHtml": "Whether body is HTML (default: false)",
+        "attachments": "Array of attachments to include"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "Reply to an existing email message.",
+      "params": {
+        "messageId": "The ID of the message to reply to",
+        "body": "Reply body",
+        "isHtml": "Whether body is HTML (default: false)"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Search for email messages using Gmail's search syntax.",
+      "params": {
+        "query": "Gmail search query",
+        "maxResults": "Maximum number of results (default: 10)"
+      }
+    },
+    "modify-labels": {
+      "name": "modify-labels",
+      "description": "Add or remove labels from a message (e.g., mark as read/unread, archive, star).",
+      "params": {
+        "messageId": "The ID of the message to modify",
+        "addLabelIds": "Labels to add",
+        "removeLabelIds": "Labels to remove"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "List all draft emails in the account.",
+      "params": {
+        "maxResults": "Maximum number of drafts to return (default: 10, max: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "Create a draft email message.",
+      "params": {
+        "to": "Recipient email address",
+        "subject": "Email subject",
+        "body": "Email body",
+        "bodyFile": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string.",
+        "isHtml": "Whether body is HTML (default: false)"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "Delete a draft email by its draft ID.",
+      "params": {
+        "draftId": "The ID of the draft to delete"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "Update an existing draft email by replacing its content.",
+      "params": {
+        "draftId": "The ID of the draft to update",
+        "to": "Recipient email address",
+        "subject": "Email subject",
+        "body": "Email body",
+        "bodyFile": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string.",
+        "isHtml": "Whether body is HTML (default: false)"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "Get the content of an email attachment by its attachment ID.",
+      "params": {
+        "messageId": "The ID of the message containing the attachment",
+        "attachmentId": "The ID of the attachment to retrieve",
+        "saveToFile": "If true, saves to ~/Downloads/email-attachments/"
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "Download and store an email attachment to the local filesystem.",
+      "params": {
+        "messageId": "The ID of the message containing the attachment",
+        "attachmentId": "The ID of the attachment to store",
+        "outputPath": "Optional output directory path"
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "List all Gmail labels (both system and custom labels) for the account."
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "Create a new Gmail label.",
+      "params": {
+        "name": "Name of the label",
+        "backgroundColor": "Background color in hex format",
+        "textColor": "Text color in hex format"
+      }
+    },
+    "update-label": {
+      "name": "update-label",
+      "description": "Update an existing Gmail label (name, colors, visibility).",
+      "params": {
+        "labelId": "ID of the label to update",
+        "name": "New name for the label",
+        "backgroundColor": "Background color in hex format",
+        "textColor": "Text color in hex format"
+      }
+    },
+    "delete-label": {
+      "name": "delete-label",
+      "description": "Delete a Gmail label. This does NOT delete the emails with this label.",
+      "params": {
+        "labelId": "ID of the label to delete"
+      }
+    },
+    "list-filters": {
+      "name": "list-filters",
+      "description": "List all Gmail filters for the account."
+    },
+    "create-filter": {
+      "name": "create-filter",
+      "description": "Create a new Gmail filter to automatically organize emails.",
+      "params": {
+        "criteria": "Filter criteria",
+        "action": "Actions to perform when filter matches"
+      }
+    },
+    "delete-filter": {
+      "name": "delete-filter",
+      "description": "Delete a Gmail filter by its ID.",
+      "params": {
+        "filterId": "ID of the filter to delete"
+      }
+    },
+    "start-email-watcher": {
+      "name": "start-email-watcher",
+      "description": "Start a background polling loop that detects new unread emails and emits `gmail.email.received` events to the backend. The watcher polls the Gmail API at a configurable interval (default: 5 minutes). Only one watcher can be active per MCA process.",
+      "params": {
+        "intervalMinutes": "Polling interval in minutes (default: 5, minimum: 1). Lower values consume more Gmail API quota."
+      }
+    },
+    "stop-email-watcher": {
+      "name": "stop-email-watcher",
+      "description": "Stop the background email polling loop. No more events will be emitted."
+    },
+    "get-watcher-status": {
+      "name": "get-watcher-status",
+      "description": "Get the current status of the email watcher: whether it is active, when it last checked, how many message IDs are tracked, and the polling interval."
+    }
+  },
+  "name": "Gmail",
+  "description": "Gmail email management - send, read, search, label, and filter emails via Google Gmail API",
+  "changelog": [
+    {
+      "notes": "Initial release — send, read, search and reply to emails, manage drafts, labels, filters, attachments, and watch for new mail"
+    }
+  ]
+}

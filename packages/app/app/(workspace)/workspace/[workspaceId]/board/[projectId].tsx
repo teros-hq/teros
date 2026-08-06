@@ -1,27 +1,14 @@
 /**
- * Board Route - /workspace/[workspaceId]/board/[projectId]
+ * Legacy Board Route - /workspace/[workspaceId]/board/[projectId]
  *
- * Abre/enfoca una ventana de board para un proyecto específico dentro de un workspace.
- * Permite deep linking y compartir URLs directas a boards.
+ * Redirects to the canonical /board/[projectId] route.
+ * The workspaceId segment is ignored — workspace context is inferred from the session.
  */
 
-import { useLocalSearchParams } from 'expo-router';
-import { useWindowLauncher } from '../../../../../src/hooks';
-import { useWorkspaceReady } from '../../../workspaceContext';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 
-export default function WorkspaceBoardRoute() {
-  const { workspaceId, projectId } = useLocalSearchParams<{
-    workspaceId: string;
-    projectId: string;
-  }>();
-  const isReady = useWorkspaceReady();
+export default function LegacyBoardRoute() {
+  const { projectId } = useLocalSearchParams<{ projectId: string }>();
 
-  useWindowLauncher(
-    'board',
-    { workspaceId, projectId },
-    (props) => props.projectId === projectId,
-    isReady && !!workspaceId && !!projectId,
-  );
-
-  return null;
+  return <Redirect href={`/board/${projectId}`} />;
 }

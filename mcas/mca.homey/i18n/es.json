@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales de la API de Homey y la conectividad."
+    },
+    "homey-get-user": {
+      "name": "homey-get-user",
+      "description": "Obtiene la información del usuario autenticado en Homey"
+    },
+    "homey-list-devices": {
+      "name": "homey-list-devices",
+      "description": "Lista todos los dispositivos conectados a Homey con su zona, clase, capacidades y estado de disponibilidad"
+    },
+    "homey-get-device": {
+      "name": "homey-get-device",
+      "description": "Obtiene información detallada y el estado actual de un dispositivo específico de Homey por su ID",
+      "params": {
+        "device_id": "ID del dispositivo"
+      }
+    },
+    "homey-set-capability": {
+      "name": "homey-set-capability",
+      "description": "Establece el valor de una capacidad de un dispositivo (p. ej., encender/apagar, ajustar brillo, temperatura). Usa homey-list-devices para encontrar los IDs de dispositivos y sus capacidades.",
+      "params": {
+        "device_id": "ID del dispositivo",
+        "capability": "Nombre de la capacidad (p. ej., 'onoff', 'dim', 'target_temperature')",
+        "value": "Valor a establecer (booleano para onoff, número 0-1 para dim, número para temperatura)"
+      }
+    },
+    "homey-list-flows": {
+      "name": "homey-list-flows",
+      "description": "Lista todos los flujos (automatizaciones) configurados en Homey"
+    },
+    "homey-trigger-flow": {
+      "name": "homey-trigger-flow",
+      "description": "Dispara (ejecuta) un flujo de Homey por su ID",
+      "params": {
+        "flow_id": "ID del flujo a disparar"
+      }
+    },
+    "homey-list-zones": {
+      "name": "homey-list-zones",
+      "description": "Lista todas las zonas (habitaciones/áreas) configuradas en Homey"
+    },
+    "homey-get-system-info": {
+      "name": "homey-get-system-info",
+      "description": "Obtiene información del sistema de Homey incluyendo versión de firmware, modelo, tiempo de actividad, estado del Wi-Fi y más"
+    },
+    "homey-list-notifications": {
+      "name": "homey-list-notifications",
+      "description": "Lista las notificaciones de Homey (alertas, advertencias, mensajes del sistema)"
+    },
+    "homey-get-variables": {
+      "name": "homey-get-variables",
+      "description": "Lista todas las variables lógicas configuradas en Homey. Las variables lógicas se usan en flujos/automatizaciones para el seguimiento de estado."
+    },
+    "homey-set-variable": {
+      "name": "homey-set-variable",
+      "description": "Establece el valor de una variable lógica de Homey por su ID. Usa homey-get-variables para encontrar los IDs de las variables.",
+      "params": {
+        "variable_id": "ID de la variable (UUID)",
+        "value": "Nuevo valor para la variable (cadena, número o booleano — debe coincidir con el tipo de variable)"
+      }
+    },
+    "homey-list-apps": {
+      "name": "homey-list-apps",
+      "description": "Lista todas las aplicaciones instaladas en Homey. Útil para diagnósticos y comprobar qué integraciones están activas."
+    },
+    "homey-get-energy": {
+      "name": "homey-get-energy",
+      "description": "Obtiene el informe de energía en tiempo real de Homey incluyendo el consumo y la generación de energía actual en el hogar",
+      "params": {
+        "zone": "ID de zona opcional para filtrar los datos de energía de una zona específica"
+      }
+    }
+  },
+  "name": "Homey",
+  "description": "Controlador de hogar inteligente Homey: controla dispositivos, gestiona flujos y monitoriza tu hogar a través de la API de Athom Cloud",
+  "changelog": [
+    {
+      "notes": "Versión inicial: controla dispositivos del hogar inteligente, ejecuta flujos de automatización, gestiona habitaciones y variables, y monitoriza el consumo de energía en tiempo real"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getCredentials, type SentryOrganization, sentryRequest } from '../lib/index.js';
 
 export const listOrganizations: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all organizations the authenticated user has access to',
   parameters: {
     type: 'object',

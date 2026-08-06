@@ -1,25 +1,39 @@
 /**
- * Linear Renderer - Index
+ * Linear Renderer — barrel.
+ *
+ * Issues, projects, labels, teams/users and workflow sub-renderers. Plus
+ * shared constants, types, helpers, and the `LinearToolShell` wrapper.
  */
 
-// Actions
-export { AddCommentRenderer, ArchiveIssueRenderer, DeleteIssueRenderer } from './ActionsRenderer';
-
-// Issues
 export {
+  AddCommentRenderer,
+  ArchiveIssueRenderer,
   CreateIssueRenderer,
+  DeleteIssueRenderer,
   GetIssueRenderer,
   ListIssuesRenderer,
   UpdateIssueRenderer,
 } from './IssuesRenderer';
-// Labels
-export { AddLabelsToIssueRenderer, ListLabelsRenderer } from './LabelsRenderer';
 
-// Projects
-export { CreateProjectRenderer, ListProjectsRenderer } from './ProjectsRenderer';
-// Shared
-export * from './shared';
-// Teams & Users
+export {
+  AddLabelsToIssueRenderer,
+  CreateLabelRenderer,
+  DeleteLabelRenderer,
+  ListLabelsRenderer,
+  RemoveLabelsFromIssueRenderer,
+  UpdateLabelRenderer,
+} from './LabelsRenderer';
+
+export {
+  AddIssuesToProjectRenderer,
+  CreateProjectRenderer,
+  DeleteProjectRenderer,
+  ListProjectsRenderer,
+  RemoveIssuesFromProjectRenderer,
+} from './ProjectsRenderer';
+
+export { HealthCheckRenderer } from './HealthCheckRenderer';
 export { ListTeamsRenderer, ListUsersRenderer } from './TeamsUsersRenderer';
-// Workflow
 export { ListWorkflowStatesRenderer } from './WorkflowRenderer';
+
+export * from './shared';

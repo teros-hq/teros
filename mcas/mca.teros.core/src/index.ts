@@ -16,7 +16,6 @@ import {
   accessGrant,
   accessRevoke,
   agentAppsList,
-  agentCoresList,
   agentCreate,
   agentDelete,
   agentGet,
@@ -27,16 +26,30 @@ import {
   agentProvidersSet,
   agentUpdate,
   appAccessList,
+  appCheckAuth,
   appGet,
   appInstall,
   // Apps
   appList,
+  // Permissions
+  appPermissionsGet,
+  appPermissionsSet,
   appRename,
+  appShowAuth,
   appUninstall,
   // Catalog
   catalogList,
   // Providers
   providerList,
+  // Skills
+  skillCreate,
+  skillDelete,
+  skillGetAgentSkills,
+  skillGrantAccess,
+  skillList,
+  skillRevokeAccess,
+  skillSetEnabled,
+  skillUpdate,
   workspaceAgentList,
   workspaceAppList,
   workspaceArchive,
@@ -100,7 +113,6 @@ server.tool('get-agent', agentGet);
 server.tool('create-agent', agentCreate);
 server.tool('update-agent', agentUpdate);
 server.tool('delete-agent', agentDelete);
-server.tool('list-agent-cores', agentCoresList);
 server.tool('list-agent-apps', agentAppsList);
 server.tool('get-agent-providers', agentProvidersGet);
 server.tool('set-agent-providers', agentProvidersSet);
@@ -128,6 +140,8 @@ server.tool('get-app', appGet);
 server.tool('install-app', appInstall);
 server.tool('uninstall-app', appUninstall);
 server.tool('rename-app', appRename);
+server.tool('check-app-auth', appCheckAuth);
+server.tool('show-app-auth', appShowAuth);
 server.tool('list-app-access', appAccessList);
 server.tool('workspace-app-list', workspaceAppList);
 server.tool('workspace-agent-list', workspaceAgentList);
@@ -150,6 +164,26 @@ server.tool('list-providers', providerList);
 
 server.tool('grant-app-access', accessGrant);
 server.tool('revoke-app-access', accessRevoke);
+
+// =============================================================================
+// REGISTER TOOLS: TOOL PERMISSIONS
+// =============================================================================
+
+server.tool('get-app-permissions', appPermissionsGet);
+server.tool('set-app-permissions', appPermissionsSet);
+
+// =============================================================================
+// REGISTER TOOLS: SKILLS
+// =============================================================================
+
+server.tool('skill-list', skillList);
+server.tool('skill-create', skillCreate);
+server.tool('skill-update', skillUpdate);
+server.tool('skill-delete', skillDelete);
+server.tool('skill-grant-access', skillGrantAccess);
+server.tool('skill-revoke-access', skillRevokeAccess);
+server.tool('skill-set-enabled', skillSetEnabled);
+server.tool('skill-get-agent-skills', skillGetAgentSkills);
 
 // =============================================================================
 // START SERVER

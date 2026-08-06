@@ -1,14 +1,15 @@
 #!/usr/bin/env bun
 
 /**
- * Messaging MCA v1.1.0
+ * Messaging MCA v1.2.0
  *
- * Allows agents to send multimedia messages to users:
+ * Allows agents to send messages to users:
  * - Images
  * - Audio files
  * - Video files
  * - Documents/files
- * - HTML widgets
+ * - HTML widgets (in-chat)
+ * - Notification emails (via Resend, to the user's account email)
  *
  * Supports both:
  * - Public URLs (direct)
@@ -19,7 +20,7 @@
  */
 
 import { McaServer } from '@teros/mca-sdk';
-import { sendAudio, sendFile, sendHtml, sendHtmlFile, sendImage, sendVideo } from './tools';
+import { notifyByEmail, sendAudio, sendFile, sendHtml, sendHtmlFile, sendImage, sendVideo } from './tools';
 
 // =============================================================================
 // MCA SERVER
@@ -28,7 +29,7 @@ import { sendAudio, sendFile, sendHtml, sendHtmlFile, sendImage, sendVideo } fro
 const server = new McaServer({
   id: 'mca.teros.messaging',
   name: 'Messaging',
-  version: '1.1.0',
+  version: '1.2.0',
 });
 
 // =============================================================================
@@ -41,6 +42,7 @@ server.tool('send-video', sendVideo);
 server.tool('send-file', sendFile);
 server.tool('send-html', sendHtml);
 server.tool('send-html-file', sendHtmlFile);
+server.tool('notify-by-email', notifyByEmail);
 
 // =============================================================================
 // START SERVER

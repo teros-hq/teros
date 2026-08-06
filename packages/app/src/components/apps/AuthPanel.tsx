@@ -12,11 +12,14 @@ import {
   Check,
   ChevronRight,
   Copy,
+  ExternalLink,
   Eye,
   EyeOff,
+  FolderPlus,
   Info,
   Key,
   Link,
+  Pencil,
   RefreshCw,
   Unlink,
   X,
@@ -25,6 +28,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  Linking,
   TextInput,
   TouchableOpacity,
   View,
@@ -32,6 +36,12 @@ import {
 import { Text, XStack, YStack } from 'tamagui';
 import { usePulseAnimation } from '../../hooks/usePulseAnimation';
 import { AppSpinner } from '../../components/ui';
+import {
+  colors as semantic,
+  indicators,
+} from '../../components/mca/primitives/colors';
+import { FONT_MONO, FONT_SANS } from '../../components/mca/primitives/fonts';
+import { type AdaptiveColors, useColors } from '../../components/mca/primitives/useColors';
 
 // ============================================================================
 // Types
@@ -43,9 +53,28 @@ export interface OAuthInfo {
   provider: string;
   status: OAuthStatus;
   email?: string;
+  /**
+   * Login/handle del proveedor (e.g. GitHub `login`). Cuando esté presente
+   * se prefiere mostrar `@${userLogin}` sobre el email — relevante para
+   * GitHub App con userOAuth donde el email puede no estar verificado.
+   */
+  userLogin?: string;
   expiresAt?: string;
   scopes?: string[];
   error?: string;
+  /**
+   * Auth method used by the MCA. `github-app` swaps the OAuth-style
+   * "Connect" copy for GitHub App-style "Install" copy and adds a banner
+   * pointing to `/settings/installations/<id>` on github.com when connected.
+   * Defaults to `'oauth2'` when omitted.
+   */
+  authType?: 'oauth2' | 'github-app';
+  /** GitHub App installation ID (only when `authType === 'github-app'` and connected). */
+  installationId?: string;
+  /** GitHub App slug — used to build the install URL. */
+  appSlug?: string;
+  /** True when a legacy OAuth ACCESS_TOKEN is present without an INSTALLATION_ID — surface migration banner. */
+  legacyOAuth?: boolean;
 }
 
 export interface CredentialField {
@@ -81,63 +110,70 @@ export interface AuthPanelProps {
   onSaveCredentials?: () => void;
   /** Initial expanded state */
   defaultExpanded?: boolean;
+  /** Message shown when system-level secrets are missing (admin must configure) */
+  systemSetupMessage?: string;
 }
 
 // ============================================================================
-// Colors
+// Palette
 // ============================================================================
+//
+// Theme-adaptive palette derived from `useColors()` (surface/text/border) plus
+// the theme-agnostic semantic colors (status signals). Same shape as the
+// pre-redesign hardcoded `colors` object so the sub-components keep reading
+// `p.<token>`. Each sub-component calls `useColors()` and builds its own `p`
+// (the hook is memoized, so this is cheap).
 
-const colors = {
-  // Status
-  ready: '#22c55e',
-  pending: '#3b82f6',
-  warning: '#f59e0b',
-  error: '#ef4444',
+function makePalette(c: AdaptiveColors) {
+  return {
+    // Status (semantic — theme-agnostic signals)
+    ready: semantic.green,
+    pending: semantic.indigo,
+    warning: semantic.amber,
+    error: semantic.red,
 
-  // Glows
-  glowReady: 'rgba(34, 197, 94, 0.5)',
-  glowPending: 'rgba(59, 130, 246, 0.5)',
-  glowWarning: 'rgba(245, 158, 11, 0.5)',
-  glowError: 'rgba(239, 68, 68, 0.5)',
+    // Glows
+    glowReady: 'rgba(34, 197, 94, 0.5)',
+    glowPending: 'rgba(94, 106, 210, 0.5)',
+    glowWarning: 'rgba(245, 158, 11, 0.5)',
+    glowError: 'rgba(239, 68, 68, 0.5)',
 
-  // Section
-  iconKey: '#a855f7',
+    // Section
+    iconKey: semantic.violet,
 
-  // Badges
-  badgeGreen: { text: '#86efac', bg: 'rgba(34, 197, 94, 0.1)' },
-  badgeBlue: { text: '#93c5fd', bg: 'rgba(59, 130, 246, 0.1)' },
-  badgeYellow: { text: '#fcd34d', bg: 'rgba(251, 191, 36, 0.1)' },
-  badgeRed: { text: '#fca5a5', bg: 'rgba(239, 68, 68, 0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255, 255, 255, 0.06)' },
+    // Badges (theme-adaptive)
+    badgeGreen: c.badges.ok,
+    badgeBlue: c.badges.info,
+    badgeYellow: c.badges.warn,
+    badgeRed: c.badges.err,
+    badgeGray: c.badges.gray,
 
-  // Text
-  textPrimary: '#e4e4e7',
-  textSecondary: '#a1a1aa',
-  textMuted: '#52525b',
-  textBright: '#f4f4f5',
+    // Text (theme-adaptive)
+    textPrimary: c.text,
+    textSecondary: c.text2,
+    textMuted: c.text3,
+    textBright: c.text,
 
-  // Backgrounds
-  panelBg: 'rgba(39, 39, 42, 0.6)',
-  sectionBg: 'rgba(0, 0, 0, 0.15)',
-  cardBg: 'rgba(0, 0, 0, 0.2)',
-  inputBg: 'rgba(0, 0, 0, 0.3)',
+    // Backgrounds (theme-adaptive)
+    panelBg: c.bgCard,
+    sectionBg: c.bgInner,
+    cardBg: c.bgInner,
+    inputBg: c.bgInner,
 
-  // Borders
-  border: 'rgba(255, 255, 255, 0.04)',
-  borderFocus: 'rgba(59, 130, 246, 0.4)',
+    // Borders (theme-adaptive)
+    border: c.border,
+    borderFocus: semantic.indigo,
 
-  // Buttons
-  btnDanger: { bg: 'rgba(239, 68, 68, 0.1)', text: '#fca5a5', border: 'rgba(239, 68, 68, 0.15)' },
-  btnPrimary: {
-    bg: 'rgba(59, 130, 246, 0.1)',
-    text: '#93c5fd',
-    border: 'rgba(59, 130, 246, 0.15)',
-  },
-  btnGhost: { bg: 'transparent', text: '#a1a1aa', border: 'rgba(255, 255, 255, 0.08)' },
+    // Buttons
+    btnDanger: { bg: c.badges.err.bg, text: c.badges.err.text, border: c.badges.err.border },
+    btnPrimary: { bg: c.badges.info.bg, text: c.badges.info.text, border: c.badges.info.border },
+    btnWarning: { bg: c.badges.warn.bg, text: c.badges.warn.text, border: c.badges.warn.border },
+    btnGhost: { bg: 'transparent', text: c.text2, border: c.borderStrong },
 
-  // Chevron
-  chevron: '#3f3f46',
-};
+    // Chevron
+    chevron: c.text3,
+  };
+}
 
 // ============================================================================
 // Status Dot Component
@@ -148,6 +184,7 @@ interface StatusDotProps {
 }
 
 function StatusDot({ status }: StatusDotProps) {
+  const colors = makePalette(useColors());
   const colorMap = {
     ready: { color: colors.ready, glow: colors.glowReady },
     pending: { color: colors.pending, glow: colors.glowPending },
@@ -188,6 +225,7 @@ interface BadgeProps {
 }
 
 function Badge({ text, variant }: BadgeProps) {
+  const colors = makePalette(useColors());
   const colorMap = {
     green: colors.badgeGreen,
     blue: colors.badgeBlue,
@@ -196,18 +234,20 @@ function Badge({ text, variant }: BadgeProps) {
     gray: colors.badgeGray,
   };
 
-  const { text: textColor, bg } = colorMap[variant];
+  const { text: textColor, bg, border } = colorMap[variant];
 
   return (
     <View
       style={{
         backgroundColor: bg,
+        borderWidth: 1,
+        borderColor: border,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 4,
       }}
     >
-      <Text color={textColor} fontSize={11} fontFamily="$mono" fontWeight="500">
+      <Text color={textColor} fontSize={11} fontFamily={FONT_MONO} fontWeight="500">
         {text}
       </Text>
     </View>
@@ -224,18 +264,17 @@ interface CredentialInputProps {
 }
 
 function CredentialInput({ field, onChange }: CredentialInputProps) {
+  const c = useColors();
+  const colors = makePalette(c);
+  const alreadySet = !!(field.isSet && !field.value);
+  const [editing, setEditing] = useState(!alreadySet);
   const [showValue, setShowValue] = useState(false);
   const [localValue, setLocalValue] = useState(field.value || '');
   const [isFocused, setIsFocused] = useState(false);
 
   const isPassword = field.type === 'password';
   const displayLabel = field.label || field.name;
-
-  const handleCopy = () => {
-    // In React Native, we'd use Clipboard API
-    // For now, this is a placeholder
-    console.log('Copy:', localValue);
-  };
+  const isConfigured = alreadySet || !!localValue;
 
   const handleChange = (text: string) => {
     setLocalValue(text);
@@ -245,123 +284,138 @@ function CredentialInput({ field, onChange }: CredentialInputProps) {
   return (
     <View style={{ marginBottom: 16 }}>
       {/* Label row */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text fontSize={12} color={colors.textSecondary} fontWeight="500">
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <Text fontFamily={FONT_SANS} fontSize={12} color={colors.textSecondary} fontWeight="500">
           {displayLabel}
         </Text>
-        {field.required ? (
-          <Text fontSize={10} color={colors.error} fontWeight="500">
+        {field.required && !isConfigured ? (
+          <Text fontFamily={FONT_SANS} fontSize={10} color={colors.error} fontWeight="500">
             requerido
           </Text>
-        ) : (
-          <Text fontSize={10} color={colors.textMuted}>
+        ) : !field.required ? (
+          <Text fontFamily={FONT_SANS} fontSize={10} color={colors.textMuted}>
             opcional
           </Text>
-        )}
+        ) : null}
       </View>
 
-      {/* Input wrapper */}
-      <View style={{ position: 'relative' }}>
-        <TextInput
-          value={localValue}
-          onChangeText={handleChange}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          placeholder={field.placeholder}
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry={isPassword && !showValue}
-          style={{
-            width: '100%',
-            paddingVertical: 10,
-            paddingHorizontal: 12,
-            paddingRight: isPassword ? 80 : 44,
-            backgroundColor: colors.inputBg,
-            borderWidth: 1,
-            borderColor: isFocused ? colors.borderFocus : colors.border,
-            borderRadius: 6,
-            color: colors.textPrimary,
-            fontSize: 13,
-            fontFamily: 'monospace',
-          }}
-        />
-
-        {/* Action buttons */}
+      {/* Configured state — collapsed */}
+      {isConfigured && !editing ? (
         <View
           style={{
-            position: 'absolute',
-            right: 8,
-            top: 0,
-            bottom: 0,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
+            justifyContent: 'space-between',
+            paddingVertical: 10,
+            paddingHorizontal: 12,
+            backgroundColor: colors.inputBg,
+            borderWidth: 1,
+            borderColor: colors.badgeGreen.border,
+            borderRadius: 6,
           }}
         >
-          {isPassword && (
-            <TouchableOpacity
-              onPress={() => setShowValue(!showValue)}
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 4,
-                backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {showValue ? (
-                <EyeOff size={14} color={colors.textMuted} />
-              ) : (
-                <Eye size={14} color={colors.textMuted} />
-              )}
-            </TouchableOpacity>
-          )}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <Check size={13} color={colors.ready} />
+            <Text fontSize={13} color={colors.ready} fontFamily={FONT_MONO}>
+              {'•'.repeat(16)}
+            </Text>
+          </View>
           <TouchableOpacity
-            onPress={handleCopy}
+            onPress={() => setEditing(true)}
             style={{
-              width: 28,
-              height: 28,
-              borderRadius: 4,
-              backgroundColor: 'rgba(255, 255, 255, 0.04)',
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: 4,
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: 4,
+              backgroundColor: c.bgCardHover,
             }}
           >
-            <Copy size={14} color={colors.textMuted} />
+            <Pencil size={11} color={colors.textMuted} />
+            <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted}>
+              Cambiar
+            </Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Status indicator */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
-        {field.isSet || localValue ? (
-          <>
-            <Check size={12} color={colors.ready} />
-            <Text fontSize={11} color={colors.ready}>
-              Configurado
-            </Text>
-          </>
-        ) : (
-          <>
-            <View
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                borderWidth: 1,
-                borderColor: colors.textMuted,
-              }}
-            />
-            <Text fontSize={11} color={colors.textMuted}>
-              No configurado
-            </Text>
-          </>
-        )}
-      </View>
+      ) : (
+        /* Edit state — full input */
+        <View style={{ position: 'relative' }}>
+          <TextInput
+            value={localValue}
+            onChangeText={handleChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            placeholder={field.placeholder}
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry={isPassword && !showValue}
+            autoFocus={alreadySet}
+            style={{
+              width: '100%',
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              paddingRight: isPassword ? 80 : 44,
+              backgroundColor: colors.inputBg,
+              borderWidth: 1,
+              borderColor: isFocused ? colors.borderFocus : colors.border,
+              borderRadius: 6,
+              color: colors.textPrimary,
+              fontSize: 13,
+              fontFamily: FONT_MONO,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              right: 8,
+              top: 0,
+              bottom: 0,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {isPassword && (
+              <TouchableOpacity
+                onPress={() => setShowValue(!showValue)}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 4,
+                  backgroundColor: c.bgCardHover,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showValue ? (
+                  <EyeOff size={14} color={colors.textMuted} />
+                ) : (
+                  <Eye size={14} color={colors.textMuted} />
+                )}
+              </TouchableOpacity>
+            )}
+            {alreadySet && (
+              <TouchableOpacity
+                onPress={() => { setEditing(false); setLocalValue(''); onChange(''); }}
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 4,
+                  backgroundColor: c.bgCardHover,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <X size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Hint */}
       {field.hint && (
-        <Text fontSize={11} color={colors.textMuted} style={{ marginTop: 6, lineHeight: 16 }}>
+        <Text fontFamily={FONT_SANS} fontSize={11} color={colors.textMuted} style={{ marginTop: 6, lineHeight: 16 }}>
           {field.hint}
         </Text>
       )}
@@ -390,10 +444,14 @@ function OAuthSection({
   connecting,
   disconnecting,
 }: OAuthSectionProps) {
+  const c = useColors();
+  const colors = makePalette(c);
   const isConnected = oauth.status === 'connected';
   const isExpired = oauth.status === 'expired';
   const isError = oauth.status === 'error';
   const needsConnect = oauth.status === 'disconnected';
+  const isGitHubApp = oauth.authType === 'github-app';
+  const isLegacyOAuth = oauth.legacyOAuth === true;
 
   const getStatusBadge = () => {
     switch (oauth.status) {
@@ -409,21 +467,53 @@ function OAuthSection({
   };
 
   const badge = getStatusBadge();
+  const sectionTitle = isGitHubApp ? 'GitHub' : 'OAuth connection';
+  const connectVerb = 'Connect';
+  const disconnectVerb = 'Disconnect';
 
   return (
     <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
       {/* Subsection header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Text
+          fontFamily={FONT_SANS}
           fontSize={12}
           fontWeight="600"
           color={colors.textMuted}
           style={{ textTransform: 'uppercase', letterSpacing: 0.5 }}
         >
-          OAuth connection
+          {sectionTitle}
         </Text>
         <Badge text={badge.text} variant={badge.variant} />
       </View>
+
+      {/* Legacy OAuth migration banner — shown only for github-app MCAs that
+          still hold an ACCESS_TOKEN from the pre-v4 era. */}
+      {isGitHubApp && isLegacyOAuth && (
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+            padding: 12,
+            backgroundColor: colors.badgeYellow.bg,
+            borderRadius: 6,
+            marginBottom: 12,
+          }}
+        >
+          <AlertCircle size={16} color={colors.badgeYellow.text} />
+          <Text
+            flex={1}
+            fontFamily={FONT_SANS}
+            fontSize={13}
+            color={colors.badgeYellow.text}
+            style={{ lineHeight: 20 }}
+          >
+            Tu conexión OAuth está deprecada. Instala la Teros App una sola vez para seguir
+            usando esta integración — tus repos siguen siendo los mismos.
+          </Text>
+        </View>
+      )}
 
       {/* Info message for non-connected states */}
       {(needsConnect || isExpired || isError) && (
@@ -434,10 +524,10 @@ function OAuthSection({
             gap: 10,
             padding: 12,
             backgroundColor: isError
-              ? 'rgba(239, 68, 68, 0.08)'
+              ? colors.badgeRed.bg
               : isExpired
-                ? 'rgba(251, 191, 36, 0.08)'
-                : 'rgba(59, 130, 246, 0.08)',
+                ? colors.badgeYellow.bg
+                : colors.badgeBlue.bg,
             borderRadius: 6,
             marginBottom: 12,
           }}
@@ -449,6 +539,7 @@ function OAuthSection({
           )}
           <Text
             flex={1}
+            fontFamily={FONT_SANS}
             fontSize={13}
             color={
               isError
@@ -462,62 +553,119 @@ function OAuthSection({
             {isError
               ? oauth.error || 'Error al validar credenciales.'
               : isExpired
-                ? 'Your session has expired. Reconnect to continue.'
-                : `Conecta tu cuenta de ${oauth.provider} para que el agente pueda acceder a este servicio.`}
+                ? 'Tu sesión ha caducado. Reconecta tu cuenta para continuar.'
+                : isGitHubApp
+                  ? 'Conecta tu cuenta de GitHub. Tras autorizar, podrás añadir tu cuenta personal u otras organizaciones para dar acceso a sus repos. Las acciones (commits, PRs, comments) aparecerán firmadas con tu identidad.'
+                  : `Conecta tu cuenta de ${oauth.provider} para que el agente pueda acceder a este servicio.`}
           </Text>
         </View>
       )}
 
       {/* Connected account card */}
-      {(isConnected || isExpired) && oauth.email && (
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-            padding: 12,
-            backgroundColor: colors.cardBg,
-            borderRadius: 8,
-            marginBottom: 12,
-            opacity: isExpired ? 0.6 : 1,
-          }}
-        >
+      {(() => {
+        // Identidad mostrada: prioriza @login (GitHub user OAuth) sobre email.
+        const primary = oauth.userLogin
+          ? `@${oauth.userLogin}`
+          : oauth.email ?? '';
+        const secondary = oauth.userLogin && oauth.email ? oauth.email : null;
+        if (!(isConnected || isExpired) || !primary) return null;
+        return (
           <View
             style={{
-              width: 40,
-              height: 40,
-              borderRadius: 20,
-              backgroundColor: isExpired ? 'rgba(251, 191, 36, 0.1)' : 'rgba(6, 182, 212, 0.1)',
-              borderWidth: 1,
-              borderColor: isExpired ? 'rgba(251, 191, 36, 0.3)' : 'rgba(6, 182, 212, 0.3)',
+              flexDirection: 'row',
               alignItems: 'center',
-              justifyContent: 'center',
+              gap: 12,
+              padding: 12,
+              backgroundColor: colors.cardBg,
+              borderRadius: 8,
+              marginBottom: 12,
+              opacity: isExpired ? 0.6 : 1,
             }}
           >
-            <Text
-              fontSize={14}
-              fontWeight="600"
-              color={isExpired ? colors.badgeYellow.text : '#06b6d4'}
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: isExpired ? colors.badgeYellow.bg : colors.badgeBlue.bg,
+                borderWidth: 1,
+                borderColor: isExpired ? colors.badgeYellow.border : colors.badgeBlue.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              {oauth.email.charAt(0).toUpperCase()}
-            </Text>
+              <Text
+                fontFamily={FONT_SANS}
+                fontSize={14}
+                fontWeight="600"
+                color={isExpired ? colors.badgeYellow.text : colors.badgeBlue.text}
+              >
+                {(oauth.userLogin?.charAt(0) ?? oauth.email?.charAt(0) ?? '?').toUpperCase()}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text fontFamily={FONT_SANS} fontSize={14} color={colors.textBright}>
+                {primary}
+              </Text>
+              <Text
+                fontFamily={FONT_SANS}
+                fontSize={12}
+                color={isExpired ? colors.badgeYellow.text : colors.textMuted}
+                style={{ marginTop: 2 }}
+              >
+                {isExpired
+                  ? 'Sesión caducada — reconecta tu cuenta'
+                  : secondary ?? oauth.provider ?? 'Conectado'}
+              </Text>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text fontSize={14} color={colors.textBright}>
-              {oauth.email}
+        );
+      })()}
+
+      {/* GitHub App: secondary panel with "add account / configure repos" link.
+          Renders only when connected — sin esto el user no tiene forma de instalar
+          la App en su cuenta personal o gestionar los repos accesibles, lo que
+          confunde después del primer "Conectar". */}
+      {isConnected && isGitHubApp && oauth.appSlug && (
+        <View
+          style={{
+            padding: 12,
+            backgroundColor: colors.badgeBlue.bg,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: colors.badgeBlue.border,
+            marginBottom: 12,
+          }}
+        >
+          <Text fontFamily={FONT_SANS} fontSize={12} color={colors.textMuted} style={{ marginBottom: 8, lineHeight: 18 }}>
+            ¿No ves todos tus repos? La Teros App debe estar instalada en cada cuenta u
+            organización cuyos repos quieras usar. Añadir o configurar instalaciones se hace
+            en GitHub.
+          </Text>
+          <TouchableOpacity
+            onPress={() =>
+              Linking.openURL(
+                `https://github.com/apps/${oauth.appSlug}/installations/select_target`,
+              )
+            }
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              padding: 10,
+              backgroundColor: colors.btnGhost.bg,
+              borderRadius: 6,
+              borderWidth: 1,
+              borderColor: colors.btnGhost.border,
+            }}
+          >
+            <FolderPlus size={14} color={colors.btnGhost.text} />
+            <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
+              Añadir cuenta o configurar repos en GitHub
             </Text>
-            <Text
-              fontSize={12}
-              color={isExpired ? colors.badgeYellow.text : colors.textMuted}
-              style={{ marginTop: 2 }}
-            >
-              {isExpired
-                ? `Expired ${oauth.expiresAt ? new Date(oauth.expiresAt).toLocaleDateString() : ''}`
-                : oauth.expiresAt
-                  ? `Expira ${new Date(oauth.expiresAt).toLocaleDateString()}`
-                  : oauth.provider}
-            </Text>
-          </View>
+            <ExternalLink size={12} color={colors.textMuted} />
+          </TouchableOpacity>
         </View>
       )}
 
@@ -541,8 +689,38 @@ function OAuthSection({
               }}
             >
               <RefreshCw size={14} color={colors.btnGhost.text} />
-              <Text fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
+              <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
                 Refrescar
+              </Text>
+            </TouchableOpacity>
+          )}
+          {/* GitHub App: link externo para gestionar la installation actual del user
+              en GitHub. NO desconecta — eso es el botón rojo de abajo. Antes había
+              un solo botón "Manage on GitHub" que decía manage pero hacía disconnect:
+              copy y acción no coincidían y el user perdía el token al clicar. */}
+          {isGitHubApp && oauth.installationId && (
+            <TouchableOpacity
+              onPress={() =>
+                Linking.openURL(
+                  `https://github.com/settings/installations/${oauth.installationId}`,
+                )
+              }
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                padding: 10,
+                backgroundColor: colors.btnGhost.bg,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.btnGhost.border,
+              }}
+            >
+              <ExternalLink size={14} color={colors.btnGhost.text} />
+              <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnGhost.text}>
+                Gestionar en GitHub
               </Text>
             </TouchableOpacity>
           )}
@@ -569,7 +747,7 @@ function OAuthSection({
               ) : (
                 <>
                   <Unlink size={14} color={colors.btnDanger.text} />
-                  <Text fontSize={13} fontWeight="500" color={colors.btnDanger.text}>
+                  <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnDanger.text}>
                     Desconectar
                   </Text>
                 </>
@@ -590,11 +768,11 @@ function OAuthSection({
             gap: 8,
             padding: 12,
             backgroundColor: isExpired
-              ? colors.btnWarning?.bg || 'rgba(251, 191, 36, 0.1)'
+              ? colors.btnWarning.bg
               : colors.btnPrimary.bg,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: isExpired ? 'rgba(251, 191, 36, 0.15)' : colors.btnPrimary.border,
+            borderColor: isExpired ? colors.btnWarning.border : colors.btnPrimary.border,
             opacity: connecting ? 0.6 : 1,
           }}
         >
@@ -607,11 +785,18 @@ function OAuthSection({
                 color={isExpired ? colors.badgeYellow.text : colors.btnPrimary.text}
               />
               <Text
+                fontFamily={FONT_SANS}
                 fontSize={13}
                 fontWeight="500"
                 color={isExpired ? colors.badgeYellow.text : colors.btnPrimary.text}
               >
-                {isExpired ? 'Reconectar' : `Conectar con ${oauth.provider}`}
+                {isExpired
+                  ? isGitHubApp
+                    ? 'Reconectar GitHub'
+                    : 'Reconectar'
+                  : isGitHubApp
+                    ? 'Conectar con GitHub'
+                    : `Conectar con ${oauth.provider}`}
               </Text>
             </>
           )}
@@ -631,6 +816,7 @@ interface CredentialsSectionProps {
 }
 
 function CredentialsSection({ credentials, onCredentialChange }: CredentialsSectionProps) {
+  const colors = makePalette(useColors());
   if (credentials.length === 0) return null;
 
   return (
@@ -638,6 +824,7 @@ function CredentialsSection({ credentials, onCredentialChange }: CredentialsSect
       {/* Subsection header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Text
+          fontFamily={FONT_SANS}
           fontSize={12}
           fontWeight="600"
           color={colors.textMuted}
@@ -669,6 +856,7 @@ interface SaveBarProps {
 }
 
 function SaveBar({ onSave, saving }: SaveBarProps) {
+  const colors = makePalette(useColors());
   return (
     <View
       style={{
@@ -677,12 +865,12 @@ function SaveBar({ onSave, saving }: SaveBarProps) {
         justifyContent: 'space-between',
         padding: 12,
         paddingHorizontal: 16,
-        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+        backgroundColor: colors.badgeBlue.bg,
         borderTopWidth: 1,
-        borderTopColor: 'rgba(59, 130, 246, 0.15)',
+        borderTopColor: colors.badgeBlue.border,
       }}
     >
-      <Text fontSize={12} color={colors.badgeBlue.text}>
+      <Text fontFamily={FONT_SANS} fontSize={12} color={colors.badgeBlue.text}>
         Tienes cambios sin guardar
       </Text>
       <TouchableOpacity
@@ -704,7 +892,7 @@ function SaveBar({ onSave, saving }: SaveBarProps) {
         {saving ? (
           <AppSpinner size="sm" variant="brand" />
         ) : (
-          <Text fontSize={13} fontWeight="500" color={colors.btnPrimary.text}>
+          <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={colors.btnPrimary.text}>
             Guardar
           </Text>
         )}
@@ -731,7 +919,9 @@ export function AuthPanel({
   onCredentialChange,
   onSaveCredentials,
   defaultExpanded = true,
+  systemSetupMessage,
 }: AuthPanelProps) {
+  const colors = makePalette(useColors());
   const [expanded, setExpanded] = useState(defaultExpanded);
   const rotateAnim = useRef(new Animated.Value(defaultExpanded ? 1 : 0)).current;
 
@@ -751,13 +941,13 @@ export function AuthPanel({
 
   // Determine overall status
   const getStatus = (): 'ready' | 'pending' | 'warning' | 'error' => {
+    if (systemSetupMessage) return 'warning';
     if (oauth) {
       if (oauth.status === 'connected') return 'ready';
       if (oauth.status === 'disconnected') return 'pending';
       if (oauth.status === 'expired') return 'warning';
       if (oauth.status === 'error') return 'error';
     }
-    // Check credentials
     const requiredMissing = credentials.some((c) => c.required && !c.isSet && !c.value);
     if (requiredMissing) return 'pending';
     return 'ready';
@@ -765,6 +955,8 @@ export function AuthPanel({
 
   // Determine badge text
   const getBadge = (): { text: string; variant: BadgeProps['variant'] } => {
+    if (systemSetupMessage) return { text: 'admin requerido', variant: 'yellow' };
+
     const oauthPart = oauth ? (oauth.status === 'connected' ? 'OAuth' : '') : '';
     const credCount = credentials.filter((c) => c.isSet || c.value).length;
     const credPart = credCount > 0 ? `${credCount} key${credCount > 1 ? 's' : ''}` : '';
@@ -810,7 +1002,7 @@ export function AuthPanel({
       >
         <StatusDot status={status} />
         <Key size={18} color={colors.iconKey} />
-        <Text flex={1} fontSize={14} fontWeight="500" color={colors.textPrimary}>
+        <Text flex={1} fontFamily={FONT_SANS} fontSize={14} fontWeight="500" color={colors.textPrimary}>
           Authentication
         </Text>
         {loading ? (
@@ -832,6 +1024,28 @@ export function AuthPanel({
             borderTopColor: colors.border,
           }}
         >
+          {/* System setup warning */}
+          {systemSetupMessage && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 10,
+                padding: 12,
+                margin: 12,
+                backgroundColor: indicators.risk.bg,
+                borderRadius: 6,
+                borderWidth: 1,
+                borderColor: indicators.risk.border,
+              }}
+            >
+              <AlertCircle size={15} color={colors.badgeYellow.text} style={{ marginTop: 1 }} />
+              <Text flex={1} fontFamily={FONT_SANS} fontSize={12} color={colors.badgeYellow.text} style={{ lineHeight: 18 }}>
+                {systemSetupMessage}
+              </Text>
+            </View>
+          )}
+
           {/* OAuth section */}
           {oauth && (
             <OAuthSection

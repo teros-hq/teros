@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceGet: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific workspace.',
   parameters: {
     type: 'object',

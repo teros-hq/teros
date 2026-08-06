@@ -1,3 +1,4 @@
+import { UI_HIDDEN_PROXY_TOOLS } from '@teros/shared';
 import React from 'react';
 import { YStack } from 'tamagui';
 import { type Message, useChatStore } from '../store/chatStore';
@@ -51,6 +52,16 @@ export const MessageItem = React.memo(
       return null;
     }
 
+    // Tool-execution proxy discovery is invisible in the chat: list-installed-apps
+    // and list-app-tools render nothing at all (no padding, no timestamp).
+    // execute-tool calls arrive already tunneled to the target tool's name.
+    if (
+      message.content?.type === 'tool_execution' &&
+      UI_HIDDEN_PROXY_TOOLS.includes(message.content.toolName)
+    ) {
+      return null;
+    }
+
     // Determine if we should show timestamp (hide if same minute as next message from same sender)
     const showTimestamp =
       !nextMessage ||
@@ -64,11 +75,9 @@ export const MessageItem = React.memo(
       isSameMinute(previousMessage.timestamp, message.timestamp);
 
     // Use compact padding for consecutive messages, especially tool calls
-    const isToolCall = message.toolCalls?.length > 0 || message.content?.type === 'tool_execution';
-    const isNextToolCall =
-      nextMessage?.toolCalls?.length > 0 || nextMessage?.content?.type === 'tool_execution';
-    const isPrevToolCall =
-      previousMessage?.toolCalls?.length > 0 || previousMessage?.content?.type === 'tool_execution';
+    const isToolCall = message.content?.type === 'tool_execution';
+    const isNextToolCall = nextMessage?.content?.type === 'tool_execution';
+    const isPrevToolCall = previousMessage?.content?.type === 'tool_execution';
 
     // More padding when transitioning between tool calls and text
     const paddingTop = isConsecutive
@@ -84,6 +93,7 @@ export const MessageItem = React.memo(
           message={message}
           showTimestamp={showTimestamp}
           channelAgentId={channelAgentId}
+          isLastMessage={!nextMessage}
           onRetry={onRetry}
         />
       </YStack>

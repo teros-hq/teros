@@ -1,0 +1,2 @@
+pw smoke attachment fixture
+linea 2

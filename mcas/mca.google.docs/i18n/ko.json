@@ -1,0 +1,60 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "제목과 선택적 초기 콘텐츠로 새로운 Google 문서를 만듭니다. 문서 ID와 URL을 반환합니다.",
+      "params": {
+        "title": "새 Google 문서의 제목",
+        "content": "문서의 선택적 초기 텍스트 콘텐츠. 줄 바꿈을 위해 \\n을 지원합니다."
+      }
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Google Docs 문서에서 콘텐츠를 읽습니다.",
+      "params": {
+        "documentId": "문서의 ID"
+      }
+    },
+    "update-document": {
+      "name": "update-document",
+      "description": "Google 문서에서 텍스트 문자열의 모든 발생을 교체합니다. 자리 표시자 또는 특정 콘텐츠를 업데이트하는 데 유용합니다.",
+      "params": {
+        "documentId": "문서의 ID",
+        "findText": "찾아 교체할 텍스트",
+        "replaceText": "교체할 텍스트",
+        "matchCase": "대소문자를 구분할지 여부 (기본값: true)"
+      }
+    },
+    "insert-text": {
+      "name": "insert-text",
+      "description": "Google 문서의 특정 위치에 텍스트를 삽입합니다. 인덱스 1은 문서의 시작입니다.",
+      "params": {
+        "documentId": "문서의 ID",
+        "text": "삽입할 텍스트",
+        "index": "삽입할 위치 (1 = 문서의 시작). 위치를 찾으려면 read-document를 사용하세요."
+      }
+    },
+    "append-text": {
+      "name": "append-text",
+      "description": "Google 문서의 끝에 텍스트를 추가합니다.",
+      "params": {
+        "documentId": "문서의 ID",
+        "text": "추가할 텍스트"
+      }
+    },
+    "batch-update-document": {
+      "name": "batch-update-document",
+      "description": "단일 원자 요청에서 Google 문서에 대해 여러 작업을 수행합니다. 삽입, 삭제 및 교체 작업을 지원합니다.",
+      "params": {
+        "documentId": "문서의 ID",
+        "operations": "수행할 작업 배열"
+      }
+    }
+  },
+  "name": "Google Docs",
+  "description": "Google Docs 문서를 생성, 읽기 및 편집 - 생성, 콘텐츠 읽기, 텍스트 삽입, 텍스트 추가, 찾기 및 교체, 배치 업데이트. 문서를 삭제하려면 Google Drive MCA를 사용하세요."
+}

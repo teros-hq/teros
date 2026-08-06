@@ -1,0 +1,305 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 WebSocket 연결을 확인합니다."
+    },
+    "admin-agents-list": {
+      "name": "admin-agents-list",
+      "description": "시스템의 모든 에이전트를 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-agents-get": {
+      "name": "admin-agents-get",
+      "description": "ID로 단일 에이전트를 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "agentId": "에이전트 ID"
+      }
+    },
+    "admin-agents-create": {
+      "name": "admin-agents-create",
+      "description": "새 에이전트를 생성합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "name": "에이전트 이름",
+        "coreId": "에이전트 코어 ID",
+        "workspaceId": "작업 공간 ID",
+        "description": "선택적 설명"
+      }
+    },
+    "admin-agents-update": {
+      "name": "admin-agents-update",
+      "description": "기존 에이전트를 업데이트합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "agentId": "업데이트할 에이전트 ID",
+        "name": "새 이름",
+        "description": "새 설명",
+        "active": "활성 상태"
+      }
+    },
+    "admin-agents-delete": {
+      "name": "admin-agents-delete",
+      "description": "에이전트를 삭제합니다. 슈퍼 관리자 전용. 파괴적 — 주의해서 사용하십시오.",
+      "params": {
+        "agentId": "삭제할 에이전트 ID",
+        "confirm": "삭제를 확인하려면 true여야 합니다."
+      }
+    },
+    "admin-workspaces-list": {
+      "name": "admin-workspaces-list",
+      "description": "모든 작업 공간을 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-workspaces-get": {
+      "name": "admin-workspaces-get",
+      "description": "ID로 작업 공간을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "workspaceId": "작업 공간 ID"
+      }
+    },
+    "admin-workspaces-create": {
+      "name": "admin-workspaces-create",
+      "description": "새 작업 공간을 생성합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "name": "작업 공간 이름",
+        "description": "선택적 설명"
+      }
+    },
+    "admin-workspaces-update": {
+      "name": "admin-workspaces-update",
+      "description": "작업 공간을 업데이트합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "name": "새 이름",
+        "description": "새 설명"
+      }
+    },
+    "admin-workspaces-archive": {
+      "name": "admin-workspaces-archive",
+      "description": "작업 공간을 아카이브(소프트 삭제)합니다. 슈퍼 관리자 전용. 파괴적 — 주의해서 사용하십시오.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "confirm": "확인을 위해 true여야 합니다."
+      }
+    },
+    "admin-workspaces-members-add": {
+      "name": "admin-workspaces-members-add",
+      "description": "작업 공간에 구성원을 추가합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "추가할 사용자 ID",
+        "role": "역할(예: 구성원, 관리자)"
+      }
+    },
+    "admin-workspaces-members-remove": {
+      "name": "admin-workspaces-members-remove",
+      "description": "작업 공간에서 구성원을 제거합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "제거할 사용자 ID"
+      }
+    },
+    "admin-workspaces-members-update": {
+      "name": "admin-workspaces-members-update",
+      "description": "작업 공간 구성원 역할을 업데이트합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "사용자 ID",
+        "role": "새 역할"
+      }
+    },
+    "admin-apps-list": {
+      "name": "admin-apps-list",
+      "description": "설치된 모든 앱을 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-apps-get": {
+      "name": "admin-apps-get",
+      "description": "ID로 설치된 앱을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "appId": "앱 ID"
+      }
+    },
+    "admin-apps-create": {
+      "name": "admin-apps-create",
+      "description": "앱 인스턴스를 설치/생성합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "mcaId": "설치할 MCA ID",
+        "ownerId": "소유자 사용자 ID",
+        "name": "앱 인스턴스 이름",
+        "config": "앱 구성"
+      }
+    },
+    "admin-apps-update": {
+      "name": "admin-apps-update",
+      "description": "설치된 앱을 업데이트합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "appId": "앱 ID",
+        "name": "새 이름",
+        "config": "업데이트된 구성",
+        "active": "활성 상태"
+      }
+    },
+    "admin-apps-delete": {
+      "name": "admin-apps-delete",
+      "description": "설치된 앱을 삭제합니다. 슈퍼 관리자 전용. 파괴적 — 주의해서 사용하십시오.",
+      "params": {
+        "appId": "삭제할 앱 ID",
+        "confirm": "확인을 위해 true여야 합니다."
+      }
+    },
+    "admin-apps-get-access": {
+      "name": "admin-apps-get-access",
+      "description": "앱에 접근할 수 있는 에이전트를 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "appId": "앱 ID"
+      }
+    },
+    "admin-apps-set-permissions": {
+      "name": "admin-apps-set-permissions",
+      "description": "앱에 대한 권한을 설정합니다(어떤 에이전트가 사용할 수 있는지). 슈퍼 관리자 전용.",
+      "params": {
+        "appId": "앱 ID",
+        "agentIds": "이 앱을 사용할 수 있는 에이전트 ID 목록"
+      }
+    },
+    "admin-access-list": {
+      "name": "admin-access-list",
+      "description": "모든 에이전트-앱 접근 권한을 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-access-grant": {
+      "name": "admin-access-grant",
+      "description": "에이전트에게 앱 접근 권한을 부여합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "agentId": "에이전트 ID",
+        "appId": "앱 ID"
+      }
+    },
+    "admin-access-revoke": {
+      "name": "admin-access-revoke",
+      "description": "에이전트의 앱 접근 권한을 취소합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "agentId": "에이전트 ID",
+        "appId": "앱 ID"
+      }
+    },
+    "admin-catalog-list": {
+      "name": "admin-catalog-list",
+      "description": "카탈로그에서 사용 가능한 모든 MCA를 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-usage-summary": {
+      "name": "admin-usage-summary",
+      "description": "전체 사용 요약(메시지, 토큰, 비용)을 가져옵니다. 슈퍼 관리자 전용."
+    },
+    "admin-usage-by-user": {
+      "name": "admin-usage-by-user",
+      "description": "사용자별 사용 내역을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "limit": "최대 결과",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-usage-by-workspace": {
+      "name": "admin-usage-by-workspace",
+      "description": "작업 공간별 사용 내역을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "limit": "최대 결과",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-usage-by-agent": {
+      "name": "admin-usage-by-agent",
+      "description": "에이전트별 사용 내역을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "limit": "최대 결과",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-usage-by-model": {
+      "name": "admin-usage-by-model",
+      "description": "LLM 모델별 사용 내역을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "limit": "최대 결과",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-usage-expensive-conversations": {
+      "name": "admin-usage-expensive-conversations",
+      "description": "비용이 가장 많이 드는 대화를 나열합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "limit": "최대 결과 (기본 50)",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-usage-timeline": {
+      "name": "admin-usage-timeline",
+      "description": "사용 타임라인(일일/주간 집계)을 가져옵니다. 슈퍼 관리자 전용.",
+      "params": {
+        "granularity": "시간 세분화",
+        "startDate": "시작 날짜 (ISO)",
+        "endDate": "종료 날짜 (ISO)"
+      }
+    },
+    "admin-feature-flags-list": {
+      "name": "admin-feature-flags-list",
+      "description": "DB 기본값 및 재정의 수와 함께 등록된 모든 기능 플래그를 나열합니다. 슈퍼 관리자 전용."
+    },
+    "admin-feature-flags-get": {
+      "name": "admin-feature-flags-get",
+      "description": "키로 단일 기능 플래그를 가져옵니다. 현재 기본값 및 모든 재정의 포함. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "기능 플래그 키"
+      }
+    },
+    "admin-feature-flags-update": {
+      "name": "admin-feature-flags-update",
+      "description": "기능 플래그의 기본값을 업데이트합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "기능 플래그 키",
+        "defaultValue": "새 기본값(부울, 숫자 또는 문자열)"
+      }
+    },
+    "admin-feature-flags-reset-default": {
+      "name": "admin-feature-flags-reset-default",
+      "description": "기능 플래그의 기본값을 코드 정의 레지스트리 기본값으로 재설정합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "재설정할 기능 플래그 키"
+      }
+    },
+    "admin-feature-flags-get-overrides": {
+      "name": "admin-feature-flags-get-overrides",
+      "description": "특정 기능 플래그에 대한 모든 재정의를 나열합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "기능 플래그 키"
+      }
+    },
+    "admin-feature-flags-set-override": {
+      "name": "admin-feature-flags-set-override",
+      "description": "기능 플래그에 대한 재정의를 생성하거나 업데이트합니다. 재정의는 특정 사용자, 작업 공간 또는 회사에 적용됩니다. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "기능 플래그 키",
+        "targetType": "재정의의 범위",
+        "targetId": "대상의 ID",
+        "value": "재정의 값",
+        "note": "재정의를 설명하는 선택적 메모"
+      }
+    },
+    "admin-feature-flags-delete-override": {
+      "name": "admin-feature-flags-delete-override",
+      "description": "기능 플래그에 대한 기존 재정의를 삭제합니다. 슈퍼 관리자 전용.",
+      "params": {
+        "key": "기능 플래그 키",
+        "targetType": "삭제할 재정의의 범위",
+        "targetId": "대상의 ID"
+      }
+    }
+  },
+  "name": "Teros Admin",
+  "description": "채팅을 통한 전체 관리자 패널 — 에이전트, 작업 공간, 앱, 접근, 사용, 기능 플래그 및 카탈로그 탐색을 관리합니다.",
+  "changelog": [
+    {
+      "notes": "에이전트, 작업 공간, 구성원 및 앱을 관리하고, 접근 및 기능 플래그를 제어하며, 사용 및 비용을 추적합니다."
+    }
+  ]
+}

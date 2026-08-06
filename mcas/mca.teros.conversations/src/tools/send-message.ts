@@ -1,7 +1,8 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected, SENDER_AGENT_ID, type SendMessageResult } from '../lib';
+import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
+import { getWsClient, isWsConnected, type SendMessageResult } from '../lib';
 
 export const sendMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Send a message to an existing conversation. The agent will process and respond to the message.',
   parameters: {
@@ -18,7 +19,7 @@ export const sendMessage: ToolConfig = {
     },
     required: ['channelId', 'message'],
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
     const wsClient = getWsClient();
     if (!isWsConnected()) {
       throw new Error('Not connected to backend. Please try again in a moment.');
@@ -34,11 +35,20 @@ export const sendMessage: ToolConfig = {
       throw new Error('message is required and cannot be empty');
     }
 
+    // Capture caller identity at call time — safe for parallel invocations.
+    // The backend uses senderType + senderId to build the sender field on the
+    // destination message, so the receiving agent knows who sent it.
+    const callerAgentId = context.execution.agentId;
+
     const result = await wsClient.queryConversations<SendMessageResult>('send_message', {
       channelId,
       message,
-      // Include sender agent ID if this is agent-to-agent communication
-      ...(SENDER_AGENT_ID && { senderAgentId: SENDER_AGENT_ID }),
+      // Explicit sender identity — no fallback chain, no ambiguity.
+      // If agentId is present this is agent-to-agent communication; otherwise
+      // the backend will attribute the message to the authenticated user.
+      ...(callerAgentId
+        ? { senderType: 'agent' as const, senderId: callerAgentId }
+        : { senderType: 'user' as const }),
     });
 
     return {

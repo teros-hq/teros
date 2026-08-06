@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const getIssue: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get details of a specific issue',
   parameters: {
     type: 'object',

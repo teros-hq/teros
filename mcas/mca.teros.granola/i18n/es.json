@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave API de Granola y la conectividad."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "Lista las notas de reuniones de Granola con filtros opcionales. Devuelve notas con id, título, propietario, created_at, updated_at. La API solo devuelve notas que ya tienen un resumen con IA y transcripción generados.",
+      "params": {
+        "created_before": "Fecha o fecha-hora ISO. Solo se devuelven las notas creadas antes de esta fecha.",
+        "created_after": "Fecha o fecha-hora ISO. Solo se devuelven las notas creadas después de esta fecha.",
+        "updated_after": "Fecha o fecha-hora ISO. Solo se devuelven las notas actualizadas después de esta fecha.",
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "page_size": "Resultados por página (por defecto: 10, máx: 30)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "Obtiene los detalles completos de una nota de reunión de Granola por su ID, incluyendo el resumen, asistentes, evento de calendario y, opcionalmente, la transcripción. La API solo devuelve notas que ya tienen un resumen con IA y transcripción generados.",
+      "params": {
+        "noteId": "ID de la nota (formato: not_XXXXXXXXXXXXXX)",
+        "includeTranscript": "Si se deben incluir los segmentos completos de la transcripción"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "Lista las carpetas de Granola accesibles para el usuario. Devuelve la jerarquía de carpetas mediante parent_folder_id.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "page_size": "Resultados por página (por defecto: 10, máx: 30)"
+      }
+    }
+  },
+  "name": "Granola",
+  "description": "Accede a tus notas de reuniones de Granola, transcripciones y resúmenes con IA.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — explora tus notas de reuniones de Granola, lee transcripciones y resúmenes con IA, y navega por las carpetas"
+    }
+  ]
+}

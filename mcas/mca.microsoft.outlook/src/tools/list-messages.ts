@@ -3,6 +3,7 @@ import { createGraphClient, formatMessage } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const listMessages: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'List email messages from inbox or a specific folder. Supports filtering by unread, importance, etc.',
   parameters: {

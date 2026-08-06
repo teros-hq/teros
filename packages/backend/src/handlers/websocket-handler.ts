@@ -3,20 +3,28 @@
  * Handles WebSocket connections and message routing
  */
 
-import type { ILLMClient, SessionStore } from "@teros/core"
+import type { Clock, ILLMClient, SessionStore } from "@teros/core"
 import type { AuthMessage, ClientMessage, ServerMessage } from "@teros/shared"
-import { isClientMessage, isWsRequest, parseClientMessage } from "@teros/shared"
+import { isClientMessage, isWsRequest, normalizeError, parseClientMessage } from "@teros/shared"
 import type { Db } from "mongodb"
 import type { IncomingMessage } from "http"
-import type { WebSocket, WebSocketServer } from "ws"
+import type { RawData, WebSocket, WebSocketServer } from "ws"
 import type { AuthManager } from "../auth/auth-manager"
+import type { IdentityService } from "../auth/identity-service"
+import type { SessionService } from "../auth/session-service"
 import type { McaOAuth } from "../auth/mca-oauth"
-import { config } from "../config"
-import { captureException } from "../lib/sentry"
+import { captureException, runWithRequestContext } from "../lib/sentry"
 import { getWsLogger, jsonBytes } from "../lib/ws-logger"
+import { createLogger } from "../lib/logger"
 import type { SecretsManager } from "../secrets/secrets-manager"
 import type { BoardService } from "../services/board-service"
+import type { BoardSubscriptionService } from "../services/board-subscription-service"
+import type { AutoplayService } from "../services/autoplay-service"
+import type { DesktopStateService } from "../services/desktop-state-service"
+import type { ProjectService } from "../services/project-service"
+import type { SkillService } from "../services/skill-service"
 import type { ChannelManager } from "../services/channel-manager"
+import { FeedbackService } from "../services/feedback-service"
 import type { McaManager } from "../services/mca-manager"
 import { McaService } from "../services/mca-service"
 import { ModelService } from "../services/model-service"
@@ -24,16 +32,19 @@ import { ProviderService } from "../services/provider-service"
 import type { SessionManager } from "../services/session-manager"
 import type { VolumeService } from "../services/volume-service"
 import type { WorkspaceService } from "../services/workspace-service"
+import { ShareService } from "../services/share-service"
 import { loggingMiddleware, WsRouter } from "../ws-framework"
-import { SubscriptionManager } from "../ws-framework/SubscriptionManager"
+
 import { UserService } from "../auth/user-service"
 import { AuthHandler } from "./auth-handler"
 import { register as registerAdminDomain } from "./domains/admin"
 import { register as registerAdminApiDomain } from "./domains/admin-api"
+import { register as registerBillingDomain } from "./domains/billing"
 import { register as registerAgentDomain } from "./domains/agent"
 import { register as registerAppDomain } from "./domains/app"
 import { register as registerBoardDomain } from "./domains/board"
 import { register as registerChannelDomain } from "./domains/channel"
+import { register as registerSchedulerDomain } from "./domains/scheduler"
 import {
   cleanupWatcherRegistry,
   createWatcherRegistry,
@@ -43,11 +54,28 @@ import {
 import { register as registerProfileDomain } from "./domains/profile"
 import { register as registerProviderDomain } from "./domains/provider"
 import { register as registerWorkspaceDomain } from "./domains/workspace"
-import type { EventHandler } from "./event-handler"
+import { register as registerFsBrowserDomain } from "./domains/fs-browser"
+import { register as registerFeedbackDomain } from "./domains/feedback"
+import { register as registerFileShareDomain } from "./domains/file-share"
+import { register as registerSkillDomain } from "./domains/skill"
+import { register as registerProjectDomain } from "./domains/project"
+import { register as registerDesktopStateDomain } from "./domains/desktop-state"
+import { register as registerTerminalDomain } from "./domains/terminal"
+import { register as registerFeatureFlagDomain } from "./domains/feature-flag"
+import { register as registerSubscriptionsDomain } from "./domains/subscriptions"
+import type { AgentWakeUpCallback, EventHandler } from "./event-handler"
 import { MessageHandler } from "./message-handler"
+import type { PubSubService } from "../services/pubsub-service"
+import type { MCAEventSubscriptionService } from "../services/mca-event-subscription-service"
+import type { LatitudeScoreEmitter } from "../services/latitude-score-emitter"
+import type { PtyManager } from "../services/pty-manager"
+
+const log = createLogger('WebSocketHandler')
 
 export interface WebSocketHandlerOptions {
   authHandler?: AuthHandler
+  /** Reloj inyectable — determinista (FixedClock) en modo test. TER-563. */
+  clock?: Clock
   mcaManager?: McaManager | null
   llmClient?: ILLMClient
   toolExecutor?: any // Mock tool executor for tests
@@ -57,7 +85,43 @@ export interface WebSocketHandlerOptions {
   workspaceService?: WorkspaceService | null
   volumeService?: VolumeService | null
   boardService?: BoardService | null
+  boardSubscriptionService?: BoardSubscriptionService | null
+  autoplayService?: AutoplayService | null
+
   eventHandler?: EventHandler | null
+  pubSubService?: PubSubService | null
+  mcaEventSubscriptionService?: MCAEventSubscriptionService | null
+  ptyManager?: PtyManager | null
+  /** F4·C0 — Latitude score emitter for the 👎 feedback hook. Null when not wired. */
+  latitudeScoreEmitter?: LatitudeScoreEmitter | null
+
+  // Injectable services (avoids manual `new` inside constructor)
+  userService?: UserService | null
+  identityService?: IdentityService | null
+  sessionService?: SessionService | null
+  providerService?: ProviderService | null
+  modelService?: ModelService | null
+  mcaService?: McaService | null
+  shareService?: ShareService | null
+  skillService?: SkillService | null
+  projectService?: ProjectService | null
+  desktopStateService?: DesktopStateService | null
+  featureFlagService?: import("../services/feature-flag-service").FeatureFlagService | null
+  feedbackService?: FeedbackService | null
+  stripePaymentService?: import("../services/stripe-payment-service").StripePaymentService | null
+
+  // Agent-usage instrumentation services (forwarded to MessageHandler via setters)
+  agentUsageSessionService?: import("../services/agent-usage-session-service").AgentUsageSessionService | null
+  toolExecutionService?: import("../services/tool-execution-service").ToolExecutionService | null
+  agentUsageHealthDeps?: {
+    buffer: import("../services/usage-event-buffer").UsageEventBuffer
+    reconciler: import("../services/agent-usage-reconciler").AgentUsageReconciler
+    rollup: import("../services/agent-usage-rollup-job").AgentUsageRollupJob
+  } | null
+  /** F4·C1 return path — decorates the Session Trace with a Latitude signal badge. */
+  latitudeSignalIndex?: import("../services/latitude-signal-index").LatitudeSignalIndex | null
+  /** F4·C2 — reads Latitude's clustered signals for the admin dashboard. */
+  latitudeReadClient?: import("../services/latitude-read-client").LatitudeReadClient | null
 }
 
 export class WebSocketHandler {
@@ -73,11 +137,17 @@ export class WebSocketHandler {
   private volumeService: VolumeService | null = null
   private workspaceService: WorkspaceService | null = null
 
+  // Health deps for agent-usage status surface (optional)
+  private agentUsageHealthDeps: WebSocketHandlerOptions['agentUsageHealthDeps'] | null = null
+
   // Map WebSocket to sessionId for quick lookup
   private wsToSession: WeakMap<WebSocket, string> = new WeakMap()
 
   // Map WebSocket to client IP (captured at connection time)
   private wsToIp: WeakMap<WebSocket, string> = new WeakMap()
+
+  // Map WebSocket to the raw auth token (needed by impersonation handlers)
+  private wsToToken: WeakMap<WebSocket, string> = new WeakMap()
 
   // UserService for access control checks
   private userService: UserService
@@ -85,8 +155,11 @@ export class WebSocketHandler {
   // New WsRouter — handles framework-migrated actions
   private wsRouter: WsRouter
 
-  // Shared SubscriptionManager for file-watcher (and future pub/sub domains)
-  private subscriptionManager: SubscriptionManager = new SubscriptionManager()
+  // PubSubService — unified pub/sub (replaces SubscriptionManager for file-watcher)
+  private pubSubService: PubSubService | null = null
+
+  // FeedbackService — message-level and conversation-level feedback
+  private feedbackService: FeedbackService | null = null
 
   // Per-connection file watcher registry
   private wsToWatcherRegistry: WeakMap<WebSocket, WatcherRegistry> = new WeakMap()
@@ -100,8 +173,8 @@ export class WebSocketHandler {
     options?: WebSocketHandlerOptions,
   ) {
     this.authHandler = options?.authHandler ?? new AuthHandler(sessionManager)
-    this.userService = new UserService(db)
-    this.providerService = new ProviderService(db)
+    this.userService = options?.userService ?? new UserService(db)
+    this.providerService = options?.providerService ?? new ProviderService(db)
     this.messageHandler = new MessageHandler(
       channelManager,
       sessionManager,
@@ -111,6 +184,12 @@ export class WebSocketHandler {
       options?.llmClient,
       options?.toolExecutor,
       options?.secretsManager,
+      undefined, // modelService — default
+      undefined, // providerService — default
+      undefined, // mcaService — default
+      undefined, // usageService — default
+      undefined, // usageTrackingService — default
+      options?.clock, // Clock inyectable — determinista en modo test (TER-563)
     )
 
     // Wire board service + event handler for automatic task running detection
@@ -118,14 +197,45 @@ export class WebSocketHandler {
       this.messageHandler.setTaskServices(options.boardService, options.eventHandler)
     }
 
-    // Pass tool cache invalidation callback to McaService
-    this.mcaService = new McaService(db, {
-      onToolCacheInvalidate: (agentId) => this.messageHandler.invalidateToolCache(agentId),
+    // Wire PubSubService for persistent channel-to-channel subscriptions
+    if (options?.pubSubService) {
+      this.pubSubService = options.pubSubService
+      this.messageHandler.setPubSubService(options.pubSubService)
+    }
+
+    // Wire MCAEventSubscriptionService for high-level topic-based event dispatch
+    if (options?.mcaEventSubscriptionService) {
+      this.messageHandler.setMCAEventSubscriptionService(options.mcaEventSubscriptionService)
+    }
+
+    // Wire agent-usage instrumentation (forwarded to MessageHandler when present)
+    if (options?.agentUsageSessionService) {
+      this.messageHandler.setAgentUsageSessionService(options.agentUsageSessionService)
+    }
+    if (options?.toolExecutionService) {
+      this.messageHandler.setToolExecutionService(options.toolExecutionService)
+    }
+
+    // Wire FeatureFlagService for runtime flag resolution (TER-386 tools.parallel-execution, …).
+    if (options?.featureFlagService) {
+      this.messageHandler.setFeatureFlagService(options.featureFlagService)
+    }
+
+    this.agentUsageHealthDeps = options?.agentUsageHealthDeps ?? null
+
+    // Use injected McaService or fall back to a local instance.
+    // Always wire the invalidation callback — the container-registered instance
+    // doesn't have it because MessageHandler doesn't exist at DI registration time.
+    this.mcaService = options?.mcaService ?? new McaService(db, {
       secretsManager: options?.secretsManager,
       workspaceService: options?.workspaceService ?? undefined,
       volumeService: options?.volumeService ?? undefined,
     })
-    this.modelService = new ModelService(db)
+    this.mcaService.setOnToolCacheInvalidate(
+      (agentId) => this.messageHandler.invalidateToolCache(agentId),
+    )
+    this.modelService = options?.modelService ?? new ModelService(db)
+    this.feedbackService = options?.feedbackService ?? new FeedbackService(db, this.pubSubService)
     this.mcaOAuth = options?.mcaOAuth
     this.userAuthManager = options?.authManager
     this.volumeService = options?.volumeService ?? null
@@ -141,26 +251,38 @@ export class WebSocketHandler {
     // Initialize WsRouter with middleware and domain handlers
     this.wsRouter = new WsRouter()
     this.wsRouter.use(loggingMiddleware)
-    registerProfileDomain(this.wsRouter, { db })
+    registerProfileDomain(this.wsRouter, {
+      db,
+      userService: options?.userService ?? null,
+    })
     registerAgentDomain(this.wsRouter, {
       db,
       providerService: this.providerService,
       workspaceService: options?.workspaceService ?? null,
+      modelService: this.modelService,
+      mcaService: this.mcaService,
+      pubSubService: this.pubSubService ?? null,
     })
     if (options?.workspaceService) {
       registerWorkspaceDomain(this.wsRouter, {
         db,
         workspaceService: options.workspaceService,
+        mcaService: this.mcaService,
+        pubSubService: this.pubSubService ?? null,
       })
     }
     registerProviderDomain(this.wsRouter, {
       db,
       providerService: this.providerService,
+      modelService: this.modelService,
     })
     registerChannelDomain(this.wsRouter, {
       channelManager: this.channelManager,
       sessionManager: this.sessionManager,
+      pubSubService: this.pubSubService!,
       messageHandler: this.messageHandler,
+      workspaceService: options?.workspaceService ?? null,
+      db,
       getSessionId: (ws) => this.wsToSession.get(ws),
     })
     registerAppDomain(this.wsRouter, {
@@ -168,57 +290,170 @@ export class WebSocketHandler {
       mcaOAuth: options?.mcaOAuth,
       mcaManager: options?.mcaManager,
       workspaceService: options?.workspaceService,
+      pubSubService: this.pubSubService ?? null,
       handlePermissionResponse: (requestId, granted) =>
         this.messageHandler.handlePermissionResponse(requestId, granted),
+      applyPermissionToPendingRequests: (appId, toolName, permission) =>
+        this.messageHandler.applyToolPermissionToPendingRequests(appId, toolName, permission),
+      handleFormResponse: (formRequestId, payload) =>
+        this.messageHandler.handleFormResponse(formRequestId, payload),
+      // Pass the shared McaService so grant/revoke-access trigger onToolCacheInvalidate
+      // and active conversations pick up the change without a backend restart.
+      mcaService: this.mcaService,
     })
-    if (options?.boardService && options?.workspaceService) {
+    if (options?.boardService && options?.workspaceService && options?.autoplayService && this.pubSubService) {
       registerBoardDomain(this.wsRouter, {
         boardService: options.boardService,
+        boardSubscriptionService: options.boardSubscriptionService ?? undefined,
         workspaceService: options.workspaceService,
         sessionManager: this.sessionManager,
+        pubSubService: this.pubSubService,
         channelManager: this.channelManager,
         messageHandler: this.messageHandler,
+        eventHandler: options.eventHandler ?? undefined,
+        autoplayService: options.autoplayService,
         db,
       })
     }
-    registerAdminDomain(this.wsRouter, { db })
+    registerAdminDomain(this.wsRouter, {
+      db,
+      userService: options?.userService ?? null,
+      identityService: options?.identityService ?? null,
+      sessionService: options?.sessionService ?? null,
+      stripePaymentService: options?.stripePaymentService ?? null,
+      // Without this, admin.resolve-access-request's `pubsub?.broadcastToUser` is a
+      // silent no-op → the requester never gets the access-granted/denied push
+      // (toast + unblock). Same class as the FASE6a billing-domain wiring gap.
+      pubSubService: this.pubSubService,
+    })
     registerAdminApiDomain(this.wsRouter, {
       db,
       mcaService: this.mcaService,
       mcaManager: options?.mcaManager,
       workspaceService: options?.workspaceService,
+      featureFlagService: options?.featureFlagService ?? null,
+      agentUsageHealthDeps: options?.agentUsageHealthDeps ?? null,
+      latitudeSignalIndex: options?.latitudeSignalIndex ?? null,
+      latitudeReadClient: options?.latitudeReadClient ?? null,
     })
+    // billing domain: billing.* (user-facing payment-method vaulting). Only
+    // registered when Stripe is wired — otherwise the actions stay absent.
+    if (options?.stripePaymentService) {
+      registerBillingDomain(this.wsRouter, {
+        db,
+        userService: options?.userService ?? null,
+        stripePaymentService: options.stripePaymentService,
+        pubSubService: this.pubSubService,
+      })
+    }
     if (options?.volumeService) {
       registerFileWatcherDomain(this.wsRouter, {
         db,
         volumeService: options.volumeService,
         workspaceService: options?.workspaceService ?? null,
-        subscriptionManager: this.subscriptionManager,
+        pubSubService: this.pubSubService!,
+        getSessionId: (ws) => this.wsToSession.get(ws),
         getRegistry: (ws) => this.getOrCreateWatcherRegistry(ws),
+      })
+    }
+
+    // skill domain: skill.* (always available)
+    registerSkillDomain(this.wsRouter, {
+      db,
+      skillService: options?.skillService ?? null,
+    })
+
+    // project domain: project.* (always available)
+    registerProjectDomain(this.wsRouter, {
+      db,
+      projectService: options?.projectService ?? null,
+    })
+
+    // desktop-state domain: desktop-state.get / desktop-state.save (always available)
+    registerDesktopStateDomain(this.wsRouter, {
+      db,
+      desktopStateService: options?.desktopStateService ?? null,
+    })
+
+    // scheduler domain: scheduler.* — paths paralelos al MCA mca.teros.scheduler (criterio 22)
+    registerSchedulerDomain(this.wsRouter, { db })
+
+    // terminal domain: PTY-based interactive terminal
+    registerTerminalDomain(this.wsRouter, {
+      pubSubService: options?.pubSubService!,
+      ptyManager: options?.ptyManager!,
+      mcaService: this.mcaService,
+      mcaManager: options?.mcaManager!,
+      db,
+    })
+
+    // fs-browser domain: fs.list (requires both volumeService and workspaceService)
+    if (options?.volumeService && options?.workspaceService) {
+      registerFsBrowserDomain(this.wsRouter, {
+        db,
+        volumeService: options.volumeService,
+        workspaceService: options.workspaceService,
+      })
+    }
+
+    // file-share domain: file.share / file.unshare (always available when volumeService present)
+    if (options?.volumeService) {
+      registerFileShareDomain(this.wsRouter, {
+        db,
+        shareService: options?.shareService ?? new ShareService(db),
+      })
+    }
+
+    // feature-flag domain: featureFlags.* (always available)
+    registerFeatureFlagDomain(this.wsRouter, {
+      db,
+      userService: options?.userService ?? null,
+      workspaceService: options?.workspaceService ?? null,
+      featureFlagService: options?.featureFlagService ?? null,
+    })
+
+    // subscriptions domain: mca.subscribe-to-events / mca.unsubscribe-from-events / mca.list-event-subscriptions
+    if (options?.mcaEventSubscriptionService) {
+      registerSubscriptionsDomain(this.wsRouter, {
+        mcaEventSubscriptionService: options.mcaEventSubscriptionService,
+        channelManager: this.channelManager,
+        db,
+      })
+    }
+
+    // feedback domain: conversation.message.feedback / conversation.message.action / conversation.feedback
+    if (this.feedbackService && options?.mcaManager) {
+      registerFeedbackDomain(this.wsRouter, {
+        db,
+        feedbackService: this.feedbackService,
+        mcaManager: options.mcaManager,
+        pubSubService: this.pubSubService ?? null,
+        latitudeScoreEmitter: options?.latitudeScoreEmitter ?? null,
       })
     }
 
     // Handle new connections
     this.wss.on("connection", (ws, request) => this.handleConnection(ws, request as IncomingMessage))
 
-    console.log("✅ WebSocketHandler initialized")
-  }
-
-  /**
-   * Build full avatar URL from filename
-   */
-  private buildAvatarUrl(avatarFilename?: string): string | undefined {
-    if (!avatarFilename) return undefined
-    return `${config.static.baseUrl}/${avatarFilename}`
+    log.info("WebSocketHandler initialized")
   }
 
   /**
    * Get the agent wake-up callback for EventHandler
    * This allows scheduled events to trigger agent responses
    */
-  getAgentWakeUpCallback(): (channelId: string, agentId: string, message: string) => Promise<void> {
-    return (channelId: string, agentId: string, message: string) => {
-      return this.messageHandler.processAgentResponse(channelId, agentId, message)
+  getAgentWakeUpCallback(): AgentWakeUpCallback {
+    return (channelId, agentId, message, triggerKind) => {
+      // Propagate the real origin (scheduled / event_subscription / …) so the
+      // session records it instead of masquerading as user_message. TER-650.
+      return this.messageHandler.processAgentResponse(
+        channelId,
+        agentId,
+        message,
+        undefined,
+        undefined,
+        triggerKind,
+      )
     }
   }
 
@@ -245,17 +480,64 @@ export class WebSocketHandler {
   }
 
   /**
+   * Parse and route a single inbound WebSocket frame. Runs inside the per-message
+   * isolation scope set by the `ws.on("message")` listener, so any error captured
+   * here already carries the connection's user identity.
+   */
+  private async handleSocketMessage(ws: WebSocket, data: RawData): Promise<void> {
+    const rawData = data.toString()
+    const receivedBytes = Buffer.byteLength(rawData, "utf8")
+
+    let message: any
+    try {
+      message = JSON.parse(rawData)
+      if (message.type !== "ping") {
+        log.debug({ preview: JSON.stringify(message).substring(0, 200) }, "Message received")
+      }
+
+      if (!isClientMessage(message)) {
+        log.warn({ message: JSON.stringify(message) }, "Message failed validation")
+        throw new Error("Invalid message format")
+      }
+
+      // Send message_ack for messages that need it (have requestId and are large or request ACK)
+      const needsAck =
+        message.type === "send_message" &&
+        (message as any).requestId &&
+        (receivedBytes > 10240 || (message as any).requireAck)
+
+      if (needsAck) {
+        this.sendMessage(ws, {
+          type: "message_ack",
+          requestId: (message as any).requestId,
+          seq: (message as any).seq,
+          receivedBytes,
+          status: "received",
+          serverTime: Date.now(),
+        })
+      }
+
+      await this.handleClientMessage(ws, message)
+    } catch (error) {
+      log.error({ err: error }, "Error handling message")
+      captureException(error, { context: "handleClientMessage", messageType: message?.type })
+      const normalized = normalizeError(error)
+      this.sendError(ws, "INVALID_MESSAGE", normalized.userMessage)
+    }
+  }
+
+  /**
    * Handle new WebSocket connection
    */
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
     const ip = this.resolveIp(request)
     this.wsToIp.set(ws, ip)
-    console.log(`🔌 New WebSocket connection from ${ip}`)
+    log.info({ ip }, "New WebSocket connection")
 
     // Connection must authenticate within 30 seconds
     const authTimeout = setTimeout(() => {
       if (!this.wsToSession.has(ws)) {
-        console.log("⏰ Authentication timeout - closing connection")
+        log.warn("Authentication timeout - closing connection")
         this.sendMessage(ws, {
           type: "auth_error",
           error: "Authentication timeout",
@@ -266,45 +548,16 @@ export class WebSocketHandler {
 
     // Handle incoming messages
     ws.on("message", async (data) => {
-      const rawData = data.toString()
-      const receivedBytes = Buffer.byteLength(rawData, "utf8")
-
-      let message: any
-      try {
-        message = JSON.parse(rawData)
-        if (message.type !== "ping") {
-          console.log("📨 Received message:", JSON.stringify(message).substring(0, 200))
-        }
-
-        if (!isClientMessage(message)) {
-          console.log("❌ Message failed validation:", JSON.stringify(message))
-          throw new Error("Invalid message format")
-        }
-
-        // Send message_ack for messages that need it (have requestId and are large or request ACK)
-        const needsAck =
-          message.type === "send_message" &&
-          (message as any).requestId &&
-          (receivedBytes > 10240 || (message as any).requireAck)
-
-        if (needsAck) {
-          this.sendMessage(ws, {
-            type: "message_ack",
-            requestId: (message as any).requestId,
-            seq: (message as any).seq,
-            receivedBytes,
-            status: "received",
-            serverTime: Date.now(),
-          })
-        }
-
-        await this.handleClientMessage(ws, message)
-      } catch (error) {
-        console.error("❌ Error handling message:", error)
-        captureException(error, { context: "handleClientMessage", messageType: message?.type })
-        const errorMessage = error instanceof Error ? error.message : "Unknown error"
-        this.sendError(ws, "INVALID_MESSAGE", errorMessage)
-      }
+      // Per-message isolation scope: every error captured while handling THIS
+      // message (manual via captureException or automatic) inherits the user, and
+      // concurrent messages from different users get independent scopes so one
+      // user's identity never bleeds onto another's errors. Teros is a raw WS
+      // server with no framework request-isolation, so we set it explicitly.
+      // userId is undefined before auth (the first message is the handshake) —
+      // correct: no identity to attach yet.
+      const sessionId = this.wsToSession.get(ws)
+      const userId = sessionId ? this.sessionManager.getSession(sessionId)?.userId : undefined
+      await runWithRequestContext({ userId }, () => this.handleSocketMessage(ws, data))
     })
 
     // Handle disconnection
@@ -315,7 +568,7 @@ export class WebSocketHandler {
 
     // Handle errors
     ws.on("error", (error) => {
-      console.error("❌ WebSocket error:", error)
+      log.error({ err: error }, "WebSocket error")
     })
   }
 
@@ -364,19 +617,17 @@ export class WebSocketHandler {
     if (isWsRequest(message)) {
       const req = message as import("@teros/shared").WsRequest
 
-      // Actions allowed for users without platform access (needed for the invitation gate UI)
-      const ACCESS_GATE_WHITELIST = ["admin.get-invitation-status", "admin.get-invitations-sent"]
-
-      if (!ACCESS_GATE_WHITELIST.includes(req.action)) {
-        const hasAccess = await this.userService.hasAccess(session.userId)
-        if (!hasAccess) {
-          this.sendError(ws, "ACCESS_DENIED", "Platform access not granted. You need invitations to access Teros.")
-          return
-        }
+      // Block users without platform access
+      const hasAccess = await this.userService.hasAccess(session.userId)
+      if (!hasAccess) {
+        this.sendError(ws, "ACCESS_DENIED", "Platform access not granted. You are on the waitlist.")
+        return
       }
 
       // ws is injected into ctx so handlers that need raw socket access (channel domain) can use it
-      const ctx = { userId: session.userId, sessionId: sessionId!, ws, ip }
+      // sessionToken is included so impersonation handlers can hash it without client involvement
+      const sessionToken = this.wsToToken.get(ws)
+      const ctx = { userId: session.userId, sessionId: sessionId!, ws, ip, sessionToken }
       await this.wsRouter.dispatch(ws, ctx, req.requestId, req.action, req.data ?? {})
       return
     }
@@ -455,6 +706,8 @@ export class WebSocketHandler {
       // Create session
       const session = this.sessionManager.createSession(result.userId!, ws)
       this.wsToSession.set(ws, session.sessionId)
+      // Store raw token so impersonation handlers can hash it
+      this.wsToToken.set(ws, result.sessionToken!)
 
       // Send success
       this.sendMessage(ws, {
@@ -462,6 +715,13 @@ export class WebSocketHandler {
         userId: result.userId!,
         sessionToken: result.sessionToken!,
         role: (result.user?.role || "user") as "user" | "admin" | "super",
+        user: result.user ? {
+          profile: result.user.profile,
+          termsAcceptedAt: result.user.termsAcceptedAt,
+          onboardingCompletedAt: result.user.onboardingCompletedAt,
+          accessGranted: result.user.accessGranted,
+        } : undefined,
+        ...(result.impersonation ? { impersonation: result.impersonation } : {}),
       })
 
       // Send connection_ack with protocol configuration
@@ -490,9 +750,9 @@ export class WebSocketHandler {
         status: "ok",
       })
 
-      console.log(`✅ User authenticated: ${result.userId} from ${ip}`)
+      log.info({ userId: result.userId, ip }, "User authenticated")
     } catch (error) {
-      console.error("❌ Auth error:", error)
+      log.error({ err: error }, "Auth error")
       const errorMessage = error instanceof Error ? error.message : "Authentication failed"
       logger.write({
         ts: new Date().toISOString(),
@@ -521,16 +781,23 @@ export class WebSocketHandler {
   private handleDisconnection(ws: WebSocket): void {
     const sessionId = this.wsToSession.get(ws)
     if (sessionId) {
+      // Pending permission requests are intentionally NOT cleared here: with no
+      // auto-deny countdown, a request waits for the user indefinitely. The
+      // in-memory pending (and its parked resolver promise) survives the
+      // disconnect so that on reconnect restorePendingApprovals re-broadcasts
+      // it and handleResponse resolves the ORIGINAL promise — the live agent
+      // turn continues instead of being denied out from under the user.
       this.sessionManager.removeSession(sessionId)
     }
-    // Clean up any file watchers and subscriptions for this connection
+    this.wsToToken.delete(ws)
+    // Clean up any file watchers for this connection
+    // (PubSubService topic subscriptions are cleaned up via sessionManager.removeSession → pubSubService.unregisterSession)
     const registry = this.wsToWatcherRegistry.get(ws)
     if (registry) {
       cleanupWatcherRegistry(registry)
       this.wsToWatcherRegistry.delete(ws)
     }
-    this.subscriptionManager.cleanup(ws)
-    console.log("👋 WebSocket disconnected")
+    log.info("WebSocket disconnected")
   }
 
   /**

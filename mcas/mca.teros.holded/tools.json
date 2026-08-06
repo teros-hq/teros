@@ -1,0 +1,89 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.holded",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Holded API key and connectivity by making a lightweight request to the contacts endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-contacts",
+      "description": "List contacts from Holded invoicing module. Returns a curated list of contacts with id, name, email, phone, and other key fields. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "type": {
+            "type": "string",
+            "description": "Filter by contact type (e.g. client, supplier, lead)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-contact",
+      "description": "Get a single contact from Holded by its ID. Returns full contact details including name, email, phone, address, VAT number, and custom fields.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-invoices",
+      "description": "List invoices from Holded invoicing module. Returns a curated list of invoices with id, number, date, contact, total, status, and payment info. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by invoice status (e.g. draft, sent, paid)"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter invoices by contact ID"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

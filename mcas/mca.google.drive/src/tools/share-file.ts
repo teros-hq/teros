@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const shareFile: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Share a file or folder with specific permissions.',
   parameters: {
     type: 'object',
@@ -40,6 +41,7 @@ export const shareFile: ToolConfig = {
       context,
       async () => {
         const response = await clients.drive.permissions.create({
+          ...ALL_DRIVES,
           fileId,
           requestBody: {
             type: 'user',

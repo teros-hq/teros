@@ -5,7 +5,7 @@
   "version": "0.9.0",
   "description": "Fetch and extract content from web pages. Supports HTML, text, and markdown formats with intelligent conversion.",
   "type": "utility",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "data",
   "entrypoint": "src/index.ts",
   "author": {
@@ -31,5 +31,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — fetch any web page and get it back as clean text, markdown, or HTML"
+    }
+  ]
 }

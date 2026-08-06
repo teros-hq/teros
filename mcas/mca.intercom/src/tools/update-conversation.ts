@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const updateConversation: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Update a conversation state (open, close, snooze) or priority in Intercom.',
   parameters: {

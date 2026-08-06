@@ -8,6 +8,7 @@ export const COLUMN_COLORS: Record<string, string> = {
   backlog: '#6B7280',
   todo: '#3B82F6',
   in_progress: '#F59E0B',
+  blocked: '#EF4444',
   review: '#8B5CF6',
   done: '#22C55E',
 };
@@ -31,15 +32,10 @@ export const BLOCK_STATUS_CONFIG: Record<BlockStatus, { color: string; bg: strin
 /**
  * Determine the block status of a task given all tasks on the board.
  *
- * - 'circular'  → task has taskStatus === 'circular_dependency'
- * - 'blocked'   → task has at least one dependency whose taskStatus is not 'done'
- * - 'unblocked' → task has no dependencies, or all dependencies are completed
+ * - 'blocked'   → task has at least one dependency that is not archived
+ * - 'unblocked' → task has no dependencies, or all dependencies are archived (completed)
  */
 export function getBlockStatus(task: Task, allTasks: Task[]): BlockStatus {
-  if (task.taskStatus === 'circular_dependency') {
-    return 'circular';
-  }
-
   if (!task.dependencies || task.dependencies.length === 0) {
     return 'unblocked';
   }
@@ -48,8 +44,8 @@ export function getBlockStatus(task: Task, allTasks: Task[]): BlockStatus {
 
   for (const depId of task.dependencies) {
     const dep = taskMap.get(depId);
-    // If the dependency exists and is not done, the task is blocked
-    if (dep && dep.taskStatus !== 'done') {
+    // A dependency is blocking if it exists and has not been archived
+    if (dep && !dep.archived) {
       return 'blocked';
     }
     // If the dependency doesn't exist in current view (e.g. filtered out),
@@ -98,8 +94,8 @@ export function computeDependencyHighlights(
     const otherPendingDeps = task.dependencies.filter((depId) => {
       if (depId === hoveredTaskId) return false;
       const dep = taskMap.get(depId);
-      // If the dep exists and is not done, it's still pending
-      return dep ? dep.taskStatus !== 'done' : false;
+      // If the dep exists and is not archived, it's still pending
+      return dep ? !dep.archived : false;
     });
 
     if (otherPendingDeps.length === 0) {
@@ -127,4 +123,25 @@ export function timeAgo(dateStr: string): string {
   if (months < 12) return `${months}mo`;
   const years = Math.floor(months / 12);
   return `${years}y`;
+}
+
+/**
+ * Relative time in natural Spanish ("hace 30 minutos", "hace 2 horas").
+ * Falls back to a compact date for older entries.
+ */
+export function timeAgoNatural(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const seconds = Math.floor((now - then) / 1000);
+  if (seconds < 60) return 'ahora mismo';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `hace ${minutes} ${minutes === 1 ? 'minuto' : 'minutos'}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours} ${hours === 1 ? 'hora' : 'horas'}`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ayer';
+  if (days < 7) return `hace ${days} días`;
+  if (days < 30) return `hace ${Math.floor(days / 7)} ${Math.floor(days / 7) === 1 ? 'semana' : 'semanas'}`;
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
 }

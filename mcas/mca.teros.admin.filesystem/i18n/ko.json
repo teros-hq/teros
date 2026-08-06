@@ -1,0 +1,173 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. 작업 공간 루트에 접근할 수 있는지와 ripgrep 바이너리가 사용 가능한지를 확인합니다."
+    },
+    "read": {
+      "name": "read",
+      "description": "선택적 줄 기반 페이지 매김으로 텍스트 파일을 읽습니다. \"cat -n\" (번호 매겨진 줄) 형식으로 콘텐츠와 메타데이터(이름, 크기, 줄 수, 종류)를 반환합니다. 범위를 위해 offset+limit을 사용하거나 처음/마지막 N줄을 위해 head/tail을 사용합니다. 텍스트 콘텐츠를 반환하며, 이진 파일은 거부됩니다.",
+      "params": {
+        "filePath": "절대 경로 또는 작업 공간 상대 경로",
+        "offset": "0 기반 줄 오프셋 (기본값 0)",
+        "limit": "반환할 최대 줄 수 (기본값 2000, 최대 10000)",
+        "head": "처음 N줄만 반환 (오프셋/제한을 무시함)",
+        "tail": "마지막 N줄만 반환 (오프셋/제한을 무시함)",
+        "includeRaw": "true인 경우, 형식화된 내용 외에 원시 콘텐츠(줄 번호 없이)를 포함합니다."
+      }
+    },
+    "read-batch": {
+      "name": "read-batch",
+      "description": "단일 호출로 여러 텍스트 파일을 읽습니다. 요청된 경로당 하나의 항목을 가진 배열을 반환합니다 (ok, content/error). 각 파일은 `read`와 동일한 기본 제한으로 읽히며, perFileLimit을 전달하여 재정의할 수 있습니다. 개별 경로에서의 실패는 배치를 중단하지 않습니다.",
+      "params": {
+        "paths": "절대 경로 또는 작업 공간 상대 경로 (최대 50개)",
+        "perFileLimit": "파일당 최대 줄 수 (기본값 2000, 최대 10000)"
+      }
+    },
+    "write": {
+      "name": "write",
+      "description": "파일에 내용을 작성하며, 존재하는 경우 덮어씁니다. 안전성: 기존 파일은 이 세션에서 먼저 읽혀야 합니다 (덮어쓰기 전에 `read` 사용). 새 파일의 경우, 상위 디렉토리가 자동으로 생성됩니다. 인라인 수정에는 `edit`를 사용하고 추가에는 `append`를 사용합니다.",
+      "params": {
+        "filePath": "절대 경로 또는 작업 공간 상대 경로",
+        "content": "작성할 내용 (UTF-8)"
+      }
+    },
+    "append": {
+      "name": "append",
+      "description": "파일 끝에 내용을 추가합니다. 존재하지 않는 경우 파일(및 부모)을 생성합니다. 이전 읽기가 필요하지 않습니다 (추가는 기존 내용에 비파괴적입니다). 내용을 교체하려면 `write`(이후 `read`) 또는 `edit`를 사용합니다.",
+      "params": {
+        "filePath": "절대 경로 또는 작업 공간 상대 경로",
+        "content": "추가할 내용 (UTF-8)"
+      }
+    },
+    "edit": {
+      "name": "edit",
+      "description": "파일에서 정확한 문자열 발생을 교체합니다. 기본적으로 `oldString`이 0회 또는 여러 번 나타나면 실패합니다 — 모든 일치를 다시 쓰려면 `replaceAll: true`를 전달합니다. 교체는 리터럴입니다 (정규 표현식 없음). 변경 사항의 통합 차이를 반환합니다. 구조화된 덩어리에는 `patch`를 사용하고, 더 큰 재작성에는 `write`를 사용합니다.",
+      "params": {
+        "oldString": "일치할 정확한 하위 문자열 (공백 민감)",
+        "newString": "교체할 텍스트",
+        "replaceAll": "모든 발생을 교체 (기본값 false)",
+        "dryRun": "변경 사항 미리 보기 (작성 없이 차이를 반환). 기본값 false"
+      }
+    },
+    "patch": {
+      "name": "patch",
+      "description": "파일에 통합 차이(패치 형식)를 원자적으로 적용합니다. 여러 편집이 함께 이루어져야 하는 다중 덩어리 수정에 유용합니다. 약간의 컨텍스트 이동을 허용하기 위해 모호한 일치를 사용합니다 (fuzzFactor 2). 모든 덩어리가 적용되었는지 여부를 반환합니다. 단일 포인트 변경에는 `edit`를 선호합니다.",
+      "params": {
+        "filePath": "패치할 대상 파일",
+        "unifiedDiff": "통합 차이 콘텐츠 (표준 diff -u 형식)",
+        "fuzzFactor": "컨텍스트 줄에 대한 공백 허용치 (기본값 2)",
+        "dryRun": "패치 미리 보기 (작성 없이 차이를 반환). 기본값 false"
+      }
+    },
+    "list": {
+      "name": "list",
+      "description": "메타데이터(이름, 유형, 크기, 수정 시간, 종류)와 함께 디렉토리 항목을 나열합니다. 선택적으로 `depth`를 통해 재귀적으로 수행합니다. `ignore` 패턴(글로브 스타일)을 존중하며 `respectGitignore`를 따릅니다. `limit` + `cursor`로 페이지 매김합니다. 계층적 보기를 원하면 `tree`를 사용하고, 패턴 기반 검색을 원하면 `glob`를 사용합니다.",
+      "params": {
+        "path": "나열할 디렉토리 (기본값: 작업 공간 루트)",
+        "depth": "최대 재귀 깊이 (0 = 현재 디렉토리만, 기본값 0, 최대 20)",
+        "ignore": "추가적인 무시 패턴 (gitignore 구문)",
+        "respectGitignore": "true인 경우, 루트에서 .gitignore를 로드하고 이를 존중합니다. 루트가 git 저장소여야 합니다 ( .git/ 찾음); 독립형 .gitignore 파일은 인식되지 않습니다.",
+        "limit": "반환할 최대 항목 수 (기본값 50, 최대 200)",
+        "cursor": "이전 응답의 페이지 매김 커서"
+      }
+    },
+    "tree": {
+      "name": "tree",
+      "description": "`depth` 수준까지 디렉토리의 계층적 JSON 트리를 반환합니다. 파일은 크기와 수정 시간을 가지며; 디렉토리는 자식을 가집니다. `ignore` 패턴과 `respectGitignore`를 존중합니다. 출력이 과도해지는 것을 방지하기 위해 maxNodes로 제한됩니다. 평면 페이지 매김을 원하면 `list`를 사용하거나 패턴 일치를 원하면 `glob`를 사용합니다.",
+      "params": {
+        "path": "루트 디렉토리 (기본값: 작업 공간 루트)",
+        "depth": "하강할 최대 깊이 (기본값 3, 최대 20)",
+        "ignore": "추가적인 무시 패턴 (gitignore 구문)",
+        "maxNodes": "총 노드에 대한 하드 제한 (기본값 500)"
+      }
+    },
+    "stat": {
+      "name": "stat",
+      "description": "단일 경로에 대한 메타데이터를 반환합니다: 존재 여부, 유형 (파일/디렉토리/심볼릭 링크), 크기, 수정 시간, 권한. 콘텐츠를 읽지 않습니다. 존재 여부 또는 크기만 확인해야 할 때는 `read`보다 이 방법을 선호합니다.",
+      "params": {
+        "path": "절대 경로 또는 작업 공간 상대 경로"
+      }
+    },
+    "glob": {
+      "name": "glob",
+      "description": "글로브 패턴에 맞는 파일을 찾습니다 (예: \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). 결과는 수정 시간(mtime)에 따라 정렬됩니다 (가장 최근에 수정된 것이 먼저). `ignore` 패턴과 `respectGitignore`를 존중합니다. 콘텐츠 검색에는 `grep`을 사용하고 평면 디렉토리 나열에는 `list`를 사용합니다.",
+      "params": {
+        "pattern": "글로브 패턴",
+        "path": "기본 디렉토리 (기본값: 작업 공간 루트)",
+        "ignore": "추가적인 무시 패턴 (gitignore 구문)",
+        "includeDirs": "결과에 디렉토리 포함",
+        "dot": "점 파일 일치 (기본값 false)",
+        "limit": "최대 결과 (기본값 50, 최대 1000)"
+      }
+    },
+    "grep": {
+      "name": "grep",
+      "description": "ripgrep을 사용하여 정규 표현식 패턴에 대한 파일 내용을 검색합니다. `output_mode`는 결과 형태를 제어합니다: \"content\"는 {file, line, match, context} 객체를 반환합니다; \"files\"는 일치하는 파일당 하나의 항목을 matchCount와 함께 반환합니다; \"count\"는 총계만 반환합니다. 컨텍스트 줄(-B/-A), 포함 글로브, 대소문자 구분 없음, 다중 줄을 지원합니다. 셸 주입에 안전합니다 (인수는 보간되지 않음). 이름으로 파일을 찾으려면 `glob`를 사용합니다.",
+      "params": {
+        "pattern": "정규 표현식 패턴 (ripgrep을 통한 Rust 정규 표현식 구문)",
+        "path": "기본 디렉토리 또는 파일 (기본값: 작업 공간 루트)",
+        "output_mode": "결과 형태 (기본값 \"content\")",
+        "contextBefore": "각 일치 전에 있는 컨텍스트 줄",
+        "contextAfter": "각 일치 후에 있는 컨텍스트 줄",
+        "include": "파일 필터링을 위한 글로브 (예: \"*.ts\", \"**/*.md\")",
+        "type": "ripgrep --type에 전달되는 미리 정의된 파일 유형 필터 (예: js, py, rust, ts, go, md). 알려진 언어를 대상으로 할 때 `include`보다 빠릅니다.",
+        "multiline": "패턴이 줄 바꿈을 넘어 일치하도록 허용합니다.",
+        "respectGitignore": ".gitignore를 존중합니다 (기본값 false). 루트가 git 저장소여야 합니다 ( .git/ 찾음); 독립형 .gitignore 파일은 인식되지 않습니다.",
+        "limit": "반환할 최대 일치 또는 파일 수 (기본값 50, 최대 100)"
+      }
+    },
+    "delete": {
+      "name": "delete",
+      "description": "파일 또는 디렉토리를 삭제합니다. 비어 있지 않은 디렉토리에 대해 `recursive: true`를 설정합니다. 아이도포턴트: 경로가 존재하지 않으면 조용히 성공합니다 (existed=false 보고).",
+      "params": {
+        "recursive": "비어 있지 않은 디렉토리에 필요"
+      }
+    },
+    "copy": {
+      "name": "copy",
+      "description": "파일 또는 디렉토리를 복사합니다. 디렉토리에 대해 `recursive: true`를 설정합니다. 목적지가 존재하는 경우 실패하며, `overwrite: true`가 아니면 실패합니다. 목적지의 상위 디렉토리는 자동으로 생성됩니다.",
+      "params": {
+        "recursive": "디렉토리를 복사하는 데 필요",
+        "overwrite": "목적지가 존재하는 경우 덮어쓰기"
+      }
+    },
+    "move": {
+      "name": "move",
+      "description": "파일 또는 디렉토리를 이동하거나 이름을 변경합니다. 목적지가 존재하는 경우 실패하며, `overwrite: true`가 아니면 실패합니다. 목적지의 상위 디렉토리는 자동으로 생성됩니다."
+    },
+    "mkdir": {
+      "name": "mkdir",
+      "description": "디렉토리를 생성합니다. 기본적으로 필요에 따라 상위 디렉토리를 생성합니다 (재귀적). 아이도포턴트: 디렉토리가 이미 존재하는 경우 created=false를 반환합니다.",
+      "params": {
+        "recursive": "필요에 따라 부모 생성 (기본값 true)"
+      }
+    },
+    "list-roots": {
+      "name": "list-roots",
+      "description": "이 MCA가 접근할 수 있는 작업 공간 루트를 나열합니다. {count, roots[{path, exists, type}]}를 반환합니다. 경로가 샌드박스에 의해 거부될 때 범위를 감사하는 데 유용합니다."
+    },
+    "read-media": {
+      "name": "read-media",
+      "description": "이진 파일(이미지, PDF, 오디오, 아카이브 등)을 읽고 base64 + 감지된 MIME 유형을 마법 바이트를 통해 반환합니다. {file, name, size, mimeType, base64, mtime}를 반환합니다. 하드 캡 10 MB; 텍스트에는 `read`를 사용합니다.",
+      "params": {
+        "filePath": "절대 경로 또는 작업 공간 상대 경로"
+      }
+    },
+    "hash": {
+      "name": "hash",
+      "description": "파일의 암호화 해시를 계산합니다 (기본값 sha256). 파일을 스트리밍하여 큰 파일에서도 로드하지 않고 작동합니다. {file, name, algorithm, hash, size}를 반환합니다. 무결성 검사 및 읽기 간의 변경 사항 감지에 유용합니다.",
+      "params": {
+        "filePath": "절대 경로 또는 작업 공간 상대 경로",
+        "algorithm": "해시 알고리즘 (기본값 sha256)"
+      }
+    }
+  },
+  "name": "파일 시스템 (관리자)",
+  "description": "호스트 머신에서의 파일 시스템 작업. 관리자 전용. mca.teros.filesystem과 동일한 표면이지만 작업 공간 감옥이 없습니다.",
+  "changelog": [
+    {
+      "notes": "파일을 읽고, 쓰고, 수정하고 패치하며, 이름과 콘텐츠로 검색하고, 호스트 머신 전반에 걸쳐 폴더를 관리합니다."
+    }
+  ]
+}

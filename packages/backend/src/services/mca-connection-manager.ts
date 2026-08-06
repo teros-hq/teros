@@ -36,82 +36,29 @@ import { nanoid } from 'nanoid';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { captureException } from '../lib/sentry';
 
+
 // ============================================================================
-// TYPES
+// TYPES  (interfaces live in mca-connection-manager.types.ts)
 // ============================================================================
 
 import type { AuthManager } from '../auth/auth-manager';
 import type { SecretsManager } from '../secrets/secrets-manager';
 import { type BoardService, buildTaskInitialMessage } from './board-service';
 import type { ChannelManager } from './channel-manager';
+import type { WorkspaceService } from './workspace-service';
+import type { VolumeService } from './volume-service';
 import type { SessionManager } from './session-manager';
+import type { PubSubService } from './pubsub-service';
+import type { MCAEventSubscriptionService } from './mca-event-subscription-service';
+import type {
+  AppInfo,
+  ActiveConnection,
+  McaConnectionManagerConfig,
+  QueryHandlerContext,
+} from './mca-connection-manager.types';
+export type { McaConnectionManagerEvents, McaConnectionManagerConfig } from './mca-connection-manager.types';
+import { handleQueryConversations } from './mca-connection-manager.queries';
 
-/**
- * App info needed for secrets resolution
- */
-interface AppInfo {
-  appId: string;
-  mcaId: string;
-  ownerId: string;
-}
-
-/**
- * Active WebSocket connection with metadata
- */
-interface ActiveConnection {
-  ws: WebSocket;
-  appId: string;
-  mcaId: string; // Needed to load system secrets
-  ownerId: string; // Needed to load user secrets
-  connectedAt: number;
-  lastPingAt?: number;
-  lastPongAt?: number;
-  status: HealthStatus;
-  /** Current agent context - set before tool execution, used for agent-to-agent communication */
-  currentAgentId?: string;
-  /** Current channel context - set before tool execution */
-  currentChannelId?: string;
-  /** Current workspace context - set before tool execution */
-  currentWorkspaceId?: string;
-}
-
-/**
- * Events emitted by McaConnectionManager
- */
-export interface McaConnectionManagerEvents {
-  'mca:connected': (appId: string) => void;
-  'mca:disconnected': (appId: string, reason: string) => void;
-  'mca:event': (event: WsMcaEvent & { appId: string }) => void;
-  'mca:health': (appId: string, update: WsHealthUpdate) => void;
-  'mca:credentials_expired': (appId: string, reason: string) => void;
-  'mca:send_message': (data: { channelId: string; agentId: string; message: string }) => void;
-}
-
-/**
- * Configuration for McaConnectionManager
- */
-export interface McaConnectionManagerConfig {
-  /** Ping interval in ms (default: 30000) */
-  pingIntervalMs?: number;
-  /** Pong timeout in ms - connection considered dead if no pong (default: 10000) */
-  pongTimeoutMs?: number;
-  /** Token expiry time in ms (default: 30000) */
-  tokenExpiryMs?: number;
-  /** Secrets manager for loading system secrets */
-  secretsManager?: SecretsManager;
-  /** Auth manager for loading user secrets */
-  authManager?: AuthManager;
-  /** Channel manager for conversations queries */
-  channelManager?: ChannelManager;
-  /** Board service for board/task queries from MCAs */
-  boardService?: BoardService;
-  /** Session manager for broadcasting board events */
-  sessionManager?: SessionManager;
-  /** WsRouter for admin_request dispatch (admin-api domain) */
-  wsRouter?: WsRouter;
-}
-
-// ============================================================================
 // MCA CONNECTION MANAGER
 // ============================================================================
 
@@ -136,6 +83,10 @@ export class McaConnectionManager extends EventEmitter {
   private boardService?: BoardService;
   private sessionManager?: SessionManager;
   private wsRouter?: WsRouter;
+  private pubSubService?: PubSubService;
+  private mcaEventSubscriptionService?: MCAEventSubscriptionService;
+  private workspaceService?: WorkspaceService;
+  private volumeService?: VolumeService;
 
   constructor(
     private db: Db,
@@ -153,23 +104,11 @@ export class McaConnectionManager extends EventEmitter {
     this.boardService = config?.boardService;
     this.sessionManager = config?.sessionManager;
     this.wsRouter = config?.wsRouter;
+    this.pubSubService = config?.pubSubService;
+    this.mcaEventSubscriptionService = config?.mcaEventSubscriptionService;
+    this.workspaceService = config?.workspaceService;
+    this.volumeService = config?.volumeService;
     this.subscriptionsCollection = db.collection('mca_subscriptions');
-  }
-
-  /**
-   * Broadcast a board event to all WebSocket sessions subscribed to a board.
-   */
-  private broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    if (!this.sessionManager) return;
-    const subscribers = this.sessionManager.getBoardSubscribers(boardId);
-    if (subscribers.length === 0) return;
-
-    const payload = JSON.stringify(event);
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload);
-      }
-    }
   }
 
   // ==========================================================================
@@ -346,9 +285,10 @@ export class McaConnectionManager extends EventEmitter {
       this.handleMessage(appId, data);
     });
 
-    // Setup close handler
+    // Setup close handler — pass the socket so handleDisconnect can ignore
+    // the (async) close of a socket that was already replaced by a newer one.
     ws.on('close', (code, reason) => {
-      this.handleDisconnect(appId, code, reason.toString());
+      this.handleDisconnect(appId, code, reason.toString(), ws);
     });
 
     // Setup error handler
@@ -602,6 +542,9 @@ export class McaConnectionManager extends EventEmitter {
   /**
    * Handle query_conversations request
    */
+  /**
+   * Handle query_conversations — delegates to mca-connection-manager.queries.ts
+   */
   private async handleQueryConversations(
     appId: string,
     connection: ActiveConnection,
@@ -609,857 +552,40 @@ export class McaConnectionManager extends EventEmitter {
     action: string,
     params: Record<string, unknown>,
   ): Promise<void> {
-    console.log(`[McaConnectionManager] query_conversations (${action}) from ${appId}`);
-
-    if (!this.channelManager) {
-      this.send(appId, {
-        type: 'query_conversations_result',
-        requestId,
-        action,
-        data: null,
-        error: 'ChannelManager not available',
-      });
-      return;
-    }
-
-    const userId = connection.ownerId;
-
-    try {
-      let data: unknown;
-
-      switch (action) {
-        case 'search_messages': {
-          const query = params.query as string;
-          const limit = (params.limit as number) || 50;
-          const excludeChannelId = params.excludeChannelId as string | undefined;
-
-          if (!query || query.length < 2) {
-            throw new Error('Query must be at least 2 characters');
-          }
-
-          const results = await this.channelManager.searchMessages(userId, query, limit);
-
-          // Filter out the current channel if specified
-          if (excludeChannelId) {
-            results.results = results.results.filter((r) => r.channelId !== excludeChannelId);
-          }
-
-          data = results;
-          break;
-        }
-
-        case 'list_channels': {
-          const status = params.status as 'active' | 'closed' | undefined;
-          const limit = (params.limit as number) || 20;
-          const excludeChannelId = params.excludeChannelId as string | undefined;
-
-          const listResult = await this.channelManager.listUserChannels(userId, status, {
-            limit,
-          });
-
-          let channels = listResult.channels;
-
-          // Filter out private channels (MCAs should not access private conversations)
-          channels = channels.filter((c) => !c.isPrivate);
-
-          // Filter out the current channel if specified
-          if (excludeChannelId) {
-            channels = channels.filter((c) => c.channelId !== excludeChannelId);
-          }
-
-          data = {
-            channels: channels.map((c) => ({
-              channelId: c.channelId,
-              name: c.metadata?.name || 'Chat',
-              agentId: c.agentId,
-              status: c.status,
-              createdAt: c.createdAt,
-              updatedAt: c.updatedAt,
-              lastMessage: c.lastMessage,
-            })),
-            total: channels.length,
-          };
-          break;
-        }
-
-        case 'get_channel_messages': {
-          const channelId = params.channelId as string;
-          const limit = (params.limit as number) || 50;
-          const before = params.before as string | undefined;
-          const textOnly = params.textOnly !== false; // Default true
-
-          if (!channelId) {
-            throw new Error('channelId is required');
-          }
-
-          // Verify access (owner or workspace member)
-          const channel = await this.channelManager.getChannel(channelId);
-          if (!channel) {
-            throw new Error('Channel not found');
-          }
-          const canAccess = await this.channelManager.canAccessChannel(channelId, userId);
-          if (!canAccess) {
-            throw new Error('Access denied');
-          }
-
-          // MCAs cannot access private channels
-          if (channel.isPrivate) {
-            throw new Error('Cannot access private conversation');
-          }
-
-          const result = await this.channelManager.getMessages(channelId, limit, before);
-
-          // Filter to text-only if requested
-          let messages = result.messages;
-          if (textOnly) {
-            messages = messages.filter((m) => m.content.type === 'text');
-          }
-
-          data = {
-            channel: {
-              channelId: channel.channelId,
-              name: channel.metadata?.name || 'Chat',
-              agentId: channel.agentId,
-              status: channel.status,
-              createdAt: channel.createdAt,
-            },
-            messages: messages.map((m) => ({
-              messageId: m.messageId,
-              role: m.role,
-              content: m.content,
-              timestamp: m.timestamp,
-            })),
-            hasMore: result.hasMore,
-          };
-          break;
-        }
-
-        case 'get_channel_summary': {
-          const channelId = params.channelId as string;
-
-          if (!channelId) {
-            throw new Error('channelId is required');
-          }
-
-          // Verify access (owner or workspace member)
-          const channel = await this.channelManager.getChannel(channelId);
-          if (!channel) {
-            throw new Error('Channel not found');
-          }
-          const canAccess = await this.channelManager.canAccessChannel(channelId, userId);
-          if (!canAccess) {
-            throw new Error('Access denied');
-          }
-
-          // MCAs cannot access private channels
-          if (channel.isPrivate) {
-            throw new Error('Cannot access private conversation');
-          }
-
-          // Get first and last messages
-          const { messages: recentMessages } = await this.channelManager.getMessages(channelId, 1);
-          const lastMessage = recentMessages[0];
-
-          // Get message count (approximate by getting all and counting)
-          // TODO: Add a count method to ChannelManager for efficiency
-          const { messages: allMessages } = await this.channelManager.getMessages(channelId, 1000);
-          const messageCount = allMessages.length;
-
-          // Find first message (oldest)
-          const firstMessage = allMessages[allMessages.length - 1];
-
-          data = {
-            channelId: channel.channelId,
-            name: channel.metadata?.name || 'Chat',
-            agentId: channel.agentId,
-            status: channel.status,
-            createdAt: channel.createdAt,
-            updatedAt: channel.updatedAt,
-            messageCount,
-            firstMessage: firstMessage
-              ? {
-                  content:
-                    firstMessage.content.type === 'text'
-                      ? (firstMessage.content as any).text?.substring(0, 200)
-                      : `[${firstMessage.content.type}]`,
-                  timestamp: firstMessage.timestamp,
-                  role: firstMessage.role,
-                }
-              : null,
-            lastMessage: lastMessage
-              ? {
-                  content:
-                    lastMessage.content.type === 'text'
-                      ? (lastMessage.content as any).text?.substring(0, 200)
-                      : `[${lastMessage.content.type}]`,
-                  timestamp: lastMessage.timestamp,
-                  role: lastMessage.role,
-                }
-              : null,
-          };
-          break;
-        }
-
-        case 'create_channel': {
-          const agentId = params.agentId as string;
-          const name = params.name as string | undefined;
-
-          if (!agentId) {
-            throw new Error('agentId is required');
-          }
-
-          // Create the channel
-          const newChannel = await this.channelManager.createChannel(
-            userId,
-            agentId,
-            name ? { name } : undefined,
-          );
-
-          data = {
-            channelId: newChannel.channelId,
-            agentId: newChannel.agentId,
-            name: newChannel.metadata?.name || 'New conversation',
-            status: newChannel.status,
-            createdAt: newChannel.createdAt,
-            updatedAt: newChannel.updatedAt,
-          };
-          break;
-        }
-
-        case 'send_message': {
-          const channelId = params.channelId as string;
-          const message = params.message as string;
-          const senderAgentId = params.senderAgentId as string | undefined;
-
-          if (!channelId) {
-            throw new Error('channelId is required');
-          }
-          if (!message || message.trim().length === 0) {
-            throw new Error('message is required and cannot be empty');
-          }
-
-          // Verify channel exists and user has access
-          const channel = await this.channelManager.getChannel(channelId);
-          if (!channel) {
-            throw new Error('Channel not found');
-          }
-          const canAccess = await this.channelManager.canAccessChannel(channelId, userId);
-          if (!canAccess) {
-            throw new Error('Access denied');
-          }
-
-          // Create and save the message
-          const messageId = this.channelManager.createMessageId();
-          const timestamp = new Date().toISOString();
-
-          // Get sender info - if senderAgentId provided (or from connection context), it's agent-to-agent communication
-          // Priority: explicit param > connection context > user
-          const effectiveAgentId = senderAgentId || connection.currentAgentId;
-          let sender: { type: 'user' | 'agent'; id: string; name: string } | undefined;
-          if (effectiveAgentId) {
-            sender = (await this.channelManager.getAgentSender(effectiveAgentId)) || undefined;
-          } else {
-            sender = (await this.channelManager.getUserSender(userId)) || undefined;
-          }
-
-          const userMessage = {
-            messageId,
-            channelId,
-            role: 'user' as const,
-            userId,
-            sender,
-            content: { type: 'text' as const, text: message },
-            timestamp,
-          };
-
-          await this.channelManager.saveMessage(userMessage);
-
-          // Emit event so MessageHandler can process the agent response
-          // This is done via the 'mca:send_message' event
-          this.emit('mca:send_message', {
-            channelId,
-            agentId: channel.agentId,
-            message: message,
-          });
-
-          data = {
-            success: true,
-            messageId,
-            channelId,
-            timestamp,
-          };
-          break;
-        }
-
-        case 'rename_channel': {
-          const channelId = params.channelId as string;
-          const name = params.name as string;
-
-          if (!channelId) {
-            throw new Error('channelId is required');
-          }
-          if (!name || name.trim().length === 0) {
-            throw new Error('name is required and cannot be empty');
-          }
-
-          const channel = await this.channelManager.getChannel(channelId);
-          if (!channel) {
-            throw new Error('Channel not found');
-          }
-
-          // Verify access
-          const canAccess = await this.channelManager.canAccessChannel(channelId, userId);
-          if (!canAccess) {
-            throw new Error('Access denied');
-          }
-
-          await this.channelManager.renameChannel(channelId, name.trim());
-
-          data = {
-            success: true,
-            channelId,
-            name: name.trim(),
-          };
-          break;
-        }
-
-        // ==================================================================
-        // BOARD / TASK QUERIES
-        // ==================================================================
-
-        case 'get_tasks_by_agent': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const workspaceId = params.workspaceId as string;
-          const agentId = params.agentId as string;
-          if (!workspaceId || !agentId) {
-            throw new Error('workspaceId and agentId are required');
-          }
-          const tasks = await this.boardService.getTasksByAgent(workspaceId, agentId);
-          data = { agentId, tasks };
-          break;
-        }
-
-        case 'get_board_summary': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const gbsProjectId = params.projectId as string;
-          if (!gbsProjectId) {
-            throw new Error('projectId is required');
-          }
-          const gbsProject = await this.boardService.getProject(gbsProjectId);
-          if (!gbsProject) {
-            throw new Error('Project not found');
-          }
-          const summary = await this.boardService.getBoardSummary(gbsProject.boardId);
-          if (!summary) {
-            throw new Error('Board not found');
-          }
-          data = summary;
-          break;
-        }
-
-        case 'list_tasks': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const ltProjectId = params.projectId as string;
-          if (!ltProjectId) {
-            throw new Error('projectId is required');
-          }
-          const project = await this.boardService.getProject(ltProjectId);
-          if (!project) {
-            throw new Error('Project not found');
-          }
-          const { projectId: _pid, ...filters } = params;
-          const filteredTasks = await this.boardService.listTasks(project.boardId, filters as any);
-          data = { projectId: ltProjectId, tasks: filteredTasks };
-          break;
-        }
-
-        case 'get_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const taskId = params.taskId as string;
-          if (!taskId) {
-            throw new Error('taskId is required');
-          }
-          const task = await this.boardService.getTask(taskId);
-          if (!task) {
-            throw new Error('Task not found');
-          }
-          const allTasks = await this.boardService.listTasks(task.boardId, {});
-          const subTasks = allTasks.filter((t: any) => t.parentTaskId === taskId);
-          data = { task, subTasks };
-          break;
-        }
-
-        case 'list_projects': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const lpWorkspaceId = params.workspaceId as string;
-          if (!lpWorkspaceId) {
-            throw new Error('workspaceId is required');
-          }
-          const projects = await this.boardService.listProjects(lpWorkspaceId);
-          data = { workspaceId: lpWorkspaceId, projects };
-          break;
-        }
-
-        case 'create_project': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const cpWorkspaceId = params.workspaceId as string;
-          const cpName = params.name as string;
-          const cpDescription = params.description as string | undefined;
-          if (!cpWorkspaceId || !cpName) {
-            throw new Error('workspaceId and name are required');
-          }
-          const { project: newProject, board: newBoard } = await this.boardService.createProject(
-            cpWorkspaceId,
-            userId,
-            { name: cpName, description: cpDescription },
-          );
-          data = { project: newProject, board: newBoard };
-          break;
-        }
-
-        case 'create_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const ctProjectId = params.projectId as string;
-          if (!ctProjectId) {
-            throw new Error('projectId is required');
-          }
-          const ctProject = await this.boardService.getProject(ctProjectId);
-          if (!ctProject) {
-            throw new Error('Project not found');
-          }
-          const { projectId: _ctPid, ...taskInput } = params;
-          const newTask = await this.boardService.createTask(
-            ctProject.boardId,
-            userId,
-            taskInput as any,
-          );
-          data = { task: newTask };
-          this.broadcastBoardEvent(ctProject.boardId, {
-            type: 'board_task_created',
-            task: newTask,
-          });
-          break;
-        }
-
-        case 'batch_create_tasks': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const bctProjectId = params.projectId as string;
-          const bctTasks = params.tasks as any[];
-          if (!bctProjectId || !bctTasks || !Array.isArray(bctTasks)) {
-            throw new Error('projectId and tasks array are required');
-          }
-          const bctProject = await this.boardService.getProject(bctProjectId);
-          if (!bctProject) {
-            throw new Error('Project not found');
-          }
-          const createdTasks = await this.boardService.batchCreateTasks(
-            bctProject.boardId,
-            userId,
-            bctTasks,
-          );
-          data = { projectId: bctProjectId, tasks: createdTasks, count: createdTasks.length };
-          this.broadcastBoardEvent(bctProject.boardId, {
-            type: 'board_tasks_batch_created',
-            tasks: createdTasks,
-          });
-          break;
-        }
-
-        case 'update_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const utTaskId = params.taskId as string;
-          if (!utTaskId) {
-            throw new Error('taskId is required');
-          }
-          const { taskId: _utTid, ...updateInput } = params;
-          const updatedTask = await this.boardService.updateTask(
-            utTaskId,
-            userId,
-            updateInput as any,
-          );
-          if (!updatedTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: updatedTask };
-          this.broadcastBoardEvent(updatedTask.boardId, {
-            type: 'board_task_updated',
-            task: updatedTask,
-          });
-          break;
-        }
-
-        case 'move_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const mtTaskId = params.taskId as string;
-          const mtColumnId = params.columnId as string;
-          const mtPosition = params.position as number | undefined;
-          if (!mtTaskId || !mtColumnId) {
-            throw new Error('taskId and columnId are required');
-          }
-          const movedTask = await this.boardService.moveTask(
-            mtTaskId,
-            userId,
-            mtColumnId,
-            mtPosition,
-          );
-          if (!movedTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: movedTask };
-          this.broadcastBoardEvent(movedTask.boardId, {
-            type: 'board_task_updated',
-            task: movedTask,
-          });
-          break;
-        }
-
-        case 'assign_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const atTaskId = params.taskId as string;
-          const atAgentId = params.agentId as string | undefined;
-          if (!atTaskId) {
-            throw new Error('taskId is required');
-          }
-          const assignedTask = await this.boardService.assignTask(atTaskId, userId, atAgentId);
-          if (!assignedTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: assignedTask };
-          this.broadcastBoardEvent(assignedTask.boardId, {
-            type: 'board_task_updated',
-            task: assignedTask,
-          });
-          break;
-        }
-
-        case 'start_task': {
-          if (!this.boardService || !this.channelManager) {
-            throw new Error('BoardService or ChannelManager not available');
-          }
-          const stTaskId = params.taskId as string;
-          const stAgentId = params.agentId as string | undefined;
-          const stPrompt = params.prompt as string | undefined;
-          if (!stTaskId) {
-            throw new Error('taskId is required');
-          }
-          const { task: startedTask } = await this.boardService.startTask(
-            stTaskId,
-            userId,
-            stAgentId,
-          );
-          const assignedAgentId = startedTask.assignedAgentId!;
-
-          // Reuse existing conversation or create a new one
-          let channel: any;
-          if (startedTask.channelId) {
-            channel = await this.channelManager.getChannel(startedTask.channelId);
-          }
-          if (!channel) {
-            channel = await this.channelManager.createChannel(userId, assignedAgentId, {
-              name: startedTask.title,
-            });
-            await this.boardService.linkConversation(startedTask.taskId, userId, channel.channelId);
-          }
-
-          // Save origin channel (the channel that called start_task) for event notifications
-          const originChannelId = connection.currentChannelId;
-          if (originChannelId) {
-            await this.boardService.setOriginChannel(startedTask.taskId, originChannelId);
-          }
-
-          const startedFullTask = { ...startedTask, channelId: channel.channelId, originChannelId };
-          data = {
-            task: startedFullTask,
-            channelId: channel.channelId,
-          };
-          this.broadcastBoardEvent(startedTask.boardId, {
-            type: 'board_task_updated',
-            task: startedFullTask,
-          });
-
-          // Build and send initial message to the agent (fire-and-forget)
-          const initialMessage = buildTaskInitialMessage(startedTask, stPrompt);
-
-          try {
-            // Save the initial message
-            const msgId = this.channelManager.createMessageId();
-            const msgTimestamp = new Date().toISOString();
-            const sender = (await this.channelManager.getUserSender(userId)) || undefined;
-
-            await this.channelManager.saveMessage({
-              messageId: msgId,
-              channelId: channel.channelId,
-              role: 'user' as const,
-              userId,
-              sender,
-              content: { type: 'text' as const, text: initialMessage },
-              timestamp: msgTimestamp,
-            });
-
-            // Emit event so MessageHandler processes the agent response
-            this.emit('mca:send_message', {
-              channelId: channel.channelId,
-              agentId: assignedAgentId,
-              message: initialMessage,
-            });
-          } catch (err: any) {
-            console.error(`❌ Error sending initial task message to ${channel.channelId}:`, err);
-          }
-
-          break;
-        }
-
-        case 'link_conversation': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const lcTaskId = params.taskId as string;
-          const lcChannelId = params.channelId as string;
-          if (!lcTaskId || !lcChannelId) {
-            throw new Error('taskId and channelId are required');
-          }
-          const linkedTask = await this.boardService.linkConversation(
-            lcTaskId,
-            userId,
-            lcChannelId,
-          );
-          if (!linkedTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: linkedTask };
-          this.broadcastBoardEvent(linkedTask.boardId, {
-            type: 'board_task_updated',
-            task: linkedTask,
-          });
-          break;
-        }
-
-        case 'delete_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const dtTaskId = params.taskId as string;
-          if (!dtTaskId) {
-            throw new Error('taskId is required');
-          }
-          // Get task before deleting for broadcast
-          const dtTask = await this.boardService.getTask(dtTaskId);
-          const deleted = await this.boardService.deleteTask(dtTaskId);
-          if (!deleted) {
-            throw new Error('Task not found');
-          }
-          data = { taskId: dtTaskId, deleted: true };
-          if (dtTask) {
-            this.broadcastBoardEvent(dtTask.boardId, {
-              type: 'board_task_deleted',
-              taskId: dtTaskId,
-            });
-          }
-          break;
-        }
-
-        case 'update_task_status': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const utsTaskId = params.taskId as string;
-          const utsStatus = params.status as string;
-          const utsActor = params.actor as string || userId;
-          if (!utsTaskId || !utsStatus) {
-            throw new Error('taskId and status are required');
-          }
-          const validStatuses = ['idle', 'assigned', 'working', 'blocked', 'review', 'done'];
-          if (!validStatuses.includes(utsStatus)) {
-            throw new Error(`Invalid status: ${utsStatus}. Must be one of: ${validStatuses.join(', ')}`);
-          }
-          const statusResult = await this.boardService.updateTaskStatus(
-            utsTaskId,
-            utsStatus as any,
-            utsActor,
-          );
-          if (!statusResult) {
-            throw new Error('Task not found');
-          }
-          data = { task: statusResult.task, previousStatus: statusResult.previousStatus };
-          this.broadcastBoardEvent(statusResult.task.boardId, {
-            type: 'board_task_updated',
-            task: statusResult.task,
-          });
-          break;
-        }
-
-        case 'add_progress_note': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const apnTaskId = params.taskId as string;
-          const apnText = params.text as string;
-          const apnActor = params.actor as string || userId;
-          if (!apnTaskId || !apnText) {
-            throw new Error('taskId and text are required');
-          }
-          const noteTask = await this.boardService.addProgressNote(apnTaskId, apnText, apnActor);
-          if (!noteTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: noteTask };
-          this.broadcastBoardEvent(noteTask.boardId, {
-            type: 'board_task_updated',
-            task: noteTask,
-          });
-          break;
-        }
-
-        case 'move_my_task': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const mmtTaskId = params.taskId as string;
-          const mmtAgentId = params.agentId as string;
-          const mmtColumnId = params.columnId as string;
-          const mmtPosition = params.position as number | undefined;
-          if (!mmtTaskId || !mmtAgentId || !mmtColumnId) {
-            throw new Error('taskId, agentId and columnId are required');
-          }
-          const mmtTask = await this.boardService.getTask(mmtTaskId);
-          if (!mmtTask) {
-            throw new Error('Task not found');
-          }
-          if (mmtTask.assignedAgentId !== mmtAgentId) {
-            throw new Error('Agent is not assigned to this task');
-          }
-          const mmtMoved = await this.boardService.moveTask(
-            mmtTaskId,
-            userId,
-            mmtColumnId,
-            mmtPosition,
-          );
-          if (!mmtMoved) {
-            throw new Error('Task not found');
-          }
-          data = { task: mmtMoved };
-          this.broadcastBoardEvent(mmtMoved.boardId, {
-            type: 'board_task_updated',
-            task: mmtMoved,
-          });
-          break;
-        }
-
-        case 'update_my_task_status': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const umtsTaskId = params.taskId as string;
-          const umtsAgentId = params.agentId as string;
-          const umtsStatus = params.status as string;
-          if (!umtsTaskId || !umtsAgentId || !umtsStatus) {
-            throw new Error('taskId, agentId and status are required');
-          }
-          const validStatuses = ['idle', 'assigned', 'working', 'blocked', 'review', 'done'];
-          if (!validStatuses.includes(umtsStatus)) {
-            throw new Error(`Invalid status: ${umtsStatus}. Must be one of: ${validStatuses.join(', ')}`);
-          }
-          const umtsTask = await this.boardService.getTask(umtsTaskId);
-          if (!umtsTask) {
-            throw new Error('Task not found');
-          }
-          if (umtsTask.assignedAgentId !== umtsAgentId) {
-            throw new Error('Agent is not assigned to this task');
-          }
-          const umtsResult = await this.boardService.updateTaskStatus(
-            umtsTaskId,
-            umtsStatus as any,
-            umtsAgentId,
-          );
-          if (!umtsResult) {
-            throw new Error('Task not found');
-          }
-          data = { task: umtsResult.task, previousStatus: umtsResult.previousStatus };
-          this.broadcastBoardEvent(umtsResult.task.boardId, {
-            type: 'board_task_updated',
-            task: umtsResult.task,
-          });
-          break;
-        }
-
-        case 'add_my_progress_note': {
-          if (!this.boardService) {
-            throw new Error('BoardService not available');
-          }
-          const ampnTaskId = params.taskId as string;
-          const ampnAgentId = params.agentId as string;
-          const ampnText = params.text as string;
-          if (!ampnTaskId || !ampnAgentId || !ampnText) {
-            throw new Error('taskId, agentId and text are required');
-          }
-          const ampnTask = await this.boardService.getTask(ampnTaskId);
-          if (!ampnTask) {
-            throw new Error('Task not found');
-          }
-          if (ampnTask.assignedAgentId !== ampnAgentId) {
-            throw new Error('Agent is not assigned to this task');
-          }
-          const ampnNoteTask = await this.boardService.addProgressNote(ampnTaskId, ampnText, ampnAgentId);
-          if (!ampnNoteTask) {
-            throw new Error('Task not found');
-          }
-          data = { task: ampnNoteTask };
-          this.broadcastBoardEvent(ampnNoteTask.boardId, {
-            type: 'board_task_updated',
-            task: ampnNoteTask,
-          });
-          break;
-        }
-
-        default:
-          throw new Error(`Unknown action: ${action}`);
-      }
-
-      this.send(appId, {
-        type: 'query_conversations_result',
-        requestId,
-        action,
-        data,
-      });
-    } catch (error) {
-      console.error(`[McaConnectionManager] Error in query_conversations (${action}):`, error);
-      captureException(error, { context: 'mca-query-conversations', appId, action });
-      this.send(appId, {
-        type: 'query_conversations_result',
-        requestId,
-        action,
-        data: null,
-        error: error instanceof Error ? error.message : 'Query failed',
-      });
-    }
+    const ctx: QueryHandlerContext = {
+      db: this.db,
+      channelManager: this.channelManager,
+      boardService: this.boardService,
+      pubSubService: this.pubSubService,
+      mcaEventSubscriptionService: this.mcaEventSubscriptionService,
+      workspaceService: this.workspaceService,
+      volumeService: this.volumeService,
+      wsRouter: this.wsRouter,
+      send: this.send.bind(this),
+      emit: this.emit.bind(this),
+      resolveEffectiveAgentId: this.resolveEffectiveAgentId.bind(this),
+      dispatchToRouter: this.dispatchToRouter.bind(this),
+    };
+    await handleQueryConversations(ctx, appId, connection, requestId, action, params);
   }
 
   /**
-   * Handle MCA disconnect
+   * Handle MCA disconnect.
+   *
+   * The `ws` parameter guards against a race on replace: `close()` on the
+   * OLD socket fires its 'close' event asynchronously, AFTER the new
+   * connection for the same appId has been registered. Without the identity
+   * check, that stale close would evict the LIVE connection from the Map
+   * (send() → false, setContext → no-op) while its WebSocket is still open.
    */
-  private handleDisconnect(appId: string, code: number, reason: string): void {
+  private handleDisconnect(appId: string, code: number, reason: string, ws?: WebSocket): void {
+    const current = this.connections.get(appId);
+    if (ws && current && current.ws !== ws) {
+      console.log(
+        `[McaConnectionManager] Ignoring stale close for ${appId} (code: ${code}) — connection already replaced`,
+      );
+      return;
+    }
     this.connections.delete(appId);
     console.log(
       `[McaConnectionManager] MCA disconnected: ${appId} (code: ${code}, reason: ${reason})`,
@@ -1577,6 +703,51 @@ export class McaConnectionManager extends EventEmitter {
       status: connection.status,
       subscriptionCount: 0, // Will be populated from DB query
     };
+  }
+
+  /**
+   * Resolve the effective agentId for an MCA connection.
+   *
+   * For stdio MCAs, `connection.currentAgentId` is set via `setContext` before
+   * each tool call. For WebSocket/HTTP MCAs that send `query_conversations`
+   * directly (not through the tool-call path), `currentAgentId` is always
+   * undefined because `setContext` is deliberately skipped to avoid race
+   * conditions on shared connection objects.
+   *
+   * In that case we fall back to querying `agent_app_access`: if exactly one
+   * agent has access to this appId we use it; if multiple agents share the app
+   * we accept an optional `agentIdHint` (sent by the MCA in the params payload)
+   * and validate it against the grants — if it matches, we use it.
+   * Only if no hint is provided or it doesn't match do we return undefined.
+   */
+  private async resolveEffectiveAgentId(
+    connection: ActiveConnection,
+    agentIdHint?: string,
+  ): Promise<string | undefined> {
+    if (connection.currentAgentId) {
+      return connection.currentAgentId;
+    }
+
+    // Look up which agents have been granted access to this app
+    const accessCollection = this.db.collection('agent_app_access');
+    const grants = await accessCollection
+      .find({ appId: connection.appId }, { projection: { agentId: 1 } })
+      .toArray() as unknown as Array<{ agentId: string }>;
+
+    if (grants.length === 1) {
+      return grants[0].agentId;
+    }
+
+    // Multiple agents share this app — use the hint if it is a valid grant
+    if (agentIdHint) {
+      const isValidGrant = grants.some((g) => g.agentId === agentIdHint);
+      if (isValidGrant) {
+        return agentIdHint;
+      }
+    }
+
+    // Cannot resolve unambiguously
+    return undefined;
   }
 
   /**
@@ -1865,8 +1036,21 @@ export class McaConnectionManager extends EventEmitter {
         },
       } as unknown as import('ws').WebSocket;
 
-      // Use ownerId as userId; sessionId is synthetic for MCA context
-      const ctx = { userId: connection.ownerId, sessionId: `mca:${appId}`, ip: `mca:${connection.mcaId}` };
+      // Resolve the real userId: if ownerId is a workspace ID (starts with ws_ or work_),
+      // look up the workspace owner. This is necessary because admin-api handlers call
+      // requireAdmin(db, userId) which checks the `users` collection — workspace IDs
+      // don't exist there and would always fail the admin check.
+      let userId = connection.ownerId;
+      if (userId?.startsWith('ws_') || userId?.startsWith('work_')) {
+        const workspace = await this.db.collection('workspaces').findOne({ workspaceId: userId } as any);
+        if ((workspace as any)?.ownerId) {
+          userId = (workspace as any).ownerId;
+          console.log(`[McaConnectionManager] admin_request: resolved workspace ${connection.ownerId} → user ${userId}`);
+        }
+      }
+
+      // Use resolved userId; sessionId is synthetic for MCA context
+      const ctx = { userId, sessionId: `mca:${appId}`, ip: `mca:${connection.mcaId}` };
       await this.wsRouter.dispatch(fakeWs, ctx, requestId, action, params);
     } catch (error) {
       console.error(`[McaConnectionManager] admin_request error for ${appId}:`, error);
@@ -1877,6 +1061,49 @@ export class McaConnectionManager extends EventEmitter {
         code: 'INTERNAL_ERROR',
       });
     }
+  }
+
+  /**
+   * Dispatch an action to the WsRouter and return the result data.
+   * Used by query_conversations cases that delegate to board WsRouter handlers.
+   * Resolves the real userId when ownerId is a workspace (same logic as handleQueryConversations).
+   */
+  private async dispatchToRouter(
+    appId: string,
+    connection: ActiveConnection,
+    action: string,
+    params: Record<string, unknown>,
+  ): Promise<unknown> {
+    // Resolve real userId: if ownerId is a workspace, look up the workspace owner
+    let userId = connection.ownerId;
+    if (userId?.startsWith('ws_') || userId?.startsWith('work_')) {
+      const workspace = await this.db.collection('workspaces').findOne({ workspaceId: userId } as any);
+      if ((workspace as any)?.ownerId) {
+        userId = (workspace as any).ownerId;
+      }
+    }
+
+    return new Promise((resolve, reject) => {
+      const fakeWs = {
+        readyState: 1,
+        send(payload: string) {
+          try {
+            const msg = JSON.parse(payload);
+            if (msg.type === 'response') {
+              resolve(msg.data);
+            } else if (msg.type === 'error') {
+              reject(new Error(msg.message || msg.code || 'Unknown error'));
+            }
+          } catch {
+            reject(new Error('Failed to parse router response'));
+          }
+        },
+      } as unknown as import('ws').WebSocket;
+
+      const ctx = { userId, sessionId: `mca:${appId}`, ip: `mca:${connection.mcaId}` };
+      const requestId = `mca-dispatch-${Date.now()}`;
+      this.wsRouter!.dispatch(fakeWs, ctx, requestId, action, params).catch(reject);
+    });
   }
 
   /**

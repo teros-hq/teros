@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getCredentials, type SentryIssue, sentryRequest } from '../lib/index.js';
 
 export const getIssue: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get detailed information about a specific issue',
   parameters: {
     type: 'object',

@@ -94,6 +94,7 @@ server.tool('-health-check', {
 // -----------------------------------------------------------------------------
 
 server.tool('replicate-list-models', {
+  annotations: { readOnlyHint: true },
   description:
     'Discover models available on Replicate and their exact input parameters. ' +
     'Three modes: ' +
@@ -188,6 +189,7 @@ server.tool('replicate-list-models', {
 // -----------------------------------------------------------------------------
 
 server.tool('replicate-run', {
+  annotations: { readOnlyHint: false },
   description:
     'Run any model on Replicate. ALWAYS asynchronous — returns immediately with a prediction ID and status "starting". ' +
     'Then use replicate-get-prediction to poll until done. ' +
@@ -240,6 +242,7 @@ server.tool('replicate-run', {
 // -----------------------------------------------------------------------------
 
 server.tool('replicate-get-prediction', {
+  annotations: { readOnlyHint: true },
   description:
     'Get the status and result of a prediction by ID. ' +
     'Poll this after replicate-run until status is "succeeded" or "failed". ' +
@@ -267,6 +270,7 @@ server.tool('replicate-get-prediction', {
 // -----------------------------------------------------------------------------
 
 server.tool('replicate-cancel-prediction', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Cancel a running or queued prediction by ID.',
   parameters: {
     type: 'object',
@@ -295,6 +299,7 @@ server.tool('replicate-cancel-prediction', {
 // -----------------------------------------------------------------------------
 
 server.tool('replicate-list-predictions', {
+  annotations: { readOnlyHint: true },
   description:
     'List recent predictions with their status. Useful to track ongoing or past generations.',
   parameters: { type: 'object', properties: {} },

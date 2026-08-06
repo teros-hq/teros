@@ -11,6 +11,7 @@ import type {
   WsHandlerContext,
   WsMiddleware,
 } from '@teros/shared';
+import { normalizeError } from '@teros/shared';
 
 export class WsRouter {
   private handlers = new Map<string, WsHandler>();
@@ -62,8 +63,8 @@ export class WsRouter {
       sendWsResponse(ws, requestId, result);
     } catch (error: unknown) {
       const code = isHandlerError(error) ? error.code : 'INTERNAL_ERROR';
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      sendWsError(ws, requestId, code, message);
+      const normalized = normalizeError(error);
+      sendWsError(ws, requestId, code, normalized.userMessage);
     }
   }
 
@@ -113,14 +114,23 @@ function sendWsError(ws: WebSocket, requestId: string, code: string, message: st
 // HANDLER ERROR
 // ============================================================================
 
-/** Typed error that handlers can throw to control the error code */
+/**
+ * Typed error that handlers can throw to control the error code.
+ *
+ * Its `message` is user-facing by contract (handlers craft it for the client),
+ * so it also exposes `userMessage`. That makes `normalizeError` preserve it
+ * instead of replacing it with a generic catalog message — only raw
+ * infrastructure errors get normalized.
+ */
 export class HandlerError extends Error {
+  readonly userMessage: string;
   constructor(
     public readonly code: string,
     message: string,
   ) {
     super(message);
     this.name = 'HandlerError';
+    this.userMessage = message;
   }
 }
 

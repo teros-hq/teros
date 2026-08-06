@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const removeContactsFromGroup: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Remove one or more contacts from a contact group.',
   parameters: {
     type: 'object',

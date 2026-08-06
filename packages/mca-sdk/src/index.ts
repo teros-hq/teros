@@ -130,6 +130,7 @@ export {
   type HealthCheckResult,
   McaServer,
   type McaServerConfig,
+  type ToolAnnotations,
   type ToolConfig,
   type ToolContext,
   type ToolHandler,
@@ -142,6 +143,32 @@ export {
   type ToolConfig as StdioToolConfig,
   type ToolContext as StdioToolContext,
 } from './stdio-server';
+// Process helpers (child_process spawn with AbortSignal integration)
+export {
+  spawnWithAbort,
+  type SpawnWithAbortOptions,
+  type SpawnWithAbortResult,
+} from './process';
+// Resilience helpers (criterion 18 of MCA-RUNBOOK.md)
+export {
+  type BackoffStrategy,
+  type RetryOptions,
+  TimeoutError,
+  withRetry,
+  withTimeout,
+} from './retry';
+// SSRF guard for MCAs reaching caller-supplied URLs (S1 — TER-564)
+export {
+  assertPublicUrl,
+  BlockedUrlError,
+  isPrivateAddress,
+  isPrivateHostLiteral,
+  MAX_SAFE_REDIRECTS,
+  type NavigablePage,
+  navigateSafely,
+  type PublicUrlOptions,
+  safeFetch,
+} from './url-validation';
 // WebSocket client (for bidirectional MCA ↔ Backend communication)
 export {
   createWebSocketClient,

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const getWorkspace: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Get information about the connected Intercom workspace: name, region, timezone, and the authenticated admin.',
   parameters: {

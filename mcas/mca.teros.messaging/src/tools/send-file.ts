@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { basename, resolveUrl } from '../lib';
 
 export const sendFile: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send a document or file to the user. The file will be downloadable from the chat. Supports public URLs or local file paths.',
   parameters: {

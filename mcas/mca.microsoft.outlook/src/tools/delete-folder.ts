@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const deleteFolder: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a mail folder and all its contents.',
   parameters: {
     type: 'object',

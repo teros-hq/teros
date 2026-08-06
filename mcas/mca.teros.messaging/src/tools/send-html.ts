@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 
 export const sendHtml: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send an HTML widget to the user. The HTML will be rendered directly in the chat. Use this to display UI mockups, interactive previews, styled tables, diagrams, or any visual content that can be represented with HTML/CSS. The HTML is sandboxed for security.',
   parameters: {

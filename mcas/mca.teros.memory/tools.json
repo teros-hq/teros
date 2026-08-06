@@ -3,6 +3,20 @@
   "mcaId": "mca.teros.memory",
   "tools": [
     {
+      "name": "memory-health-check",
+      "description": "Internal health check. Verifies Qdrant connectivity and OpenAI key presence.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "memory-search-conversations",
       "description": "Search through conversation history using semantic search",
       "inputSchema": {
@@ -21,6 +35,11 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -35,6 +54,11 @@
             "default": 10
           }
         }
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -72,6 +96,11 @@
           "userMessage",
           "assistantResponse"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -106,6 +135,11 @@
           "content",
           "category"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -139,6 +173,11 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -163,6 +202,11 @@
         "required": [
           "category"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -200,6 +244,11 @@
           "userMessage",
           "assistantResponse"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -216,6 +265,11 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     },
     {
@@ -224,6 +278,11 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true
       }
     }
   ]

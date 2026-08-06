@@ -201,6 +201,7 @@ server.tool("-health-check", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-run", {
+  annotations: { readOnlyHint: false },
   description:
     "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
   parameters: {
@@ -253,6 +254,7 @@ server.tool("higgsfield-run", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-text-to-image", {
+  annotations: { readOnlyHint: false },
   description: "Generate images from text prompts using Seedream v4.",
   parameters: {
     type: "object",
@@ -325,6 +327,7 @@ server.tool("higgsfield-text-to-image", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-image-to-video", {
+  annotations: { readOnlyHint: false },
   description: "Convert an image to video with motion. Supports various motion styles and camera movements.",
   parameters: {
     type: "object",
@@ -404,6 +407,7 @@ server.tool("higgsfield-image-to-video", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-text-to-video", {
+  annotations: { readOnlyHint: false },
   description: "Generate video from text prompt.",
   parameters: {
     type: "object",
@@ -475,6 +479,7 @@ server.tool("higgsfield-text-to-video", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-soul-generate", {
+  annotations: { readOnlyHint: false },
   description:
     "Generate images with consistent character appearance using Soul. Great for creating multiple images of the same character.",
   parameters: {
@@ -543,6 +548,7 @@ server.tool("higgsfield-soul-generate", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-get-prediction", {
+  annotations: { readOnlyHint: true },
   description: "Get the status and result of a prediction by ID.",
   parameters: {
     type: "object",
@@ -582,6 +588,7 @@ server.tool("higgsfield-get-prediction", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-cancel-prediction", {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: "Cancel a queued or processing prediction.",
   parameters: {
     type: "object",
@@ -618,6 +625,7 @@ server.tool("higgsfield-cancel-prediction", {
 // -----------------------------------------------------------------------------
 
 server.tool("higgsfield-list-models", {
+  annotations: { readOnlyHint: true },
   description: "List available models and their capabilities.",
   parameters: {
     type: "object",

@@ -5,7 +5,8 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from "./WsTransport"
+import type { RetentionInfo } from '@teros/shared'
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Shared types
@@ -30,6 +31,8 @@ export interface ProviderData {
   config?: Record<string, any>
   models: ProviderModel[]
   defaultModelId?: string
+  /** If true, this is the user's default provider (used when agents have no explicit provider configured) */
+  isDefault: boolean
   priority: number
   status: "active" | "error" | "disabled"
   lastTestedAt?: string
@@ -48,6 +51,10 @@ export interface ModelData {
   defaults: { temperature: number; maxTokens: number }
   capabilities: { streaming: boolean; tools: boolean; vision: boolean; thinking?: boolean }
   status: string
+  /** Data-retention posture (provider + config resolved by the backend). Optional
+   * for resilience if the backend predates the field — callers fall back to
+   * resolveRetention(provider). */
+  retention?: RetentionInfo
 }
 
 // ============================================================================
@@ -55,7 +62,7 @@ export interface ModelData {
 // ============================================================================
 
 export class ProviderApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   /** List all providers for the current user */
   list(): Promise<{ providers: ProviderData[] }> {
@@ -76,7 +83,7 @@ export class ProviderApi {
       test?: { ok: boolean; models?: any[]; error?: string }
     }
   }> {
-    return this.transport.request("provider.add", data as Record<string, unknown>, 30_000)
+    return this.transport.request("provider.add", data as Record<string, unknown>, { timeout: 30_000 })
   }
 
   /** Test connection and discover models for a provider */
@@ -86,16 +93,20 @@ export class ProviderApi {
     models?: any[]
     error?: string
   }> {
-    return this.transport.request("provider.test", { providerId }, 30_000)
+    return this.transport.request("provider.test", { providerId }, { timeout: 30_000 })
   }
 
-  /** Update provider settings (displayName, priority, status) */
+  /** Update provider settings (displayName, priority, status, defaultModelId, isDefault) */
   update(
     providerId: string,
     updates: {
       displayName?: string
       priority?: number
       status?: "active" | "disabled"
+      /** Set to null to clear the default model */
+      defaultModelId?: string | null
+      /** Mark this provider as the user's default (clears isDefault from others) */
+      isDefault?: boolean
     },
   ): Promise<{ providerId: string } & typeof updates> {
     return this.transport.request("provider.update", {
@@ -143,7 +154,7 @@ export class ProviderApi {
     providerType: string
     isUpdate: boolean
   }> {
-    return this.transport.request('provider.complete-oauth', { verifier, callbackUrl }, 60_000)
+    return this.transport.request('provider.complete-oauth', { verifier, callbackUrl }, { timeout: 60_000 })
   }
 
   /** List available LLM models */

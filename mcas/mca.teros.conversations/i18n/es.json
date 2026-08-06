@@ -1,0 +1,92 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la conectividad WebSocket con el backend."
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Busca texto en mensajes de todas las conversaciones pasadas. Devuelve coincidencias agrupadas por canal con fragmentos de contexto.",
+      "params": {
+        "query": "Texto a buscar (sin distinción de mayúsculas, mínimo 2 caracteres)",
+        "limit": "Número máximo de resultados a devolver (por defecto: 50, máx: 100)"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "Lista conversaciones pasadas. Devuelve nombres de canales, agentes y vista previa del último mensaje.",
+      "params": {
+        "status": "Filtrar por estado del canal",
+        "limit": "Número máximo de canales a devolver (por defecto: 20)"
+      }
+    },
+    "get-channel-messages": {
+      "name": "get-channel-messages",
+      "description": "Obtiene mensajes de una conversación pasada específica. Soporta paginación.",
+      "params": {
+        "channelId": "El ID del canal del que obtener los mensajes",
+        "limit": "Número de mensajes a devolver (por defecto: 50)",
+        "before": "ID de mensaje para paginación — obtener mensajes anteriores a este",
+        "textOnly": "Devolver solo mensajes de texto, excluyendo ejecuciones de herramientas (por defecto: true)"
+      }
+    },
+    "get-channel-summary": {
+      "name": "get-channel-summary",
+      "description": "Obtiene un resumen rápido de una conversación sin todos los mensajes. Útil para entender de qué trataba una conversación.",
+      "params": {
+        "channelId": "El ID del canal a resumir"
+      }
+    },
+    "create-conversation": {
+      "name": "create-conversation",
+      "description": "Crea una nueva conversación con un agente específico. Devuelve el ID del nuevo canal que se puede usar para enviar mensajes.",
+      "params": {
+        "agentId": "El ID del agente con el que iniciar una conversación",
+        "name": "Nombre opcional para la conversación"
+      }
+    },
+    "delegate-task": {
+      "name": "delegate-task",
+      "description": "Delega una tarea a una nueva subconversación con un agente (por defecto a ti mismo). Crea la conversación, envía el prompt de la tarea y retorna inmediatamente. El subagente trabaja de forma independiente y cada una de sus respuestas se reenvía automáticamente a esta conversación.",
+      "params": {
+        "prompt": "Descripción completa de la tarea e instrucciones a enviar al subagente",
+        "agentId": "ID del agente al que delegar. Por defecto es el agente actual (autodelegación).",
+        "taskName": "Nombre opcional para la conversación de la tarea delegada"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Envía un mensaje a una conversación existente. El agente procesará y responderá al mensaje.",
+      "params": {
+        "channelId": "El ID del canal al que enviar el mensaje",
+        "message": "El texto del mensaje a enviar"
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "Renombra una conversación. Cambia el título/nombre de un canal.",
+      "params": {
+        "channelId": "El ID del canal a renombrar",
+        "name": "El nuevo nombre/título para la conversación"
+      }
+    },
+    "import-attachment": {
+      "name": "import-attachment",
+      "description": "Copia un archivo que el usuario subió en el chat (imagen o documento) al volumen del espacio de trabajo del agente para que las herramientas de sistema de archivos puedan leerlo. Identifícalo por el nombre de archivo mostrado en la referencia del mensaje \"[User sent ...]\". Devuelve { workspacePath, size, mime }.",
+      "params": {
+        "filename": "Nombre de archivo del adjunto del chat a importar, tal como se muestra en la referencia del mensaje",
+        "destPath": "Ruta de destino opcional dentro del espacio de trabajo (relativa). Por defecto es el nombre de archivo original en la raíz del espacio de trabajo.",
+        "channelId": "Canal del que importar. Por defecto es la conversación actual.",
+        "messageId": "ID de mensaje opcional para desambiguar cuando varios adjuntos comparten un nombre de archivo.",
+        "overwrite": "Sobrescribir el destino si ya existe (por defecto: false)."
+      }
+    }
+  },
+  "name": "Conversations",
+  "description": "Accede y busca conversaciones y mensajes pasados de la base de datos",
+  "changelog": [
+    {
+      "notes": "Versión inicial — buscar y leer conversaciones pasadas, iniciar chats, enviar mensajes, delegar tareas a agentes e importar archivos"
+    }
+  ]
+}

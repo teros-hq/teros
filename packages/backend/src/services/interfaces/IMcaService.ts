@@ -116,6 +116,11 @@ export interface IMcaService {
   grantAccess(access: Omit<AgentAppAccess, 'grantedAt'>): Promise<AgentAppAccess>;
 
   /**
+   * Auto-grant an app to all of the user's superagents (global agents)
+   */
+  grantAccessToUserSuperagents(userId: string, appId: string): Promise<void>;
+
+  /**
    * Revoke agent access to an app
    */
   revokeAccess(agentId: string, appId: string): Promise<boolean>;
@@ -149,9 +154,9 @@ export interface IMcaService {
   // ============================================================================
 
   /**
-   * Ensure system apps are provisioned for agent
+   * Ensure system apps and the agent's core default apps are provisioned for the agent
    */
-  ensureSystemApps(agentId: string): Promise<void>;
+  ensureProvisionedApps(agentId: string, workspaceId?: string): Promise<void>;
 
   /**
    * Disable orphaned apps and re-enable recovered ones
@@ -169,5 +174,5 @@ export interface IMcaService {
   /**
    * Get all apps an agent has access to (with resolved MCA info)
    */
-  getAgentApps(agentId: string): Promise<AgentApps>;
+  getAgentApps(agentId: string, workspaceId: string): Promise<AgentApps>;
 }

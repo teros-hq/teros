@@ -8,30 +8,61 @@ import { generateEventId } from '@teros/core';
 import type { Db } from 'mongodb';
 import type { ChannelManager } from '../services/channel-manager';
 import type { SessionManager } from '../services/session-manager';
+import type { PubSubService } from '../services/pubsub-service';
+import type { AgentUsageTriggerKind } from '../types/database';
 
 export interface ScheduledEvent {
   channelId: string;
   message: string;
-  eventType: 'reminder' | 'recurring_task' | 'system_resume' | 'task_update';
+  eventType:
+    | 'reminder'
+    | 'recurring_task'
+    | 'system_resume'
+    | 'task_update'
+    | 'channel_started'
+    | 'channel_finished'
+    | 'channel_permission'
+    | 'channel_resolved'
+    | 'task.moved_to_review'
+    | 'task.blocked'
+    | 'task.auto_wakes_exhausted'
+    | 'task.started'
+    | 'task.state_changed'
+    | 'task.progress_note_added'
+    | 'task.dependency_cancelled';
   wakeUpAgent?: boolean; // If true, trigger agent to respond to the event
   metadata?: {
     source?: string;
     reminderId?: number;
-    taskId?: number;
+    taskId?: number | string;
     cronExpression?: string;
     // For system_resume events
     reason?: string;
     lastMessageId?: string;
     interruptedAt?: string;
-    // For task_update events
+    // For task_update events (legacy board tasks)
     boardTaskId?: string;
-    workerChannelId?: string; // set when the event comes from a channel (not a board task)
     taskTitle?: string;
     running?: boolean;
-    taskStatus?: string;
+
     agentId?: string;
     agentName?: string;
     agentAvatar?: string;
+    // For channel_* observer events (observed channel → observer channel)
+    observedChannelId?: string;
+    observedChannelName?: string;
+    toolName?: string;
+    appId?: string;
+    permissionRequestId?: string;
+    resolution?: 'granted' | 'denied';
+    // workerChannelId kept for backwards compat with voice handler
+    workerChannelId?: string;
+    fromStatus?: string;
+    toStatus?: string;
+    projectId?: string;
+    noteText?: string;
+    // For task.dependency_cancelled events
+    orphanTaskIds?: string[];
   };
 }
 
@@ -40,10 +71,55 @@ export type AgentWakeUpCallback = (
   channelId: string,
   agentId: string,
   message: string,
+  triggerKind?: AgentUsageTriggerKind,
 ) => Promise<void>;
+
+/**
+ * Maps every scheduled/injected event type to the agent-usage triggerKind so the
+ * session records its true origin instead of masquerading as `user_message`
+ * (TER-650). `undefined` means "keep the caller's default" (→ user_message) and
+ * is reserved for events that genuinely replay a user turn.
+ *
+ * This is a total `Record` over `ScheduledEvent['eventType']`, NOT a switch with
+ * a `default`: adding a new event type fails the TypeScript build until it is
+ * given an explicit triggerKind here. That makes the "new event silently
+ * attributed as user_message" bug (a meaning-change class) impossible by
+ * construction rather than caught by review.
+ */
+const EVENT_TRIGGER_KIND: Record<
+  ScheduledEvent['eventType'],
+  AgentUsageTriggerKind | undefined
+> = {
+  // Scheduler-originated wakeups.
+  reminder: 'scheduled',
+  recurring_task: 'scheduled',
+  // Replays the user's interrupted turn → keep the caller's default (user_message).
+  system_resume: undefined,
+  // Board / channel subscription wakeups — the agent is woken by an event it
+  // subscribed to, not by a direct user message.
+  task_update: 'event_subscription',
+  channel_started: 'event_subscription',
+  channel_finished: 'event_subscription',
+  channel_permission: 'event_subscription',
+  channel_resolved: 'event_subscription',
+  'task.moved_to_review': 'event_subscription',
+  'task.blocked': 'event_subscription',
+  'task.auto_wakes_exhausted': 'event_subscription',
+  'task.started': 'event_subscription',
+  'task.state_changed': 'event_subscription',
+  'task.progress_note_added': 'event_subscription',
+  'task.dependency_cancelled': 'event_subscription',
+};
+
+export function mapEventTypeToTriggerKind(
+  eventType: ScheduledEvent['eventType'],
+): AgentUsageTriggerKind | undefined {
+  return EVENT_TRIGGER_KIND[eventType];
+}
 
 export class EventHandler {
   private agentWakeUpCallback?: AgentWakeUpCallback;
+  private pubSubService?: PubSubService;
 
   constructor(
     private db: Db,
@@ -57,6 +133,13 @@ export class EventHandler {
    */
   setAgentWakeUpCallback(callback: AgentWakeUpCallback): void {
     this.agentWakeUpCallback = callback;
+  }
+
+  /**
+   * Wire in PubSubService so broadcastToChannel delegates to it.
+   */
+  setPubSubService(pubSubService: PubSubService): void {
+    this.pubSubService = pubSubService;
   }
 
   /**
@@ -74,7 +157,7 @@ export class EventHandler {
         return { success: false, error: `Channel ${channelId} not found` };
       }
 
-      const eventId = generateEventId();
+      const messageId = generateEventId();
       const timestamp = new Date();
       const description =
         eventType === 'reminder'
@@ -83,12 +166,36 @@ export class EventHandler {
             ? `🔄 System Resume: ${message}`
             : eventType === 'task_update'
               ? `📋 Task Update: ${message}`
-              : `🔄 Scheduled: ${message}`;
+              : eventType === 'channel_started'
+                ? `▶️ Channel Started: ${message}`
+                : eventType === 'channel_finished'
+                  ? `✅ Channel Finished: ${message}`
+                  : eventType === 'channel_permission'
+                    ? `🔒 Permission Required: ${message}`
+                    : eventType === 'channel_resolved'
+                      ? `🔓 Permission Resolved: ${message}`
+                      : eventType === 'task.moved_to_review'
+                        ? `✅ Task Review: ${message}`
+                        : eventType === 'task.blocked'
+                          ? `🚫 Task Blocked: ${message}`
+                          : eventType === 'task.auto_wakes_exhausted'
+                            ? `⚠️ Auto-Wakes Exhausted: ${message}`
+                            : eventType === 'task.started'
+                              ? `▶️ Task Started: ${message}`
+                              : eventType === 'task.state_changed'
+                                ? `🔄 Task State Changed: ${message}`
+                                : eventType === 'task.progress_note_added'
+                                  ? `📝 Progress Note: ${message}`
+                                  : `🔄 Scheduled: ${message}`;
 
       // Create the event message for storage (as a message in the conversation)
+      // Note: sender is omitted (not a string!) so the message passes MessageSchema
+      // validation on the frontend. The frontend detects system events via
+      // role='system' + content.type='event'.
       const eventMessage = {
-        id: eventId,
+        messageId,
         channelId,
+        role: 'system',
         content: {
           type: 'event' as const,
           eventType,
@@ -98,7 +205,6 @@ export class EventHandler {
           },
           description,
         },
-        sender: 'system',
         timestamp: timestamp.toISOString(),
       };
 
@@ -106,13 +212,21 @@ export class EventHandler {
       const messagesCollection = this.db.collection('channel_messages');
       await messagesCollection.insertOne(eventMessage);
 
-      // Broadcast to all connected clients subscribed to this channel
-      // Use 'event' type with dedicated schema for real-time events
+      // Broadcast as a regular message so the frontend renders it in the chat,
+      // AND as a system_event so the TerosClient can wake up the agent if needed.
+      this.broadcastToChannel(channelId, {
+        type: 'message',
+        channelId,
+        message: eventMessage,
+      });
+
+      // Also broadcast the legacy 'event' type so TerosClient can still emit 'system_event'
+      // and wake up the agent via agentWakeUpCallback.
       this.broadcastToChannel(channelId, {
         type: 'event',
         channelId,
         event: {
-          id: eventId,
+          id: messageId,
           eventType,
           message,
           description,
@@ -130,7 +244,12 @@ export class EventHandler {
         console.log(`🔔 Waking up agent for channel ${channelId}`);
 
         // Fire and forget - don't wait for agent response
-        this.agentWakeUpCallback(channelId, channel.agentId, agentPrompt).catch((error) => {
+        this.agentWakeUpCallback(
+          channelId,
+          channel.agentId,
+          agentPrompt,
+          mapEventTypeToTriggerKind(eventType),
+        ).catch((error) => {
           console.error(`❌ Failed to wake up agent:`, error);
         });
       }
@@ -160,6 +279,38 @@ export class EventHandler {
       return `[SYSTEM EVENT - RESUME]\nYour previous response was interrupted due to: ${reason}\n\nPlease continue where you left off. The user's last message and your partial response (if any) are in the conversation history above.\n\nContext: ${message}`;
     } else if (eventType === 'task_update') {
       return `[SYSTEM EVENT - TASK UPDATE]\n${message}\n\nReview this task update and decide if any action is needed. You can check the task details with get-task, send instructions to the worker agent, or inform the user.`;
+    } else if (eventType === 'channel_started') {
+      return `[SYSTEM EVENT - CHANNEL STARTED]\n${message}`;
+    } else if (eventType === 'channel_finished') {
+      return `[SYSTEM EVENT - CHANNEL FINISHED]\n${message}\n\nThe observed channel has finished its turn. Review the result if needed.`;
+    } else if (eventType === 'channel_permission') {
+      const { observedChannelId, toolName } = metadata ?? {};
+      return `[SYSTEM EVENT - PERMISSION REQUIRED]\n${message}\n\nThe observed channel (${observedChannelId}) is waiting for approval to use tool: ${toolName}. Go to that channel to approve or deny.`;
+    } else if (eventType === 'channel_resolved') {
+      const { resolution, toolName } = metadata ?? {};
+      return `[SYSTEM EVENT - PERMISSION RESOLVED]\nThe tool "${toolName}" was ${resolution} in an observed channel.`;
+    } else if (eventType === 'task.state_changed') {
+      const { taskTitle, fromStatus, toStatus } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" changed from ${fromStatus ?? '?'} to ${toStatus ?? '?'}.`;
+    } else if (eventType === 'task.moved_to_review') {
+      const { taskTitle } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" has been moved to review and requires your attention.`;
+    } else if (eventType === 'task.started') {
+      const { taskTitle } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nAgent started working on task "${taskTitle ?? 'unknown'}".`;
+    } else if (eventType === 'task.blocked') {
+      const { taskTitle } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" is blocked and requires your intervention.`;
+    } else if (eventType === 'task.progress_note_added') {
+      const { taskTitle, noteText } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nProgress note added to task "${taskTitle ?? 'unknown'}": ${noteText ?? message}`;
+    } else if (eventType === 'task.auto_wakes_exhausted') {
+      const { taskTitle } = metadata ?? {};
+      return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" was automatically moved to blocked after 5 auto-wakes without progress.`;
+    } else if (eventType === 'task.dependency_cancelled') {
+      const { taskTitle, orphanTaskIds } = metadata ?? {};
+      const orphanCount = orphanTaskIds?.length ?? 0;
+      return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" was cancelled. ${orphanCount} dependent task(s) are now orphaned and require your review.`;
     }
 
     return `[SYSTEM EVENT]\n${message}`;
@@ -169,32 +320,8 @@ export class EventHandler {
    * Broadcast a message to all clients subscribed to a channel
    */
   private broadcastToChannel(channelId: string, message: any): void {
-    const subscribers = this.sessionManager.getChannelSubscribers(channelId);
-    const listeners = this.sessionManager.getChannelListeners(channelId);
-
-    console.log(
-      `📡 [EventHandler] Broadcasting event to channel ${channelId}. Subscribers: ${subscribers.length}, listeners: ${listeners.length}`,
-    );
-
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        // 1 = OPEN
-        session.ws.send(JSON.stringify(message));
-        console.log(`  ✅ Sent to session ${session.sessionId}`);
-      } else {
-        console.log(
-          `  ⚠️ Skipped session ${session.sessionId} (ws readyState: ${session.ws?.readyState})`,
-        );
-      }
-    }
-
-    // Notify virtual listeners (e.g. voice handler) — same as MessageHandler does
-    for (const listener of listeners) {
-      try {
-        listener(JSON.stringify(message));
-      } catch (err) {
-        console.error(`  ⚠️ [EventHandler] Error in channel listener for ${channelId}:`, err);
-      }
-    }
+    console.log(`📡 [EventHandler] Broadcasting event to channel ${channelId}`);
+    // PubSubService handles both WebSocket sessions and virtual listeners (voice handler)
+    this.pubSubService?.broadcastToTopic(`channel:${channelId}`, message);
   }
 }

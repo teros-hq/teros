@@ -3,23 +3,37 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install build tools required for native modules (node-pty, etc.)
+RUN apk add --no-cache python3 make g++
+
 # Copy workspace root files
 COPY package.json yarn.lock ./
+
+# Copy only the package.json files needed to resolve the workspace
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/core/package.json ./packages/core/
 COPY packages/backend/package.json ./packages/backend/
 COPY packages/mca-sdk/package.json ./packages/mca-sdk/
+COPY packages/testing/package.json ./packages/testing/
+COPY packages/app/package.json ./packages/app/
+COPY packages/e2e/package.json ./packages/e2e/
 
-# Install dependencies for entire workspace
-RUN yarn install --frozen-lockfile
+# Stub out MCA package.json files so yarn workspace resolution works
+# (yarn.lock references them but we don't need their deps in the backend image)
+COPY mcas ./mcas
+
+# Install all workspace dependencies
+# --no-frozen-lockfile: yarn.lock has host-absolute paths for local MCAs that
+# differ inside Docker; we let yarn regenerate those entries.
+RUN yarn install --no-frozen-lockfile --ignore-engines
 
 # Copy source code
 COPY packages/shared ./packages/shared
 COPY packages/core ./packages/core
 COPY packages/backend ./packages/backend
 COPY packages/mca-sdk ./packages/mca-sdk
+COPY packages/testing ./packages/testing
 COPY scripts ./scripts
-COPY mcas ./mcas
 
 # Build shared package first
 WORKDIR /app/packages/shared
@@ -37,17 +51,6 @@ RUN yarn build
 WORKDIR /app/packages/backend
 RUN yarn build
 
-# Install MCA dependencies
-WORKDIR /app
-RUN for mca_dir in mcas/*/; do \
-      if [ -f "${mca_dir}package.json" ]; then \
-        echo "Installing dependencies for ${mca_dir}..." && \
-        cd "/app/${mca_dir}" && \
-        yarn install --frozen-lockfile || yarn install && \
-        cd /app; \
-      fi; \
-    done
-
 # Stage 2: Production
 FROM node:20-alpine
 
@@ -55,6 +58,11 @@ WORKDIR /app
 
 # Install tsx globally for running TypeScript
 RUN npm install -g tsx
+
+# docker CLI: the container-agent launches MCA containers with `docker run` over the
+# mounted socket, and the backend shells into them with `docker exec` for the terminal
+# window. The base node:20-alpine image ships neither, so both would fail without this.
+RUN apk add --no-cache docker-cli
 
 # Copy built artifacts and dependencies
 COPY --from=builder /app/node_modules ./node_modules
@@ -83,8 +91,7 @@ COPY --from=builder /app/packages/backend/package.json ./packages/backend/
 # Copy root scripts needed for sync
 COPY --from=builder /app/scripts ./scripts
 
-# Copy MCAs from builder (includes installed dependencies via hoisting)
-# In production, this can be overridden with a volume mount
+# Copy MCAs (needed for MCA boot sync and tool definitions)
 COPY --from=builder /app/mcas ./mcas
 
 # Fix workspace symlinks - remove old ones and create correct absolute symlinks

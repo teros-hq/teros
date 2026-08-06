@@ -1,0 +1,37 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.guide",
+  "name": "Teros Guide",
+  "version": "1.0.0",
+  "description": "Platform self-knowledge for agents. Lets an agent look up how Teros works on demand (agents, apps, boards, providers, workspaces, files…) so it can walk the user through the real steps. Two read-only tools: list-guide-topics and get-guide-section.",
+  "type": "system",
+  "icon": "icon.png",
+  "category": "system",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["guide", "help", "onboarding", "platform", "teros", "how-to", "docs", "tutorial", "self-knowledge"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  }
+}

@@ -11,6 +11,8 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Easing } from 'react-native';
 import { View, XStack, YStack, Text } from 'tamagui';
 import type { VoiceSessionState as ConversationState } from '../../contexts/VoiceSessionContext';
+import { colors } from '../mca/primitives/colors';
+import { useColors } from '../mca/primitives/useColors';
 
 interface VoiceVisualizerProps {
   state: ConversationState;
@@ -23,6 +25,8 @@ const MIN_BAR_HEIGHT = 4;
 const MAX_BAR_HEIGHT = 60;
 
 export function VoiceVisualizer({ state, audioLevel, vadScore }: VoiceVisualizerProps) {
+  const c = useColors();
+
   // Animation values for each bar
   const barAnimations = useRef(
     Array.from({ length: WAVEFORM_BARS }, () => new Animated.Value(0.2))
@@ -99,19 +103,19 @@ export function VoiceVisualizer({ state, audioLevel, vadScore }: VoiceVisualizer
     }
   }, [state, pulseAnimation]);
 
-  // Get color based on state
+  // Get color based on state — all from semantic palette
   const getStateColor = () => {
     switch (state) {
       case 'listening':
-        return vadScore > 0.5 ? '#10B981' : '#6366F1'; // Green if user speaking, blue otherwise
+        return vadScore > 0.5 ? colors.green : colors.indigo;
       case 'thinking':
-        return '#F59E0B'; // Amber
+        return colors.amber;
       case 'speaking':
-        return '#8B5CF6'; // Purple
+        return colors.violet;
       case 'connecting':
-        return '#6B7280'; // Gray
+        return c.text3;
       default:
-        return '#3F3F46'; // Dark gray
+        return c.text3;
     }
   };
 
@@ -181,14 +185,14 @@ export function VoiceVisualizer({ state, audioLevel, vadScore }: VoiceVisualizer
         <View
           width={200}
           height={4}
-          backgroundColor="rgba(16, 185, 129, 0.2)"
+          backgroundColor={`${colors.green}33`}
           borderRadius={2}
           overflow="hidden"
         >
           <View
             width={`${vadScore * 100}%`}
             height="100%"
-            backgroundColor="#10B981"
+            backgroundColor={colors.green}
           />
         </View>
       )}

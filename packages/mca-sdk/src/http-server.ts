@@ -10,7 +10,7 @@
  * - GET /health - Health check
  * - POST /shutdown - Graceful shutdown
  *
- * @see docs/RFC-001-mca-protocol.md
+ *
  */
 
 import type {
@@ -52,6 +52,18 @@ export interface ToolContext {
   requestId: string;
   /** Backend client for MCA → Backend calls (null if no callbackUrl) */
   backend: McaBackendClient | null;
+  /**
+   * AbortSignal that fires when the backend caller cancels the request.
+   * Handlers SHOULD honor this signal to avoid wasted work / leaked
+   * side effects. Fires when `req.on('close')` is triggered (client closed
+   * the HTTP connection mid-call).
+   *
+   * Handlers that ignore this signal still work (their result is discarded
+   * by the backend's `cancellation_applied` guard) but waste compute and
+   * may commit side effects after the cancel point. Added in turn redesign
+   * Phase 2.0.
+   */
+  signal: AbortSignal;
 
   // ==========================================================================
   // SECRETS
@@ -68,7 +80,6 @@ export interface ToolContext {
   agentList: (workspaceId?: string) => Promise<{ agents: any[] }>;
   agentGet: (agentId: string) => Promise<any>;
   agentCreate: (data: {
-    coreId: string;
     name: string;
     fullName: string;
     role: string;
@@ -89,6 +100,15 @@ export interface ToolContext {
   ) => Promise<any>;
   agentDelete: (agentId: string) => Promise<any>;
   agentAppsList: (agentId: string) => Promise<{ apps: any[] }>;
+  agentProvidersGet: (agentId: string) => Promise<any>;
+  agentProvidersSet: (agentId: string, providerIds: string[]) => Promise<any>;
+  agentPreferredProviderSet: (agentId: string, providerId: string | null) => Promise<any>;
+
+  // ==========================================================================
+  // RESOURCES: PROVIDERS
+  // ==========================================================================
+
+  providerList: () => Promise<{ providers: any[] }>;
 
   // ==========================================================================
   // RESOURCES: WORKSPACES
@@ -116,15 +136,21 @@ export interface ToolContext {
   appUninstall: (appId: string) => Promise<any>;
   appRename: (appId: string, name: string) => Promise<any>;
   appAccessList: (appId: string) => Promise<{ agents: any[] }>;
+  appPermissionsGet: (appId: string) => Promise<any>;
+  appPermissionsSet: (
+    appId: string,
+    changes: { all?: string; tools?: Record<string, string> },
+  ) => Promise<any>;
+  appShowAuth: (appId: string) => Promise<any>;
+  appCheckAuth: (appId: string) => Promise<any>;
   workspaceAppList: (workspaceId: string) => Promise<{ apps: any[] }>;
   workspaceAgentList: (workspaceId: string) => Promise<{ agents: any[] }>;
 
   // ==========================================================================
-  // RESOURCES: CATALOG & CORES
+  // RESOURCES: CATALOG
   // ==========================================================================
 
   catalogList: (category?: string, includeHidden?: boolean) => Promise<{ catalog: any[] }>;
-  agentCoresList: () => Promise<{ cores: any[] }>;
 
   // ==========================================================================
   // RESOURCES: ACCESS CONTROL
@@ -132,6 +158,27 @@ export interface ToolContext {
 
   accessGrant: (agentId: string, appId: string) => Promise<any>;
   accessRevoke: (agentId: string, appId: string) => Promise<any>;
+
+  // ==========================================================================
+  // RESOURCES: SKILLS
+  // ==========================================================================
+
+  skillList: (workspaceId: string) => Promise<{ skills: any[] }>;
+  skillCreate: (data: {
+    workspaceId: string;
+    name: string;
+    description?: string;
+    content: string;
+  }) => Promise<any>;
+  skillUpdate: (
+    skillId: string,
+    data: { name?: string; description?: string; content?: string },
+  ) => Promise<any>;
+  skillDelete: (skillId: string) => Promise<any>;
+  skillGrantAccess: (agentId: string, skillId: string) => Promise<any>;
+  skillRevokeAccess: (agentId: string, skillId: string) => Promise<any>;
+  skillSetEnabled: (agentId: string, skillId: string, enabled: boolean) => Promise<any>;
+  skillGetAgentSkills: (agentId: string) => Promise<{ skills: any[] }>;
 
   // ==========================================================================
   // DATA STORAGE
@@ -163,6 +210,34 @@ export interface ToolContext {
   listData: () => Promise<{ keys: Array<{ key: string; updatedAt: string }> }>;
 }
 
+/**
+ * Optional metadata attached to a tool. Enables clients to handle
+ * versioning, deprecation and staged rollout.
+ *
+ * Re-exported alias of the canonical type in @teros/shared so MCAs can
+ * import it directly from the SDK without a separate dependency.
+ */
+export interface ToolAnnotations {
+  /** Semver-like string (e.g. '1.0.0'). Informational. */
+  version?: string;
+  /** Stability signal. Clients MAY down-rank 'experimental' / 'deprecated'. */
+  stability?: 'experimental' | 'stable' | 'deprecated';
+  /** Explanation of the deprecation and suggested replacement. */
+  deprecationMessage?: string;
+  /** Teros — action cannot be undone (delete, send-with-no-unsend). Frontend shows a badge. */
+  irreversible?: boolean;
+  /** Teros policy — tool NEVER runs without human confirmation; user 'allow' config is ignored. */
+  alwaysAsk?: boolean;
+  /** MCP spec hint — tool only reads, never mutates state. Clients MAY auto-approve. */
+  readOnlyHint?: boolean;
+  /** MCP spec hint — tool may modify or delete state irreversibly. Clients SHOULD confirm. */
+  destructiveHint?: boolean;
+  /** MCP spec hint — repeating the call with the same args has no extra effect. */
+  idempotentHint?: boolean;
+  /** MCP spec hint — tool reaches outside the local environment (network, external services). */
+  openWorldHint?: boolean;
+}
+
 export interface RegisteredTool {
   name: string;
   description: string;
@@ -172,6 +247,7 @@ export interface RegisteredTool {
     required?: string[];
   };
   handler: ToolHandler;
+  annotations?: ToolAnnotations;
 }
 
 /**
@@ -185,6 +261,16 @@ export interface ToolConfig {
     required?: string[];
   };
   handler: ToolHandler;
+  /**
+   * Optional metadata for versioning and stability signals.
+   * Example:
+   *   annotations: { version: '1.2.0', stability: 'stable' }
+   *
+   * When `stability: 'deprecated'`, consider adding `deprecationMessage`
+   * describing what replaces the tool. Propagated to tools.list so
+   * clients can skip or warn about deprecated tools.
+   */
+  annotations?: ToolAnnotations;
 }
 
 /**
@@ -209,6 +295,29 @@ export type HealthCheckFn = () =>
   | Promise<{ status: 'ready' | 'not_ready' | 'degraded'; message?: string }>
   | { status: 'ready' | 'not_ready' | 'degraded'; message?: string };
 
+/**
+ * Returns the `structuredContent` property if the value is a non-null
+ * object that declares it — typically a handler that returned
+ * `{ content, structuredContent }`. Otherwise undefined.
+ */
+function extractStructuredContent(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return undefined;
+  const maybe = value as { structuredContent?: unknown };
+  return maybe.structuredContent;
+}
+
+/**
+ * Returns the `attachments` property if the value is a non-null
+ * object that declares it — typically a handler that returned
+ * `{ text, attachments }`. Otherwise undefined.
+ */
+function extractAttachments(value: unknown): Array<{ url: string; mime: string; filename?: string }> | undefined {
+  if (value === null || typeof value !== 'object') return undefined;
+  const maybe = value as { attachments?: Array<{ url: string; mime: string; filename?: string }> };
+  if (Array.isArray(maybe.attachments)) return maybe.attachments;
+  return undefined;
+}
+
 // ============================================================================
 // BUILD RESOURCE METHODS
 // ============================================================================
@@ -220,7 +329,7 @@ function buildResourceMethods(
   backendClient: McaBackendClient | null,
   execution: { workspaceId?: string; userId: string },
   errorPrefix: string,
-): Omit<ToolContext, 'execution' | 'requestId' | 'backend'> {
+): Omit<ToolContext, 'execution' | 'requestId' | 'backend' | 'signal'> {
   const requireClient = () => {
     if (!backendClient) {
       throw new Error(`${errorPrefix}: no callbackUrl configured`);
@@ -258,6 +367,14 @@ function buildResourceMethods(
     agentUpdate: (agentId, data) => requireClient().agentUpdate(agentId, data),
     agentDelete: (agentId) => requireClient().agentDelete(agentId),
     agentAppsList: (agentId) => requireClient().agentAppsList(agentId),
+    agentProvidersGet: (agentId) => requireClient().agentProvidersGet(agentId),
+    agentProvidersSet: (agentId, providerIds) =>
+      requireClient().agentProvidersSet(agentId, providerIds),
+    agentPreferredProviderSet: (agentId, providerId) =>
+      requireClient().agentPreferredProviderSet(agentId, providerId),
+
+    // Providers
+    providerList: () => requireClient().providerList(),
 
     // Workspaces
     workspaceList: () => requireClient().workspaceList(),
@@ -279,16 +396,30 @@ function buildResourceMethods(
     appUninstall: (appId) => requireClient().appUninstall(appId),
     appRename: (appId, name) => requireClient().appRename(appId, name),
     appAccessList: (appId) => requireClient().appAccessList(appId),
+    appPermissionsGet: (appId) => requireClient().appPermissionsGet(appId),
+    appPermissionsSet: (appId, changes) => requireClient().appPermissionsSet(appId, changes),
+    appShowAuth: (appId) => requireClient().appShowAuth(appId),
+    appCheckAuth: (appId) => requireClient().appCheckAuth(appId),
     workspaceAppList: (workspaceId) => requireClient().workspaceAppList(workspaceId),
     workspaceAgentList: (workspaceId) => requireClient().workspaceAgentList(workspaceId),
 
-    // Catalog & Cores
+    // Catalog
     catalogList: (category, includeHidden) => requireClient().catalogList(category, includeHidden),
-    agentCoresList: () => requireClient().agentCoresList(),
 
     // Access Control
     accessGrant: (agentId, appId) => requireClient().accessGrant(agentId, appId),
     accessRevoke: (agentId, appId) => requireClient().accessRevoke(agentId, appId),
+
+    // Skills
+    skillList: (workspaceId) => requireClient().skillList(workspaceId),
+    skillCreate: (data) => requireClient().skillCreate(data),
+    skillUpdate: (skillId, data) => requireClient().skillUpdate(skillId, data),
+    skillDelete: (skillId) => requireClient().skillDelete(skillId),
+    skillGrantAccess: (agentId, skillId) => requireClient().skillGrantAccess(agentId, skillId),
+    skillRevokeAccess: (agentId, skillId) => requireClient().skillRevokeAccess(agentId, skillId),
+    skillSetEnabled: (agentId, skillId, enabled) =>
+      requireClient().skillSetEnabled(agentId, skillId, enabled),
+    skillGetAgentSkills: (agentId) => requireClient().skillGetAgentSkills(agentId),
 
     // Data Storage
     getScope: () => scope,
@@ -375,6 +506,7 @@ export class McaHttpServer {
       description: config.description,
       parameters: config.parameters,
       handler: config.handler,
+      annotations: config.annotations,
     });
   }
 
@@ -520,6 +652,7 @@ export class McaHttpServer {
         name: tool.name,
         description: tool.description,
         parameters: tool.parameters,
+        ...(tool.annotations ? { annotations: tool.annotations } : {}),
       }));
 
     const response: McaToolsListResponse = {
@@ -567,6 +700,26 @@ export class McaHttpServer {
       return;
     }
 
+    // Capture client-disconnect as an AbortSignal so the tool handler can
+    // short-circuit when the backend cancels the request. Tool handlers that
+    // ignore `context.signal` still work (their result is discarded by the
+    // backend) but waste compute and may commit side effects after cancel.
+    // Added in turn redesign Phase 2.0.
+    //
+    // Pattern: tie the AbortController to the socket lifecycle and clean up
+    // the listener when the response settles. Idiomatic Node.js per:
+    //   https://betterstack.com/community/guides/scaling-nodejs/understanding-abortcontroller/
+    //   https://nearform.com/insights/using-abortsignal-in-node-js/
+    const abortController = new AbortController();
+    const onSocketClose = () => {
+      if (!res.writableEnded) {
+        abortController.abort(new Error('Client closed connection'));
+      }
+    };
+    req.socket.once('close', onSocketClose);
+    res.once('finish', () => req.socket.off('close', onSocketClose));
+    res.once('close', () => req.socket.off('close', onSocketClose));
+
     // Execute tool
     try {
       // Create backend client if callbackUrl is available
@@ -575,6 +728,7 @@ export class McaHttpServer {
             callbackUrl: context.callbackUrl,
             appId: context.appId,
             mcaId: this.mcaId,
+            callbackToken: process.env.MCA_CALLBACK_TOKEN,
           })
         : null;
 
@@ -583,11 +737,22 @@ export class McaHttpServer {
         execution: context,
         requestId,
         backend: backendClient,
+        signal: abortController.signal,
         ...buildResourceMethods(backendClient, context, 'Cannot access resources'),
       };
 
       const result = await tool.handler(args, toolContext);
       const duration = Date.now() - startTime;
+
+      // If the handler returned { content, structuredContent } explicitly
+      // (MCP 2025-11-25 shape), propagate structuredContent as a sibling of
+      // `result` so clients can consume the typed object without re-parsing
+      // the text content. Legacy returns (plain objects / strings) go
+      // through `result` only — shape unchanged.
+      const structuredContent = extractStructuredContent(result);
+
+      // Extract attachments from handler result if it declares them
+      const attachments = extractAttachments(result);
 
       const response: McaToolResultResponse = {
         id: requestId,
@@ -596,6 +761,8 @@ export class McaHttpServer {
         version: MCA_PROTOCOL_VERSION,
         success: true,
         result,
+        ...(structuredContent !== undefined ? { structuredContent } : {}),
+        ...(attachments !== undefined ? { attachments } : {}),
         duration,
       };
 

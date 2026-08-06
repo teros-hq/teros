@@ -1,0 +1,126 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.slack",
+  "name": "Slack",
+  "version": "1.0.0",
+  "description": "Full Slack workspace integration: channels, messages, threads, reactions, files, users, search, and presence. Uses Slack Web API with OAuth 2.0.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "slack",
+      "systemSecrets": [
+        "CLIENT_ID",
+        "CLIENT_SECRET",
+        "REDIRECT_URIS"
+      ],
+      "userSecrets": [
+        "ACCESS_TOKEN",
+        "BOT_ACCESS_TOKEN",
+        "REFRESH_TOKEN",
+        "TEAM_ID",
+        "TEAM_NAME",
+        "USER_ID"
+      ],
+      "authorizeUrl": "https://slack.com/oauth/v2/authorize",
+      "tokenUrl": "https://slack.com/api/oauth.v2.access",
+      "scopes": [
+        "bookmarks:read",
+        "bookmarks:write",
+        "calls:read",
+        "calls:write",
+        "canvases:write",
+        "channels:history",
+        "channels:join",
+        "channels:manage",
+        "channels:read",
+        "channels:write.invites",
+        "channels:write.topic",
+        "chat:write",
+        "chat:write.customize",
+        "commands",
+        "conversations.connect:manage",
+        "conversations.connect:read",
+        "conversations.connect:write",
+        "incoming-webhook",
+        "dnd:read",
+        "dnd:write",
+        "emoji:read",
+        "files:read",
+        "files:write",
+        "groups:history",
+        "groups:read",
+        "groups:write",
+        "groups:write.invites",
+        "im:history",
+        "im:read",
+        "im:write",
+        "links:write",
+        "lists:read",
+        "lists:write",
+        "mpim:history",
+        "mpim:read",
+        "mpim:write",
+        "pins:read",
+        "pins:write",
+        "reactions:read",
+        "reactions:write",
+        "remote_files:read",
+        "remote_files:share",
+        "remote_files:write",
+        "search:read",
+        "search:read.files",
+        "search:read.public",
+        "stars:read",
+        "stars:write",
+        "team.preferences:read",
+        "team:read",
+        "users.profile:read",
+        "users.profile:write",
+        "users:read",
+        "users:read.email"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "slack",
+    "messaging",
+    "chat",
+    "workspace",
+    "collaboration",
+    "team"
+  ],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-20",
+      "notes": "Initial release — send and read messages, manage channels, threads, files, reactions, users, and search"
+    }
+  ]
+}

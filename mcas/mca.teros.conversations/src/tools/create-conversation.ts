@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { type CreateChannelResult, getWsClient, isWsConnected } from '../lib';
 
 export const createConversation: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Create a new conversation with a specific agent. Returns the new channel ID that can be used to send messages.',
   parameters: {

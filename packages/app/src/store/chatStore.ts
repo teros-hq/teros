@@ -8,8 +8,8 @@
  * - Better performance with large datasets
  */
 
-import { create } from "zustand"
-import type { MessageContent, ToolCall } from "../components/MessageBubble"
+import { createSessionStore } from './session/createSessionStore'
+import type { MessageContent, ToolCall } from "../components/chat/bubbles/types"
 
 /** Sender info - who actually sent this message */
 export interface MessageSenderInfo {
@@ -33,17 +33,38 @@ export interface Message {
    */
   senderInfo?: MessageSenderInfo
 
-  // Streaming-only fields (NOT persisted, used only during live streaming)
-  toolCalls?: ToolCall[]
+  // Streaming-only field (NOT persisted, used only during live text streaming).
+  // Tool executions ya viven en `content` con `type: 'tool_execution'`; no hay
+  // un buffer separado para tools en este modelo.
   text?: string // For showing text in real-time before final content
 
-  // Message delivery status (for user messages)
-  status?: "sending" | "sent" | "failed"
+  // Message delivery status (for user messages). `queued` = backend ack'd but waiting in the channel FIFO.
+  status?: "sending" | "sent" | "queued" | "failed"
+
+  // Source of the message — 'voice' when sent via voice mode
+  source?: "voice" | "web"
+
+  /** Additional metadata for the message (e.g., board_subscription source) */
+  metadata?: Record<string, any>
+
+  // User feedback for assistant messages (thumbs up/down, reasons, comment)
+  feedback?: {
+    rating: "up" | "down"
+    reasons?: string[]
+    comment?: string
+    hasComment?: boolean
+    createdAt?: string
+  }
+
+  // Action metadata logged for assistant messages (copy/report)
+  reportedAt?: string
+  copiedAt?: string
 
   // Retry data - preserved for failed messages to allow retry
   retryData?: {
     // For voice messages
-    audioData?: string // Base64 audio data
+    audioUri?: string  // Persisted local file URI (documentDirectory) — survives until retry succeeds
+    audioData?: string // Base64 audio data (cached after first successful read)
     audioMimeType?: string
     audioDuration?: number
     // For text messages
@@ -61,6 +82,7 @@ export interface Channel {
   modelName?: string
   providerName?: string
   isTyping: boolean
+  agentPhase?: 'idle' | 'thinking' | 'streaming_text' | 'executing_tool'
   isRenaming: boolean
   isAutonaming: boolean
   lastMessageAt: string | null
@@ -117,6 +139,11 @@ interface ChatState {
   updateMessageId: (oldId: string, newId: string, channelId: string) => void
 
   /**
+   * Set user feedback for a specific message
+   */
+  setMessageFeedback: (messageId: string, feedback: Message['feedback']) => void
+
+  /**
    * Delete a message
    */
   deleteMessage: (messageId: string, channelId: string) => void
@@ -125,6 +152,14 @@ interface ChatState {
    * Clear all messages for a channel
    */
   clearChannelMessages: (channelId: string) => void
+
+  /**
+   * Reset session — clears all chat state (messages, channels, channelMessages)
+   */
+  resetSession: () => void
+
+  // @deprecated Use resetSession() instead — kept for backward compatibility during transition
+  resetAllState: () => void
 
   // ========================================
   // ACTIONS - STREAMING
@@ -137,15 +172,24 @@ interface ChatState {
   appendTextChunk: (messageId: string, channelId: string, text: string) => void
 
   /**
-   * Add a tool call to a message
-   * Creates message if it doesn't exist
+   * Insert or update a tool execution message. Single source of truth for tool
+   * call state — handles both the initial streaming creation (chunk
+   * `tool_call_start`) and subsequent status updates (`tool_status_update`,
+   * `tool_call_complete`).
+   *
+   * Always operates on `message.content` (the persisted shape). No separate
+   * `toolCalls[]` buffer — render and store agree on a single representation.
+   *
+   * Creates the message if it doesn't exist, merges content if it does.
    */
-  addToolCall: (messageId: string, channelId: string, toolCall: ToolCall) => void
+  upsertToolMessage: (
+    messageId: string,
+    channelId: string,
+    update: Partial<Extract<MessageContent, { type: 'tool_execution' }>> & {
+      toolCallId: string
+    },
+  ) => void
 
-  /**
-   * Update a specific tool call within a message
-   */
-  updateToolCall: (messageId: string, toolCallId: string, updates: Partial<ToolCall>) => void
 
   /**
    * Mark streaming message as complete
@@ -170,6 +214,12 @@ interface ChatState {
    * Set typing indicator for a channel
    */
   setTyping: (channelId: string, isTyping: boolean) => void
+  setAgentPhase: (channelId: string, phase: 'idle' | 'thinking' | 'streaming_text' | 'executing_tool') => void
+  /** Move `messageId` to immediately before `beforeId` in `channelMessages[channelId]`. */
+  reorderMessageBefore: (channelId: string, messageId: string, beforeId: string) => void
+
+  /** Move `messageId` to the tail of `channelMessages[channelId]`. */
+  reorderMessageToEnd: (channelId: string, messageId: string) => void
 
   /**
    * Set renaming state for a channel
@@ -270,7 +320,24 @@ function evictHead(
   }
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+/** Fallback channel when a runtime event arrives before `setChannel`. */
+function createChannelStub(channelId: string): Channel {
+  return {
+    channelId,
+    title: "",
+    agentId: "",
+    agentName: "",
+    agentAvatarUrl: null,
+    isTyping: false,
+    isRenaming: false,
+    isAutonaming: false,
+    lastMessageAt: null,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export const useChatStore = createSessionStore<ChatState>('chat', (set, get) => ({
   // Initial state
   messages: {},
   channels: {},
@@ -358,23 +425,42 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }),
 
+  setMessageFeedback: (messageId, feedback) =>
+    set((state) => {
+      const existingMessage = state.messages[messageId]
+      if (!existingMessage) return state
+
+      return {
+        messages: {
+          ...state.messages,
+          [messageId]: { ...existingMessage, feedback },
+        },
+      }
+    }),
+
   updateMessageId: (oldId, newId, channelId) =>
     set((state) => {
       const message = state.messages[oldId]
       if (!message) return state
+      // Unchanged id → no-op (otherwise the dedup branch below would drop it).
+      if (oldId === newId) return state
 
-      // Create new message with updated ID
-      const updatedMessage = { ...message, id: newId }
-
-      // Remove old message
+      // Remove the optimistic message.
       const newMessages = { ...state.messages }
       delete newMessages[oldId]
-      newMessages[newId] = updatedMessage
+      // If the real message already arrived (newId present), keep the server copy
+      // instead of overwriting it with the optimistic one.
+      if (!newMessages[newId]) {
+        newMessages[newId] = { ...message, id: newId }
+      }
 
-      // Update channelMessages array (replace oldId with newId)
+      // Update channelMessages: replace oldId with newId — but if newId is already
+      // present (the real message landed first), just drop oldId to avoid a duplicate.
       const newChannelMessages = { ...state.channelMessages }
       const channelMsgs = newChannelMessages[channelId] || []
-      newChannelMessages[channelId] = channelMsgs.map((id) => (id === oldId ? newId : id))
+      newChannelMessages[channelId] = channelMsgs.includes(newId)
+        ? channelMsgs.filter((id) => id !== oldId)
+        : channelMsgs.map((id) => (id === oldId ? newId : id))
 
       return {
         messages: newMessages,
@@ -414,6 +500,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         channelMessages: newChannelMessages,
       }
     }),
+
+  resetSession: () =>
+    set({
+      messages: {},
+      channels: {},
+      channelMessages: {},
+    }),
+
+  // Legacy alias — @todo nira - 2026-05-20: remove after all callers migrated
+  resetAllState: () => useChatStore.getState().resetSession(),
 
   // ========================================
   // STREAMING ACTIONS
@@ -467,70 +563,71 @@ export const useChatStore = create<ChatState>((set, get) => ({
       }
     }),
 
-  addToolCall: (messageId, channelId, toolCall) =>
+  upsertToolMessage: (messageId, channelId, update) =>
     set((state) => {
       const existingMessage = state.messages[messageId]
 
-      if (existingMessage) {
-        // Add to existing message
-        const currentToolCalls = existingMessage.toolCalls || []
+      // Si el message existe Y su content es ya tool_execution → merge granular
+      // del content. Preserva otros campos del Message (timestamp, sender, etc.).
+      if (existingMessage && existingMessage.content?.type === 'tool_execution') {
+        const mergedContent = {
+          ...existingMessage.content,
+          ...update,
+        }
         return {
           messages: {
             ...state.messages,
-            [messageId]: {
-              ...existingMessage,
-              toolCalls: [...currentToolCalls, toolCall],
-            },
+            [messageId]: { ...existingMessage, content: mergedContent },
           },
         }
-      } else {
-        // Create new streaming message with tool call
-        const newMessage: Message = {
-          id: messageId,
-          channelId,
-          sender: "agent",
-          timestamp: new Date(),
-          isStreaming: true,
-          text: "",
-          content: { type: "text", text: "" },
-          toolCalls: [toolCall],
+      }
+
+      // Caso new message OR el message existe pero con otro content type.
+      // Si el update no incluye `toolName` (p.ej. un tool_status_update llega
+      // antes que tool_call_start por orden inverso), saltamos en silencio —
+      // el siguiente chunk con toolName completará la creación.
+      if (!update.toolName) {
+        if (typeof window !== 'undefined' && (window as any).__DEBUG_TOOL_UPSERT) {
+          console.warn(
+            `[chatStore.upsertToolMessage] skipping creation of ${messageId} — toolName missing`,
+            { toolCallId: update.toolCallId, status: update.status },
+          )
         }
+        return state
+      }
 
-        const newMessages: Record<string, Message> = { ...state.messages, [messageId]: newMessage }
-        const channelMsgs = state.channelMessages[channelId] || []
+      const baseContent: Extract<MessageContent, { type: 'tool_execution' }> = {
+        type: 'tool_execution',
+        status: 'pending',
+        ...update,
+        // Re-aplicar campos required tras spread para satisfacer el tipo.
+        toolCallId: update.toolCallId,
+        toolName: update.toolName,
+      }
 
-        const newChannelMessages = {
+      const newMessage: Message = existingMessage
+        ? { ...existingMessage, content: baseContent }
+        : {
+            id: messageId,
+            channelId,
+            sender: 'agent',
+            timestamp: new Date(),
+            content: baseContent,
+          }
+
+      const newMessages = { ...state.messages, [messageId]: newMessage }
+
+      // Append a channelMessages solo si es nuevo en el canal.
+      let newChannelMessages = state.channelMessages
+      const channelMsgs = state.channelMessages[channelId] || []
+      if (!channelMsgs.includes(messageId)) {
+        newChannelMessages = {
           ...state.channelMessages,
           [channelId]: [...channelMsgs, messageId],
         }
-
-        // Skip eviction during streaming (same reason as appendTextChunk above)
-
-        return {
-          messages: newMessages,
-          channelMessages: newChannelMessages,
-        }
       }
-    }),
 
-  updateToolCall: (messageId, toolCallId, updates) =>
-    set((state) => {
-      const message = state.messages[messageId]
-      if (!message || !message.toolCalls) return state
-
-      const updatedToolCalls = message.toolCalls.map((tc) =>
-        tc.toolCallId === toolCallId ? { ...tc, ...updates } : tc,
-      )
-
-      return {
-        messages: {
-          ...state.messages,
-          [messageId]: {
-            ...message,
-            toolCalls: updatedToolCalls,
-          },
-        },
-      }
+      return { messages: newMessages, channelMessages: newChannelMessages }
     }),
 
   markMessageComplete: (messageId) =>
@@ -590,29 +687,99 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setTyping: (channelId, isTyping) =>
     set((state) => {
       const channel = state.channels[channelId]
+      // If channel doesn't exist, create a minimal one just for typing state.
+      const updatedChannel = { ...(channel ?? createChannelStub(channelId)), isTyping }
 
-      // If channel doesn't exist, create a minimal one just for typing state
-      const updatedChannel = channel
-        ? { ...channel, isTyping }
-        : {
-            channelId,
-            title: "",
-            agentId: "",
-            agentName: "",
-            agentAvatarUrl: null,
-            isTyping,
-            isRenaming: false,
-            isAutonaming: false,
-            lastMessageAt: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-
+      // No queue flush on typing→false: the per-assistant helper has already drained any user that received a turn.
       return {
         channels: {
           ...state.channels,
           [channelId]: updatedChannel,
         },
+      }
+    }),
+
+  reorderMessageBefore: (channelId, messageId, beforeId) =>
+    set((state) => {
+      const ids = state.channelMessages[channelId]
+      if (!ids) return state
+      if (!ids.includes(messageId) || !ids.includes(beforeId)) return state
+      const filtered = ids.filter((id) => id !== messageId)
+      const targetIdx = filtered.indexOf(beforeId)
+      if (targetIdx < 0) return state
+      const next = [
+        ...filtered.slice(0, targetIdx),
+        messageId,
+        ...filtered.slice(targetIdx),
+      ]
+      if (next.length === ids.length && next.every((v, i) => v === ids[i])) {
+        return state
+      }
+      return {
+        channelMessages: { ...state.channelMessages, [channelId]: next },
+      }
+    }),
+
+  reorderMessageToEnd: (channelId, messageId) =>
+    set((state) => {
+      const ids = state.channelMessages[channelId]
+      if (!ids) return state
+      if (!ids.includes(messageId)) return state
+      const msg = state.messages[messageId]
+      if (!msg) return state
+      const filtered = ids.filter((id) => id !== messageId)
+      // Insert by msg.timestamp — `queue_state:running` arrives async, receipt order is not guaranteed.
+      const ts = msg.timestamp.getTime()
+      let insertIdx = filtered.length
+      while (insertIdx > 0) {
+        const prevId = filtered[insertIdx - 1]
+        const prev = prevId ? state.messages[prevId] : undefined
+        if (!prev || prev.sender !== 'user' || prev.status !== 'sent') break
+        if (prev.timestamp.getTime() <= ts) break
+        insertIdx--
+      }
+      const next = [
+        ...filtered.slice(0, insertIdx),
+        messageId,
+        ...filtered.slice(insertIdx),
+      ]
+      if (next.length === ids.length && next.every((v, i) => v === ids[i])) {
+        return state
+      }
+      return {
+        channelMessages: { ...state.channelMessages, [channelId]: next },
+      }
+    }),
+
+  setAgentPhase: (channelId, phase) =>
+    set((state) => {
+      const channel = state.channels[channelId]
+      const updatedChannel = { ...(channel ?? createChannelStub(channelId)), agentPhase: phase }
+      // On `idle`, clear `isStreaming` on every agent message — turns ending on tool_call / abort never fire `text_complete`.
+      let messages = state.messages
+      if (phase === "idle") {
+        let mutated = false
+        const next: Record<string, Message> = {}
+        for (const [id, m] of Object.entries(state.messages)) {
+          if (
+            m.channelId === channelId &&
+            m.sender === "agent" &&
+            m.isStreaming === true
+          ) {
+            next[id] = { ...m, isStreaming: false }
+            mutated = true
+          } else {
+            next[id] = m
+          }
+        }
+        if (mutated) messages = next
+      }
+      return {
+        channels: {
+          ...state.channels,
+          [channelId]: updatedChannel,
+        },
+        messages,
       }
     }),
 

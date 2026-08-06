@@ -99,6 +99,8 @@ async function syncModels(dryRun: boolean = false) {
           JSON.stringify(existingModel.reservations) !== JSON.stringify(model.reservations) ||
           JSON.stringify(existingModel.compaction) !== JSON.stringify(model.compaction) ||
           JSON.stringify(existingModel.providerConfig) !== JSON.stringify(model.providerConfig) ||
+          JSON.stringify(existingModel.cost) !== JSON.stringify(model.cost) ||
+          existingModel.billingType !== model.billingType ||
           existingModel.status !== model.status
 
         if (needsUpdate) {
@@ -164,6 +166,58 @@ async function syncModels(dryRun: boolean = false) {
         const orphanIds = orphans.map((m) => m.modelId)
         await modelsCollection.deleteMany({ modelId: { $in: orphanIds } })
         console.log(`  Removed ${orphans.length} orphaned models`)
+      }
+
+      // Sync user_providers — propagate active model IDs to each provider instance
+      console.log("\n🔄 Syncing user providers...")
+      const userProvidersCollection = db.collection("user_providers")
+      const activeModelsByProvider = new Map<string, string[]>()
+      for (const model of MODEL_DEFINITIONS) {
+        if (model.status === "active") {
+          const list = activeModelsByProvider.get(model.provider) || []
+          list.push(model.modelId)
+          activeModelsByProvider.set(model.provider, list)
+        }
+      }
+
+      const userProviders = await userProvidersCollection.find({}).toArray()
+      let providersUpdated = 0
+      for (const up of userProviders) {
+        const activeModelIds = activeModelsByProvider.get(up.providerType)
+        if (!activeModelIds) continue
+
+        const currentModelIds = new Set((up.models || []).map((m: any) => m.modelId))
+        const modelsToAdd = activeModelIds.filter((id) => !currentModelIds.has(id))
+
+        if (modelsToAdd.length > 0) {
+          const newModels = modelsToAdd.map((modelId) => ({ modelId }))
+          await userProvidersCollection.updateOne(
+            { providerId: up.providerId },
+            { $addToSet: { models: { $each: newModels } } }
+          )
+          providersUpdated++
+        }
+      }
+      console.log(`  Updated ${providersUpdated} user providers with new model IDs`)
+
+      // Clean up orphaned modelIds from user_providers (modelIds no longer in definitions)
+      const allDefinedModelIds = new Set(MODEL_DEFINITIONS.map((m) => m.modelId))
+      const allUserProviders = await userProvidersCollection.find({}).toArray()
+      let providersCleaned = 0
+      for (const up of allUserProviders) {
+        const currentModels = up.models || []
+        const modelsToRemove = currentModels.filter((m: any) => !allDefinedModelIds.has(m.modelId))
+        if (modelsToRemove.length > 0) {
+          const removeIds = modelsToRemove.map((m: any) => m.modelId)
+          await userProvidersCollection.updateOne(
+            { providerId: up.providerId },
+            { $pull: { models: { modelId: { $in: removeIds } } } } as any
+          )
+          providersCleaned++
+        }
+      }
+      if (providersCleaned > 0) {
+        console.log(`  Cleaned up orphaned models from ${providersCleaned} user providers`)
       }
 
       console.log("\n✅ Sync complete!\n")

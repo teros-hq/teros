@@ -19,6 +19,9 @@
             "default": "iso"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -44,6 +47,9 @@
           "datetime",
           "format"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -64,6 +70,9 @@
         "required": [
           "datetime"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -90,6 +99,9 @@
           "fromTimezone",
           "toTimezone"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -131,6 +143,9 @@
           "datetime",
           "duration"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -172,6 +187,9 @@
           "datetime",
           "duration"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -206,6 +224,9 @@
           "start",
           "end"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -226,6 +247,9 @@
         "required": [
           "datetime"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

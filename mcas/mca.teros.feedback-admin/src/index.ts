@@ -52,6 +52,7 @@ async function getDb(): Promise<Db> {
 // =============================================================================
 
 const listFeedback: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'List all feedback reports from users. Supports filtering by type, status, priority, and user.',
   parameters: {
@@ -143,6 +144,7 @@ const listFeedback: ToolConfig = {
 };
 
 const getFeedback: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get full details of a specific feedback report',
   parameters: {
     type: 'object',
@@ -171,6 +173,7 @@ const getFeedback: ToolConfig = {
 };
 
 const updateStatus: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Update the status of a feedback report',
   parameters: {
     type: 'object',
@@ -221,7 +224,7 @@ const updateStatus: ToolConfig = {
       message: message || `Status changed to ${status}`,
       newStatus: status,
       createdAt: new Date().toISOString(),
-      createdBy: context.userId!,
+      createdBy: context.execution.userId,
     };
 
     await collection.updateOne(
@@ -242,6 +245,7 @@ const updateStatus: ToolConfig = {
 };
 
 const setPriority: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Set or update the priority of a feedback report',
   parameters: {
     type: 'object',
@@ -290,6 +294,7 @@ const setPriority: ToolConfig = {
 };
 
 const addUpdate: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Add an update or comment to a feedback report. This will be visible to the user who submitted it.',
   parameters: {
@@ -324,7 +329,7 @@ const addUpdate: ToolConfig = {
       updateId: generateId('upd'),
       message,
       createdAt: new Date().toISOString(),
-      createdBy: context.userId!,
+      createdBy: context.execution.userId,
     };
 
     await collection.updateOne(
@@ -348,6 +353,7 @@ const addUpdate: ToolConfig = {
 };
 
 const getStats: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get overall feedback statistics',
   parameters: {
     type: 'object',

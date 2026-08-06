@@ -6,7 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface DeleteTaskData {
   taskId: string
@@ -15,19 +15,8 @@ interface DeleteTaskData {
 export function createDeleteTaskHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function deleteTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as DeleteTaskData
     const { taskId } = data
@@ -57,7 +46,7 @@ export function createDeleteTaskHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(existing.boardId, { type: 'board_task_deleted', taskId })
+    pubSubService.broadcastToTopic(`board:${existing.boardId}`, { type: 'board_task_deleted', taskId })
 
     return { taskId }
   }

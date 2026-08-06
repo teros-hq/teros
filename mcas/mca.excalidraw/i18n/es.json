@@ -1,0 +1,214 @@
+{
+  "name": "Excalidraw",
+  "description": "Integración con Excalidraw Plus para gestionar escenas, colecciones, workspaces, usuarios e invitaciones programáticamente. Crea y actualiza diagramas, wireframes y pizarras a través de la API REST de Excalidraw Plus.",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Valida la clave de API de Excalidraw y la conectividad."
+    },
+    "list-scenes": {
+      "name": "list-scenes",
+      "description": "Lista todas las escenas de Excalidraw en el workspace con sus metadatos y enlaces. Soporta paginación mediante cursor.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior para obtener la siguiente página.",
+        "limit": "Número máximo de escenas a devolver por página (por defecto: 50)."
+      }
+    },
+    "get-scene": {
+      "name": "get-scene",
+      "description": "Obtiene los metadatos detallados de una escena específica de Excalidraw por su ID, incluyendo enlaces y configuración de compartir.",
+      "params": {
+        "sceneId": "El ID de la escena a recuperar."
+      }
+    },
+    "get-scene-content": {
+      "name": "get-scene-content",
+      "description": "Recupera el contenido completo del dibujo de una escena de Excalidraw: todos los elementos (formas, texto, flechas, etc.), estado de la app y archivos incrustados.",
+      "params": {
+        "sceneId": "El ID de la escena cuyo contenido se quiere recuperar."
+      }
+    },
+    "create-scene": {
+      "name": "create-scene",
+      "description": "Crea una nueva escena vacía de Excalidraw con los metadatos especificados. Opcionalmente la asigna a una colección y la fija. Devuelve la escena creada con su ID y enlaces de compartir.",
+      "params": {
+        "name": "Nombre para la nueva escena.",
+        "collectionId": "ID de la colección donde colocar la escena.",
+        "pinned": "Si fijar la escena (por defecto: false)."
+      }
+    },
+    "update-scene": {
+      "name": "update-scene",
+      "description": "Actualiza los metadatos de una escena existente de Excalidraw (nombre, estado de fijación, asignación a colección).",
+      "params": {
+        "sceneId": "El ID de la escena a actualizar.",
+        "name": "Nuevo nombre para la escena.",
+        "pinned": "Si fijar la escena.",
+        "collectionId": "Mover la escena a una colección diferente proporcionando su ID."
+      }
+    },
+    "update-scene-content": {
+      "name": "update-scene-content",
+      "description": "Reemplaza el contenido completo del dibujo de una escena de Excalidraw con nuevos elementos. AVISO: esto es un reemplazo completo — el contenido existente se sobrescribe. Pasa el array completo de elementos que quieres que contenga la escena.",
+      "params": {
+        "sceneId": "El ID de la escena a actualizar.",
+        "elements": "Array de objetos elemento de Excalidraw (formas, texto, flechas, etc.). Esto reemplaza todos los elementos existentes.",
+        "appState": "Estado opcional de la app de Excalidraw (viewport, tema, etc.).",
+        "files": "Mapa opcional de archivos incrustados (ej. imágenes referenciadas en la escena)."
+      }
+    },
+    "delete-scene": {
+      "name": "delete-scene",
+      "description": "Elimina (soft-delete) una escena de Excalidraw moviéndola a la papelera. La escena se puede recuperar desde la interfaz de Excalidraw Plus.",
+      "params": {
+        "sceneId": "El ID de la escena a eliminar."
+      }
+    },
+    "list-collections": {
+      "name": "list-collections",
+      "description": "Lista todas las colecciones en el workspace de Excalidraw Plus. Las colecciones son carpetas que agrupan escenas relacionadas.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "limit": "Número máximo de colecciones a devolver (por defecto: 50)."
+      }
+    },
+    "get-collection": {
+      "name": "get-collection",
+      "description": "Obtiene información detallada sobre una colección específica de Excalidraw por su ID.",
+      "params": {
+        "collectionId": "El ID de la colección a recuperar."
+      }
+    },
+    "get-collection-scenes": {
+      "name": "get-collection-scenes",
+      "description": "Lista todas las escenas que pertenecen a una colección específica de Excalidraw.",
+      "params": {
+        "collectionId": "El ID de la colección de la que listar las escenas."
+      }
+    },
+    "create-collection": {
+      "name": "create-collection",
+      "description": "Crea una nueva colección (carpeta) en el workspace de Excalidraw Plus para agrupar escenas relacionadas.",
+      "params": {
+        "name": "Nombre para la nueva colección."
+      }
+    },
+    "create-collection-scene": {
+      "name": "create-collection-scene",
+      "description": "Crea una nueva escena directamente dentro de una colección específica de Excalidraw.",
+      "params": {
+        "collectionId": "El ID de la colección donde crear la escena.",
+        "name": "Nombre para la nueva escena.",
+        "pinned": "Si fijar la escena (por defecto: false)."
+      }
+    },
+    "update-collection": {
+      "name": "update-collection",
+      "description": "Actualiza los metadatos de una colección existente de Excalidraw (ej. renombrarla).",
+      "params": {
+        "collectionId": "El ID de la colección a actualizar.",
+        "name": "Nuevo nombre para la colección."
+      }
+    },
+    "delete-collection": {
+      "name": "delete-collection",
+      "description": "Elimina (soft-delete) una colección de Excalidraw moviéndola a la papelera. Las escenas dentro no se eliminan.",
+      "params": {
+        "collectionId": "El ID de la colección a eliminar."
+      }
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "Recupera los metadatos del workspace actual de Excalidraw Plus, incluyendo nombre, usuarios e invitaciones."
+    },
+    "update-workspace": {
+      "name": "update-workspace",
+      "description": "Actualiza los metadatos del workspace actual de Excalidraw Plus (ej. renombrarlo).",
+      "params": {
+        "name": "Nuevo nombre para el workspace."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "Lista todos los usuarios del workspace de Excalidraw Plus con sus roles y metadatos.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "limit": "Número máximo de usuarios a devolver (por defecto: 50)."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtiene los detalles de un usuario específico del workspace de Excalidraw Plus por su ID de usuario.",
+      "params": {
+        "userId": "El ID del usuario a recuperar."
+      }
+    },
+    "update-user": {
+      "name": "update-user",
+      "description": "Actualiza un usuario del workspace en Excalidraw Plus (ej. cambiar su rol o nombre).",
+      "params": {
+        "userId": "El ID del usuario a actualizar.",
+        "role": "Nuevo rol para el usuario (ej. \"admin\", \"member\").",
+        "name": "Nuevo nombre para mostrar del usuario."
+      }
+    },
+    "remove-user": {
+      "name": "remove-user",
+      "description": "Elimina un usuario del workspace de Excalidraw Plus, revocando su acceso.",
+      "params": {
+        "userId": "El ID del usuario a eliminar del workspace."
+      }
+    },
+    "list-invites": {
+      "name": "list-invites",
+      "description": "Lista todas las invitaciones pendientes y activas del workspace de Excalidraw Plus.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "limit": "Número máximo de invitaciones a devolver (por defecto: 50)."
+      }
+    },
+    "create-invite": {
+      "name": "create-invite",
+      "description": "Invita a un usuario al workspace de Excalidraw Plus por email. Opcionalmente especifica su rol.",
+      "params": {
+        "email": "Dirección de email de la persona a invitar.",
+        "role": "Rol a asignar (ej. \"admin\", \"member\"). Por defecto el del workspace."
+      }
+    },
+    "get-invite": {
+      "name": "get-invite",
+      "description": "Obtiene los detalles de una invitación específica del workspace de Excalidraw Plus por su ID.",
+      "params": {
+        "inviteId": "El ID de la invitación a recuperar."
+      }
+    },
+    "update-invite": {
+      "name": "update-invite",
+      "description": "Actualiza una invitación existente del workspace de Excalidraw Plus (ej. cambiar el rol asignado).",
+      "params": {
+        "inviteId": "El ID de la invitación a actualizar.",
+        "role": "Nuevo rol a asignar al invitado."
+      }
+    },
+    "delete-invite": {
+      "name": "delete-invite",
+      "description": "Elimina una invitación pendiente del workspace de Excalidraw Plus, revocando la invitación.",
+      "params": {
+        "inviteId": "El ID de la invitación a eliminar."
+      }
+    },
+    "list-logs": {
+      "name": "list-logs",
+      "description": "Recupera los logs de auditoría del workspace de Excalidraw Plus. Útil para rastrear actividad, cambios e historial de acceso.",
+      "params": {
+        "cursor": "Cursor de paginación de una respuesta anterior.",
+        "limit": "Número máximo de entradas de log a devolver (por defecto: 50)."
+      }
+    }
+  },
+  "changelog": [
+    {
+      "notes": "Versión inicial — crea, edita y organiza pizarras de Excalidraw en carpetas, y gestiona miembros e invitaciones del workspace"
+    }
+  ]
+}

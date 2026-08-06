@@ -9,13 +9,16 @@
 import type { TokenBudget } from '@teros/shared';
 import { formatTokenCount, TOKEN_BUDGET_COLORS } from '@teros/shared';
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { colors, surface } from './mca/primitives/colors';
 
 interface TokenBudgetDetailsProps {
   budget: TokenBudget;
 }
 
 export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
+  const { t } = useTranslation();
   const { modelLimit, breakdown, cost } = budget;
 
   // Calculate total for current context breakdown
@@ -50,29 +53,29 @@ export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
       <View style={styles.columnsContainer}>
         {/* Left column: Session Totals */}
         <View style={styles.column}>
-          <Text style={styles.columnTitle}>Session Totals</Text>
-          <Text style={styles.columnSubtitle}>Accumulated across all requests</Text>
+          <Text style={styles.columnTitle}>{t('conversation.sessionTotals')}</Text>
+          <Text style={styles.columnSubtitle}>{t('conversation.accumulatedAcrossRequests')}</Text>
 
           <View style={styles.statsContainer}>
-            <StatRow label="Cache Read" value={formatTokenCount(cost.tokens.cacheRead)} />
-            <StatRow label="Cache Write" value={formatTokenCount(cost.tokens.cacheWrite)} />
-            <StatRow label="Regular" value={formatTokenCount(cost.tokens.input)} />
+            <StatRow label={t('conversation.cacheRead')} value={formatTokenCount(cost.tokens.cacheRead)} />
+            <StatRow label={t('conversation.cacheWrite')} value={formatTokenCount(cost.tokens.cacheWrite)} />
+            <StatRow label={t('conversation.regular')} value={formatTokenCount(cost.tokens.input)} />
             <View style={styles.statDivider} />
             <StatRow
-              label="Total Input"
+              label={t('conversation.totalInput')}
               value={formatTokenCount(
                 cost.tokens.input + cost.tokens.cacheRead + cost.tokens.cacheWrite,
               )}
               bold
             />
-            <StatRow label="Total Output" value={formatTokenCount(cost.tokens.output)} bold />
+            <StatRow label={t('conversation.totalOutput')} value={formatTokenCount(cost.tokens.output)} bold />
 
             {cost.callCount && cost.callCount > 0 && (
               <>
                 <View style={styles.statDivider} />
-                <StatRow label="Requests" value={String(cost.callCount)} />
+                <StatRow label={t('conversation.requests')} value={String(cost.callCount)} />
                 <StatRow
-                  label="Avg Input/Req"
+                  label={t('conversation.avgInputPerReq')}
                   value={formatTokenCount(
                     Math.round(
                       (cost.tokens.input + cost.tokens.cacheRead + cost.tokens.cacheWrite) /
@@ -81,7 +84,7 @@ export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
                   )}
                 />
                 <StatRow
-                  label="Avg Output/Req"
+                  label={t('conversation.avgOutputPerReq')}
                   value={formatTokenCount(Math.round(cost.tokens.output / cost.callCount))}
                 />
               </>
@@ -90,7 +93,7 @@ export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
             {cost.session > 0 && (
               <>
                 <View style={styles.statDivider} />
-                <StatRow label="Total Cost" value={`$${cost.session.toFixed(4)}`} bold />
+                <StatRow label={t('conversation.totalCost')} value={`$${cost.session.toFixed(4)}`} bold />
               </>
             )}
           </View>
@@ -101,9 +104,9 @@ export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
 
         {/* Right column: Current Context */}
         <View style={styles.column}>
-          <Text style={styles.columnTitle}>Current Context</Text>
+          <Text style={styles.columnTitle}>{t('conversation.currentContext')}</Text>
           <Text style={styles.columnSubtitle}>
-            Last request ({formatTokenCount(currentContextTotal)})
+            {t('conversation.lastRequest', { tokens: formatTokenCount(currentContextTotal) })}
           </Text>
 
           {/* Progress bar */}
@@ -236,71 +239,71 @@ export function TokenBudgetDetails({ budget }: TokenBudgetDetailsProps) {
           {/* Breakdown list */}
           <View style={styles.breakdownList}>
             <BreakdownRow
-              label="System"
+              label={t('conversation.system')}
               value={breakdown.system}
               percent={getContextPercent(breakdown.system)}
               color={TOKEN_BUDGET_COLORS.system}
             />
             <BreakdownRow
-              label="Tools"
+              label={t('conversation.tools')}
               value={breakdown.tools}
               percent={getContextPercent(breakdown.tools)}
               color={TOKEN_BUDGET_COLORS.tools}
             />
             <BreakdownRow
-              label="Examples"
+              label={t('conversation.examples')}
               value={breakdown.examples || 0}
               percent={getContextPercent(breakdown.examples)}
               color={TOKEN_BUDGET_COLORS.examples}
             />
             <BreakdownRow
-              label="Summary"
+              label={t('conversation.summary')}
               value={breakdown.summary || 0}
               percent={getContextPercent(breakdown.summary)}
               color={TOKEN_BUDGET_COLORS.summary}
             />
             <BreakdownRow
-              label="Previous"
+              label={t('conversation.previous')}
               value={breakdown.previous || 0}
               percent={getContextPercent(breakdown.previous)}
               color={TOKEN_BUDGET_COLORS.previous}
-              cached
+              cachedLabel={t('conversation.cached')}
             />
             <View style={styles.cacheBreakpoint}>
-              <Text style={styles.cacheBreakpointText}>── cache ──</Text>
+              <Text style={styles.cacheBreakpointText}>── {t('conversation.cache')} ──</Text>
             </View>
             <BreakdownRow
-              label="Memory"
+              label={t('conversation.memory')}
               value={breakdown.memory}
               percent={getContextPercent(breakdown.memory)}
               color={TOKEN_BUDGET_COLORS.memory}
             />
             <BreakdownRow
-              label="Context"
+              label={t('conversation.context')}
               value={breakdown.context || 0}
               percent={getContextPercent(breakdown.context)}
               color={TOKEN_BUDGET_COLORS.context}
             />
             <BreakdownRow
-              label="Latest"
+              label={t('conversation.latest')}
               value={breakdown.latest || 0}
               percent={getContextPercent(breakdown.latest)}
               color={TOKEN_BUDGET_COLORS.latest}
             />
             <BreakdownRow
-              label="Tool Calls"
+              label={t('conversation.toolCalls')}
               value={breakdown.toolCalls || 0}
               percent={getContextPercent(breakdown.toolCalls)}
               color={TOKEN_BUDGET_COLORS.toolCalls}
             />
             <BreakdownRow
-              label="Tool Results"
+              label={t('conversation.toolResults')}
               value={breakdown.toolResults || 0}
               percent={getContextPercent(breakdown.toolResults)}
               color={TOKEN_BUDGET_COLORS.toolResults}
             />
             <BreakdownRow
-              label="Output"
+              label={t('conversation.output')}
               value={breakdown.output || 0}
               percent={getContextPercent(breakdown.output)}
               color={TOKEN_BUDGET_COLORS.output}
@@ -328,13 +331,13 @@ function BreakdownRow({
   value,
   percent,
   color,
-  cached,
+  cachedLabel,
 }: {
   label: string;
   value: number;
   percent: number;
   color: string;
-  cached?: boolean;
+  cachedLabel?: string;
 }) {
   return (
     <View style={styles.breakdownRow}>
@@ -343,7 +346,7 @@ function BreakdownRow({
         <Text selectable style={styles.breakdownText}>
           {label}
         </Text>
-        {cached && <Text style={styles.cachedBadge}>cached</Text>}
+        {cachedLabel && <Text style={styles.cachedBadge}>{cachedLabel}</Text>}
       </View>
       <Text selectable style={styles.breakdownValue}>
         {formatTokenCount(value)} ({percent.toFixed(1)}%)
@@ -363,16 +366,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    borderBottomColor: surface.dark.border,
   },
   summaryText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#e4e4e7',
+    color: surface.dark.text,
   },
   summaryCost: {
     fontSize: 14,
-    color: '#06B6D4',
+    color: colors.indigo,
     fontWeight: '500',
   },
   columnsContainer: {
@@ -385,17 +388,17 @@ const styles = StyleSheet.create({
   columnTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#e4e4e7',
+    color: surface.dark.text,
     marginBottom: 2,
   },
   columnSubtitle: {
     fontSize: 11,
-    color: '#666',
+    color: surface.dark.text3,
     marginBottom: 12,
   },
   divider: {
     width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: surface.dark.border,
   },
   statsContainer: {
     gap: 6,
@@ -406,27 +409,27 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: '#888',
+    color: surface.dark.text2,
   },
   statLabelBold: {
     fontSize: 12,
-    color: '#e4e4e7',
+    color: surface.dark.text,
     fontWeight: '600',
   },
   statValue: {
     fontSize: 12,
-    color: '#ccc',
+    color: surface.dark.text2,
     fontFamily: 'monospace',
   },
   statValueBold: {
     fontSize: 12,
-    color: '#e4e4e7',
+    color: surface.dark.text,
     fontWeight: '600',
     fontFamily: 'monospace',
   },
   statDivider: {
     height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: surface.dark.bgInner,
     marginVertical: 4,
   },
   barContainer: {
@@ -434,7 +437,7 @@ const styles = StyleSheet.create({
   },
   barBackground: {
     height: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: surface.dark.border,
     borderRadius: 4,
     flexDirection: 'row',
     overflow: 'hidden',
@@ -462,17 +465,17 @@ const styles = StyleSheet.create({
   },
   breakdownText: {
     fontSize: 11,
-    color: '#888',
+    color: surface.dark.text2,
   },
   breakdownValue: {
     fontSize: 11,
-    color: '#666',
+    color: surface.dark.text3,
     fontFamily: 'monospace',
   },
   cachedBadge: {
     fontSize: 9,
-    color: '#06B6D4',
-    backgroundColor: 'rgba(6, 182, 212, 0.15)',
+    color: colors.indigo,
+    backgroundColor: colors.indigoGlow,
     paddingHorizontal: 4,
     paddingVertical: 1,
     borderRadius: 3,
@@ -484,6 +487,6 @@ const styles = StyleSheet.create({
   },
   cacheBreakpointText: {
     fontSize: 9,
-    color: '#444',
+    color: surface.dark.text3,
   },
 });

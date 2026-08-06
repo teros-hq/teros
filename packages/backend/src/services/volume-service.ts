@@ -3,28 +3,23 @@
  *
  * Manages persistent storage volumes for MCA containers.
  *
- * Volume types:
- * - User volumes: Personal storage, one per user (auto-created)
- * - Workspace volumes: Shared storage for collaboration
+ * All volumes are workspace volumes in the unified workspace model.
  *
  * Apps explicitly configure which volumes to mount - no automatic mounts.
  */
 
-import { generateUserVolumeId, generateWorkspaceVolumeId } from '@teros/core';
+import { generateWorkspaceVolumeId } from '@teros/core';
 import { existsSync, mkdirSync } from 'fs';
 import type { Collection, Db, WithId } from 'mongodb';
-import { join } from 'path';
+import { join, resolve } from 'path';
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
 export interface Volume {
-  /** Unique volume identifier (e.g., "vol_user_pablo", "vol_work_alpha") */
+  /** Unique volume identifier (e.g., "vol_work_alpha") */
   volumeId: string;
-
-  /** Volume type */
-  type: 'user' | 'workspace';
 
   /** Human-readable name */
   name: string;
@@ -32,10 +27,10 @@ export interface Volume {
   /** Absolute path on host */
   hostPath: string;
 
-  /** Owner (userId for user volumes) */
+  /** Owner (workspaceId) */
   ownerId: string;
 
-  /** For workspace volumes: members with access */
+  /** Members with access */
   members?: Array<{
     userId: string;
     role: 'admin' | 'write' | 'read';
@@ -71,10 +66,60 @@ export interface ResolvedVolumeMount {
 export interface VolumeServiceConfig {
   /** Base path for all volumes on host */
   basePath: string;
-  /** Default quota for user volumes (bytes, 0 = unlimited) */
-  defaultUserQuota?: number;
   /** Default quota for workspace volumes (bytes, 0 = unlimited) */
   defaultWorkspaceQuota?: number;
+}
+
+// ============================================================================
+// PATH SECURITY
+// ============================================================================
+
+/**
+ * Allowed prefixes for container mount paths.
+ * Container paths must start with one of these to prevent mounting sensitive
+ * host directories (e.g. /etc, /proc) into MCA containers.
+ */
+const ALLOWED_CONTAINER_PREFIXES = ['/workspace', '/data', '/files', '/home', '/tmp'] as const;
+
+/**
+ * Assert that `targetPath` is safely contained within `rootPath`.
+ *
+ * Resolves both paths to their canonical absolute form and verifies that
+ * `targetPath` starts with `rootPath + "/"` (or equals `rootPath` exactly).
+ * This blocks all path traversal sequences such as `../`, `%2e%2e/`, and
+ * symlink-based escapes that resolve outside the root.
+ *
+ * @throws {Error} If `targetPath` escapes `rootPath`.
+ */
+export function assertSafePath(rootPath: string, targetPath: string): void {
+  const resolvedRoot = resolve(rootPath);
+  const resolvedTarget = resolve(targetPath);
+
+  if (resolvedTarget !== resolvedRoot && !resolvedTarget.startsWith(resolvedRoot + '/')) {
+    throw new Error(
+      `Path traversal detected: "${targetPath}" resolves outside the allowed root "${rootPath}"`,
+    );
+  }
+}
+
+/**
+ * Assert that a container mount path is within the allowed whitelist.
+ *
+ * @throws {Error} If `containerPath` does not start with an allowed prefix.
+ */
+function assertSafeContainerPath(containerPath: string): void {
+  // Resolve to strip any traversal sequences before checking prefixes
+  const resolved = resolve('/', containerPath);
+
+  const allowed = ALLOWED_CONTAINER_PREFIXES.some(
+    (prefix) => resolved === prefix || resolved.startsWith(prefix + '/'),
+  );
+
+  if (!allowed) {
+    throw new Error(
+      `Container mount path "${containerPath}" is not in the allowed whitelist: ${ALLOWED_CONTAINER_PREFIXES.join(', ')}`,
+    );
+  }
 }
 
 // ============================================================================
@@ -91,7 +136,6 @@ export class VolumeService {
     this.collection = db.collection<Volume>('volumes');
     this.config = {
       basePath: config.basePath,
-      defaultUserQuota: config.defaultUserQuota ?? 0,
       defaultWorkspaceQuota: config.defaultWorkspaceQuota ?? 0,
     };
 
@@ -105,7 +149,6 @@ export class VolumeService {
   private ensureBaseDirectories(): void {
     const dirs = [
       this.config.basePath,
-      join(this.config.basePath, 'users'),
       join(this.config.basePath, 'workspaces'),
     ];
 
@@ -119,51 +162,6 @@ export class VolumeService {
         }
       }
     }
-  }
-
-  // ==========================================================================
-  // USER VOLUMES
-  // ==========================================================================
-
-  /**
-   * Get or create a user's personal volume
-   */
-  async getUserVolume(userId: string): Promise<Volume> {
-    // Check if user already has a volume
-    const existing = await this.collection.findOne({ type: 'user', ownerId: userId });
-
-    if (existing) {
-      // Ensure host path still exists
-      if (!existsSync(existing.hostPath)) {
-        mkdirSync(existing.hostPath, { recursive: true });
-        console.log(`[VolumeService] Recreated user volume directory: ${existing.hostPath}`);
-      }
-      return existing;
-    }
-
-    // Create new user volume with unique ID
-    const volumeId = generateUserVolumeId();
-    const hostPath = join(this.config.basePath, 'users', volumeId);
-
-    if (!existsSync(hostPath)) {
-      mkdirSync(hostPath, { recursive: true });
-    }
-
-    const newVolume: Volume = {
-      volumeId,
-      type: 'user',
-      name: 'My Files',
-      hostPath,
-      ownerId: userId,
-      quota: this.config.defaultUserQuota,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    await this.collection.insertOne(newVolume as any);
-    console.log(`[VolumeService] Created user volume: ${volumeId} at ${hostPath}`);
-
-    return newVolume;
   }
 
   // ==========================================================================
@@ -183,7 +181,6 @@ export class VolumeService {
 
     const volume: Volume = {
       volumeId,
-      type: 'workspace',
       name,
       hostPath,
       ownerId,
@@ -214,7 +211,7 @@ export class VolumeService {
     role: 'admin' | 'write' | 'read',
   ): Promise<boolean> {
     const result = await this.collection.updateOne(
-      { volumeId, type: 'workspace' },
+      { volumeId },
       {
         $push: {
           members: {
@@ -235,7 +232,7 @@ export class VolumeService {
    */
   async removeMember(volumeId: string, userId: string): Promise<boolean> {
     const result = await this.collection.updateOne(
-      { volumeId, type: 'workspace' },
+      { volumeId },
       {
         $pull: { members: { userId } },
         $set: { updatedAt: new Date() },
@@ -252,23 +249,25 @@ export class VolumeService {
   /**
    * Get volume by ID.
    * If the stored document is missing `hostPath` (legacy records created before
-   * the field was persisted), the path is derived from the volume type and ID
-   * using the same convention used at creation time:
-   *   - user volumes:      <basePath>/users/<volumeId>
-   *   - workspace volumes: <basePath>/workspaces/<volumeId>
+   * the field was persisted), the path is derived from the volume ID using the
+   * same convention used at creation time:
+   *   <basePath>/workspaces/<volumeId>
    */
   async getVolume(volumeId: string): Promise<Volume | null> {
     const vol = await this.collection.findOne({ volumeId });
     if (!vol) return null;
 
     if (!vol.hostPath) {
-      const subdir = vol.type === 'workspace' ? 'workspaces' : 'users';
-      vol.hostPath = join(this.config.basePath, subdir, vol.volumeId);
+      vol.hostPath = join(this.config.basePath, 'workspaces', vol.volumeId);
       console.log(`[VolumeService] Derived missing hostPath for ${volumeId}: ${vol.hostPath}`);
 
       // Persist the derived path so future reads are consistent
       await this.collection.updateOne({ volumeId }, { $set: { hostPath: vol.hostPath, updatedAt: new Date() } });
     }
+
+    // Security: verify the stored/derived hostPath cannot escape the basePath.
+    // This guards against tampered DB records or symlink-based traversal.
+    assertSafePath(this.config.basePath, vol.hostPath);
 
     // Ensure the directory exists on disk
     if (!existsSync(vol.hostPath)) {
@@ -286,12 +285,10 @@ export class VolumeService {
     return this.collection
       .find({
         $or: [
-          // User's own volume
-          { type: 'user', ownerId: userId },
           // Workspaces where user is owner
-          { type: 'workspace', ownerId: userId },
+          { ownerId: userId },
           // Workspaces where user is member
-          { type: 'workspace', 'members.userId': userId },
+          { 'members.userId': userId },
         ],
       })
       .toArray();
@@ -309,12 +306,6 @@ export class VolumeService {
       return false;
     }
 
-    // User volumes: only owner
-    if (volume.type === 'user') {
-      return volume.ownerId === ownerId;
-    }
-
-    // Workspace volumes: check by userId OR by workspaceId
     // If ownerId is the volume's owner (userId), allow
     if (volume.ownerId === ownerId) {
       return true;
@@ -327,7 +318,7 @@ export class VolumeService {
 
     // If ownerId is a workspaceId, check if this volume belongs to that workspace
     // (workspace apps pass workspaceId as ownerId)
-    if (ownerId.startsWith('work_')) {
+    if (ownerId.startsWith('ws_') || ownerId.startsWith('work_')) {
       // Find workspace that owns this volume
       const workspacesCollection = this.db.collection('workspaces');
       const workspace = await workspacesCollection.findOne({ volumeId });
@@ -351,12 +342,6 @@ export class VolumeService {
       return false;
     }
 
-    // User volumes: only owner
-    if (volume.type === 'user') {
-      return volume.ownerId === ownerId;
-    }
-
-    // Workspace volumes: check by userId OR by workspaceId
     // If ownerId is the volume's owner (userId), allow
     if (volume.ownerId === ownerId) {
       return true;
@@ -370,7 +355,7 @@ export class VolumeService {
 
     // If ownerId is a workspaceId, check if this volume belongs to that workspace
     // (workspace apps pass workspaceId as ownerId - they have full write access)
-    if (ownerId.startsWith('work_')) {
+    if (ownerId.startsWith('ws_') || ownerId.startsWith('work_')) {
       const workspacesCollection = this.db.collection('workspaces');
       const workspace = await workspacesCollection.findOne({ volumeId });
       if (workspace && workspace.workspaceId === ownerId) {
@@ -386,7 +371,7 @@ export class VolumeService {
    * Note: Does NOT delete files on disk (safety measure)
    */
   async deleteWorkspace(volumeId: string, userId: string): Promise<boolean> {
-    const volume = await this.collection.findOne({ volumeId, type: 'workspace' });
+    const volume = await this.collection.findOne({ volumeId });
 
     if (!volume) {
       return false;
@@ -436,6 +421,10 @@ export class VolumeService {
       if (!mount.readOnly && !(await this.canWrite(mount.volumeId, userId))) {
         throw new Error(`Write access denied to volume: ${mount.volumeId}`);
       }
+
+      // Security: validate the container mount path is within the allowed whitelist
+      // to prevent mounting into sensitive container paths (e.g. /etc, /proc).
+      assertSafeContainerPath(mount.mountPath);
 
       // Ensure host path exists
       if (!existsSync(volume.hostPath)) {

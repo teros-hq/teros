@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const listTags: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all tags defined in the Intercom workspace. Useful for finding tag IDs before tagging conversations.',
   parameters: {
     type: 'object',

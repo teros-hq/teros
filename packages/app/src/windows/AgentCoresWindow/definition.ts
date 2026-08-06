@@ -7,6 +7,7 @@
 import { Cpu } from '@tamagui/lucide-icons';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { AgentCoresWindowContent } from './AgentCoresWindowContent';
+import i18n from '../../i18n';
 
 export type AgentCoresWindowProps = {};
 
@@ -20,10 +21,9 @@ export const agentCoresWindowDefinition: WindowTypeDefinition<AgentCoresWindowPr
   defaultSize: { width: 900, height: 700 },
   minSize: { width: 500, height: 400 },
 
-  singleton: true,
 
-  getTitle: () => 'Agent Cores',
-  getSubtitle: () => 'Base personalities and engines',
+  getTitle: () => i18n.t("windows.agentCores"),
+  getSubtitle: () => i18n.t("windows.agentCoresSub"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

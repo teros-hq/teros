@@ -7,8 +7,12 @@
 
 import { AlertTriangle, Check, Shield, Wrench, X } from '@tamagui/lucide-icons';
 import React from 'react';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { Modal, ScrollView, TouchableOpacity, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
+import { useColors } from './mca/primitives/useColors';
+import { colors, controlsBar, indicators } from './mca/primitives/colors';
 
 export interface ToolPermissionRequest {
   requestId: string;
@@ -54,25 +58,25 @@ function formatInput(input: Record<string, any>): string {
 /**
  * Get a human-readable description of what the tool does
  */
-function getToolDescription(toolName: string, input: Record<string, any>): string {
+function getToolDescription(toolName: string, input: Record<string, any>, t: TFunction): string {
   // Common tool patterns
   if (toolName.includes('bash') || toolName.includes('shell') || toolName.includes('exec')) {
-    return `Ejecutar comando: ${input.command || 'comando del sistema'}`;
+    return t("permission.executeCommand", { target: input.command || t("permission.defaultCommand") });
   }
   if (toolName.includes('write') || toolName.includes('save')) {
-    return `Escribir archivo: ${input.filePath || input.path || 'archivo'}`;
+    return t("permission.writeFile", { target: input.filePath || input.path || t("permission.defaultFile") });
   }
   if (toolName.includes('delete') || toolName.includes('remove')) {
-    return `Eliminar: ${input.filePath || input.path || 'elemento'}`;
+    return t("permission.deleteItem", { target: input.filePath || input.path || t("permission.defaultItem") });
   }
   if (toolName.includes('send') && toolName.includes('mail')) {
-    return `Enviar email a: ${input.to || 'destinatario'}`;
+    return t("permission.sendEmail", { target: input.to || t("permission.defaultRecipient") });
   }
   if (toolName.includes('read') || toolName.includes('get')) {
-    return `Leer: ${input.filePath || input.path || input.url || 'datos'}`;
+    return t("permission.readData", { target: input.filePath || input.path || input.url || t("permission.defaultData") });
   }
 
-  return `Ejecutar herramienta: ${toolName}`;
+  return t("permission.executeTool", { target: toolName });
 }
 
 export function ToolPermissionModal({
@@ -82,9 +86,12 @@ export function ToolPermissionModal({
   onGrantAlways,
   onDeny,
 }: ToolPermissionModalProps) {
+  const { t } = useTranslation();
+  const c = useColors();
+
   if (!request) return null;
 
-  const description = getToolDescription(request.toolName, request.input);
+  const description = getToolDescription(request.toolName, request.input, t);
   const formattedInput = formatInput(request.input);
 
   return (
@@ -92,21 +99,21 @@ export function ToolPermissionModal({
       <View
         style={{
           flex: 1,
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: c.bgInner,
           justifyContent: 'center',
           alignItems: 'center',
           padding: 20,
         }}
       >
         <YStack
-          backgroundColor="#18181B"
+          backgroundColor={c.bgCard}
           borderRadius={16}
           padding={20}
           gap={16}
           maxWidth={500}
           width="100%"
           borderWidth={1}
-          borderColor="rgba(245, 158, 11, 0.3)"
+          borderColor={indicators.risk.border}
         >
           {/* Header */}
           <XStack alignItems="center" gap={12}>
@@ -115,44 +122,44 @@ export function ToolPermissionModal({
                 width: 44,
                 height: 44,
                 borderRadius: 10,
-                backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                backgroundColor: indicators.risk.bg,
                 justifyContent: 'center',
                 alignItems: 'center',
               }}
             >
-              <Shield size={24} color="#F59E0B" />
+              <Shield size={24} color={colors.amber} />
             </View>
             <YStack flex={1}>
-              <Text fontSize={18} fontWeight="600" color="#FAFAFA">
+              <Text fontSize={18} fontWeight="600" color={c.text}>
                 Permiso requerido
               </Text>
-              <Text fontSize={13} color="#A1A1AA">
+              <Text fontSize={13} color={c.text2}>
                 This action needs your confirmation
               </Text>
             </YStack>
           </XStack>
 
           {/* Tool info */}
-          <YStack backgroundColor="rgba(0, 0, 0, 0.3)" padding={14} borderRadius={10} gap={8}>
+          <YStack backgroundColor={c.bgInner} padding={14} borderRadius={10} gap={8}>
             <XStack alignItems="center" gap={8}>
-              <Wrench size={16} color="#71717A" />
-              <Text fontSize={14} fontWeight="600" color="#E4E4E7">
+              <Wrench size={16} color={c.text3} />
+              <Text fontSize={14} fontWeight="600" color={c.text}>
                 {request.toolName}
               </Text>
             </XStack>
-            <Text fontSize={13} color="#A1A1AA">
+            <Text fontSize={13} color={c.text2}>
               {description}
             </Text>
           </YStack>
 
           {/* Input details (collapsible) */}
           <YStack gap={8}>
-            <Text fontSize={12} color="#71717A" fontWeight="500">
+            <Text fontSize={12} color={c.text3} fontWeight="500">
               Parameters:
             </Text>
             <ScrollView style={{ maxHeight: 150 }} showsVerticalScrollIndicator={true}>
-              <YStack backgroundColor="rgba(0, 0, 0, 0.4)" padding={12} borderRadius={8}>
-                <Text fontSize={11} color="#A1A1AA" fontFamily="$mono" style={{ lineHeight: 16 }}>
+              <YStack backgroundColor={c.bgInner} padding={12} borderRadius={8}>
+                <Text fontSize={11} color={c.text2} fontFamily="$mono" style={{ lineHeight: 16 }}>
                   {formattedInput}
                 </Text>
               </YStack>
@@ -161,14 +168,14 @@ export function ToolPermissionModal({
 
           {/* Warning */}
           <XStack
-            backgroundColor="rgba(245, 158, 11, 0.1)"
+            backgroundColor={indicators.risk.bg}
             padding={12}
             borderRadius={8}
             alignItems="flex-start"
             gap={10}
           >
-            <AlertTriangle size={16} color="#F59E0B" style={{ marginTop: 2 }} />
-            <Text fontSize={12} color="#F59E0B" flex={1}>
+            <AlertTriangle size={16} color={colors.amber} style={{ marginTop: 2 }} />
+            <Text fontSize={12} color={colors.amber} flex={1}>
               Review the parameters before allowing. This tool may modify files or
               ejecutar comandos en tu sistema.
             </Text>
@@ -183,18 +190,18 @@ export function ToolPermissionModal({
                 activeOpacity={0.7}
                 style={{
                   flex: 1,
-                  backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                  backgroundColor: controlsBar.deny.bg,
                   paddingVertical: 12,
                   paddingHorizontal: 14,
                   borderRadius: 10,
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(239, 68, 68, 0.3)',
+                  borderColor: controlsBar.deny.border,
                 }}
               >
                 <XStack alignItems="center" gap={6}>
-                  <X size={16} color="#EF4444" />
-                  <Text color="#EF4444" fontWeight="600" fontSize={13}>
+                  <X size={16} color={colors.red} />
+                  <Text color={colors.red} fontWeight="600" fontSize={13}>
                     Denegar
                   </Text>
                 </XStack>
@@ -205,18 +212,18 @@ export function ToolPermissionModal({
                 activeOpacity={0.7}
                 style={{
                   flex: 1,
-                  backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                  backgroundColor: controlsBar.allow.bg,
                   paddingVertical: 12,
                   paddingHorizontal: 14,
                   borderRadius: 10,
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(16, 185, 129, 0.3)',
+                  borderColor: controlsBar.allow.border,
                 }}
               >
                 <XStack alignItems="center" gap={6}>
-                  <Check size={16} color="#10B981" />
-                  <Text color="#10B981" fontWeight="600" fontSize={13}>
+                  <Check size={16} color={colors.green} />
+                  <Text color={colors.green} fontWeight="600" fontSize={13}>
                     Permitir
                   </Text>
                 </XStack>
@@ -229,18 +236,18 @@ export function ToolPermissionModal({
                 onPress={onGrantAlways}
                 activeOpacity={0.7}
                 style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  backgroundColor: c.badges.info.bg,
                   paddingVertical: 12,
                   paddingHorizontal: 14,
                   borderRadius: 10,
                   alignItems: 'center',
                   borderWidth: 1,
-                  borderColor: 'rgba(59, 130, 246, 0.25)',
+                  borderColor: c.badges.info.border,
                 }}
               >
                 <XStack alignItems="center" gap={6}>
-                  <Shield size={16} color="#3B82F6" />
-                  <Text color="#3B82F6" fontWeight="600" fontSize={13}>
+                  <Shield size={16} color={colors.indigo} />
+                  <Text color={colors.indigo} fontWeight="600" fontSize={13}>
                     Permitir siempre
                   </Text>
                 </XStack>

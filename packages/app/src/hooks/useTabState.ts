@@ -18,7 +18,7 @@ export interface TabWindow {
 
 export interface TabState {
   /** Window definition from registry */
-  definition: ReturnType<typeof windowRegistry.get>;
+  definition: any;
   /** Icon component */
   Icon: React.ComponentType<{ size?: number; color?: string }> | undefined;
   /** Icon color from definition */

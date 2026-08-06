@@ -10,34 +10,24 @@
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
 import { initializeGoogleClients } from './lib';
 import {
-  appendText,
-  batchUpdateDocument,
   copyFile,
   createComment,
+  createDocument,
   createFolder,
   createReply,
   deleteComment,
   deleteFile,
   downloadFile,
-  exportSheet,
   getComment,
   getFile,
   getFileContent,
-  insertText,
   listComments,
   listFiles,
   listReplies,
-  listSheetTabs,
   moveFile,
-  readDocument,
-  readPresentation,
-  readSheetRange,
-  readSlide,
-  readSpreadsheet,
   searchFiles,
   shareFile,
   updateComment,
-  updateDocument,
   uploadFile,
 } from './tools';
 
@@ -134,6 +124,7 @@ server.tool('list-files', listFiles);
 server.tool('get-file', getFile);
 server.tool('download-file', downloadFile);
 server.tool('upload-file', uploadFile);
+server.tool('create-document', createDocument);
 server.tool('create-folder', createFolder);
 server.tool('delete-file', deleteFile);
 server.tool('share-file', shareFile);
@@ -141,32 +132,6 @@ server.tool('search-files', searchFiles);
 server.tool('move-file', moveFile);
 server.tool('copy-file', copyFile);
 server.tool('get-file-content', getFileContent);
-
-// =============================================================================
-// REGISTER TOOLS: GOOGLE SHEETS
-// =============================================================================
-
-server.tool('read-spreadsheet', readSpreadsheet);
-server.tool('read-sheet-range', readSheetRange);
-server.tool('list-sheet-tabs', listSheetTabs);
-server.tool('export-sheet', exportSheet);
-
-// =============================================================================
-// REGISTER TOOLS: GOOGLE SLIDES
-// =============================================================================
-
-server.tool('read-presentation', readPresentation);
-server.tool('read-slide', readSlide);
-
-// =============================================================================
-// REGISTER TOOLS: GOOGLE DOCS
-// =============================================================================
-
-server.tool('read-document', readDocument);
-server.tool('update-document', updateDocument);
-server.tool('insert-text', insertText);
-server.tool('append-text', appendText);
-server.tool('batch-update-document', batchUpdateDocument);
 
 // =============================================================================
 // REGISTER TOOLS: COMMENTS

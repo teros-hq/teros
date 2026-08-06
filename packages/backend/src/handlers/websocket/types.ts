@@ -6,7 +6,6 @@ import type { ServerMessage } from '@teros/shared';
 import type { WebSocket } from 'ws';
 import type { McaOAuth } from '../../auth/mca-oauth';
 import type { McaService } from '../../services/mca-service';
-import type { ModelService } from '../../services/model-service';
 
 /**
  * Common dependencies for all command handlers
@@ -29,14 +28,6 @@ export interface AppCommandsDeps extends CommandDeps {
  */
 export interface AppAuthCommandsDeps extends CommandDeps {
   mcaOAuth: McaOAuth | null | undefined;
-}
-
-/**
- * Dependencies for catalog/models commands
- */
-export interface CatalogCommandsDeps extends CommandDeps {
-  modelService: ModelService;
-  buildAvatarUrl: (filename?: string) => string | undefined;
 }
 
 /**

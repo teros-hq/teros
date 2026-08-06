@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest, formatTask, mapPriority } from '../lib';
 
 export const createTask: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new task in a ClickUp list.',
   parameters: {
     type: 'object',

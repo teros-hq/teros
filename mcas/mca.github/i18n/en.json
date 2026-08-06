@@ -1,0 +1,713 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies GitHub OAuth credentials and connectivity."
+    },
+    "list-repos": {
+      "name": "list-repos",
+      "description": "List repositories accessible to the current user via the Teros GitHub App (across every installation reachable). Pass `owner` to filter to a specific user/org.",
+      "params": {
+        "owner": "Optional filter — only return repos under this user or organization.",
+        "per_page": "Results per page (default: 30, max: 100).",
+        "page": "Page index (1-based)."
+      }
+    },
+    "get-repo": {
+      "name": "get-repo",
+      "description": "Get detailed information about a specific repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name"
+      }
+    },
+    "create-repo": {
+      "name": "create-repo",
+      "description": "Create a new repository",
+      "params": {
+        "name": "Repository name",
+        "description": "Repository description",
+        "private": "Create as private repository (default: false)",
+        "auto_init": "Initialize with README (default: false)",
+        "gitignore_template": "Gitignore template name (e.g., \"Node\", \"Python\")",
+        "license_template": "License template (e.g., \"mit\", \"apache-2.0\")",
+        "org": "Organization name. If provided, creates repo under the org."
+      }
+    },
+    "list-issues": {
+      "name": "list-issues",
+      "description": "List issues for a repository with optional filters",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "state": "Filter by state (default: open)",
+        "labels": "Comma-separated list of label names",
+        "sort": "Sort by (default: created)",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-issue": {
+      "name": "get-issue",
+      "description": "Get details of a specific issue",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "issue_number": "Issue number"
+      }
+    },
+    "create-issue": {
+      "name": "create-issue",
+      "description": "Create a new issue in a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "title": "Issue title",
+        "body": "Issue description (supports markdown)",
+        "labels": "Array of label names",
+        "assignees": "Array of GitHub usernames to assign"
+      }
+    },
+    "update-issue": {
+      "name": "update-issue",
+      "description": "Update an existing issue. Setting `state: \"closed\"` closes it (use `state_reason` for completed/not_planned). `labels` REPLACES the entire label set — use add-labels-to-issue to append.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "issue_number": "Issue number",
+        "title": "New title",
+        "body": "New body",
+        "state": "New state",
+        "state_reason": "Reason when transitioning state (default: completed)",
+        "labels": "New labels (replaces existing)"
+      }
+    },
+    "add-issue-comment": {
+      "name": "add-issue-comment",
+      "description": "Add a comment to an issue",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "issue_number": "Issue number",
+        "body": "Comment text (supports markdown)"
+      }
+    },
+    "add-labels-to-issue": {
+      "name": "add-labels-to-issue",
+      "description": "Add labels to an issue or pull request (PRs are issues in the API). Returns the full label set after the addition.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "issue_number": "Issue or pull request number",
+        "labels": "Label names to add (case sensitive). Existing labels are preserved."
+      }
+    },
+    "search-issues": {
+      "name": "search-issues",
+      "description": "Search issues and pull requests across GitHub. Use GitHub search syntax in `q` (e.g. `repo:owner/name is:issue is:open label:bug`). Returns {total_count, incomplete_results, items[]}.",
+      "params": {
+        "q": "Search query (GitHub search syntax). Supports qualifiers like `repo:`, `is:`, `label:`, `author:`, `assignee:`.",
+        "sort": "Sort field (default: best-match)",
+        "order": "Sort direction (default: desc)",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "list-pulls": {
+      "name": "list-pulls",
+      "description": "List pull requests for a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "state": "Filter by state (default: open)",
+        "sort": "Sort by (default: created)",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-pull": {
+      "name": "get-pull",
+      "description": "Get details of a specific pull request",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number"
+      }
+    },
+    "create-pull": {
+      "name": "create-pull",
+      "description": "Create a new pull request",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "title": "Pull request title",
+        "body": "Pull request description",
+        "head": "Branch name containing changes",
+        "base": "Branch name to merge into (default: main)",
+        "draft": "Create as draft PR (default: false)"
+      }
+    },
+    "merge-pull": {
+      "name": "merge-pull",
+      "description": "Merge a pull request",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "commit_title": "Title for merge commit (optional)",
+        "commit_message": "Message for merge commit (optional)",
+        "merge_method": "Merge method (default: merge)"
+      }
+    },
+    "list-pr-files": {
+      "name": "list-pr-files",
+      "description": "List files changed in a pull request. Each file includes {filename, status, additions, deletions, changes, patch?, sha, blob_url}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "list-pr-commits": {
+      "name": "list-pr-commits",
+      "description": "List commits on a pull request. Each commit includes {sha, commit.message, author, html_url}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "list-pr-review-comments": {
+      "name": "list-pr-review-comments",
+      "description": "List review comments (inline comments on diff) of a pull request. Returns array with {id, user, body, path, line, commit_id, created_at}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "sort": "Sort field (default: created)",
+        "direction": "Sort direction (default: asc)",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "request-reviewers": {
+      "name": "request-reviewers",
+      "description": "Request reviewers on a pull request. Returns the PR with `requested_reviewers` and `requested_teams` populated.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "reviewers": "GitHub usernames to request review from",
+        "team_reviewers": "Team slugs (within the org) to request review from"
+      }
+    },
+    "create-pr-review": {
+      "name": "create-pr-review",
+      "description": "Create a pull request review. `event` controls the verdict: APPROVE / REQUEST_CHANGES / COMMENT. Returns review {id, state, user, submitted_at}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "pull_number": "Pull request number",
+        "event": "Verdict of the review",
+        "body": "Review body (markdown). Required for REQUEST_CHANGES and COMMENT, optional for APPROVE.",
+        "commit_id": "SHA of the commit the review applies to (default: latest of the PR)",
+        "comments": "Inline comments. Each item: {path, position OR line, body}."
+      }
+    },
+    "list-branches": {
+      "name": "list-branches",
+      "description": "List branches in a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-branch": {
+      "name": "get-branch",
+      "description": "Get information about a specific branch",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "branch": "Branch name"
+      }
+    },
+    "create-branch": {
+      "name": "create-branch",
+      "description": "Create a new branch from a reference",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "branch": "New branch name",
+        "from_branch": "Source branch name (default: main)"
+      }
+    },
+    "list-commits": {
+      "name": "list-commits",
+      "description": "List commits in a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "sha": "SHA or branch name to list commits from",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-commit": {
+      "name": "get-commit",
+      "description": "Get details of a specific commit",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "ref": "Commit SHA"
+      }
+    },
+    "compare-commits": {
+      "name": "compare-commits",
+      "description": "Compare two commits or branches. `basehead` format `BASE...HEAD` (e.g. `main...feat/x`). Returns {status, ahead_by, behind_by, total_commits, commits[], files[].patch}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "basehead": "Comparison range, format `BASE...HEAD`. May include cross-fork via `owner:ref`.",
+        "per_page": "Files per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "list-workflows": {
+      "name": "list-workflows",
+      "description": "List workflows in a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name"
+      }
+    },
+    "list-workflow-runs": {
+      "name": "list-workflow-runs",
+      "description": "List workflow runs for a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "workflow_id": "Workflow ID or filename (optional)",
+        "status": "Filter by status",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-workflow-run": {
+      "name": "get-workflow-run",
+      "description": "Get a workflow run. Returns {id, name, status, conclusion, run_number, head_branch, head_sha, html_url, created_at, updated_at, run_started_at}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "run_id": "Workflow run id"
+      }
+    },
+    "list-workflow-run-jobs": {
+      "name": "list-workflow-run-jobs",
+      "description": "List jobs of a workflow run. Each job includes {id, name, status, conclusion, started_at, completed_at, html_url, steps[]}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "run_id": "Workflow run id",
+        "filter": "Filter by attempt (default: latest)",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "trigger-workflow": {
+      "name": "trigger-workflow",
+      "description": "Trigger a workflow dispatch event",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "workflow_id": "Workflow ID or filename",
+        "ref": "Branch or tag name (default: main)",
+        "inputs": "Input parameters for the workflow"
+      }
+    },
+    "rerun-workflow-run": {
+      "name": "rerun-workflow-run",
+      "description": "Re-run a workflow run. By default re-runs only failed jobs (faster + cheaper). Set `mode: \"all\"` to re-run every job.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "run_id": "Workflow run id",
+        "mode": "Which jobs to re-run (default: failed)",
+        "enable_debug_logging": "Whether to enable debug logging for the re-run (default: false)"
+      }
+    },
+    "cancel-workflow-run": {
+      "name": "cancel-workflow-run",
+      "description": "Cancel a workflow run that is in progress. Returns {success: true} on 202 Accepted.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "run_id": "Workflow run id"
+      }
+    },
+    "list-releases": {
+      "name": "list-releases",
+      "description": "List releases of a repository, newest first. Each release includes {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "per_page": "Results per page (default: 30, max: 100)",
+        "page": "Page index (1-based)"
+      }
+    },
+    "create-release": {
+      "name": "create-release",
+      "description": "Create a GitHub release tagged at `tag_name`. If `target_commitish` omitted GitHub uses the default branch. Returns {id, tag_name, name, html_url, draft, prerelease, published_at}.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "tag_name": "Tag this release points to (created if missing)",
+        "target_commitish": "Branch or SHA the tag is created from (default: repository default branch)",
+        "name": "Release title (default: tag_name)",
+        "body": "Release notes (markdown)",
+        "draft": "Create as draft (default: false)",
+        "prerelease": "Mark as prerelease (default: false)",
+        "generate_release_notes": "Auto-generate release notes from commits (default: false)"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Get the content of a file in a repository",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "path": "File path in repository",
+        "ref": "Branch, tag, or commit SHA (default: default branch)"
+      }
+    },
+    "create-or-update-file": {
+      "name": "create-or-update-file",
+      "description": "Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "path": "File path in repository (no `..`, no leading `/`)",
+        "message": "Commit message",
+        "content": "File content (will be base64 encoded)",
+        "branch": "Branch name (default: default branch)",
+        "sha": "SHA of file being replaced (required for updates)"
+      }
+    },
+    "search-repos": {
+      "name": "search-repos",
+      "description": "Search for repositories on GitHub",
+      "params": {
+        "query": "Search query (e.g., \"react language:javascript stars:>1000\")",
+        "sort": "Sort results by",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "search-code": {
+      "name": "search-code",
+      "description": "Search for code across GitHub repositories",
+      "params": {
+        "query": "Search query (e.g., \"addClass in:file language:js repo:jquery/jquery\")",
+        "per_page": "Results per page (default: 30, max: 100)"
+      }
+    },
+    "get-installation-context": {
+      "name": "get-installation-context",
+      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs."
+    },
+    "create-check-run": {
+      "name": "create-check-run",
+      "description": "Create a check run on a commit (exclusive to GitHub Apps). The check appears in the PR/commit sidebar. Use status:in_progress while the check runs, then update with conclusion when done.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "name": "Display name of the check (e.g. \"Teros review\")",
+        "head_sha": "Commit SHA the check applies to",
+        "status": "Status (default: queued)",
+        "conclusion": "Required when status is `completed`",
+        "output": "Rich output with title, summary (markdown), optional text body",
+        "details_url": "Optional URL with more detail (shown as link in the check)",
+        "external_id": "Reference ID controlled by the App (idempotency on App side)"
+      }
+    },
+    "update-check-run": {
+      "name": "update-check-run",
+      "description": "Update an existing check run — typically to set status:completed + conclusion when work finishes. Pass only the fields you want to change.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "check_run_id": "Check run id (returned by create-check-run)",
+        "name": "New display name (optional)",
+        "status": "New status",
+        "conclusion": "Required when status is `completed`",
+        "output": "Updated output"
+      }
+    },
+    "get-rate-limit": {
+      "name": "get-rate-limit",
+      "description": "Read the current GitHub API rate-limit budget for the installation token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search."
+    },
+    "dispatch-event": {
+      "name": "dispatch-event",
+      "description": "Send a `repository_dispatch` event to trigger workflows configured to listen for it. Pass `event_type` (string the workflow filters on) and optional `client_payload`.",
+      "params": {
+        "owner": "Repository owner",
+        "repo": "Repository name",
+        "event_type": "Custom event type the workflow filters on (e.g. `deploy-staging`)",
+        "client_payload": "Optional payload (max 10 properties, JSON-serializable). Available to the workflow as `github.event.client_payload`."
+      }
+    },
+    "clone-repo": {
+      "name": "clone-repo",
+      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Returns {path, branch, sha, recentCommits[]}.",
+      "params": {
+        "owner": "Repository owner (user or org)",
+        "repo": "Repository name",
+        "destination": "Local path where the repo will be cloned (default: /workspace/<repo>)",
+        "branch": "Branch to checkout after cloning (default: default branch)"
+      }
+    },
+    "git-status": {
+      "name": "git-status",
+      "description": "Local git status: branch, ahead/behind vs upstream, and lists of staged, modified, untracked, and conflicted files.",
+      "params": {
+        "repoPath": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<repo>`.",
+        "owner": "Repository owner (used to resolve default repoPath).",
+        "repo": "Repository name (used to resolve default repoPath)."
+      }
+    },
+    "git-add": {
+      "name": "git-add",
+      "description": "Stage local changes. Pass an array of paths to stage selectively, or omit `paths` (default `.`) to stage everything.",
+      "params": {
+        "paths": "Paths relative to repo root. Defaults to [\".\"] (stage all changes).",
+        "update": "If true, only stage already-tracked files (`git add -u`)."
+      }
+    },
+    "git-commit": {
+      "name": "git-commit",
+      "description": "Create a commit with the staged changes. Returns `{ sha, branch, message }`. Use `amend: true` to amend the previous commit instead.",
+      "params": {
+        "message": "Commit message (subject + optional body separated by blank line).",
+        "amend": "Amend the previous commit instead of creating a new one.",
+        "allowEmpty": "Allow creating a commit with no staged changes.",
+        "author": "Override commit author (defaults to git config user.name/user.email)."
+      }
+    },
+    "git-push": {
+      "name": "git-push",
+      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).",
+      "params": {
+        "remote": "Remote name. Defaults to `origin`.",
+        "branch": "Local branch to push. Defaults to current branch.",
+        "setUpstream": "Set upstream tracking (`-u`).",
+        "force": "Use `--force-with-lease` (safer force).",
+        "forceUnsafe": "Use raw `--force` (destructive; rewrites remote history).",
+        "tags": "Push tags along with commits."
+      }
+    },
+    "git-checkout": {
+      "name": "git-checkout",
+      "description": "Switch branches, create a new branch, or restore specific paths. Returns the new HEAD ref. Set `force: true` to discard local changes (destructive).",
+      "params": {
+        "target": "Branch, tag, commit SHA, or — with `paths` — restore source.",
+        "create": "Create a new branch named `target` (`-b`).",
+        "paths": "Restore these specific paths from `target` (no branch switch).",
+        "force": "Discard local changes (`--force`). Destructive."
+      }
+    },
+    "git-rm": {
+      "name": "git-rm",
+      "description": "Remove tracked files from the working tree and stage the deletion. Pass `cached: true` to only unstage (without deleting from disk).",
+      "params": {
+        "paths": "Paths to remove (relative to repo root).",
+        "cached": "Only stage the deletion; keep the file on disk (`git rm --cached`).",
+        "recursive": "Recurse into directories (`-r`)."
+      }
+    },
+    "git-mv": {
+      "name": "git-mv",
+      "description": "Move or rename a tracked file/directory while preserving git history. Both `from` and `to` are relative to repo root.",
+      "params": {
+        "from": "Source path (relative to repo root).",
+        "to": "Destination path (relative to repo root).",
+        "force": "Overwrite `to` if it already exists (`-f`)."
+      }
+    },
+    "git-read-file": {
+      "name": "git-read-file",
+      "description": "Read a file from the working tree or from a specific git revision. Pass `ref` (commit/branch/tag) to read the version at that point.",
+      "params": {
+        "path": "File path relative to repo root.",
+        "ref": "Optional commit/branch/tag. If omitted, reads from the current working tree.",
+        "encoding": "Output encoding. Use `base64` for binary files."
+      }
+    },
+    "git-write-file": {
+      "name": "git-write-file",
+      "description": "Write file content into the working tree (creates parent dirs) and stage it. Use `stage: false` to skip staging.",
+      "params": {
+        "path": "File path relative to repo root.",
+        "content": "File content (utf8 by default, or base64 — see `encoding`).",
+        "stage": "Stage the change (`git add`)."
+      }
+    },
+    "git-list-files": {
+      "name": "git-list-files",
+      "description": "List files in the repo, respecting `.gitignore`. Returns `{ tracked, untracked, ignored }` arrays. Optionally filter by `pattern` (glob, relative to repo root).",
+      "params": {
+        "pattern": "Optional glob filter (e.g. `src/**`).",
+        "includeIgnored": "Include the `ignored` list."
+      }
+    },
+    "git-pull": {
+      "name": "git-pull",
+      "description": "Pull commits from the remote into the current branch. `rebase: true` for a linear history (no merge commit).",
+      "params": {
+        "branch": "Remote branch to pull. Defaults to upstream.",
+        "rebase": "Use `--rebase` instead of merge.",
+        "ff": "`only` = abort if not fast-forward; `no` = always merge commit; `auto` = git default."
+      }
+    },
+    "git-diff": {
+      "name": "git-diff",
+      "description": "Show differences as unified diff + numstat. Defaults to working tree vs HEAD. `from: staged` for index vs HEAD; pass `from`+`to` commit SHAs for arbitrary diffs.",
+      "params": {
+        "from": "`working` (default), `staged`, `HEAD`, or a commit/branch/tag SHA.",
+        "to": "Target ref when `from` is a commit. Default `HEAD` when `from`=working/staged.",
+        "path": "Limit diff to a specific path.",
+        "contextLines": "Number of context lines around each change."
+      }
+    },
+    "git-log": {
+      "name": "git-log",
+      "description": "Local commit history with structured entries. Defaults to last 20 commits on the current branch. Filter by `ref`, `path`, `author`, `since`/`until`.",
+      "params": {
+        "ref": "Branch / tag / commit to start from (defaults to HEAD).",
+        "path": "Limit history to a specific path.",
+        "author": "Filter by author (substring match).",
+        "since": "ISO date or git-style relative (e.g. \"2 weeks ago\").",
+        "until": "ISO date or git-style relative.",
+        "limit": "Maximum number of commits."
+      }
+    },
+    "git-batch-commit": {
+      "name": "git-batch-commit",
+      "description": "Apply multiple file changes (create/update/delete/rename) and create ONE atomic commit. Use this for refactors and any multi-file change where the intermediate states should not be visible in git history.",
+      "params": {
+        "message": "Commit message."
+      }
+    },
+    "git-stash": {
+      "name": "git-stash",
+      "description": "Manage the stash. Default action `push` saves uncommitted changes. Other actions: pop, apply, drop, list, clear.",
+      "params": {
+        "message": "Optional message for `push`.",
+        "index": "Stash index for `pop/apply/drop` (default 0 = top).",
+        "includeUntracked": "Include untracked files when stashing (`-u`)."
+      }
+    },
+    "git-merge": {
+      "name": "git-merge",
+      "description": "Merge a branch/tag/commit into the current branch. On conflict, throws `GIT_CONFLICT` and the agent should resolve via `git-status` + edit + `git-add`.",
+      "params": {
+        "target": "Branch/tag/commit to merge into current.",
+        "message": "Merge commit message (used when not fast-forward).",
+        "noFf": "Always create a merge commit (`--no-ff`).",
+        "ffOnly": "Abort if not fast-forward (`--ff-only`).",
+        "squash": "Squash all changes into a single staged change (does NOT commit).",
+        "strategyOption": "Pass-through `-X<option>` (e.g. `ours`, `theirs`, `patience`)."
+      }
+    },
+    "git-rebase": {
+      "name": "git-rebase",
+      "description": "Rebase the current branch onto another ref (linear history). Or drive an in-progress rebase with `mode: continue/skip/abort`.",
+      "params": {
+        "onto": "Target ref to rebase onto (required unless `mode` is given).",
+        "autosquash": "Honor `fixup!`/`squash!` commits.",
+        "strategyOption": "Pass-through `-X<option>` (e.g. `theirs`)."
+      }
+    },
+    "git-reset": {
+      "name": "git-reset",
+      "description": "Reset HEAD to `target`. `mode: soft` keeps staging; `mode: mixed` (default) keeps working tree; `mode: hard` discards everything (destructive).",
+      "params": {
+        "target": "Ref to reset to (default `HEAD`)."
+      }
+    },
+    "git-cherry-pick": {
+      "name": "git-cherry-pick",
+      "description": "Cherry-pick commits onto the current branch. Pass `commits: [\"sha\", ...]` or drive an in-progress pick with `mode: continue/skip/abort`.",
+      "params": {
+        "commits": "SHAs / refs to cherry-pick (in order).",
+        "noCommit": "Stage changes but do not create the commit.",
+        "mainline": "For merge commits: parent number (1-indexed) to use as mainline."
+      }
+    },
+    "git-config": {
+      "name": "git-config",
+      "description": "Read or write git config (whitelisted keys only). Default scope is `local` (the repo). For identity, prefer `user.name` and `user.email`.",
+      "params": {
+        "key": "Config key (required for get/set/unset).",
+        "value": "New value (required for set)."
+      }
+    },
+    "git-tag": {
+      "name": "git-tag",
+      "description": "List, create, or delete local git tags. Pass `message` on create for an annotated tag (otherwise lightweight).",
+      "params": {
+        "name": "Tag name (required for create/delete).",
+        "ref": "Ref to tag (default `HEAD`). Used by `create`.",
+        "message": "If set, create an annotated tag with this message.",
+        "pattern": "Glob filter for `list`.",
+        "force": "Replace existing tag (`-f`)."
+      }
+    },
+    "git-remote": {
+      "name": "git-remote",
+      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs.",
+      "params": {
+        "name": "Remote name (required for add/remove/set-url).",
+        "url": "Remote URL (required for add/set-url)."
+      }
+    },
+    "git-blame": {
+      "name": "git-blame",
+      "description": "Per-line attribution for a file. Returns `[{ sha, author, date, lineNumber, content }]`. Restrict with `range: \"10,50\"` or `ref`.",
+      "params": {
+        "path": "File path relative to repo root.",
+        "ref": "Blame at a specific ref (default HEAD).",
+        "range": "Optional line range `start,end` (1-indexed inclusive)."
+      }
+    },
+    "git-bisect": {
+      "name": "git-bisect",
+      "description": "Binary search for the commit that introduced a bug. Workflow: start → mark each step good/bad → done. Use `reset` to abort.",
+      "params": {
+        "bad": "Bad commit (required for `start`).",
+        "good": "Good commit (optional but recommended for `start`).",
+        "ref": "Commit to mark for `good/bad/skip` (default current HEAD)."
+      }
+    },
+    "git-fetch": {
+      "name": "git-fetch",
+      "description": "Fetch refs from the remote without merging. Use `refspec` to fetch arbitrary refs (e.g. `pull/<n>/head:pr-<n>` for a PR head, `refs/tags/v1.0.0:refs/tags/v1.0.0` for a tag).",
+      "params": {
+        "refspec": "Optional refspec — e.g. `pull/<n>/head:pr-<n>` to bring a PR head as a local branch, or `refs/tags/<tag>` to fetch a single tag. If omitted, fetches all branches and tags from the remote.",
+        "depth": "Limit history to N commits (shallow fetch).",
+        "tags": "Also fetch tags (default true for default fetch, false when a refspec is provided).",
+        "prune": "Remove local refs whose remote counterpart is gone (`--prune`)."
+      }
+    }
+  },
+  "name": "GitHub",
+  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user actúa con su propia identidad de GitHub).",
+  "changelog": [
+    {
+      "notes": "Manage repos, issues, pull requests and reviews, run Actions and releases, plus full local git on cloned repos"
+    }
+  ]
+}

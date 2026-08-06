@@ -13,7 +13,7 @@
  * Authentication: Bearer {sessionToken} (admin/super) or Bearer {ADMIN_API_KEY}
  */
 
-import { createHash } from "crypto"
+import { createHash, timingSafeEqual } from "crypto"
 import type { IncomingMessage, ServerResponse } from "http"
 import type { Db } from "mongodb"
 import type { SecretsManager } from "../secrets/secrets-manager"
@@ -41,11 +41,26 @@ async function verifyAdminAuth(
   const authHeader = req.headers.authorization
   if (!authHeader?.startsWith("Bearer ")) return false
 
-  const token = authHeader.slice(7)
+  // Validate that a non-empty token follows the "Bearer " prefix
+  const token = authHeader.slice(7).trim()
+  if (!token) return false
 
-  // Method 1: admin API key from secrets
+  // Method 1: admin API key from secrets — use timingSafeEqual to prevent timing attacks
   const adminSecret = secretsManager.system("admin")
-  if (adminSecret?.apiKey && token === adminSecret.apiKey) return true
+  if (adminSecret?.apiKey) {
+    try {
+      const providedBuf = Buffer.from(token)
+      const expectedBuf = Buffer.from(adminSecret.apiKey)
+      // Buffers must be the same length for timingSafeEqual — if lengths differ, reject immediately
+      // (length difference is not secret information, so this is safe)
+      if (providedBuf.length === expectedBuf.length && timingSafeEqual(providedBuf, expectedBuf)) {
+        return true
+      }
+    } catch {
+      // timingSafeEqual can throw if buffers are invalid — treat as auth failure
+      return false
+    }
+  }
 
   // Method 2: valid user session token for admin/super user
   try {

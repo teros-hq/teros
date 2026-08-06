@@ -72,12 +72,18 @@ export const ChannelSchema = z.object({
   providerName: z.string().optional(),
   /** Private channel - hidden from lists/search, deleted on close or after 15 days inactivity */
   isPrivate: z.boolean().optional(),
-  /** Workspace ID if this channel belongs to a workspace */
-  workspaceId: z.string().optional(),
+  /** Workspace ID — required, all channels must belong to a workspace */
+  workspaceId: z.string(),
   /** Headless mode - no user is watching. Tools with 'ask' permission are auto-denied. */
   headless: z.boolean().optional(),
   /** Channel to notify when this channel's agent starts/finishes a turn (passive/active events) */
   originChannelId: z.string().optional(),
+  /** Project this channel is associated with (optional) */
+  projectId: z.string().optional(),
+  /** Whether there is an active agent turn running in this channel right now */
+  running: z.boolean().optional(),
+  /** ISO timestamp when the current turn started (set when running=true) */
+  runningAt: z.string().optional(),
 });
 export type Channel = z.infer<typeof ChannelSchema>;
 
@@ -156,6 +162,7 @@ export const MessageContentTypeSchema = z.enum([
   'file',
   'html',
   'html_file',
+  'browser_live_view',
   'tool_execution',
   'event',
   'error',
@@ -242,8 +249,23 @@ export const HtmlFileMessageContentSchema = z.object({
   /** Absolute path inside the agent's volume (e.g. '/workspace/mockup.html') */
   filePath: z.string(),
   caption: z.string().optional(),
+  /** Owner workspace ID — embedded at message creation time so path resolution
+   *  never needs to traverse channel→workspace in MongoDB. Optional for backward
+   *  compat with messages created before this field was added. */
+  workspaceId: z.string().optional(),
 });
 export type HtmlFileMessageContent = z.infer<typeof HtmlFileMessageContentSchema>;
+
+// Browser Live View content (Browserbase session — opens BrowserbaseWindow with Live View iframe)
+export const BrowserLiveViewMessageContentSchema = z.object({
+  type: z.literal('browser_live_view'),
+  /** Browserbase session ID */
+  sessionId: z.string(),
+  /** Live View URL provided by Browserbase (e.g. https://www.browserbase.com/devtools-fullscreen/...) */
+  url: z.string(),
+  caption: z.string().optional(),
+});
+export type BrowserLiveViewMessageContent = z.infer<typeof BrowserLiveViewMessageContentSchema>;
 
 // Tool execution content (tool_call + tool_result combined)
 export const ToolExecutionMessageContentSchema = z.object({
@@ -257,14 +279,47 @@ export const ToolExecutionMessageContentSchema = z.object({
    * Tool execution status:
    * - 'pending': Tool call received, waiting for permission check
    * - 'pending_permission': Waiting for user approval (ask mode)
+   * - 'pending_user_input': Waiting for the user to fill an inline form
+
    * - 'running': Tool is executing
    * - 'completed': Tool finished successfully
    * - 'failed': Tool execution failed
    */
-  status: z.enum(['pending', 'pending_permission', 'running', 'completed', 'failed']),
+  status: z.enum([
+    'pending',
+    'pending_permission',
+    'pending_user_input',
+    'running',
+    'completed',
+    'failed',
+  ]),
   output: z.string().optional(),
   error: z.string().optional(),
   duration: z.number().optional(),
+  /**
+   * TER-340: persisted alongside `status: 'pending_permission'` so the frontend can
+   * rehydrate the `pendingPermissions` map at mount time without waiting for a live
+   * WS broadcast. Allows a new tab opened via "Go to approve" with N pendings to
+   * render all ControlsBars from DB state — independent of broadcast timing.
+   */
+  permissionRequestId: z.string().optional(),
+  appId: z.string().optional(),
+  /**
+   * ISO timestamp of the moment the backend armed the 60s auto-deny timer. Used by
+   * the frontend ControlsBar to render the countdown relative to remaining time
+   * (not from 100% on every mount). Without this, reopening a tab after 20s would
+   * show a fresh 60s timer while the backend auto-denies in 40s.
+   */
+  permissionRequestedAt: z.string().optional(),
+  /**
+   * Inline user form (request-user-input tool). Persisted alongside
+   * `status: 'pending_user_input'` so the live form survives reloads and
+   * backend restarts. The form spec itself is the tool call's `input`; the
+   * submitted answers end up in `output` — neither needs a dedicated field.
+   */
+  formRequestId: z.string().optional(),
+  /** ISO timestamp of when the form was requested (display only). */
+  formRequestedAt: z.string().optional(),
 });
 
 // Event content (system events, notifications)
@@ -278,7 +333,7 @@ export const EventMessageContentSchema = z.object({
 // Error message content (for displaying errors to users)
 export const ErrorMessageContentSchema = z.object({
   type: z.literal('error'),
-  errorType: z.enum(['llm', 'tool', 'session', 'validation', 'network', 'unknown']),
+  errorType: z.enum(['llm', 'tool', 'session', 'validation', 'network', 'upgrade_required', 'unknown']),
   userMessage: z.string(),
   technicalMessage: z.string().optional(),
   context: z.record(z.string(), z.any()).optional(),
@@ -293,6 +348,7 @@ export const MessageContentSchema = z.union([
   FileMessageContentSchema,
   HtmlMessageContentSchema,
   HtmlFileMessageContentSchema,
+  BrowserLiveViewMessageContentSchema,
   ToolExecutionMessageContentSchema,
   EventMessageContentSchema,
   ErrorMessageContentSchema,
@@ -357,7 +413,27 @@ export const AuthTokenMessageSchema = z.object({
   sessionToken: z.string(),
 });
 
-export const AuthMessageSchema = z.union([AuthCredentialsMessageSchema, AuthTokenMessageSchema]);
+// Register a new user (email + password + displayName)
+export const AuthRegisterMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('register'),
+  email: z.string(),
+  password: z.string().min(1),
+  displayName: z.string().min(1),
+});
+
+// Initiate Google OAuth flow over WS (returns redirectUrl)
+export const AuthGoogleInitMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('google_init'),
+});
+
+export const AuthMessageSchema = z.union([
+  AuthCredentialsMessageSchema,
+  AuthTokenMessageSchema,
+  AuthRegisterMessageSchema,
+  AuthGoogleInitMessageSchema,
+]);
 export type AuthMessage = z.infer<typeof AuthMessageSchema>;
 
 export const ListChannelsMessageSchema = z.object({
@@ -378,7 +454,6 @@ export type ListAgentsMessage = z.infer<typeof ListAgentsMessageSchema>;
 export const CreateAgentMessageSchema = z.object({
   type: z.literal('create_agent'),
   data: z.object({
-    coreId: z.string().min(1),
     name: z.string().min(1).max(50),
     fullName: z.string().min(1).max(100),
     role: z.string().min(1).max(200),
@@ -398,7 +473,8 @@ export type CreateAgentMessage = z.infer<typeof CreateAgentMessageSchema>;
 export const GenerateAgentProfileMessageSchema = z.object({
   type: z.literal('generate_agent_profile'),
   data: z.object({
-    coreId: z.string().min(1),
+    // Optional scope hint. No workspace → super-agent core; otherwise → agent core.
+    workspaceId: z.string().optional(),
     excludeNames: z.array(z.string()).optional(),
   }),
 });
@@ -500,8 +576,30 @@ export const SendMessageRequestSchema = z.object({
   type: z.literal('send_message'),
   channelId: ChannelIdSchema,
   content: MessageContentSchema,
+  wakeUpAgent: z.boolean().optional(),
 });
 export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
+
+/**
+ * Stop the agent's current generation (Phase 2.4 — TER-348).
+ *
+ * `kind` semantics:
+ * - `soft`: interrupt at next natural boundary (text_block_end /
+ *   tool_group_end / step_end). Respects `wait_for_irreversible` policy.
+ *   Default UX (button click).
+ * - `hard`: abort immediately. Synthesize tool_results for orphans.
+ *   Requires UI modal confirm. The §4.4 C-10 policy (wait for
+ *   destructive tool to settle even on hard) is enforced by the
+ *   state machine, not by the strategy.
+ * - `queue_only`: cancel all pending queued messages without touching
+ *   the active turn. UX shortcut "clear queue".
+ */
+export const StopMessageRequestSchema = z.object({
+  type: z.literal('stop_message'),
+  channelId: ChannelIdSchema,
+  kind: z.enum(['soft', 'hard', 'queue_only']).default('soft'),
+});
+export type StopMessageRequest = z.infer<typeof StopMessageRequestSchema>;
 
 export const GetMessagesRequestSchema = z.object({
   type: z.literal('get_messages'),
@@ -823,43 +921,6 @@ export const PingMessageSchema = z.object({
 export type PingMessage = z.infer<typeof PingMessageSchema>;
 
 // ============================================================================
-// INVITATION SYSTEM MESSAGES (Client → Server)
-// ============================================================================
-
-// Get invitation status
-export const GetInvitationStatusMessageSchema = z.object({
-  type: z.literal('get_invitation_status'),
-});
-export type GetInvitationStatusMessage = z.infer<typeof GetInvitationStatusMessageSchema>;
-
-// Send invitation
-export const SendInvitationMessageSchema = z.object({
-  type: z.literal('send_invitation'),
-  email: z.string().email(),
-});
-export type SendInvitationMessage = z.infer<typeof SendInvitationMessageSchema>;
-
-// Get sent invitations
-export const GetInvitationsSentMessageSchema = z.object({
-  type: z.literal('get_invitations_sent'),
-});
-export type GetInvitationsSentMessage = z.infer<typeof GetInvitationsSentMessageSchema>;
-
-// Get invitable users
-export const GetInvitableUsersMessageSchema = z.object({
-  type: z.literal('get_invitable_users'),
-  limit: z.number().positive().max(100).optional(),
-});
-export type GetInvitableUsersMessage = z.infer<typeof GetInvitableUsersMessageSchema>;
-
-// Revoke invitation
-export const RevokeInvitationMessageSchema = z.object({
-  type: z.literal('revoke_invitation'),
-  fromUserId: z.string(),
-  toUserId: z.string(),
-});
-export type RevokeInvitationMessage = z.infer<typeof RevokeInvitationMessageSchema>;
-
 // ============================================================================
 // WORKSPACE MESSAGES (Client → Server)
 // ============================================================================
@@ -1218,9 +1279,16 @@ export const WatchFileMessageSchema = z.object({
   type: z.literal('watch_file'),
   /** Absolute path inside the agent's volume (e.g. '/workspace/mockup.html') */
   filePath: z.string(),
-  /** Channel ID — used to resolve the correct volume / user ownership */
-  channelId: z.string(),
-});
+  /** Channel ID — used to resolve the correct volume. At least one of channelId
+   *  or workspaceId must be provided. */
+  channelId: z.string().optional(),
+  /** Workspace ID — direct fast-path when the caller knows the workspace
+   *  (avoids channel→workspace DB lookup). Preferred over channelId. */
+  workspaceId: z.string().optional(),
+}).refine(
+  (d) => Boolean(d.channelId) || Boolean(d.workspaceId),
+  { message: 'At least one of channelId or workspaceId must be provided' },
+);
 export type WatchFileMessage = z.infer<typeof WatchFileMessageSchema>;
 
 /** Client requests backend to stop watching a file */
@@ -1290,8 +1358,6 @@ export const ClientMessageSchema = z.union([
   ExecuteToolMessageSchema,
   ListAppToolsMessageSchema,
   ListModelsMessageSchema,
-  ListAgentCoresMessageSchema,
-  UpdateAgentCoreMessageSchema,
   UpdateMcaMessageSchema,
 
   // MCA Auth messages
@@ -1316,12 +1382,6 @@ export const ClientMessageSchema = z.union([
   AdminGetUserMessageSchema,
   AdminUpdateUserRoleMessageSchema,
   AdminUpdateUserStatusMessageSchema,
-  // Invitation messages
-  GetInvitationStatusMessageSchema,
-  SendInvitationMessageSchema,
-  GetInvitationsSentMessageSchema,
-  GetInvitableUsersMessageSchema,
-  RevokeInvitationMessageSchema,
   // Workspace messages
   ListWorkspacesMessageSchema,
   CreateWorkspaceMessageSchema,
@@ -1386,6 +1446,27 @@ export const AuthSuccessMessageSchema = z.object({
   userId: UserIdSchema,
   sessionToken: z.string(),
   role: z.enum(['user', 'admin', 'super']).optional(),
+  user: z.object({
+    profile: z.object({
+      displayName: z.string(),
+      email: z.string(),
+      // MongoDB persists null for unset optional fields, so we accept null
+      // here (otherwise isAuthSuccess() rejects valid auth_success messages
+      // and the client silently times out — see fix in 2026-04-08).
+      avatarUrl: z.string().nullish(),
+      locale: z.string().nullish(),
+      timezone: z.string().nullish(),
+    }),
+    termsAcceptedAt: z.string().nullish(),
+    onboardingCompletedAt: z.string().nullish(),
+    accessGranted: z.boolean().nullish(),
+  }).optional(),
+  /** Present when this auth_success is for an impersonation session */
+  impersonation: z.object({
+    isImpersonating: z.literal(true),
+    impersonatedBy: z.string(),
+    impersonatedByName: z.string(),
+  }).optional(),
 });
 export type AuthSuccessMessage = z.infer<typeof AuthSuccessMessageSchema>;
 
@@ -1486,7 +1567,7 @@ export const SystemEventMessageSchema = z.object({
   channelId: ChannelIdSchema,
   event: z.object({
     id: z.string(),
-    eventType: z.enum(['reminder', 'recurring_task', 'system_resume', 'task_update']),
+    eventType: z.enum(['reminder', 'recurring_task', 'system_resume', 'task_update', 'channel_started', 'channel_finished', 'channel_permission', 'channel_resolved']),
     message: z.string(),
     description: z.string().optional(),
     metadata: z.record(z.any()).optional(),
@@ -1681,7 +1762,7 @@ export const AdminUserSchema = z.object({
   role: z.enum(['user', 'admin', 'super']),
   status: z.enum(['active', 'suspended', 'pending_verification']),
   emailVerified: z.boolean(),
-  /** Whether user has full platform access (requires 3 invitations) */
+  /** Whether user has full platform access */
   accessGranted: z.boolean(),
   lastLoginAt: z.string().optional(),
   createdAt: z.string(),
@@ -1739,98 +1820,6 @@ export const AdminUserUpdatedMessageSchema = z.object({
   }),
 });
 export type AdminUserUpdatedMessage = z.infer<typeof AdminUserUpdatedMessageSchema>;
-
-// ============================================================================
-// INVITATION RESPONSE MESSAGES
-// ============================================================================
-
-// Invitation with sender info (received invitations)
-export const ReceivedInvitationSchema = z.object({
-  fromUserId: z.string(),
-  sender: z
-    .object({
-      userId: z.string(),
-      displayName: z.string(),
-      email: z.string(),
-      avatarUrl: z.string().optional(),
-    })
-    .optional(),
-  createdAt: z.string(),
-});
-
-// Invitation status response (what user sees about their own status)
-export const InvitationStatusMessageSchema = z.object({
-  type: z.literal('invitation_status'),
-  /** Number of invitations received */
-  received: z.number(),
-  /** Number required to get access */
-  required: z.number(),
-  /** Whether user has platform access */
-  accessGranted: z.boolean(),
-  /** Number of invitations user can send */
-  availableInvitations: z.number(),
-  /** List of received invitations with sender info */
-  invitations: z.array(ReceivedInvitationSchema),
-});
-export type InvitationStatusMessage = z.infer<typeof InvitationStatusMessageSchema>;
-
-// Invitation sent response
-export const InvitationSentMessageSchema = z.object({
-  type: z.literal('invitation_sent'),
-  toEmail: z.string(),
-  accessGranted: z.boolean(),
-});
-export type InvitationSentMessage = z.infer<typeof InvitationSentMessageSchema>;
-
-// Sent invitation (for listing sent invitations)
-export const SentInvitationSchema = z.object({
-  toUserId: z.string(),
-  toEmail: z.string(),
-  toDisplayName: z.string(),
-  createdAt: z.string(),
-  recipientAccessGranted: z.boolean(),
-});
-
-// Sent invitations list response
-export const InvitationsSentMessageSchema = z.object({
-  type: z.literal('invitations_sent'),
-  invitations: z.array(SentInvitationSchema),
-});
-export type InvitationsSentMessage = z.infer<typeof InvitationsSentMessageSchema>;
-
-// Invitable users list response
-export const InvitableUserSchema = z.object({
-  userId: z.string(),
-  displayName: z.string(),
-  email: z.string(),
-  avatarUrl: z.string().optional(),
-  invitationsReceived: z.number(),
-  invitationsNeeded: z.number(),
-});
-
-export const InvitableUsersMessageSchema = z.object({
-  type: z.literal('invitable_users'),
-  users: z.array(InvitableUserSchema),
-});
-export type InvitableUsersMessage = z.infer<typeof InvitableUsersMessageSchema>;
-
-// Invitation revoked response
-export const InvitationRevokedMessageSchema = z.object({
-  type: z.literal('invitation_revoked'),
-  fromUserId: z.string(),
-  toUserId: z.string(),
-  accessRevoked: z.boolean(),
-});
-export type InvitationRevokedMessage = z.infer<typeof InvitationRevokedMessageSchema>;
-
-// Invitation error response
-export const InvitationErrorMessageSchema = z.object({
-  type: z.literal('invitation_error'),
-  error: z.string(),
-  code: z.string().optional(),
-  email: z.string().optional(),
-});
-export type InvitationErrorMessage = z.infer<typeof InvitationErrorMessageSchema>;
 
 // Google OAuth URL response
 export const GoogleAuthUrlMessageSchema = z.object({
@@ -1993,13 +1982,6 @@ export const ServerMessageSchema = z.union([
   AdminUsersListMessageSchema,
   AdminUserDetailMessageSchema,
   AdminUserUpdatedMessageSchema,
-  // Invitation response messages
-  InvitationStatusMessageSchema,
-  InvitationSentMessageSchema,
-  InvitationsSentMessageSchema,
-  InvitableUsersMessageSchema,
-  InvitationRevokedMessageSchema,
-  InvitationErrorMessageSchema,
   GoogleAuthUrlMessageSchema,
   ErrorMessageSchema,
   // Reliable protocol messages

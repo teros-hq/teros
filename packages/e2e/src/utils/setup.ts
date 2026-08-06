@@ -69,11 +69,25 @@ export async function createTestClient(
   await client.connect();
   const auth = await client.authenticate(user.email, user.password);
 
-  if (auth.type === 'auth:error') {
+  // Bug preexistente arreglado en TER-453: comparaba con 'auth:error' (type
+  // inexistente) → una auth fallida pasaba silenciosa y el test moría después
+  // con un timeout opaco.
+  if (auth.type === 'auth_error') {
     throw new Error(`Failed to authenticate as ${user.email}: ${auth.error}`);
   }
 
   return client;
+}
+
+/**
+ * Create (or reuse) a workspace for the user — `channel.create` requires a
+ * workspaceId (Workspace Is Sovereign).
+ */
+export async function createTestWorkspace(client: TestClient, name = 'E2E Workspace'): Promise<string> {
+  const data = await client.requestOk<{ workspace: { workspaceId: string } }>('workspace.create', {
+    name,
+  });
+  return data.workspace.workspaceId;
 }
 
 /**

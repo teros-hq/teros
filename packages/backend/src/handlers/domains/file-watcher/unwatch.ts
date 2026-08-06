@@ -2,12 +2,12 @@
  * file.unwatch — Stop watching a file
  *
  * Closes the fs.watch watcher and unsubscribes the client from the
- * `file:<filePath>` channel via SubscriptionManager.
+ * `file:<filePath>` topic via PubSubService.
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
-import type { SubscriptionManager } from '../../../ws-framework/SubscriptionManager'
+import type { PubSubService } from '../../../services/pubsub-service'
 import type { WatcherRegistry } from './watch'
 import type { WebSocket } from 'ws'
 
@@ -26,13 +26,15 @@ interface UnwatchFileData {
 // ============================================================================
 
 export interface UnwatchFileDeps {
-  subscriptionManager: SubscriptionManager
+  pubSubService: PubSubService
+  /** Resolve sessionId from a WebSocket connection */
+  getSessionId: (ws: WebSocket) => string | undefined
   /** Per-connection watcher registry — injected by websocket-handler */
   getRegistry: (ws: WebSocket) => WatcherRegistry
 }
 
 export function createUnwatchFileHandler(deps: UnwatchFileDeps) {
-  const { subscriptionManager, getRegistry } = deps
+  const { pubSubService, getSessionId, getRegistry } = deps
 
   return async function unwatchFile(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UnwatchFileData
@@ -41,6 +43,7 @@ export function createUnwatchFileHandler(deps: UnwatchFileDeps) {
     if (!filePath) throw new HandlerError('MISSING_FIELDS', 'filePath is required')
 
     const ws = (ctx as WsCtx).ws
+    const sessionId = getSessionId(ws)
     const registry = getRegistry(ws)
 
     const entry = registry.get(filePath)
@@ -51,8 +54,10 @@ export function createUnwatchFileHandler(deps: UnwatchFileDeps) {
       console.log(`[FileWatcher] Stopped watching ${filePath}`)
     }
 
-    // Unsubscribe from the file channel
-    subscriptionManager.unsubscribe(ws, `file:${filePath}`)
+    // Unsubscribe from the file topic
+    if (sessionId) {
+      pubSubService.unsubscribeSession(sessionId, `file:${filePath}`)
+    }
 
     return { filePath, watching: false }
   }

@@ -6,11 +6,10 @@
  * 1. Authentication - OAuth/API Key status and actions
  * 2. Permissions - Tool-level permission controls (allow/ask/forbid)
  *
- * Design follows Teros renderer style with:
- * - Status dots with glow effect
- * - Compact badges
- * - Triple toggle for permissions
- * - Collapsible sections
+ * Migrated to the Design System:
+ * - Uses `useColors()` for theme-adaptive surface/border/badge tokens.
+ * - Uses `semanticColors` for status accents and permission tints.
+ * - Uses Tamagui font tokens (`$body`, `$mono`).
  */
 
 import {
@@ -35,10 +34,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import type { AppAuthInfo, AppCredentialStatus } from './AppAuthBadge';
+import { Text, XStack, YStack, useThemeName } from 'tamagui';
+import { useTranslation } from 'react-i18next';
+import type { AppAuthInfo } from './AppAuthBadge';
 import { usePulseAnimation } from '../../hooks/usePulseAnimation';
 import { AppSpinner } from '../../components/ui';
+import {
+  badges,
+  colors as semanticColors,
+  surface,
+  type Theme,
+} from '../mca/primitives/colors';
+import { useColors } from '../mca/primitives/useColors';
 
 // ============================================================================
 // Types
@@ -86,72 +93,25 @@ export interface AppConfigPanelProps {
 }
 
 // ============================================================================
-// Colors
+// Helpers
 // ============================================================================
 
-const colors = {
-  // Status dot colors
-  ready: '#22c55e',
-  pending: '#3b82f6',
-  warning: '#f59e0b',
-  error: '#ef4444',
+function useAppTheme(): Theme {
+  const name = useThemeName();
+  return typeof name === 'string' && name.startsWith('light') ? 'light' : 'dark';
+}
 
-  // Status glow
-  glowReady: 'rgba(34, 197, 94, 0.5)',
-  glowPending: 'rgba(59, 130, 246, 0.5)',
-  glowWarning: 'rgba(245, 158, 11, 0.5)',
-  glowError: 'rgba(239, 68, 68, 0.5)',
-
-  // Section icons
-  iconKey: '#a855f7',
-  iconShield: '#06b6d4',
-
-  // Permission colors
-  allow: '#86efac',
-  allowBg: 'rgba(34, 197, 94, 0.2)',
-  ask: '#fcd34d',
-  askBg: 'rgba(251, 191, 36, 0.2)',
-  forbid: '#fca5a5',
-  forbidBg: 'rgba(239, 68, 68, 0.2)',
-
-  // Badges
-  badgeGreen: { text: '#86efac', bg: 'rgba(34, 197, 94, 0.1)' },
-  badgeBlue: { text: '#93c5fd', bg: 'rgba(59, 130, 246, 0.1)' },
-  badgeYellow: { text: '#fcd34d', bg: 'rgba(251, 191, 36, 0.1)' },
-  badgeRed: { text: '#fca5a5', bg: 'rgba(239, 68, 68, 0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255, 255, 255, 0.06)' },
-
-  // Text
-  textPrimary: '#e4e4e7',
-  textSecondary: '#a1a1aa',
-  textMuted: '#52525b',
-  textBright: '#f4f4f5',
-
-  // Backgrounds
-  panelBg: 'rgba(39, 39, 42, 0.6)',
-  sectionBg: 'rgba(0, 0, 0, 0.15)',
-  cardBg: 'rgba(0, 0, 0, 0.2)',
-  toggleBg: 'rgba(0, 0, 0, 0.3)',
-
-  // Borders
-  border: 'rgba(255, 255, 255, 0.04)',
-
-  // Buttons
-  btnDanger: { bg: 'rgba(239, 68, 68, 0.1)', text: '#fca5a5', border: 'rgba(239, 68, 68, 0.15)' },
-  btnPrimary: {
-    bg: 'rgba(59, 130, 246, 0.1)',
-    text: '#93c5fd',
-    border: 'rgba(59, 130, 246, 0.15)',
-  },
-  btnWarning: {
-    bg: 'rgba(251, 191, 36, 0.1)',
-    text: '#fcd34d',
-    border: 'rgba(251, 191, 36, 0.15)',
-  },
-
-  // Chevron
-  chevron: '#3f3f46',
-};
+// Permission tints derived from the semantic palette.
+function getPermissionColors() {
+  return {
+    allow: semanticColors.green,
+    allowBg: 'rgba(34, 197, 94, 0.2)',
+    ask: semanticColors.amber,
+    askBg: 'rgba(245, 158, 11, 0.2)',
+    forbid: semanticColors.red,
+    forbidBg: 'rgba(239, 68, 68, 0.2)',
+  };
+}
 
 // ============================================================================
 // Status Dot Component
@@ -163,10 +123,10 @@ interface StatusDotProps {
 
 function StatusDot({ status }: StatusDotProps) {
   const colorMap = {
-    ready: { color: colors.ready, glow: colors.glowReady },
-    pending: { color: colors.pending, glow: colors.glowPending },
-    warning: { color: colors.warning, glow: colors.glowWarning },
-    error: { color: colors.error, glow: colors.glowError },
+    ready: { color: semanticColors.green, glow: 'rgba(34, 197, 94, 0.5)' },
+    pending: { color: semanticColors.indigo, glow: 'rgba(94, 106, 210, 0.5)' },
+    warning: { color: semanticColors.amber, glow: 'rgba(245, 158, 11, 0.5)' },
+    error: { color: semanticColors.red, glow: 'rgba(239, 68, 68, 0.5)' },
   };
 
   const { color, glow } = colorMap[status];
@@ -202,26 +162,31 @@ interface BadgeProps {
 }
 
 function Badge({ text, variant }: BadgeProps) {
-  const colorMap = {
-    green: colors.badgeGreen,
-    blue: colors.badgeBlue,
-    yellow: colors.badgeYellow,
-    red: colors.badgeRed,
-    gray: colors.badgeGray,
-  };
-
-  const { text: textColor, bg } = colorMap[variant];
+  const theme = useAppTheme();
+  const paletteKey =
+    variant === 'green'
+      ? 'ok'
+      : variant === 'blue'
+        ? 'info'
+        : variant === 'yellow'
+          ? 'warn'
+          : variant === 'red'
+            ? 'err'
+            : 'gray';
+  const palette = badges[theme][paletteKey];
 
   return (
     <View
       style={{
-        backgroundColor: bg,
+        backgroundColor: palette.bg,
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 4,
+        borderWidth: 1,
+        borderColor: palette.border,
       }}
     >
-      <Text color={textColor} fontSize={11} fontFamily="$mono" fontWeight="500">
+      <Text color={palette.text} fontSize={11} fontFamily="$mono" fontWeight="500">
         {text}
       </Text>
     </View>
@@ -243,6 +208,7 @@ interface SectionRowProps {
 }
 
 function SectionRow({ status, icon, label, badge, expanded, onToggle, loading }: SectionRowProps) {
+  const c = useColors();
   const rotateAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
 
   useEffect(() => {
@@ -270,12 +236,12 @@ function SectionRow({ status, icon, label, badge, expanded, onToggle, loading }:
         paddingVertical: 14,
         paddingHorizontal: 16,
         borderBottomWidth: 1,
-        borderBottomColor: colors.border,
+        borderBottomColor: c.border,
       }}
     >
       <StatusDot status={status} />
       {icon}
-      <Text flex={1} fontSize={14} fontWeight="500" color={colors.textPrimary}>
+      <Text flex={1} fontSize={14} fontWeight="500" color={c.text} fontFamily="$body">
         {label}
       </Text>
       {loading ? (
@@ -284,7 +250,7 @@ function SectionRow({ status, icon, label, badge, expanded, onToggle, loading }:
         <Badge text={badge.text} variant={badge.variant} />
       ) : null}
       <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <ChevronRight size={14} color={colors.chevron} />
+        <ChevronRight size={14} color={c.text3} />
       </Animated.View>
     </TouchableOpacity>
   );
@@ -301,6 +267,9 @@ interface TripleToggleProps {
 }
 
 function TripleToggle({ value, onChange, disabled }: TripleToggleProps) {
+  const c = useColors();
+  const permColors = getPermissionColors();
+
   const options: {
     key: ToolPermission;
     icon: React.ReactNode;
@@ -309,21 +278,21 @@ function TripleToggle({ value, onChange, disabled }: TripleToggleProps) {
   }[] = [
     {
       key: 'allow',
-      icon: <Check size={12} color={value === 'allow' ? colors.allow : colors.textMuted} />,
-      activeColor: colors.allow,
-      activeBg: colors.allowBg,
+      icon: <Check size={12} color={value === 'allow' ? permColors.allow : c.text3} />,
+      activeColor: permColors.allow,
+      activeBg: permColors.allowBg,
     },
     {
       key: 'ask',
-      icon: <User size={12} color={value === 'ask' ? colors.ask : colors.textMuted} />,
-      activeColor: colors.ask,
-      activeBg: colors.askBg,
+      icon: <User size={12} color={value === 'ask' ? permColors.ask : c.text3} />,
+      activeColor: permColors.ask,
+      activeBg: permColors.askBg,
     },
     {
       key: 'forbid',
-      icon: <X size={12} color={value === 'forbid' ? colors.forbid : colors.textMuted} />,
-      activeColor: colors.forbid,
-      activeBg: colors.forbidBg,
+      icon: <X size={12} color={value === 'forbid' ? permColors.forbid : c.text3} />,
+      activeColor: permColors.forbid,
+      activeBg: permColors.forbidBg,
     },
   ];
 
@@ -331,7 +300,7 @@ function TripleToggle({ value, onChange, disabled }: TripleToggleProps) {
     <View
       style={{
         flexDirection: 'row',
-        backgroundColor: colors.toggleBg,
+        backgroundColor: c.bgInner,
         borderRadius: 6,
         padding: 3,
       }}
@@ -369,6 +338,9 @@ interface BulkActionsProps {
 }
 
 function BulkActions({ onSetAll, disabled }: BulkActionsProps) {
+  const c = useColors();
+  const permColors = getPermissionColors();
+
   const buttons: {
     key: ToolPermission;
     icon: React.ReactNode;
@@ -377,21 +349,21 @@ function BulkActions({ onSetAll, disabled }: BulkActionsProps) {
   }[] = [
     {
       key: 'allow',
-      icon: <Check size={12} color={colors.textMuted} />,
+      icon: <Check size={12} color={c.text3} />,
       hoverBg: 'rgba(34, 197, 94, 0.15)',
-      hoverColor: colors.allow,
+      hoverColor: permColors.allow,
     },
     {
       key: 'ask',
-      icon: <User size={12} color={colors.textMuted} />,
-      hoverBg: 'rgba(251, 191, 36, 0.15)',
-      hoverColor: colors.ask,
+      icon: <User size={12} color={c.text3} />,
+      hoverBg: 'rgba(245, 158, 11, 0.15)',
+      hoverColor: permColors.ask,
     },
     {
       key: 'forbid',
-      icon: <X size={12} color={colors.textMuted} />,
+      icon: <X size={12} color={c.text3} />,
       hoverBg: 'rgba(239, 68, 68, 0.15)',
-      hoverColor: colors.forbid,
+      hoverColor: permColors.forbid,
     },
   ];
 
@@ -409,7 +381,7 @@ function BulkActions({ onSetAll, disabled }: BulkActionsProps) {
             borderRadius: 6,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+            backgroundColor: c.border,
             opacity: disabled ? 0.5 : 1,
           }}
         >
@@ -439,6 +411,8 @@ function AuthSectionContent({
   connecting,
   disconnecting,
 }: AuthSectionProps) {
+  const c = useColors();
+  const theme = useAppTheme();
   const isConnected =
     authInfo.status === 'ready' && authInfo.authType === 'oauth2' && authInfo.oauth?.connected;
   const needsConnect = authInfo.status === 'needs_user_auth';
@@ -478,7 +452,7 @@ function AuthSectionContent({
   const message = getMessage();
 
   return (
-    <View style={{ padding: 16, backgroundColor: colors.sectionBg }}>
+    <View style={{ padding: 16, backgroundColor: c.bgInner }}>
       {/* Info/Warning message */}
       {message && (
         <View
@@ -489,22 +463,29 @@ function AuthSectionContent({
             padding: 12,
             backgroundColor:
               message.variant === 'warning'
-                ? 'rgba(251, 191, 36, 0.08)'
+                ? badges[theme].warn.bg
                 : message.variant === 'error'
-                  ? 'rgba(239, 68, 68, 0.08)'
-                  : 'rgba(59, 130, 246, 0.08)',
+                  ? badges[theme].err.bg
+                  : badges[theme].info.bg,
             borderRadius: 6,
             marginBottom: 12,
+            borderWidth: 1,
+            borderColor:
+              message.variant === 'warning'
+                ? badges[theme].warn.border
+                : message.variant === 'error'
+                  ? badges[theme].err.border
+                  : badges[theme].info.border,
           }}
         >
           <Info
             size={16}
             color={
               message.variant === 'warning'
-                ? colors.ask
+                ? badges[theme].warn.text
                 : message.variant === 'error'
-                  ? colors.forbid
-                  : colors.badgeBlue.text
+                  ? badges[theme].err.text
+                  : badges[theme].info.text
             }
           />
           <Text
@@ -512,12 +493,13 @@ function AuthSectionContent({
             fontSize={13}
             color={
               message.variant === 'warning'
-                ? colors.ask
+                ? badges[theme].warn.text
                 : message.variant === 'error'
-                  ? colors.forbid
-                  : colors.badgeBlue.text
+                  ? badges[theme].err.text
+                  : badges[theme].info.text
             }
             style={{ lineHeight: 20 }}
+            fontFamily="$body"
           >
             {message.text}
           </Text>
@@ -532,7 +514,7 @@ function AuthSectionContent({
             alignItems: 'center',
             gap: 12,
             padding: 12,
-            backgroundColor: colors.cardBg,
+            backgroundColor: c.bgCard,
             borderRadius: 8,
             marginBottom: 12,
             opacity: isExpired ? 0.6 : 1,
@@ -543,22 +525,27 @@ function AuthSectionContent({
               width: 40,
               height: 40,
               borderRadius: 20,
-              backgroundColor: isExpired ? 'rgba(251, 191, 36, 0.1)' : 'rgba(6, 182, 212, 0.1)',
+              backgroundColor: isExpired ? badges[theme].warn.bg : surface[theme].bgInner,
               borderWidth: 1,
-              borderColor: isExpired ? 'rgba(251, 191, 36, 0.3)' : 'rgba(6, 182, 212, 0.3)',
+              borderColor: isExpired ? badges[theme].warn.border : c.borderStrong,
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Text fontSize={14} fontWeight="600" color={isExpired ? colors.ask : '#06b6d4'}>
+            <Text
+              fontSize={14}
+              fontWeight="600"
+              color={isExpired ? badges[theme].warn.text : c.text}
+              fontFamily="$body"
+            >
               {authInfo.oauth.email.charAt(0).toUpperCase()}
             </Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text fontSize={14} color={colors.textBright}>
+            <Text fontSize={14} color={c.text} fontFamily="$body">
               {authInfo.oauth.email}
             </Text>
-            <Text fontSize={12} color={isExpired ? colors.ask : colors.textMuted} marginTop={2}>
+            <Text fontSize={12} color={isExpired ? badges[theme].warn.text : c.text3} marginTop={2} fontFamily="$body">
               {isExpired
                 ? `Expired ${authInfo.oauth.expiresAt ? new Date(authInfo.oauth.expiresAt).toLocaleDateString() : ''}`
                 : authInfo.oauth.expiresAt
@@ -581,10 +568,10 @@ function AuthSectionContent({
             justifyContent: 'center',
             gap: 8,
             padding: 12,
-            backgroundColor: colors.btnDanger.bg,
+            backgroundColor: badges[theme].err.bg,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: colors.btnDanger.border,
+            borderColor: badges[theme].err.border,
             opacity: disconnecting ? 0.6 : 1,
           }}
         >
@@ -592,8 +579,8 @@ function AuthSectionContent({
             <AppSpinner size="sm" variant="danger" />
           ) : (
             <>
-              <Unlink size={14} color={colors.btnDanger.text} />
-              <Text fontSize={13} fontWeight="500" color={colors.btnDanger.text}>
+              <Unlink size={14} color={badges[theme].err.text} />
+              <Text fontSize={13} fontWeight="500" color={badges[theme].err.text} fontFamily="$body">
                 Desconectar
               </Text>
             </>
@@ -612,10 +599,10 @@ function AuthSectionContent({
             justifyContent: 'center',
             gap: 8,
             padding: 12,
-            backgroundColor: isExpired ? colors.btnWarning.bg : colors.btnPrimary.bg,
+            backgroundColor: isExpired ? badges[theme].warn.bg : badges[theme].info.bg,
             borderRadius: 8,
             borderWidth: 1,
-            borderColor: isExpired ? colors.btnWarning.border : colors.btnPrimary.border,
+            borderColor: isExpired ? badges[theme].warn.border : badges[theme].info.border,
             opacity: connecting ? 0.6 : 1,
           }}
         >
@@ -623,11 +610,15 @@ function AuthSectionContent({
             <AppSpinner size="sm" />
           ) : (
             <>
-              <Link size={14} color={isExpired ? colors.btnWarning.text : colors.btnPrimary.text} />
+              <Link
+                size={14}
+                color={isExpired ? badges[theme].warn.text : badges[theme].info.text}
+              />
               <Text
                 fontSize={13}
                 fontWeight="500"
-                color={isExpired ? colors.btnWarning.text : colors.btnPrimary.text}
+                color={isExpired ? badges[theme].warn.text : badges[theme].info.text}
+                fontFamily="$body"
               >
                 {isExpired
                   ? 'Reconectar'
@@ -660,8 +651,11 @@ function PermsSectionContent({
   onSetAllPermissions,
   saving,
 }: PermsSectionProps) {
+  const c = useColors();
+  const permColors = getPermissionColors();
+
   return (
-    <View style={{ backgroundColor: colors.sectionBg }}>
+    <View style={{ backgroundColor: c.bgInner }}>
       {/* Summary bar */}
       <View
         style={{
@@ -670,25 +664,25 @@ function PermsSectionContent({
           justifyContent: 'space-between',
           padding: 12,
           paddingHorizontal: 16,
-          backgroundColor: colors.cardBg,
+          backgroundColor: c.bgCard,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <Check size={12} color={colors.allow} />
-            <Text fontSize={12} fontFamily="$mono" color={colors.allow}>
+            <Check size={12} color={permColors.allow} />
+            <Text fontSize={12} fontFamily="$mono" color={permColors.allow}>
               {data.summary.allow}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <User size={12} color={colors.ask} />
-            <Text fontSize={12} fontFamily="$mono" color={colors.ask}>
+            <User size={12} color={permColors.ask} />
+            <Text fontSize={12} fontFamily="$mono" color={permColors.ask}>
               {data.summary.ask}
             </Text>
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-            <X size={12} color={colors.forbid} />
-            <Text fontSize={12} fontFamily="$mono" color={colors.forbid}>
+            <X size={12} color={permColors.forbid} />
+            <Text fontSize={12} fontFamily="$mono" color={permColors.forbid}>
               {data.summary.forbid}
             </Text>
           </View>
@@ -711,10 +705,10 @@ function PermsSectionContent({
                 justifyContent: 'space-between',
                 paddingVertical: 10,
                 borderBottomWidth: index < data.tools.length - 1 ? 1 : 0,
-                borderBottomColor: colors.border,
+                borderBottomColor: c.border,
               }}
             >
-              <Text fontSize={13} fontFamily="$mono" color={colors.textSecondary}>
+              <Text fontSize={13} fontFamily="$mono" color={c.text2}>
                 {tool.name}
               </Text>
               <TripleToggle
@@ -736,24 +730,24 @@ function PermsSectionContent({
           padding: 12,
           paddingHorizontal: 16,
           borderTopWidth: 1,
-          borderTopColor: colors.border,
+          borderTopColor: c.border,
         }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <Check size={10} color={colors.textMuted} />
-          <Text fontSize={11} color={colors.textMuted}>
+          <Check size={10} color={c.text3} />
+          <Text fontSize={11} color={c.text3} fontFamily="$body">
             Auto
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <User size={10} color={colors.textMuted} />
-          <Text fontSize={11} color={colors.textMuted}>
+          <User size={10} color={c.text3} />
+          <Text fontSize={11} color={c.text3} fontFamily="$body">
             Confirmar
           </Text>
         </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-          <X size={10} color={colors.textMuted} />
-          <Text fontSize={11} color={colors.textMuted}>
+          <X size={10} color={c.text3} />
+          <Text fontSize={11} color={c.text3} fontFamily="$body">
             Bloquear
           </Text>
         </View>
@@ -781,6 +775,8 @@ export function AppConfigPanel({
   defaultAuthExpanded = true,
   defaultPermsExpanded = true,
 }: AppConfigPanelProps) {
+  const { t } = useTranslation();
+  const c = useColors();
   const [authExpanded, setAuthExpanded] = useState(defaultAuthExpanded);
   const [permsExpanded, setPermsExpanded] = useState(defaultPermsExpanded);
 
@@ -849,10 +845,10 @@ export function AppConfigPanel({
   return (
     <View
       style={{
-        backgroundColor: colors.panelBg,
+        backgroundColor: c.bgCard,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: colors.border,
+        borderColor: c.border,
         overflow: 'hidden',
       }}
     >
@@ -861,8 +857,8 @@ export function AppConfigPanel({
         <>
           <SectionRow
             status={getAuthStatus()}
-            icon={<Key size={18} color={colors.iconKey} />}
-            label="Authentication"
+            icon={<Key size={18} color={semanticColors.violet} />}
+            label={t('apps.authentication')}
             badge={getAuthBadge()}
             expanded={authExpanded}
             onToggle={() => setAuthExpanded(!authExpanded)}
@@ -885,8 +881,8 @@ export function AppConfigPanel({
         <>
           <SectionRow
             status={getPermsStatus()}
-            icon={<Shield size={18} color={colors.iconShield} />}
-            label="Permisos"
+            icon={<Shield size={18} color={semanticColors.indigo} />}
+            label={t('apps.permissions')}
             badge={getPermsBadge()}
             expanded={permsExpanded}
             onToggle={() => setPermsExpanded(!permsExpanded)}
@@ -907,7 +903,7 @@ export function AppConfigPanel({
       {!authInfo && !permissionsData && (loadingAuth || loadingPermissions) && (
         <View style={{ padding: 24, alignItems: 'center' }}>
           <AppSpinner size="sm" variant="muted" />
-          <Text color={colors.textMuted} fontSize={13} marginTop={8}>
+          <Text color={c.text3} fontSize={13} marginTop={8} fontFamily="$body">
             Loading configuration...
           </Text>
         </View>

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const listComments: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all comments on a file.',
   parameters: {
     type: 'object',

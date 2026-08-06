@@ -4,15 +4,20 @@
   "tools": [
     {
       "name": "-health-check",
-      "description": "Internal health check tool. Verifies Notion API token and connectivity.",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "search",
-      "description": "Search for pages and databases by title. Searches across all content shared with the integration.",
+      "description": "Search pages & databases by title. Returns curated rows { id, object, url, title, icon, lastEditedTime }. Params: query, filter?, sort?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -22,131 +27,279 @@
           },
           "filter": {
             "type": "string",
-            "description": "Filter results by type: 'page' or 'database' (optional)",
+            "description": "Limit to 'page' (pages only) or 'data_source' (databases — note: Notion API 2025-09-03+ uses 'data_source', NOT 'database').",
             "enum": [
               "page",
-              "database"
+              "data_source"
             ]
           },
           "sort": {
             "type": "string",
-            "description": "Sort results by: 'last_edited_time' (optional, descending)",
+            "description": "Sort by 'last_edited_time' (descending)",
             "enum": [
               "last_edited_time"
             ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Notion pagination cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist. Pass field names from the curated shape."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion API response. Default false."
           }
         },
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "get-page",
-      "description": "Retrieve a page by its ID. Returns page properties and metadata.",
+      "description": "Retrieve a page. Returns curated { id, url, title, icon, cover, properties, createdTime, lastEditedTime, parentType, parentId, archived }. Params: pageId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page to retrieve (can be with or without dashes)"
+            "description": "Page UUID (with or without dashes)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
           }
         },
         "required": [
           "pageId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
-      "name": "get-page-content",
-      "description": "Retrieve the full content/blocks of a page as formatted text. Set includeBlocks=true only when you need block IDs for editing operations.",
+      "name": "get-page-markdown",
+      "description": "Retrieve a page's full content as markdown using the native Notion v5 endpoint. Replaces `get-page-content` (eliminated 2026-05). Pass `includeTranscript=true` to inline meeting_notes transcripts. Response: { markdown }.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page"
+            "description": "Page UUID."
           },
-          "includeBlocks": {
+          "includeTranscript": {
             "type": "boolean",
-            "description": "Include raw block data with IDs (default: false). Only set to true when you need to edit/insert blocks."
+            "description": "Inline transcripts of meeting_notes blocks. Default false."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
           }
         },
         "required": [
           "pageId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "create-page",
-      "description": "Create a new page in a database or as a child of an existing page.",
+      "description": "Create a new page under a page (parentType='page') or database (parentType='database'). For database parents, the row is added to the first data source unless `dataSourceId` is provided. Returns curated { id, url, title, icon, cover, parentType, parentId, createdTime }. Not retryable (no idempotency key).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "parentId": {
             "type": "string",
-            "description": "Parent page ID or database ID"
+            "description": "Parent page or database UUID."
           },
           "parentType": {
             "type": "string",
-            "description": "Type of parent: 'page' or 'database'",
+            "description": "'page' or 'database'.",
             "enum": [
               "page",
               "database"
             ]
           },
+          "dataSourceId": {
+            "type": "string",
+            "description": "For multi-source DBs, the specific data source UUID to insert under. Ignored when parentType=page."
+          },
           "title": {
             "type": "string",
-            "description": "Page title (optional when properties object is provided for database pages)"
+            "description": "Page title. For database pages ignored when `properties` is provided; defaults to \"Untitled\"."
           },
           "properties": {
             "type": "object",
-            "description": "Complete properties object for database pages (optional). When provided for database pages, this will be used as-is without modification."
+            "description": "Full Notion properties object for database pages (used as-is). Overrides `title` for the title column."
+          },
+          "propertiesSimple": {
+            "type": "object",
+            "description": "Agent-friendly flat map: `{ Status: 'Done', Tags: ['urgent'] }`. Schema is resolved automatically. parentType=database only. If both `properties` and `propertiesSimple` are passed, raw `properties` wins (with warning)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned page."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
           }
         },
         "required": [
           "parentId",
           "parentType"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "update-page",
-      "description": "Update page properties (title, status, etc.) or archive/restore the page.",
+      "description": "Update page properties and/or archive state. Returns the curated updated page { id, url, title, properties, icon, cover, archived, lastEditedTime }. Idempotent per-field — retries are safe.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page to update"
+            "description": "Page UUID."
           },
           "properties": {
             "type": "object",
-            "description": "Properties to update (depends on database schema)"
+            "description": "Notion properties object to update (depends on database schema). Used as-is."
+          },
+          "propertiesSimple": {
+            "type": "object",
+            "description": "Agent-friendly flat map: `{ Status: 'Done' }`. Schema is resolved automatically. Database rows only. If both `properties` and `propertiesSimple` are passed, raw `properties` wins."
           },
           "archived": {
             "type": "boolean",
-            "description": "Archive or restore the page (optional)"
+            "description": "Move to trash (true) or restore (false). Sent as `in_trash` per API 2026-03-11. Optional."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned page."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
           }
         },
         "required": [
           "pageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
-      "name": "set-page-icon",
-      "description": "Set or update a page's icon (emoji or external image URL).",
+      "name": "update-page-markdown",
+      "description": "Edit a page using markdown ops. Modes: 'replace' (default — overwrites the whole body with `markdown`), 'append' (adds `markdown` at the end, optional `afterBlockId`), 'edit' (apply per-string edits via `edits: [{oldStr, newStr, replaceAll?}]`). Returns { pageId, mode }. `replace` is destructive — not retryable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page"
+            "description": "Page UUID."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "replace",
+              "append",
+              "edit"
+            ],
+            "description": "'replace' (default) | 'append' | 'edit'."
+          },
+          "markdown": {
+            "type": "string",
+            "description": "Markdown body for replace/append modes. Headings #/##/###/####, lists, code, callouts, tables supported."
+          },
+          "afterBlockId": {
+            "type": "string",
+            "description": "Append mode only — block UUID after which to insert. Default: end of page."
+          },
+          "edits": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Edit mode only — array of [{ oldStr, newStr, replaceAll? }] applied in order against the page's current markdown."
+          },
+          "allowDeletingContent": {
+            "type": "boolean",
+            "description": "Replace/edit modes — must be true to allow shrinking the page. Default true."
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "set-page-icon",
+      "description": "Set a page's icon (emoji or external URL). Returns curated { id, url, title, icon, lastEditedTime }. Idempotent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page UUID."
           },
           "iconType": {
             "type": "string",
-            "description": "Type of icon: 'emoji' or 'external'",
+            "description": "'emoji' or 'external'.",
             "enum": [
               "emoji",
               "external"
@@ -154,7 +307,18 @@
           },
           "icon": {
             "type": "string",
-            "description": "Emoji character (if iconType is 'emoji') or URL (if iconType is 'external')"
+            "description": "Emoji character or image URL depending on iconType."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
           }
         },
         "required": [
@@ -162,128 +326,215 @@
           "iconType",
           "icon"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "set-page-cover",
-      "description": "Set or update a page's cover image from an external URL.",
+      "description": "Set a page's cover image from an external URL. Returns curated { id, url, title, cover, lastEditedTime }. Idempotent.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page"
+            "description": "Page UUID."
           },
           "coverUrl": {
             "type": "string",
-            "description": "URL of the cover image"
+            "description": "HTTPS URL of the cover image."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
           }
         },
         "required": [
           "pageId",
           "coverUrl"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "duplicate-page",
-      "description": "Duplicate a page with all its content and properties.",
+      "description": "Duplicate a page including icon/cover/properties/children blocks. Returns { sourcePage, duplicate } with curated shapes. Not retryable — creates new pages each call.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page to duplicate"
+            "description": "Source page UUID."
           },
           "newTitle": {
             "type": "string",
-            "description": "Title for the duplicated page (optional, defaults to 'Copy of [original title]')"
+            "description": "New title. Default: 'Copy of <original title>'."
           },
           "targetParentId": {
             "type": "string",
-            "description": "ID of the parent page/database where to place the duplicate (optional, defaults to same parent)"
+            "description": "Target parent UUID. Default: same parent as source."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on both pages."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion objects. Default false."
           }
         },
         "required": [
           "pageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "get-database",
-      "description": "Retrieve a database by its ID. Returns database schema and properties.",
+      "description": "Retrieve a database. Returns curated { id, url, title, description, icon, cover, schema, createdTime, lastEditedTime, parentType, parentId, archived }. Params: databaseId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "The ID of the database"
+            "description": "Database UUID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion database object. Default false."
           }
         },
         "required": [
           "databaseId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "query-database",
-      "description": "Query database entries with optional filters and sorts. Returns compact results by default (just titles). Use properties parameter to get specific fields.",
+      "description": "Query database rows with filter + sorts. Returns curated rows { id, url, title, icon, properties, lastEditedTime }. `properties` whitelist controls which columns travel (default: title only). Pass `dataSourceId` directly for multi-source DBs; otherwise the first data source is used. Filter accepts the standard Notion shape: { property, <type>: { <op>: <value> } } — single-value ops only (Notion v5 does NOT support equals_any). To match any of N values, compose with `or`: { or: [ { property: 'Status', status: { equals: 'Done' } }, { property: 'Status', status: { equals: 'In review' } } ] }. Params: databaseId | dataSourceId, filter?, sorts?, propertyNames?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "The ID of the database to query"
+            "description": "Database UUID. The first data source under it is queried unless `dataSourceId` is set."
+          },
+          "dataSourceId": {
+            "type": "string",
+            "description": "Specific data source UUID to query. Use for multi-source DBs (wikis, linked DBs)."
           },
           "filter": {
             "type": "object",
-            "description": "Filter object (optional, see Notion API docs for syntax)"
+            "description": "Notion filter object. Compose multi-value via `or`/`and` arrays — Notion does not have equals_any."
           },
           "sorts": {
             "type": "array",
-            "description": "Array of sort objects (optional)",
             "items": {
               "type": "object"
-            }
+            },
+            "description": "Array of sort objects."
           },
-          "pageSize": {
+          "propertyNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Whitelist of property names to include in each row. Default: only the title. Pass ['*'] to include all."
+          },
+          "limit": {
             "type": "number",
-            "description": "Number of results per page (max 100, default 100)"
+            "description": "Results per page. Min 1, max 100, default 50."
           },
           "startCursor": {
             "type": "string",
-            "description": "Cursor for pagination. Use next_cursor from previous response to get next page."
+            "description": "Notion pagination cursor."
           },
-          "properties": {
+          "fields": {
             "type": "array",
-            "description": "Array of property names to include in results. If not provided, returns only title/name. Use [\"*\"] to get all properties.",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Override default whitelist on each row envelope."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion API response. Default false."
           }
         },
-        "required": [
-          "databaseId"
-        ]
+        "required": []
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "create-database",
-      "description": "Create a new database as a child of a page.",
+      "description": "Create a new database as a child of a page. Returns curated { id, url, title, schema, icon, cover, createdTime, parentType, parentId }. Not retryable (no idempotency key).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "parentPageId": {
             "type": "string",
-            "description": "Parent page ID"
+            "description": "Parent page UUID."
           },
           "title": {
             "type": "string",
-            "description": "Database title"
+            "description": "Database title."
           },
           "properties": {
             "type": "object",
-            "description": "Database schema properties (e.g., {Name: {title: {}}, Status: {select: {options: [...]}}})"
+            "description": "Notion schema. Ex: { Name: { title: {} }, Status: { select: { options: [...] } } }."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion database object. Default false."
           }
         },
         "required": [
@@ -291,180 +542,449 @@
           "title",
           "properties"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "update-database-schema",
-      "description": "Update database schema by adding, modifying, or removing properties (columns). To remove a property, set its value to null.",
+      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "databaseId": {
             "type": "string",
-            "description": "The ID of the database to update"
+            "description": "Database UUID."
+          },
+          "dataSourceId": {
+            "type": "string",
+            "description": "Specific data source UUID for multi-source DBs."
           },
           "properties": {
             "type": "object",
-            "description": "Properties to add or modify. To remove a property, set its value to null."
+            "description": "Properties to add/modify. Set value to null to remove."
           },
           "title": {
             "type": "string",
-            "description": "New database title (optional)"
+            "description": "New title. Optional. Sent on the data source."
           },
           "description": {
             "type": "string",
-            "description": "New database description (optional)"
+            "description": "New description. Optional. Sent on the data source."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion database object. Default false."
           }
         },
         "required": [
           "databaseId",
           "properties"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-database-item",
+      "description": "Insert a new row (record) into a Notion database. Add to table, create table item, append database row. Pass `properties` as a flat agent-friendly map: `{ Title: \"Spec\", Status: \"In review\", Tags: [\"urgent\"], Assignee: [\"<user-uuid>\"], DueDate: \"2026-05-06\" }`. The handler resolves the schema and serialises each value into Notion's verbose shape automatically. Returns the curated created page. Multi-source DBs: pass `dataSourceId` to target a specific source.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "databaseId": {
+            "type": "string",
+            "description": "Database UUID."
+          },
+          "dataSourceId": {
+            "type": "string",
+            "description": "Specific data source UUID for multi-source DBs."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Flat map of column name → simple value. Schema is resolved automatically."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned page."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
+          }
+        },
+        "required": [
+          "databaseId",
+          "properties"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-database-item",
+      "description": "Update an existing row (record) in a Notion database. Update row, modify record, change relation, set assignee, mark as done. Pass `pageId` and `properties` as a flat agent-friendly map: `{ Status: \"Done\", Assignee: [\"<uuid>\"] }`. The handler resolves the schema from the parent database and serialises each value automatically. Pass `archived: true` to move to trash. Idempotent — safe to retry. For multi-source DBs the `databaseId` of the row is read off the page parent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Database row (page) UUID."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Flat map of column name → simple value to update."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "Move to Notion trash (true) or restore (false). Sent as `in_trash`."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned page."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion page object. Default false."
+          }
+        },
+        "required": [
+          "pageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "get-block",
-      "description": "Retrieve a specific block by its ID.",
+      "description": "Retrieve a block. Returns curated { id, type, plainText, hasChildren, checked, language, caption, url, createdTime, lastEditedTime }. Params: blockId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The ID of the block"
+            "description": "Block UUID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion block object. Default false."
           }
         },
         "required": [
           "blockId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "get-block-children",
-      "description": "Retrieve children blocks of a block or page. Returns formatted text by default. Set includeBlocks=true only when you need block IDs for editing operations.",
+      "description": "DEPRECATED — prefer `get-page-content` (markdown) or `get-blocks` (paginated raw). Kept for back-compat: returns { textContent } as recursive markdown. Pass includeBlockIds=true to embed `<!-- block: id -->` comments before each top-level block.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The ID of the block or page"
+            "description": "Block or page UUID."
           },
-          "includeBlocks": {
+          "includeBlockIds": {
             "type": "boolean",
-            "description": "Include raw block data with IDs (default: false). Only set to true when you need to edit/insert blocks."
+            "description": "Embed `<!-- block: id -->` comments in the markdown. Default false."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw API response. Default false."
           }
         },
         "required": [
           "blockId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
-      "name": "append-blocks",
-      "description": "Append content blocks to a page or block.",
+      "name": "get-blocks",
+      "description": "List direct children of a page/block with pagination. Returns curated { id, type, plainText, hasChildren, ... }. Use when you need block IDs + structure. For rendered markdown use `get-block-children` or `get-page-content`. Params: blockId, limit (1-100, def 25), cursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The ID of the page or block to append to"
+            "description": "Page or parent block UUID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Blocks per page. Min 1, max 100, default 25."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Notion pagination cursor from a previous nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per block."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion block objects (trimmed to maxDepth=2, maxChars=10_000). Default false."
+          }
+        },
+        "required": [
+          "blockId"
+        ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "append-blocks",
+      "description": "Append blocks as children of a page or block. Supports paragraph/heading_1..heading_4 (H4 added in v5.16) and paragraph blocks accept an `icon` for inline emoji/external/file icons. `position` chooses placement: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' (default) }. Returns curated { blocks, appendedCount, parentId }. Not retryable (no idempotency key — creates duplicates on retry).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "blockId": {
+            "type": "string",
+            "description": "Parent page or block UUID."
           },
           "blocks": {
             "type": "array",
-            "description": "Array of block objects to append (see Notion API docs for block format)",
             "items": {
               "type": "object"
-            }
+            },
+            "description": "Array of Notion block objects in the standard shape `{ object: 'block', type: 'paragraph'|'heading_1'|...|'heading_4', <type>: { rich_text: [...] } }`. heading_4 added in v5.16. paragraph `icon` (v5.16) ONLY works when the paragraph is a direct child of a tab block — appending icon under a regular page returns 'Cannot set icon on a paragraph block that is not a direct child of a tab block'. Other types: bulleted_list_item, numbered_list_item, to_do, toggle, quote, callout, code, divider, image, video, file, pdf, bookmark, embed, equation, link_to_page, table, table_row, meeting_notes, synced_block."
+          },
+          "position": {
+            "type": "object",
+            "description": "Optional placement. Default end. Shape: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' }."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per returned block."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion blocks. Default false."
           }
         },
         "required": [
           "blockId",
           "blocks"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "update-block",
-      "description": "Update a block's content. The content structure depends on the block type.",
+      "description": "Replace `oldText` with `newText` in a block's text. Reads the block, verifies `oldText` exists (exact match), then updates preserving annotations. Errors with 'Text not found in block. No changes made.' when oldText doesn't match. Returns the curated block { id, type, plainText, lastEditedTime }.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The ID of the block to update"
+            "description": "Block UUID."
           },
-          "content": {
-            "type": "object",
-            "description": "Block content object (depends on block type, see Notion API docs)"
+          "oldText": {
+            "type": "string",
+            "description": "Exact text currently in the block that should be replaced."
+          },
+          "newText": {
+            "type": "string",
+            "description": "Replacement text."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion block. Default false."
           }
         },
         "required": [
           "blockId",
-          "content"
+          "oldText",
+          "newText"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "delete-block",
-      "description": "Delete (archive) a block.",
+      "description": "Delete (archive) a block. Returns the curated archived block { id, type, archived, lastEditedTime }. Idempotent — retries are safe.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The ID of the block to delete"
+            "description": "Block UUID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion block. Default false."
           }
         },
         "required": [
           "blockId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "create-column-layout",
-      "description": "Create a column layout with multiple columns containing blocks.",
+      "description": "Create a column_list with N columns on a page. `columns` is an array of arrays of Notion block objects (one inner array per column). Not retryable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page to add columns to"
+            "description": "Page UUID to append the column layout to."
           },
           "columns": {
             "type": "array",
-            "description": "Array of column blocks. Each column contains an array of blocks.",
             "items": {
               "type": "object"
-            }
+            },
+            "description": "Array of arrays. Each inner array is the blocks for one column."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned column_list blocks."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion blocks. Default false."
           }
         },
         "required": [
           "pageId",
           "columns"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "create-advanced-blocks",
-      "description": "Create advanced block types: callout with custom icon/color, toggle with children, synced blocks.",
+      "description": "Create an advanced block. Supported types: 'callout' (icon + colour), 'toggle' (children), 'synced_block', 'meeting_notes' (summary + transcript), 'paragraph' (with optional `icon` per v5.16). `content` must match the Notion shape for the given `blockType`. Not retryable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The ID of the page"
+            "description": "Target page UUID."
           },
           "blockType": {
             "type": "string",
-            "description": "Type of advanced block: 'callout', 'toggle', 'synced_block'",
+            "description": "'callout' | 'toggle' | 'synced_block' | 'meeting_notes' | 'paragraph'.",
             "enum": [
               "callout",
               "toggle",
-              "synced_block"
+              "synced_block",
+              "meeting_notes",
+              "paragraph"
             ]
           },
           "content": {
             "type": "object",
-            "description": "Block configuration (depends on blockType)"
+            "description": "Notion block body (rich_text, children, icon, ...). For 'paragraph' you may include an `icon: { type: 'emoji'|'external'|'file', ... }` (v5.16+)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion blocks. Default false."
           }
         },
         "required": [
@@ -472,78 +992,302 @@
           "blockType",
           "content"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     },
     {
       "name": "list-users",
-      "description": "List all users in the workspace.",
+      "description": "List workspace users. Returns curated rows { id, name, type, avatarUrl, email, bot }. Params: limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Notion pagination cursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
+          }
+        }
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "get-user",
-      "description": "Retrieve a user by ID.",
+      "description": "Retrieve a user by ID. Returns curated { id, name, type, avatarUrl, email, bot }. Params: userId, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "userId": {
             "type": "string",
-            "description": "The ID of the user"
+            "description": "User UUID."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion user. Default false."
           }
         },
         "required": [
           "userId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "get-me",
-      "description": "Retrieve the bot user information (your integration).",
+      "description": "Return the bot user (this integration). Returns curated { id, name, type, avatarUrl, email, bot }. Params: fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion user. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "list-comments",
-      "description": "List comments on a page or block.",
+      "description": "List comments on a page/block. Returns curated rows { id, pageId, parentBlockId, discussionId, authorId, plainText, createdTime }. Params: blockId, limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "blockId": {
             "type": "string",
-            "description": "The block or page ID"
+            "description": "Block or page UUID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Notion pagination cursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion response. Default false."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from previous response."
           }
         },
         "required": [
           "blockId"
         ]
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "openWorldHint": true
       }
     },
     {
       "name": "create-comment",
-      "description": "Create a comment on a page or discussion.",
+      "description": "Post a comment on a page (pass pageId) or reply to a discussion (pass discussionId). Returns the curated comment { id, pageId, parentBlockId, authorId, plainText, createdTime }. Not retryable.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "pageId": {
             "type": "string",
-            "description": "The page ID to comment on (optional if discussionId is provided)"
+            "description": "Page UUID. Mutually exclusive with discussionId."
           },
           "discussionId": {
             "type": "string",
-            "description": "The discussion ID to comment on (optional if pageId is provided)"
+            "description": "Discussion UUID to reply to. Mutually exclusive with pageId."
           },
           "text": {
             "type": "string",
-            "description": "Comment text"
+            "description": "Comment text (plain)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion comment. Default false."
           }
         },
         "required": [
           "text"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-comment",
+      "description": "Edit an existing comment. Pass plain `text` for a simple string body, or `richText` for full Notion rich-text formatting. Returns the curated updated comment { id, plainText, lastEditedTime, ... }. Idempotent — safe to retry.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "description": "Comment UUID."
+          },
+          "text": {
+            "type": "string",
+            "description": "Plain text body. Mutually exclusive with richText."
+          },
+          "richText": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Notion rich text array. Mutually exclusive with text."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Notion comment object. Default false."
+          }
+        },
+        "required": [
+          "commentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-comment",
+      "description": "Delete a comment by id. Returns { id, deleted: true }. Destructive: a deleted comment cannot be recovered. Idempotent — re-deleting an already-deleted comment is a no-op from the agent perspective (Notion 404s, we coerce to deleted=true).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "commentId": {
+            "type": "string",
+            "description": "Comment UUID."
+          }
+        },
+        "required": [
+          "commentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "destructiveHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "upload-file",
+      "description": "Upload a file to Notion. Three-step lifecycle: create → send → complete (handled internally). Provide either `dataUrl` (base64 inline) or `filePath` (server-side path). Returns { fileUploadId, status, name, contentType }. The id can be embedded in subsequent block creates as { type: 'file_upload', file_upload: { id } }. Hard cap 20 MB.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "Page UUID owning the upload (required)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Filename including extension (e.g. 'spec.pdf', 'cover.png')."
+          },
+          "contentType": {
+            "type": "string",
+            "description": "MIME type (e.g. 'application/pdf', 'image/png')."
+          },
+          "dataUrl": {
+            "type": "string",
+            "description": "Data URI scheme — exact format `data:<mime>;base64,<base64Payload>`. NOT a raw base64 string. Either this or filePath is required."
+          },
+          "filePath": {
+            "type": "string",
+            "description": "Absolute path to a server-side file. Either this or dataUrl is required."
+          }
+        },
+        "required": [
+          "pageId",
+          "name",
+          "contentType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable",
+        "openWorldHint": true
       }
     }
   ]

@@ -1,7 +1,7 @@
 /**
  * Agent Route - /agent/[agentId]
  *
- * Abre/enfoca una ventana de configuración de agente.
+ * Opens/focuses an agent configuration window.
  */
 
 import { useLocalSearchParams } from 'expo-router';

@@ -76,6 +76,7 @@ export interface ToolCompleteMessage extends BaseStreamMessage {
   output?: string;
   error?: string;
   duration?: number;
+  attachments?: Array<{ url: string; mime: string; filename?: string }>;
 }
 
 /**
@@ -95,6 +96,35 @@ export interface ThinkingChunkMessage extends BaseStreamMessage {
   text: string;
 }
 
+/** User message FIFO lifecycle state. */
+export type QueueState = 'pending' | 'running' | 'done';
+
+/** Agent execution phase consumed by the typing indicator. */
+export type AgentPhase = 'idle' | 'thinking' | 'streaming_text' | 'executing_tool';
+
+/**
+ * When `state === 'done'`, `assistantId` is the assistant turn that
+ * answered this user message; the frontend uses it to reorder the user
+ * bubble into processing chronology.
+ */
+export type QueueStateMessage =
+  | (BaseStreamMessage & {
+      type: 'queue_state';
+      messageId: string;
+      state: 'pending' | 'running';
+    })
+  | (BaseStreamMessage & {
+      type: 'queue_state';
+      messageId: string;
+      state: 'done';
+      assistantId?: string;
+    });
+
+export interface AgentPhaseMessage extends BaseStreamMessage {
+  type: 'agent_phase';
+  phase: AgentPhase;
+}
+
 /**
  * Union type of all stream message types
  */
@@ -105,7 +135,9 @@ export type StreamMessage =
   | ToolProgressMessage
   | ToolCompleteMessage
   | MessageCompleteMessage
-  | ThinkingChunkMessage;
+  | ThinkingChunkMessage
+  | QueueStateMessage
+  | AgentPhaseMessage;
 
 /**
  * Stream event published via callbacks

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { adminRequest, isWsConnected } from '../lib';
 
 export const mcaKill: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Kill a specific MCA process by appId. The process will be restarted on next use.',
   parameters: {
     type: 'object',

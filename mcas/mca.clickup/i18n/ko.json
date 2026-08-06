@@ -1,0 +1,154 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "인증된 ClickUp 사용자 정보를 가져옵니다."
+    },
+    "get-workspaces": {
+      "name": "get-workspaces",
+      "description": "사용자가 속한 모든 ClickUp 작업 공간(팀)을 가져옵니다."
+    },
+    "get-members": {
+      "name": "get-members",
+      "description": "ClickUp 작업 공간의 모든 구성원을 가져옵니다.",
+      "params": {
+        "workspaceId": "작업 공간(팀) ID"
+      }
+    },
+    "get-spaces": {
+      "name": "get-spaces",
+      "description": "ClickUp 작업 공간의 모든 공간을 가져옵니다.",
+      "params": {
+        "workspaceId": "작업 공간(팀) ID",
+        "archived": "보관된 공간 포함 (기본값: false)"
+      }
+    },
+    "get-folders": {
+      "name": "get-folders",
+      "description": "ClickUp 공간의 모든 폴더를 가져옵니다.",
+      "params": {
+        "spaceId": "공간 ID",
+        "archived": "보관된 폴더 포함 (기본값: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "ClickUp 공간에 새 폴더를 생성합니다.",
+      "params": {
+        "spaceId": "폴더가 생성될 공간 ID",
+        "name": "새 폴더의 이름"
+      }
+    },
+    "get-lists": {
+      "name": "get-lists",
+      "description": "ClickUp 폴더의 모든 목록을 가져옵니다.",
+      "params": {
+        "folderId": "폴더 ID",
+        "archived": "보관된 목록 포함 (기본값: false)"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "ClickUp 폴더 내에 새 목록을 생성합니다.",
+      "params": {
+        "folderId": "목록이 생성될 폴더 ID",
+        "name": "새 목록의 이름",
+        "content": "목록의 설명/내용 (선택 사항)"
+      }
+    },
+    "get-tasks": {
+      "name": "get-tasks",
+      "description": "선택적 필터와 함께 ClickUp 목록에서 작업을 가져옵니다.",
+      "params": {
+        "listId": "작업을 가져올 목록 ID",
+        "archived": "보관된 작업 포함 (기본값: false)",
+        "page": "페이지 번호 (기본값: 0)",
+        "orderBy": "정렬할 필드: id, created, updated, due_date (기본값: created)",
+        "reverse": "정렬 순서 반전 (기본값: false)",
+        "subtasks": "하위 작업 포함 (기본값: false)",
+        "statuses": "상태 이름으로 필터링"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "특정 ClickUp 작업에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "taskId": "작업 ID"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "ClickUp 목록에 새 작업을 생성합니다.",
+      "params": {
+        "listId": "작업이 생성될 목록 ID",
+        "name": "작업 이름/제목",
+        "description": "작업 설명 (마크다운 지원)",
+        "priority": "작업 우선순위: urgent, high, normal, low",
+        "status": "작업 상태 (목록의 상태와 일치해야 함)",
+        "assignees": "할당할 사용자 ID 배열",
+        "tags": "태그 이름 배열",
+        "dueDate": "Unix 타임스탬프 형식의 마감일 (밀리초)",
+        "startDate": "Unix 타임스탬프 형식의 시작일 (밀리초)",
+        "timeEstimate": "시간 추정치 (밀리초)",
+        "parentId": "하위 작업으로 생성할 부모 작업 ID"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "기존 ClickUp 작업을 업데이트합니다.",
+      "params": {
+        "taskId": "업데이트할 작업 ID",
+        "name": "새 작업 이름",
+        "description": "새 작업 설명",
+        "priority": "새 우선순위: urgent, high, normal, low",
+        "status": "새 상태",
+        "dueDate": "Unix 타임스탬프 형식의 새 마감일 (밀리초)",
+        "startDate": "Unix 타임스탬프 형식의 새 시작일 (밀리초)",
+        "timeEstimate": "새 시간 추정치 (밀리초)"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "ClickUp 작업을 영구적으로 삭제합니다.",
+      "params": {
+        "taskId": "삭제할 작업 ID"
+      }
+    },
+    "search-tasks": {
+      "name": "search-tasks",
+      "description": "ClickUp 작업 공간에서 작업을 검색합니다.",
+      "params": {
+        "workspaceId": "검색할 작업 공간(팀) ID",
+        "query": "검색 쿼리 텍스트",
+        "page": "페이지 번호 (기본값: 0)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "ClickUp 작업에 댓글을 추가합니다.",
+      "params": {
+        "taskId": "댓글을 달 작업 ID",
+        "commentText": "댓글 텍스트 (마크다운 지원)",
+        "notifyAll": "작업의 모든 할당자에게 알림 (기본값: false)"
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "ClickUp 작업의 모든 댓글을 가져옵니다.",
+      "params": {
+        "taskId": "작업 ID"
+      }
+    }
+  },
+  "name": "ClickUp",
+  "description": "ClickUp 프로젝트 관리 - ClickUp API를 통해 OAuth2로 작업, 목록, 폴더, 공간 및 작업 공간을 관리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — ClickUp 공간, 폴더 및 목록에서 작업을 생성, 업데이트, 검색 및 댓글을 달 수 있습니다."
+    }
+  ]
+}

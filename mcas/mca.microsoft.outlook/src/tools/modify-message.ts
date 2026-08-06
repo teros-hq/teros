@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const modifyMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Modify a message: mark as read/unread, set importance, add categories, or flag it.',
   parameters: {

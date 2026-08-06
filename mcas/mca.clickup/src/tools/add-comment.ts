@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const addComment: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Add a comment to a ClickUp task.',
   parameters: {
     type: 'object',

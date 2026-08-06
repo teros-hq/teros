@@ -1,0 +1,236 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Brevo API 키를 GET /account에 대해 검증합니다."
+    },
+    "send-transactional-email": {
+      "name": "send-transactional-email",
+      "description": "Brevo를 통해 트랜잭션 이메일을 보냅니다 (POST /smtp/email). { messageId, subject, sender, recipients, recipientCount }를 반환합니다. 발신자 이메일은 Brevo 계정에서 확인된 발신자 또는 도메인이어야 합니다. htmlContent 및/또는 textContent를 제공하십시오 (최소 하나). 매개변수: sender{email,name?}, to[{email,name?}] (≥1), subject, htmlContent?, textContent?, cc?, bcc?, replyTo{email,name?}?, params? (템플릿 변수), tags?.",
+      "params": {
+        "sender": "확인된 발신자. { email (필수), name? }.",
+        "to": "수신자 (≥1). 각 { email (필수), name? }.",
+        "subject": "이메일 제목.",
+        "htmlContent": "HTML 본문. htmlContent / textContent 중 최소 하나가 필요합니다.",
+        "textContent": "일반 텍스트 본문. htmlContent / textContent 중 최소 하나가 필요합니다.",
+        "cc": "선택적 CC 수신자. 각 { email (필수), name? }.",
+        "bcc": "선택적 BCC 수신자. 각 { email (필수), name? }.",
+        "replyTo": "선택적 회신 주소. { email (필수), name? }.",
+        "params": "내용에 대체되는 선택적 템플릿 변수 (예: { FNAME: \"Ana\" }).",
+        "tags": "추적/보고를 위한 선택적 태그."
+      }
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Brevo에서 연락처 목록을 가져옵니다 (GET /contacts). { contacts:[{id,email,emailBlacklisted,smsBlacklisted,listIds,attributes,createdAt,modifiedAt}], count, limit, offset }를 반환합니다. 매개변수: limit? (1-1000, 기본값 50), offset? (기본값 0).",
+      "params": {
+        "limit": "반환할 최대 연락처 수 (1-1000, 기본값 50).",
+        "offset": "페이지 매김을 위한 첫 번째 연락처의 인덱스 (기본값 0)."
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Brevo에서 연락처를 생성 (또는 업데이트)합니다 (POST /contacts). { id, email, listIds, updated }를 반환합니다. updateEnabled:true로 설정하면 기존 연락처를 업데이트하고 중복으로 실패하지 않습니다. 매개변수: email (필수), attributes? (예: { FIRSTNAME, LASTNAME, SMS }), listIds? (number[]), updateEnabled? (기본값 false).",
+      "params": {
+        "email": "연락처 이메일 주소 (필수).",
+        "attributes": "Brevo 속성 이름으로 키가 지정된 연락처 속성 (예: { FIRSTNAME, LASTNAME, SMS }).",
+        "listIds": "연락처를 추가할 Brevo 목록 ID.",
+        "updateEnabled": "true인 경우, 이미 존재하는 연락처를 업데이트하고 오류를 발생시키지 않습니다 (기본값 false)."
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Brevo에서 이메일 또는 ID로 하나의 연락처를 가져옵니다 (GET /contacts/{identifier}). { id, email, emailBlacklisted, smsBlacklisted, listIds, attributes, createdAt, modifiedAt }를 반환합니다. 매개변수: identifier (필수 — 연락처 이메일 또는 ID).",
+      "params": {
+        "identifier": "연락처 이메일 또는 숫자 ID (필수)."
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Brevo에서 연락처를 업데이트합니다 (PUT /contacts/{identifier}). { identifier, updated, listIds, unlinkListIds }를 반환합니다. 속성은 이미 계정에 존재해야 합니다 (대문자로 전달하십시오). listIds는 연락처를 목록에 추가하고, unlinkListIds는 제거합니다. 매개변수: identifier (필수 — 이메일 또는 ID), attributes? (예: { FIRSTNAME }), emailBlacklisted?, smsBlacklisted?, listIds? (number[]), unlinkListIds? (number[]).",
+      "params": {
+        "identifier": "업데이트할 연락처 이메일 또는 숫자 ID (필수).",
+        "attributes": "설정할 속성 (이미 계정에 존재해야 하며, 대문자, 예: { FIRSTNAME, LASTNAME }).",
+        "emailBlacklisted": "이메일에 대해 연락처를 블랙리스트 (true) 또는 허용 (false)합니다.",
+        "smsBlacklisted": "SMS에 대해 연락처를 블랙리스트 (true) 또는 허용 (false)합니다.",
+        "listIds": "연락처를 추가할 목록 ID.",
+        "unlinkListIds": "연락처를 제거할 목록 ID."
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Brevo에서 연락처를 영구적으로 삭제합니다 (DELETE /contacts/{identifier}). 되돌릴 수 없음 — 연락처와 그 기록이 제거됩니다. { identifier, deleted }를 반환합니다. 매개변수: identifier (필수 — 연락처 이메일 또는 ID).",
+      "params": {
+        "identifier": "삭제할 연락처 이메일 또는 숫자 ID (필수)."
+      }
+    },
+    "add-contact-to-list": {
+      "name": "add-contact-to-list",
+      "description": "연락처를 Brevo 목록에 추가합니다 (POST /contacts/lists/{listId}/contacts/add). 이메일[] 및/또는 ID[]로 연락처를 식별합니다. { listId, success, failure }를 반환합니다 (추가된 연락처 / 추가되지 않은 연락처). 매개변수: listId (필수, 정수), emails? (string[]), ids? (number[]).",
+      "params": {
+        "listId": "목록의 ID (필수).",
+        "emails": "추가할 연락처 이메일.",
+        "ids": "추가할 연락처 ID."
+      }
+    },
+    "remove-contact-from-list": {
+      "name": "remove-contact-from-list",
+      "description": "연락처를 Brevo 목록에서 제거합니다 (POST /contacts/lists/{listId}/contacts/remove). 이메일[] 및/또는 ID[]로 연락처를 식별합니다. { listId, success, failure }를 반환합니다 (제거된 연락처 / 제거되지 않은 연락처). 매개변수: listId (필수, 정수), emails? (string[]), ids? (number[]).",
+      "params": {
+        "listId": "목록의 ID (필수).",
+        "emails": "제거할 연락처 이메일.",
+        "ids": "제거할 연락처 ID."
+      }
+    },
+    "import-contacts": {
+      "name": "import-contacts",
+      "description": "연락처를 Brevo 목록에 대량으로 가져옵니다 (POST /contacts/import). jsonBody[] (인라인 연락처) 또는 fileUrl (a .csv/.json/.txt 파일) 중 하나를 제공하십시오, 둘 다는 안 됩니다. 비동기적으로 실행됩니다 — { processId, listIds, contactCount, source }를 반환합니다. 매개변수: jsonBody? ([{ email (필수), attributes? }]), fileUrl? (http(s) URL), listIds (필수, 정수[] — 대상 목록), updateExistingContacts? (기본값 false — 이미 존재하는 연락처를 건너뛰지 않고 업데이트합니다).",
+      "params": {
+        "jsonBody": "가져올 인라인 연락처 (fileUrl와 상호 배타적).",
+        "fileUrl": "가져올 .csv/.json/.txt 파일의 공개 http(s) URL (jsonBody와 상호 배타적).",
+        "listIds": "연락처가 가져올 목록의 ID (필수, 최소 하나).",
+        "updateExistingContacts": "true인 경우, 이미 존재하는 연락처를 건너뛰지 않고 업데이트합니다 (기본값 false)."
+      }
+    },
+    "list-attributes": {
+      "name": "list-attributes",
+      "description": "Brevo 계정에 정의된 연락처 속성 목록을 가져옵니다 (GET /contacts/attributes). 연락처를 생성/업데이트/가져오기 전에 유효한 속성 키 (예: FIRSTNAME, LASTNAME, 사용자 정의 필드)를 발견하는 데 사용합니다. { attributes:[{name,category,type}], count }를 반환합니다. 매개변수 없음."
+    },
+    "list-segments": {
+      "name": "list-segments",
+      "description": "Brevo 계정의 연락처 세그먼트 (저장된 필터) 목록을 가져옵니다 (GET /contacts/segments). 이들의 ID는 create-email-campaign에서 recipients.segmentIds로 사용할 수 있습니다. { segments:[{id,segmentName,categoryName,updatedAt}], count, limit, offset, sort }를 반환합니다. 매개변수: limit? (1-50, 기본값 10), offset? (기본값 0), sort? (asc | desc — 생성 날짜 기준, 기본값 desc).",
+      "params": {
+        "limit": "반환할 최대 세그먼트 수 (1-50, 기본값 10).",
+        "offset": "페이지 매김을 위한 첫 번째 세그먼트의 인덱스 (기본값 0).",
+        "sort": "기록 생성 기준 정렬: asc 또는 desc (기본값 desc)."
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "Brevo에서 연락처 폴더 목록을 가져옵니다 (GET /contacts/folders). 폴더는 연락처 목록을 그룹화합니다; 목록을 생성하려면 folderId가 필요하므로 이를 사용하여 찾습니다. { folders:[{id,name,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }를 반환합니다. 매개변수: limit? (1-50, 기본값 50), offset? (기본값 0).",
+      "params": {
+        "limit": "반환할 최대 폴더 수 (1-50, 기본값 50).",
+        "offset": "페이지 매김을 위한 첫 번째 폴더의 인덱스 (기본값 0)."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "Brevo에서 연락처 목록을 가져옵니다 (GET /contacts/lists). { lists:[{id,name,folderId,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }를 반환합니다. 매개변수: limit? (1-50, 기본값 50), offset? (기본값 0).",
+      "params": {
+        "limit": "반환할 최대 목록 수 (1-50, 기본값 50).",
+        "offset": "페이지 매김을 위한 첫 번째 목록의 인덱스 (기본값 0)."
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Brevo에서 연락처 목록을 생성합니다 (POST /contacts/lists). { id, name, folderId }를 반환합니다. 목록은 폴더 내에 존재합니다 — folderId를 전달하십시오 (list-folders를 호출하여 찾습니다). 매개변수: name (필수), folderId (필수, 정수).",
+      "params": {
+        "name": "새 목록의 이름 (필수).",
+        "folderId": "상위 폴더의 ID (필수). list-folders를 사용하여 찾습니다."
+      }
+    },
+    "list-email-templates": {
+      "name": "list-email-templates",
+      "description": "Brevo에서 트랜잭션 이메일 템플릿 목록을 가져옵니다 (GET /smtp/templates). { templates:[{id,name,subject,isActive,testSent,sender,replyTo,toField,tag,createdAt,modifiedAt}], count, templateStatus, limit, offset }를 반환합니다. 매개변수: templateStatus? (true=활성만, false=비활성만, 모두 반환하려면 생략), limit? (1-1000, 기본값 50), offset? (기본값 0).",
+      "params": {
+        "templateStatus": "상태로 필터링: true=활성만, false=비활성만. 생략하면 모두 반환.",
+        "limit": "반환할 최대 템플릿 수 (1-1000, 기본값 50).",
+        "offset": "페이지 매김을 위한 첫 번째 템플릿의 인덱스 (기본값 0)."
+      }
+    },
+    "create-email-template": {
+      "name": "create-email-template",
+      "description": "Brevo에서 트랜잭션 이메일 템플릿을 생성합니다 (POST /smtp/templates). { id, templateName, subject, isActive }를 반환합니다. 템플릿은 기본적으로 비활성입니다 — isActive:true로 설정하여 활성화합니다. 발신자는 {email} (확인된 발신자) 또는 {id} (Brevo 발신자 ID) 중 하나를 사용해야 하며, 둘 다는 안 됩니다. htmlContent (≥10자) 또는 htmlUrl을 제공하십시오. 매개변수: templateName (필수), subject (필수), sender{email?,id?,name?} (필수), htmlContent?, htmlUrl?, isActive?, replyTo?, toField?, tag?, attachmentUrl?.",
+      "params": {
+        "templateName": "템플릿의 이름 (필수).",
+        "subject": "템플릿의 제목 (필수).",
+        "sender": "발신자 — { email } (확인된 발신자) 또는 { id } (Brevo 발신자 ID) 중 하나, 둘 다는 안 됩니다. 선택적 이름.",
+        "htmlContent": "HTML 본문 (최소 10자). 이거나 htmlUrl을 제공하십시오.",
+        "htmlUrl": "HTML 본문의 내용이 있는 절대 http(s) URL. 이거나 htmlContent를 제공하십시오.",
+        "isActive": "템플릿이 활성인지 여부 (기본값 false — 비활성).",
+        "replyTo": "선택적 회신 이메일 주소.",
+        "toField": "선택적 To 필드 개인화 (예: {{contact.FNAME}} {{contact.LNAME}}).",
+        "tag": "템플릿에 대한 선택적 태그.",
+        "attachmentUrl": "선택적 첨부 파일의 절대 http(s) URL."
+      }
+    },
+    "list-email-campaigns": {
+      "name": "list-email-campaigns",
+      "description": "Brevo에서 이메일 캠페인 목록을 가져옵니다 (GET /emailCampaigns). { campaigns:[{id,name,subject,type,status,scheduledAt,createdAt,modifiedAt}], count, type, status, limit, offset }를 반환합니다. 매개변수: type? (classic|trigger), status? (draft|sent|archive|queued|suspended|inProcess), limit? (1-100, 기본값 50), offset? (기본값 0).",
+      "params": {
+        "type": "캠페인 유형으로 필터링.",
+        "status": "캠페인 상태로 필터링.",
+        "limit": "반환할 최대 캠페인 수 (1-100, 기본값 50).",
+        "offset": "페이지 매김을 위한 첫 번째 캠페인의 인덱스 (기본값 0)."
+      }
+    },
+    "get-email-campaign": {
+      "name": "get-email-campaign",
+      "description": "Brevo에서 ID로 하나의 이메일 캠페인을 가져옵니다 (GET /emailCampaigns/{campaignId}). { id, name, subject, type, status, scheduledAt, createdAt, modifiedAt }를 반환합니다. 매개변수: campaignId (필수, 정수).",
+      "params": {
+        "campaignId": "캠페인의 ID (필수)."
+      }
+    },
+    "create-email-campaign": {
+      "name": "create-email-campaign",
+      "description": "Brevo에서 이메일 캠페인 (뉴스레터)을 생성합니다 (POST /emailCampaigns). { id, name, subject, scheduledAt }를 반환합니다. htmlContent (≥10자), htmlUrl 또는 templateId 중 하나를 정확히 제공하십시오. 발신자는 { email } XOR { id }입니다. recipients{listIds}를 추가하여 대상 목록을 설정합니다; scheduledAt (ISO 8601)이 설정된 경우 listIds가 필요합니다. scheduledAt 없이 캠페인은 나중에 send-email-campaign으로 보낼 초안입니다. 매개변수: name (필수), subject (필수), sender{email?,id?,name?} (필수), htmlContent?, htmlUrl?, templateId?, recipients{listIds?,exclusionListIds?,segmentIds?}?, scheduledAt?, replyTo?, toField?, tag?, previewText?.",
+      "params": {
+        "name": "내부 캠페인 이름 (필수).",
+        "subject": "이메일 제목 (필수).",
+        "sender": "발신자 — { email } (확인됨) 또는 { id }, 둘 다는 안 됩니다. 선택적 이름.",
+        "htmlContent": "HTML 본문 (≥10자). htmlContent, htmlUrl 또는 templateId 중 하나를 정확히 제공하십시오.",
+        "htmlUrl": "HTML 본문의 절대 http(s) URL. htmlContent, htmlUrl 또는 templateId 중 하나를 정확히 제공하십시오.",
+        "templateId": "내용으로 사용되는 활성 트랜잭션 템플릿의 ID. htmlContent, htmlUrl 또는 templateId 중 하나를 정확히 제공하십시오.",
+        "recipients": "캠페인을 받을 사람. 보내기 위해 필요하며; scheduledAt이 설정된 경우 listIds가 필요합니다.",
+        "scheduledAt": "ISO 8601 발송 날짜-시간 (예: 2026-06-01T12:30:00+02:00). 생략하면 나중에 send-email-campaign으로 보낼 초안이 생성됩니다.",
+        "replyTo": "선택적 회신 이메일 주소.",
+        "toField": "선택적 To 필드 개인화 (예: {FNAME} {LNAME}).",
+        "tag": "선택적 캠페인 태그.",
+        "previewText": "선택적 미리보기 텍스트 / 프리헤더."
+      }
+    },
+    "send-test-email": {
+      "name": "send-test-email",
+      "description": "특정 주소로 이메일 캠페인의 테스트를 보냅니다 (POST /emailCampaigns/{campaignId}/sendTest). 주어진 테스터에게 실제 이메일을 배달합니다. { campaignId, emailTo }를 반환합니다. 매개변수: campaignId (필수, 정수), emailTo (테스트 수신자, 최대 99개의 이메일 주소 배열).",
+      "params": {
+        "campaignId": "테스트할 캠페인의 ID (필수).",
+        "emailTo": "테스트 수신자 (1-99 이메일 주소)."
+      }
+    },
+    "send-email-campaign": {
+      "name": "send-email-campaign",
+      "description": "이메일 캠페인을 즉시 보냅니다 (POST /emailCampaigns/{campaignId}/sendNow). 되돌릴 수 없음 — 모든 수신자에게 배달됩니다. 캠페인은 수신자가 설정된 초안이어야 합니다. { campaignId, sent }를 반환합니다. 매개변수: campaignId (필수, 정수).",
+      "params": {
+        "campaignId": "지금 보낼 캠페인의 ID (필수)."
+      }
+    },
+    "get-email-event-report": {
+      "name": "get-email-event-report",
+      "description": "Brevo에서 트랜잭션 이메일 이벤트를 가져옵니다 (GET /smtp/statistics/events): 메시지별 배달 이벤트 (배달됨, 열림, 클릭, 반송, 스팸, 구독 취소…). { events:[{date,email,event,messageId,subject,tag,reason,link,from,templateId}], count, limit, offset }를 반환합니다. 기간: days (1-90) 또는 startDate+endDate 범위 (YYYY-MM-DD)를 전달하십시오, 둘 다는 안 됩니다; 기본값은 지난 30일입니다. 매개변수: limit? (1-5000, 기본값 100), offset? (기본값 0), startDate?, endDate?, days?, email?, event? (bounces|hardBounces|softBounces|delivered|spam|requests|opened|clicks|invalid|deferred|blocked|unsubscribed|error|loadedByProxy), messageId?, templateId?, sort? (asc|desc, 기본값 desc).",
+      "params": {
+        "limit": "반환할 최대 이벤트 수 (1-5000, 기본값 100).",
+        "offset": "페이지 매김을 위한 첫 번째 이벤트의 인덱스 (기본값 0).",
+        "startDate": "범위의 시작 (YYYY-MM-DD). endDate와 쌍으로 있어야 하며; days와 호환되지 않습니다.",
+        "endDate": "범위의 끝 (YYYY-MM-DD). startDate와 쌍으로 있어야 하며; days와 호환되지 않습니다.",
+        "days": "과거의 날짜 수 (오늘 포함, 1-90). startDate/endDate와 호환되지 않습니다.",
+        "email": "특정 수신자 이메일 주소에 대한 이벤트 필터링.",
+        "event": "이벤트 유형으로 필터링.",
+        "messageId": "특정 messageId에 대한 이벤트 필터링.",
+        "templateId": "특정 템플릿 ID에 대한 이벤트 필터링.",
+        "sort": "기록 생성 기준 정렬: asc 또는 desc (기본값 desc)."
+      }
+    },
+    "get-aggregated-smtp-report": {
+      "name": "get-aggregated-smtp-report",
+      "description": "Brevo에서 집계된 트랜잭션 이메일 통계를 가져옵니다 (GET /smtp/statistics/aggregatedReport): 기간 동안의 총계. { range, requests, delivered, opens, uniqueOpens, clicks, uniqueClicks, hardBounces, softBounces, blocked, invalid, spamReports, unsubscribed }를 반환합니다. 기간: days (1-90) 또는 startDate+endDate 범위 (YYYY-MM-DD)를 전달하십시오, 둘 다는 안 됩니다; 기본값은 지난 90일입니다. 매개변수: startDate?, endDate?, days?, tag? (이메일 태그로 필터링).",
+      "params": {
+        "startDate": "범위의 시작 (YYYY-MM-DD). endDate와 쌍으로 있어야 하며; days와 호환되지 않습니다.",
+        "endDate": "범위의 끝 (YYYY-MM-DD). startDate와 쌍으로 있어야 하며; days와 호환되지 않습니다.",
+        "days": "과거의 날짜 수 (오늘 포함, 1-90). startDate/endDate와 호환되지 않습니다.",
+        "tag": "특정 이메일 태그에 대한 총계를 필터링."
+      }
+    }
+  },
+  "name": "Brevo",
+  "description": "Brevo 이메일 마케팅 — 트랜잭션 이메일을 보내고, 연락처 및 목록을 관리하며, 이메일 템플릿을 생성하고, Brevo API를 통해 이메일 캠페인을 탐색합니다."
+}

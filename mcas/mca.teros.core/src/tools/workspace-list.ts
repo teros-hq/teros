@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceList: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List workspaces the user owns or is a member of.',
   parameters: {
     type: 'object',

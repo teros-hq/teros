@@ -145,6 +145,8 @@ type EnvStatus = 'creating' | 'building' | 'running' | 'stopped' | 'error';
 
 interface EnvRecord {
   envId: string;
+  /** Human-readable URL slug (e.g. "teros-landing-maria"). Used as the subdomain in public URLs. */
+  slug: string;
   userId: string;
   localPath: string;
   hostPath: string;
@@ -189,6 +191,11 @@ function shortId(): string {
   return Math.random().toString(16).slice(2, 10);
 }
 
+/** 4-char random suffix for collision resolution, e.g. "-a3f2" */
+function shortSuffix(): string {
+  return '-' + Math.random().toString(16).slice(2, 6);
+}
+
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase().slice(0, 20);
 }
@@ -199,6 +206,62 @@ function buildProjectName(userId: string, envId: string): string {
 
 function buildNetworkName(userId: string, envId: string): string {
   return `teros-env-${sanitizeId(userId)}-${envId}`;
+}
+
+/**
+ * Derive a URL slug from a user-supplied slug or from the last segment of localPath.
+ * Rules:
+ *   - Lowercase letters, digits, hyphens only
+ *   - Leading/trailing hyphens stripped
+ *   - Max 63 chars (DNS label limit)
+ * Returns null if the result is empty (caller should fall back to envId).
+ */
+function deriveSlug(localPath: string, rawSlug?: string): string | null {
+  const base = rawSlug
+    ? rawSlug
+    : localPath.replace(/\/$/, '').split('/').pop() || '';
+
+  const slug = base
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-') // replace invalid chars with hyphen
+    .replace(/-+/g, '-')          // collapse consecutive hyphens
+    .replace(/^-+|-+$/g, '')      // strip leading/trailing hyphens
+    .slice(0, 63);
+
+  return slug || null;
+}
+
+/**
+ * Validate that a user-supplied slug matches the expected format.
+ * Returns an error message string if invalid, or null if valid.
+ */
+function validateSlug(slug: string): string | null {
+  if (!/^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(slug) && !/^[a-z0-9]$/.test(slug)) {
+    return `Invalid slug "${slug}": must contain only lowercase letters, digits, and hyphens, and must not start or end with a hyphen.`;
+  }
+  if (slug.length > 63) {
+    return `Invalid slug "${slug}": must be 63 characters or fewer (DNS label limit).`;
+  }
+  return null;
+}
+
+/**
+ * Given a base slug and the current envs map, return a unique slug.
+ * If the base slug is already taken, appends a 4-char random suffix.
+ * Tries up to 5 times before giving up (extremely unlikely to fail).
+ */
+function resolveUniqueSlug(baseSlug: string, envsMap: Record<string, EnvRecord>): string {
+  const usedSlugs = new Set(Object.values(envsMap).map((e) => e.slug).filter(Boolean));
+
+  if (!usedSlugs.has(baseSlug)) return baseSlug;
+
+  for (let i = 0; i < 5; i++) {
+    const candidate = baseSlug.slice(0, 58) + shortSuffix(); // 58 + 5 chars = 63 max
+    if (!usedSlugs.has(candidate)) return candidate;
+  }
+
+  // Absolute fallback: use a full random ID (should never happen)
+  return shortId();
 }
 
 function assertOwnership(env: EnvRecord, userId: string): void {
@@ -247,12 +310,12 @@ async function getComposeServices(workdir: string, composeFile: string, projectD
 
 async function buildUrlMap(
   projectName: string,
-  envId: string,
+  slug: string,
   services: string[],
 ): Promise<Record<string, string>> {
   const urls: Record<string, string> = {};
   for (const svc of services) {
-    urls[svc] = `https://${envId}.${BASE_DOMAIN}`;
+    urls[svc] = `https://${slug}.${BASE_DOMAIN}`;
   }
   try {
     const { stdout } = await execAsync(
@@ -342,7 +405,7 @@ function caddyRequest(method: string, path: string, body?: object): Promise<{ st
 /**
  * Register a Caddy reverse-proxy route for an ephemeral environment.
  * Route ID: route_env_{envId}  (used for deletion)
- * Matches: {envId}.{BASE_DOMAIN}
+ * Matches: {slug}.{BASE_DOMAIN}  (slug is human-readable; envId is used only as route identifier)
  * Upstream: containerIp:port (direct container IP, reachable from host via bridge)
  *
  * Routes are registered in srv_envs (port 2443, HTTPS with automatic cert management).
@@ -351,9 +414,9 @@ function caddyRequest(method: string, path: string, body?: object): Promise<{ st
  *
  * The catch-all 404 route is always kept at the end of the routes list.
  */
-async function registerCaddyRoute(envId: string, containerIp: string, port: number = 3000): Promise<void> {
+async function registerCaddyRoute(envId: string, slug: string, containerIp: string, port: number = 3000): Promise<void> {
   const routeId = `route_env_${envId}`;
-  const hostname = `${envId}.${BASE_DOMAIN}`;
+  const hostname = `${slug}.${BASE_DOMAIN}`;
   const upstream = `${containerIp}:${port}`;
 
   const CATCH_ALL = { handle: [{ body: 'Route not configured', handler: 'static_response', status_code: 404 }] };
@@ -516,6 +579,7 @@ async function saveEnvsMap(context: any, envsMap: Record<string, EnvRecord>): Pr
  */
 async function runBuildInBackground(params: {
   envId: string;
+  slug: string;
   workdir: string;
   composeHostPath: string;
   projectHostDir: string;
@@ -526,7 +590,7 @@ async function runBuildInBackground(params: {
   buildLogPath: string;
   persistFn: (patch: Partial<EnvRecord>) => Promise<void>;
 }): Promise<void> {
-  const { envId, workdir, composeHostPath, projectHostDir, projectName, networkName, envVarArgs, timeoutSecs, buildLogPath, persistFn } = params;
+  const { envId, slug, workdir, composeHostPath, projectHostDir, projectName, networkName, envVarArgs, timeoutSecs, buildLogPath, persistFn } = params;
 
   // Phase 1: Create isolated network
   try {
@@ -602,17 +666,17 @@ async function runBuildInBackground(params: {
   let urls: Record<string, string> = {};
   try {
     services = await getComposeServices(workdir, composeHostPath, projectHostDir);
-    urls = await buildUrlMap(projectName, envId, services);
+    urls = await buildUrlMap(projectName, slug, services);
   } catch { /* best-effort */ }
 
-  // Phase 6: Register Caddy route (container IP → {envId}.domain)
-  const publicUrl = `https://${envId}.${BASE_DOMAIN}`;
+  // Phase 6: Register Caddy route (container IP → {slug}.domain)
+  const publicUrl = `https://${slug}.${BASE_DOMAIN}`;
   try {
     appendBuildLog(buildLogPath, `[${new Date().toISOString()}] Detecting container IP...`);
     const containerIp = await getContainerIp(projectName);
     if (containerIp) {
       appendBuildLog(buildLogPath, `[${new Date().toISOString()}] Container IP: ${containerIp} — registering Caddy route`);
-      await registerCaddyRoute(envId, containerIp, 3000);
+      await registerCaddyRoute(envId, slug, containerIp, 3000);
       appendBuildLog(buildLogPath, `[${new Date().toISOString()}] Caddy route registered: ${publicUrl} → ${containerIp}:3000`);
       appendBuildLog(buildLogPath, `[${new Date().toISOString()}] SSL cert will be issued automatically by Caddy via Let's Encrypt`);
       // Set public URL for all services
@@ -627,7 +691,7 @@ async function runBuildInBackground(params: {
     appendBuildLog(buildLogPath, `[${new Date().toISOString()}] WARN: Caddy route registration failed: ${err.message}`);
   }
 
-  appendBuildLog(buildLogPath, `[${new Date().toISOString()}] Environment ready. Services: ${services.join(', ')} — URL: ${publicUrl} (${envId}.${BASE_DOMAIN})`);
+  appendBuildLog(buildLogPath, `[${new Date().toISOString()}] Environment ready. Services: ${services.join(', ')} — URL: ${publicUrl} (${slug}.${BASE_DOMAIN})`);
 
   // Phase 7: Transition to 'running'
   await persistFn({ status: 'running', services, urls, updatedAt: new Date().toISOString() });
@@ -648,6 +712,7 @@ const server = new McaServer({
 // ============================================================================
 
 server.tool('env-create', {
+  annotations: { readOnlyHint: false },
   description:
     'Launch a docker-compose stack from a local workspace directory as an ephemeral environment. Returns immediately with envId and status "creating" — the build happens in the background. Use env-status to poll until status is "running". The environment is isolated in its own Docker network scoped to your user.',
   parameters: {
@@ -672,6 +737,10 @@ server.tool('env-create', {
         description: 'Timeout in seconds for docker-compose up --build (default: 300)',
         default: 300,
       },
+      slug: {
+        type: 'string',
+        description: 'Optional custom URL slug for the environment (e.g. "teros-landing-maria"). Must be lowercase letters, digits, and hyphens only. If omitted, the slug is derived automatically from the last segment of localPath. If there is a collision, a short random suffix is appended (e.g. "-a3f2").',
+      },
     },
     required: ['localPath'],
   },
@@ -681,6 +750,7 @@ server.tool('env-create', {
     const composeFile = (args.composeFile as string) || 'docker-compose.yml';
     const envVars = (args.envVars as Record<string, string>) || {};
     const timeoutSecs = (args.timeout as number) || 300;
+    const rawSlug = args.slug as string | undefined;
 
     if (!localPath) throw new Error('localPath is required');
 
@@ -708,6 +778,14 @@ server.tool('env-create', {
       return { success: false, error: `Compose file not found: ${composePath}`, hint: 'Check the composeFile parameter. It should be relative to localPath (e.g. "docker-compose.yml" or "docker/docker-compose.test.yml").' };
     }
 
+    // Validate user-supplied slug if provided
+    if (rawSlug !== undefined) {
+      const slugError = validateSlug(rawSlug);
+      if (slugError) {
+        return { success: false, error: slugError };
+      }
+    }
+
     // Generate IDs and paths
     const envId = shortId();
     const projectName = buildProjectName(userId, envId);
@@ -724,20 +802,26 @@ server.tool('env-create', {
     // Build env vars string
     const envVarArgs = Object.entries(envVars).map(([k, v]) => `--env "${k}=${v}"`).join(' ');
 
+    // Load the current envs map to check slug collisions
+    const envsMap = await loadEnvsMap(context);
+
+    // Resolve slug: user-supplied → derived from localPath → fallback to envId
+    const baseSlug = deriveSlug(localPath, rawSlug) || envId;
+    const slug = resolveUniqueSlug(baseSlug, envsMap);
+
     // Register env in store with status 'creating'
     const now = new Date().toISOString();
     const envRecord: EnvRecord = {
-      envId, userId, localPath, hostPath, composeFile, networkName, projectName, workdir,
+      envId, slug, userId, localPath, hostPath, composeFile, networkName, projectName, workdir,
       status: 'creating', createdAt: now, updatedAt: now,
       services: [], urls: {}, buildLogPath,
     };
 
-    const envsMap = await loadEnvsMap(context);
     envsMap[envId] = envRecord;
     await saveEnvsMap(context, envsMap);
     await mongoUpsert(envRecord);
 
-    appendBuildLog(buildLogPath, `[${now}] Environment ${envId} registered. Starting build...`);
+    appendBuildLog(buildLogPath, `[${now}] Environment ${envId} (slug: ${slug}) registered. Starting build...`);
 
     // persistFn: reload store, merge patch, save — used by background process
     const persistFn = async (patch: Partial<EnvRecord>): Promise<void> => {
@@ -754,7 +838,7 @@ server.tool('env-create', {
     };
 
     // Fire and forget — intentionally no await
-    runBuildInBackground({ envId, workdir, composeHostPath, projectHostDir: hostPath, projectName, networkName, envVarArgs, timeoutSecs, buildLogPath, persistFn })
+    runBuildInBackground({ envId, slug, workdir, composeHostPath, projectHostDir: hostPath, projectName, networkName, envVarArgs, timeoutSecs, buildLogPath, persistFn })
       .catch((err) => {
         appendBuildLog(buildLogPath, `[${new Date().toISOString()}] FATAL: ${err.message}`);
         persistFn({ status: 'error', error: `Unexpected error: ${err.message}`, updatedAt: new Date().toISOString() }).catch(() => {});
@@ -763,6 +847,8 @@ server.tool('env-create', {
     return {
       success: true,
       envId,
+      slug,
+      publicUrl: `https://${slug}.${BASE_DOMAIN}`,
       projectName,
       networkName,
       localPath,
@@ -779,6 +865,7 @@ server.tool('env-create', {
 // ============================================================================
 
 server.tool('env-status', {
+  annotations: { readOnlyHint: true },
   description:
     'Get detailed status of a Docker environment. Useful for polling after env-create until the environment is "running". Returns status, URLs, services, createdAt, error (if failed), and last build log lines.',
   parameters: {
@@ -821,6 +908,8 @@ server.tool('env-status', {
 
     return {
       envId: env.envId,
+      slug: env.slug || env.envId,
+      publicUrl: `https://${env.slug || env.envId}.${BASE_DOMAIN}`,
       status: liveStatus !== 'unknown' ? liveStatus : env.status,
       storeStatus: env.status,
       localPath: env.localPath,
@@ -842,6 +931,7 @@ server.tool('env-status', {
 // ============================================================================
 
 server.tool('env-exec', {
+  annotations: { readOnlyHint: false },
   description:
     'Execute a command inside a running environment. The command runs in the context of the docker-compose project. Returns stdout, stderr, and exit code.',
   parameters: {
@@ -913,6 +1003,7 @@ server.tool('env-exec', {
 // ============================================================================
 
 server.tool('env-logs', {
+  annotations: { readOnlyHint: false },
   description: 'Fetch recent logs from a service in a running environment. Returns the last N lines of container output.',
   parameters: {
     type: 'object',
@@ -956,6 +1047,7 @@ server.tool('env-logs', {
 // ============================================================================
 
 server.tool('env-list', {
+  annotations: { readOnlyHint: false },
   description:
     'List all environments for the current user/workspace. Shows envId, status (including intermediate states: creating, building, running, stopped, error), localPath, services, and URLs.',
   parameters: {
@@ -988,6 +1080,8 @@ server.tool('env-list', {
 
         return {
           envId: env.envId,
+          slug: env.slug || env.envId,
+          publicUrl: `https://${env.slug || env.envId}.${BASE_DOMAIN}`,
           status: displayStatus,
           localPath: env.localPath,
           services: env.services,
@@ -1009,6 +1103,7 @@ server.tool('env-list', {
 // ============================================================================
 
 server.tool('env-restart', {
+  annotations: { readOnlyHint: false },
   description:
     'Restart a Docker environment: stops all containers and brings them back up. Useful to reload config changes or recover from a stopped state. Returns immediately — use env-status to poll until "running".',
   parameters: {
@@ -1064,7 +1159,7 @@ server.tool('env-restart', {
     const composeHostPath = join(env.workdir, env.composeFile);
 
     if (rebuild) {
-      runBuildInBackground({ envId, workdir: env.workdir, composeHostPath, projectHostDir: env.hostPath, projectName: env.projectName, networkName: env.networkName, envVarArgs: '', timeoutSecs: 300, buildLogPath, persistFn })
+      runBuildInBackground({ envId, slug: env.slug || env.envId, workdir: env.workdir, composeHostPath, projectHostDir: env.hostPath, projectName: env.projectName, networkName: env.networkName, envVarArgs: '', timeoutSecs: 300, buildLogPath, persistFn })
         .catch((err) => {
           appendBuildLog(buildLogPath, `[${new Date().toISOString()}] FATAL: ${err.message}`);
           persistFn({ status: 'error', error: err.message, updatedAt: new Date().toISOString() }).catch(() => {});
@@ -1112,6 +1207,7 @@ server.tool('env-restart', {
 // ============================================================================
 
 server.tool('env-destroy', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description:
     'Stop and remove a Docker environment: runs docker-compose down, removes containers, networks, and volumes. The local workspace directory (localPath) is NOT deleted. This action is irreversible.',
   parameters: {
@@ -1166,6 +1262,114 @@ server.tool('env-destroy', {
     await mongoDelete(envId);
 
     return { success: true, envId, projectName: env.projectName, ...results, message: `Environment ${envId} destroyed successfully` };
+  },
+});
+
+// ============================================================================
+// TOOL: env-rename
+// ============================================================================
+
+server.tool('env-rename', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Rename the URL slug of an existing environment. Updates the Caddy route so the environment becomes accessible at the new URL immediately. The envId does not change.',
+  parameters: {
+    type: 'object',
+    properties: {
+      envId: {
+        type: 'string',
+        description: 'Environment ID to rename',
+      },
+      slug: {
+        type: 'string',
+        description: 'New URL slug (e.g. "my-project-v2"). Must be lowercase letters, digits, and hyphens only, and must not start or end with a hyphen. Max 63 characters.',
+      },
+    },
+    required: ['envId', 'slug'],
+  },
+  handler: async (args, context) => {
+    const userId = context.execution.userId;
+    const envId = args.envId as string;
+    const newSlugRaw = args.slug as string;
+
+    if (!envId) throw new Error('envId is required');
+    if (!newSlugRaw) throw new Error('slug is required');
+
+    // Validate format
+    const slugError = validateSlug(newSlugRaw);
+    if (slugError) {
+      return { success: false, error: slugError };
+    }
+
+    const envsMap = await loadEnvsMap(context);
+    if (!envsMap[envId]) {
+      throw new Error(`Environment ${envId} not found. Use env-list to see active environments.`);
+    }
+    const env: EnvRecord = envsMap[envId];
+    assertOwnership(env, userId);
+
+    const oldSlug = env.slug || env.envId;
+
+    // Check collision (exclude the current env itself)
+    const otherEnvs = Object.fromEntries(Object.entries(envsMap).filter(([id]) => id !== envId));
+    const resolvedSlug = resolveUniqueSlug(newSlugRaw, otherEnvs);
+
+    // If the env is running, update Caddy routing
+    if (env.status === 'running') {
+      // Get current container IP
+      const containerIp = await getContainerIp(env.projectName);
+      if (!containerIp) {
+        return {
+          success: false,
+          error: `Could not detect container IP for environment ${envId}. Make sure the environment is running.`,
+        };
+      }
+
+      // Remove old Caddy route (best-effort — old route may not exist if env was created before slug feature)
+      try {
+        await removeCaddyRoute(envId);
+      } catch (err: any) {
+        // Non-fatal: old route may not exist
+        console.error(`WARN: Could not remove old Caddy route for ${envId}: ${err.message}`);
+      }
+
+      // Register new Caddy route with new slug
+      await registerCaddyRoute(envId, resolvedSlug, containerIp, 3000);
+    }
+
+    // Update URLs map
+    const newPublicUrl = `https://${resolvedSlug}.${BASE_DOMAIN}`;
+    const updatedUrls: Record<string, string> = {};
+    for (const svc of env.services) {
+      updatedUrls[svc] = newPublicUrl;
+    }
+    if (env.services.length === 0 && env.urls['web']) {
+      updatedUrls['web'] = newPublicUrl;
+    }
+
+    // Persist updated record
+    const now = new Date().toISOString();
+    envsMap[envId] = {
+      ...env,
+      slug: resolvedSlug,
+      urls: Object.keys(updatedUrls).length > 0 ? updatedUrls : env.urls,
+      updatedAt: now,
+    };
+    await saveEnvsMap(context, envsMap);
+    await mongoUpsert(envsMap[envId]);
+
+    return {
+      success: true,
+      envId,
+      oldSlug,
+      newSlug: resolvedSlug,
+      oldUrl: `https://${oldSlug}.${BASE_DOMAIN}`,
+      newUrl: newPublicUrl,
+      slugChanged: resolvedSlug !== newSlugRaw
+        ? `Requested slug "${newSlugRaw}" was already taken — assigned "${resolvedSlug}" instead.`
+        : undefined,
+      message: `Environment renamed successfully. New URL: ${newPublicUrl}`,
+    };
   },
 });
 

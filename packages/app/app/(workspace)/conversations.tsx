@@ -5,7 +5,7 @@
  */
 
 import { useWindowLauncher } from '../../src/hooks';
-import { useWorkspaceReady } from './workspaceContext';
+import { useWorkspaceReady } from './_layout';
 
 export default function ConversationsRoute() {
   const isReady = useWorkspaceReady();

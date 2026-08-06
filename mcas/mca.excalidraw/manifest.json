@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.excalidraw",
+  "name": "Excalidraw",
+  "version": "1.0.0",
+  "description": "Integrate with Excalidraw Plus to manage scenes, collections, workspaces, users, and invites programmatically. Create and update diagrams, wireframes, and whiteboards via the Excalidraw Plus REST API.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "design",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["EXCALIDRAW_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["excalidraw", "whiteboard", "diagrams", "wireframes", "design", "collaboration", "scenes", "drawings"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-12",
+      "notes": "Initial release — create, edit and organize Excalidraw whiteboards in folders, and manage workspace members and invites"
+    }
+  ]
+}

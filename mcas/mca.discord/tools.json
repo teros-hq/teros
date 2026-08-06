@@ -1,0 +1,726 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.discord",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Discord OAuth credentials and API connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-guilds",
+      "description": "List guilds (servers) the bot/user is a member of. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max guilds per page (1-200). Default: 100",
+            "default": 100
+          },
+          "before": {
+            "type": "string",
+            "description": "Get guilds before this guild ID (for pagination)"
+          },
+          "after": {
+            "type": "string",
+            "description": "Get guilds after this guild ID (for pagination)"
+          },
+          "withCounts": {
+            "type": "boolean",
+            "description": "Include approximate member and presence counts. Default: false",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-guild",
+      "description": "Get detailed information about a specific guild (server) by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "withCounts": {
+            "type": "boolean",
+            "description": "Include approximate member and presence counts. Default: false",
+            "default": false
+          }
+        },
+        "required": [
+          "guildId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-channels",
+      "description": "List channels in a guild. Returns text, voice, category, and other channel types.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          }
+        },
+        "required": [
+          "guildId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-channel",
+      "description": "Get detailed information about a specific channel by ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake)"
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-channel",
+      "description": "Create a new channel in a guild. Supports text, voice, category, announcement, and forum channels.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Channel name (1-100 characters)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "voice",
+              "category",
+              "announcement",
+              "forum",
+              "stage"
+            ],
+            "description": "Channel type. Default: text",
+            "default": "text"
+          },
+          "topic": {
+            "type": "string",
+            "description": "Channel topic/description (max 1024 chars for text, 4096 for forum)"
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Parent category channel ID"
+          },
+          "nsfw": {
+            "type": "boolean",
+            "description": "Mark channel as NSFW. Default: false",
+            "default": false
+          },
+          "rateLimitPerUser": {
+            "type": "number",
+            "description": "Slowmode in seconds (0-21600). Default: 0",
+            "default": 0
+          },
+          "bitrate": {
+            "type": "number",
+            "description": "Voice channel bitrate in bits (8000-96000/128000 for boosted guilds)"
+          },
+          "userLimit": {
+            "type": "number",
+            "description": "Voice channel user limit (0-99, 0 = unlimited). Default: 0",
+            "default": 0
+          },
+          "position": {
+            "type": "number",
+            "description": "Sorting position of the channel"
+          }
+        },
+        "required": [
+          "guildId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-channel",
+      "description": "Delete a channel or close a DM. Requires Manage Channels permission for guild channels.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake) to delete"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "send-message",
+      "description": "Send a message to a Discord channel. Supports text, embeds, mentions, and replies.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake) to send the message to"
+          },
+          "content": {
+            "type": "string",
+            "description": "Message text content (max 2000 characters, 4000 for nitro)"
+          },
+          "embeds": {
+            "type": "string",
+            "description": "Optional JSON string of embed objects array. Use buildEmbed helper or pass raw JSON."
+          },
+          "replyToMessageId": {
+            "type": "string",
+            "description": "Optional message ID to reply to"
+          },
+          "mentionEveryone": {
+            "type": "boolean",
+            "description": "Allow @everyone and @here mentions. Default: false",
+            "default": false
+          },
+          "mentionRoles": {
+            "type": "boolean",
+            "description": "Allow @role mentions. Default: true",
+            "default": true
+          },
+          "mentionUsers": {
+            "type": "boolean",
+            "description": "Allow @user mentions. Default: true",
+            "default": true
+          },
+          "tts": {
+            "type": "boolean",
+            "description": "Send as text-to-speech. Default: false",
+            "default": false
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-messages",
+      "description": "List messages in a channel. Supports pagination via before/after/around message IDs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of messages to retrieve (1-100). Default: 50",
+            "default": 50
+          },
+          "before": {
+            "type": "string",
+            "description": "Get messages before this message ID"
+          },
+          "after": {
+            "type": "string",
+            "description": "Get messages after this message ID"
+          },
+          "around": {
+            "type": "string",
+            "description": "Get messages around this message ID"
+          }
+        },
+        "required": [
+          "channelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "delete-message",
+      "description": "Delete a message from a channel. Requires Manage Messages permission if not the message author.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake)"
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Message ID (snowflake) to delete"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "channelId",
+          "messageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "add-reaction",
+      "description": "Add a reaction (emoji) to a message. Use Unicode emoji or custom emoji format name:id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake)"
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Message ID (snowflake)"
+          },
+          "emoji": {
+            "type": "string",
+            "description": "Emoji to react with. Unicode emoji (e.g. 👍) or custom emoji name:id format"
+          }
+        },
+        "required": [
+          "channelId",
+          "messageId",
+          "emoji"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-members",
+      "description": "List members of a guild. Supports pagination via limit and after user ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max members to retrieve (1-1000). Default: 100",
+            "default": 100
+          },
+          "after": {
+            "type": "string",
+            "description": "Get members after this user ID (snowflake) for pagination"
+          }
+        },
+        "required": [
+          "guildId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-member",
+      "description": "Get a specific guild member by user ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) of the member"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-roles",
+      "description": "List all roles in a guild, ordered by position (highest first).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          }
+        },
+        "required": [
+          "guildId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-role",
+      "description": "Create a new role in a guild. Requires Manage Roles permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Role name (max 100 characters)",
+            "default": "new role"
+          },
+          "color": {
+            "type": "number",
+            "description": "Role color as integer (0 = no color). Use RGB integer value.",
+            "default": 0
+          },
+          "hoist": {
+            "type": "boolean",
+            "description": "Display role members separately in online list. Default: false",
+            "default": false
+          },
+          "icon": {
+            "type": "string",
+            "description": "Base64-encoded role icon image (PNG/JPEG, max 256x256)"
+          },
+          "unicodeEmoji": {
+            "type": "string",
+            "description": "Unicode emoji to use as role icon"
+          },
+          "mentionable": {
+            "type": "boolean",
+            "description": "Allow anyone to @mention this role. Default: false",
+            "default": false
+          },
+          "permissions": {
+            "type": "string",
+            "description": "Permission bitfield as string. Default: '0'",
+            "default": "0"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "guildId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "assign-role",
+      "description": "Add a role to a guild member. Requires Manage Roles permission with the bot's role above the target role.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) to assign the role to"
+          },
+          "roleId": {
+            "type": "string",
+            "description": "Role ID (snowflake) to assign"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId",
+          "roleId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "remove-role",
+      "description": "Remove a role from a guild member. Requires Manage Roles permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) to remove the role from"
+          },
+          "roleId": {
+            "type": "string",
+            "description": "Role ID (snowflake) to remove"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId",
+          "roleId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-webhooks",
+      "description": "List webhooks in a guild or channel. Requires Manage Webhooks permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake) to list all webhooks in the guild"
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake) to list webhooks in a specific channel"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-webhook",
+      "description": "Create a new webhook in a channel. Requires Manage Webhooks permission. Returns the webhook token for sending messages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Channel ID (snowflake) to create the webhook in"
+          },
+          "name": {
+            "type": "string",
+            "description": "Webhook name (1-80 characters, cannot contain 'clyde' or 'discord')"
+          },
+          "avatar": {
+            "type": "string",
+            "description": "Base64-encoded avatar image (PNG/JPEG/GIF, max 128x128)"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "channelId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "send-webhook-message",
+      "description": "Send a message via a webhook using the webhook URL. Supports text, embeds, and usernames.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "webhookId": {
+            "type": "string",
+            "description": "Webhook ID (snowflake)"
+          },
+          "webhookToken": {
+            "type": "string",
+            "description": "Webhook token (from create-webhook response)"
+          },
+          "content": {
+            "type": "string",
+            "description": "Message text content (max 2000 characters)"
+          },
+          "username": {
+            "type": "string",
+            "description": "Override the webhook's default username"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "description": "Override the webhook's default avatar URL"
+          },
+          "embeds": {
+            "type": "string",
+            "description": "Optional JSON string of embed objects array"
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Optional thread ID to send the message in a forum thread"
+          }
+        },
+        "required": [
+          "webhookId",
+          "webhookToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "kick-member",
+      "description": "Kick a member from a guild. Requires Kick Members permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) of the member to kick"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason for the kick"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "ban-member",
+      "description": "Ban a member from a guild. Optionally delete their message history. Requires Ban Members permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) of the member to ban"
+          },
+          "deleteMessageSeconds": {
+            "type": "number",
+            "description": "Number of seconds to delete messages for (0-604800, 7 days max). Default: 0",
+            "default": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason for the ban"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "timeout-member",
+      "description": "Timeout (mute) a guild member for a specified duration. Requires Moderate Members permission.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "guildId": {
+            "type": "string",
+            "description": "Guild ID (snowflake)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "User ID (snowflake) of the member to timeout"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "description": "Timeout duration in minutes (max 40320 = 28 days). Default: 60",
+            "default": 60
+          },
+          "reason": {
+            "type": "string",
+            "description": "Optional audit log reason"
+          }
+        },
+        "required": [
+          "guildId",
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

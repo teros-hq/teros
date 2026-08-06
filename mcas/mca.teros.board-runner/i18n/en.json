@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.\n\nIMPORTANT — Cooperative stop protocol:\nAt the start of every turn, check if the current task has stopRequested=true by calling get-my-task.\nIf stopRequested is true on your active task:\n1. Finish only the current atomic step (do not start new work).\n2. Add a progress note explaining where you left off.\n3. Call block-my-task with a reason explaining where you stopped.\n4. Do NOT continue with further tool calls after completing steps 1-3."
+    },
+    "get-my-tasks": {
+      "name": "get-my-tasks",
+      "description": "List tasks assigned to this agent across all projects in the workspace. Returns: { agentId, tasks: [{ taskId, title, columnName, columnSlug, priority, projectName, running, stopRequested }], nextCursor? }. Paginated: default 50, max 200. Use get-my-task for the active task in the current conversation.",
+      "params": {
+        "workspaceId": "Workspace ID (optional, defaults to current workspace)",
+        "tags": "Return only tasks that have ALL these tags (optional). Useful for a cycle/release scope (e.g. [\"cycle:sesion-20260412\"]).",
+        "fields": "Custom subset of fields",
+        "includeRaw": "Return full task documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    },
+    "get-my-task": {
+      "name": "get-my-task",
+      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
+      "params": {
+        "fields": "Custom subset of fields",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "complete-my-task": {
+      "name": "complete-my-task",
+      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
+      "params": {
+        "taskId": "Task ID",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "block-my-task": {
+      "name": "block-my-task",
+      "description": "Mark your assigned task blocked. Moves it to Blocked + adds a progress note with the reason. Clears running. Use for dependencies, missing info, or external blockers. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: \"blocked\" } }.",
+      "params": {
+        "taskId": "Task ID",
+        "reason": "Why the task is blocked (added as a progress note)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "cancel-my-task": {
+      "name": "cancel-my-task",
+      "description": "Cancel your assigned task. Archives in-place (does not move column) + adds a progress note with the reason. Clears running. Use when the task is no longer needed, is a duplicate, or cannot be completed. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.",
+      "params": {
+        "taskId": "Task ID",
+        "reason": "Why the task is cancelled (added as a progress note)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "Add a progress note to one of your assigned tasks. Notes are visible on the task detail and the board. Prefix with \"PROPUESTA: \" to suggest new tasks to the manager. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }.",
+      "params": {
+        "taskId": "Task ID",
+        "text": "Progress note text",
+        "includeRaw": "Return full task document"
+      }
+    }
+  },
+  "name": "Board Runner",
+  "description": "Task execution capabilities for worker agents. Provides access to assigned tasks only — view task details, update progress, move tasks through workflow stages, and add progress notes. To propose new tasks or escalate blockers, use the notes field with the 'PROPUESTA:' prefix so the supervisor can act on it.",
+  "changelog": [
+    {
+      "notes": "View your assigned tasks, log progress notes, and move work through completion, blocked, or cancelled stages"
+    }
+  ]
+}

@@ -6,6 +6,7 @@
  */
 
 import { LayoutGrid } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { LauncherWindowContent } from './LauncherWindowContent';
 
@@ -21,10 +22,9 @@ export const launcherWindowDefinition: WindowTypeDefinition<LauncherWindowProps>
   defaultSize: { width: 400, height: 300 },
   minSize: { width: 200, height: 200 },
 
-  singleton: false,
   isLauncher: false, // Not shown in launcher itself
 
-  getTitle: () => 'New tab',
+  getTitle: () => i18n.t("windows.newTab"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

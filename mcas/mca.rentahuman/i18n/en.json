@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies RentAHuman.ai API connectivity."
+    },
+    "search-humans": {
+      "name": "search-humans",
+      "description": "Search for available humans on RentAHuman.ai. Filter by skill, hourly rate range, or name. No API key required — searching is free.",
+      "params": {
+        "skill": "Filter by skill (e.g., 'Photography', 'In-Person Meetings', 'Errands', 'Translation')",
+        "name": "Filter by human name",
+        "minRate": "Minimum hourly rate in USD",
+        "maxRate": "Maximum hourly rate in USD",
+        "limit": "Maximum number of results to return (default: 20, max: 100)"
+      }
+    },
+    "get-human": {
+      "name": "get-human",
+      "description": "Get the full profile of a specific human including skills, availability, hourly rate, location, rating, and payment wallet addresses.",
+      "params": {
+        "humanId": "The human's profile ID"
+      }
+    },
+    "create-booking": {
+      "name": "create-booking",
+      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Creates a booking with task details, start time, and estimated duration. Returns payment instructions.",
+      "params": {
+        "humanId": "The ID of the human to book",
+        "taskTitle": "Brief title of the task (3-200 characters)",
+        "taskDescription": "Detailed description of what the human needs to do",
+        "taskCategory": "Task category (e.g., 'errands', 'meetings', 'research', 'photography', 'delivery')",
+        "startTime": "When the task should start (ISO 8601 format, e.g., '2025-06-15T10:00:00Z')",
+        "estimatedHours": "Estimated hours needed (min: 0.5, max: 168)",
+        "agentName": "Your agent's display name (optional)"
+      }
+    },
+    "list-bookings": {
+      "name": "list-bookings",
+      "description": "List bookings for the current agent. Optionally filter by status. Requires a RENTAHUMAN_API_KEY.",
+      "params": {
+        "status": "Filter by booking status",
+        "limit": "Maximum number of results (default: 20)"
+      }
+    },
+    "get-booking": {
+      "name": "get-booking",
+      "description": "Get the details and current status of a specific booking. Requires a RENTAHUMAN_API_KEY.",
+      "params": {
+        "bookingId": "The booking ID to retrieve"
+      }
+    }
+  },
+  "name": "RentAHuman.ai",
+  "description": "Hire humans for physical-world tasks. Search 657,000+ verified humans in 50+ countries, create bookings, and manage tasks that require real-world presence.",
+  "changelog": [
+    {
+      "notes": "Initial release — search verified humans worldwide, view their profiles, and book and track real-world tasks"
+    }
+  ]
+}

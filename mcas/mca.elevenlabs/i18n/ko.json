@@ -1,0 +1,57 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. API 키와 ElevenLabs에 대한 연결성을 확인합니다."
+    },
+    "text-to-speech": {
+      "name": "text-to-speech",
+      "description": "ElevenLabs를 사용하여 텍스트에서 음성을 생성합니다. 오디오 파일 경로를 반환합니다. 사용자가 명시적으로 다른 음성을 요청하지 않는 한 기본 음성을 사용합니다(voiceId를 지정하지 않음).",
+      "params": {
+        "text": "음성으로 변환할 텍스트",
+        "voiceId": "사용할 음성 ID. 사용 가능한 음성을 보려면 list_voices를 사용하세요. 기본: Marianne Muller (스페인어)",
+        "modelId": "사용할 모델: eleven_monolingual_v1, eleven_multilingual_v1, eleven_multilingual_v2, eleven_turbo_v2, eleven_turbo_v2_5, eleven_flash_v2_5 (기본값)",
+        "stability": "음성 안정성 (0.0에서 1.0, 기본값: 0.5). 높을수록 더 안정적/일관됨",
+        "similarityBoost": "유사성 향상 (0.0에서 1.0, 기본값: 0.75). 높을수록 원래 음성과 더 가까움",
+        "style": "스타일 과장 (0.0에서 1.0, 기본값: 0). 높을수록 더 표현력이 풍부함",
+        "speakerBoost": "더 나은 품질을 위한 스피커 부스트 활성화 (기본값: true)",
+        "outputFormat": "출력 형식: mp3_44100_128, mp3_44100_192, pcm_16000, pcm_22050, pcm_24000, pcm_44100",
+        "outputPath": "오디오 파일의 사용자 지정 출력 경로 (선택 사항). 기본값은 /workspace/tts-{timestamp}.mp3입니다."
+      }
+    },
+    "list-voices": {
+      "name": "list-voices",
+      "description": "ElevenLabs 계정에서 사용 가능한 음성을 나열합니다. 이름, 카테고리로 필터링 및 결과 제한을 지원합니다.",
+      "params": {
+        "search": "이름으로 음성을 필터링하기 위한 검색어 (대소문자 구분 없음, 선택 사항)",
+        "limit": "반환할 최대 음성 수 (선택 사항, 기본값: 모두)",
+        "category": "음성 카테고리로 필터링: premade, cloned, generated, professional (선택 사항)"
+      }
+    },
+    "get-voice": {
+      "name": "get-voice",
+      "description": "특정 음성에 대한 설정 및 샘플을 포함한 자세한 정보를 가져옵니다.",
+      "params": {
+        "voiceId": "정보를 가져올 음성의 ID"
+      }
+    },
+    "generate-conversation": {
+      "name": "generate-conversation",
+      "description": "YAML 스크립트에서 다중 화자 대화를 생성합니다. 화자 음성과 대화가 포함된 YAML 파일을 읽고 각 줄에 대한 오디오를 생성한 후 단일 오디오 파일로 결합합니다. ffmpeg가 설치되어 있어야 합니다.",
+      "params": {
+        "scriptPath": "YAML 스크립트 파일의 경로 (절대 경로 또는 현재 디렉토리에 대한 상대 경로)"
+      }
+    },
+    "get-subscription": {
+      "name": "get-subscription",
+      "description": "현재 ElevenLabs 구독에 대한 정보(문자 사용 및 한도 포함)를 가져옵니다."
+    }
+  },
+  "name": "ElevenLabs",
+  "description": "ElevenLabs 텍스트-음성 변환 - AI 음성을 사용하여 텍스트에서 자연스러운 음성을 생성합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 텍스트를 자연스러운 음성으로 변환하고, AI 음성을 탐색 및 검사하며, 다중 화자 대화를 구축하고, 계획 사용량을 추적합니다."
+    }
+  ]
+}

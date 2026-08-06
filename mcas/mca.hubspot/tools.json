@@ -1,0 +1,1448 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.hubspot",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies HubSpot OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "search",
+      "description": "Search across HubSpot CRM objects (contacts, companies, deals) using the v3 search API. Returns curated results. Params: query, objectType, limit?, after?, sorts?, filters?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query string."
+          },
+          "objectType": {
+            "type": "string",
+            "description": "Object type to search: contacts, companies, or deals.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "number",
+            "description": "Pagination offset (cursor number)."
+          },
+          "sorts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "propertyName": {
+                  "type": "string"
+                },
+                "direction": {
+                  "type": "string",
+                  "enum": [
+                    "ASCENDING",
+                    "DESCENDING"
+                  ]
+                }
+              }
+            },
+            "description": "Sort configuration."
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "propertyName": {
+                  "type": "string"
+                },
+                "operator": {
+                  "type": "string",
+                  "enum": [
+                    "EQ",
+                    "NEQ",
+                    "LT",
+                    "LTE",
+                    "GT",
+                    "GTE",
+                    "BETWEEN",
+                    "IN",
+                    "NOT_IN",
+                    "HAS_PROPERTY",
+                    "NOT_HAS_PROPERTY",
+                    "CONTAINS_TOKEN",
+                    "NOT_CONTAINS_TOKEN"
+                  ]
+                },
+                "value": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "description": "Filter groups for advanced search."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific properties to return."
+          }
+        },
+        "required": [
+          "query",
+          "objectType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "create-contact",
+      "description": "Create a new HubSpot contact. Returns curated contact shape. Not retryable (no idempotency key). Params: email, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Contact email address (required, unique)."
+          },
+          "firstName": {
+            "type": "string",
+            "description": "First name."
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Last name."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "company": {
+            "type": "string",
+            "description": "Company name."
+          },
+          "jobTitle": {
+            "type": "string",
+            "description": "Job title."
+          },
+          "website": {
+            "type": "string",
+            "description": "Website URL."
+          },
+          "lifecycleStage": {
+            "type": "string",
+            "description": "Lifecycle stage: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other.",
+            "enum": [
+              "subscriber",
+              "lead",
+              "marketingqualifiedlead",
+              "salesqualifiedlead",
+              "opportunity",
+              "customer",
+              "evangelist",
+              "other"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot contact properties as key-value pairs."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-contact",
+      "description": "Retrieve a HubSpot contact by ID or email. Returns curated { id, email, firstName, lastName, phone, company, jobTitle, website, lifecycleStage, leadStatus, createdAt, updatedAt }. Params: contactId, idProperty?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact ID (HubSpot ID) or email if idProperty=email."
+          },
+          "idProperty": {
+            "type": "string",
+            "description": "Identifier type: \"email\" to lookup by email address. Default uses HubSpot ID."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-contacts",
+      "description": "List HubSpot contacts with optional filters. Returns curated rows { id, email, firstName, lastName, phone, company, jobTitle, lifecycleStage, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor from previous response.paging.next.after."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional contact properties to include."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-contact",
+      "description": "Update an existing HubSpot contact. Idempotent per-field — safe to retry. Params: contactId, email?, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "HubSpot contact ID."
+          },
+          "email": {
+            "type": "string",
+            "description": "Contact email address."
+          },
+          "firstName": {
+            "type": "string",
+            "description": "First name."
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Last name."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "company": {
+            "type": "string",
+            "description": "Company name."
+          },
+          "jobTitle": {
+            "type": "string",
+            "description": "Job title."
+          },
+          "website": {
+            "type": "string",
+            "description": "Website URL."
+          },
+          "lifecycleStage": {
+            "type": "string",
+            "description": "Lifecycle stage.",
+            "enum": [
+              "subscriber",
+              "lead",
+              "marketingqualifiedlead",
+              "salesqualifiedlead",
+              "opportunity",
+              "customer",
+              "evangelist",
+              "other"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot contact properties as key-value pairs."
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-contact",
+      "description": "Archive (soft delete) a HubSpot contact. Irreversible via API. Returns { success, contactId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "HubSpot contact ID to archive."
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "create-company",
+      "description": "Create a new HubSpot company. Returns curated company shape. Not retryable. Params: name, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Company name (required)."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Company domain (e.g. \"example.com\")."
+          },
+          "industry": {
+            "type": "string",
+            "description": "Industry."
+          },
+          "type": {
+            "type": "string",
+            "description": "Company type."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "website": {
+            "type": "string",
+            "description": "Website URL."
+          },
+          "city": {
+            "type": "string",
+            "description": "City."
+          },
+          "state": {
+            "type": "string",
+            "description": "State/region."
+          },
+          "country": {
+            "type": "string",
+            "description": "Country."
+          },
+          "numberOfEmployees": {
+            "type": "number",
+            "description": "Number of employees."
+          },
+          "annualRevenue": {
+            "type": "number",
+            "description": "Annual revenue."
+          },
+          "lifecycleStage": {
+            "type": "string",
+            "description": "Lifecycle stage.",
+            "enum": [
+              "subscriber",
+              "lead",
+              "marketingqualifiedlead",
+              "salesqualifiedlead",
+              "opportunity",
+              "customer",
+              "evangelist",
+              "other"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot company properties as key-value pairs."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-company",
+      "description": "Retrieve a HubSpot company by ID or domain. Returns curated { id, name, domain, industry, type, phone, website, city, state, country, numberOfEmployees, annualRevenue, lifecycleStage, createdAt, updatedAt }. Params: companyId, idProperty?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "description": "Company ID (HubSpot ID) or domain if idProperty=domain."
+          },
+          "idProperty": {
+            "type": "string",
+            "description": "Identifier type: \"domain\" to lookup by domain name. Default uses HubSpot ID."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "companyId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-companies",
+      "description": "List HubSpot companies with optional filters. Returns curated rows { id, name, domain, industry, type, phone, city, state, country, numberOfEmployees, lifecycleStage, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor from previous response.paging.next.after."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional company properties to include."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-company",
+      "description": "Update an existing HubSpot company. Idempotent per-field — safe to retry. Params: companyId, name?, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "description": "HubSpot company ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Company name."
+          },
+          "domain": {
+            "type": "string",
+            "description": "Company domain."
+          },
+          "industry": {
+            "type": "string",
+            "description": "Industry."
+          },
+          "type": {
+            "type": "string",
+            "description": "Company type."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "website": {
+            "type": "string",
+            "description": "Website URL."
+          },
+          "city": {
+            "type": "string",
+            "description": "City."
+          },
+          "state": {
+            "type": "string",
+            "description": "State/region."
+          },
+          "country": {
+            "type": "string",
+            "description": "Country."
+          },
+          "numberOfEmployees": {
+            "type": "number",
+            "description": "Number of employees."
+          },
+          "annualRevenue": {
+            "type": "number",
+            "description": "Annual revenue."
+          },
+          "lifecycleStage": {
+            "type": "string",
+            "description": "Lifecycle stage.",
+            "enum": [
+              "subscriber",
+              "lead",
+              "marketingqualifiedlead",
+              "salesqualifiedlead",
+              "opportunity",
+              "customer",
+              "evangelist",
+              "other"
+            ]
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot company properties as key-value pairs."
+          }
+        },
+        "required": [
+          "companyId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-company",
+      "description": "Archive (soft delete) a HubSpot company. Irreversible via API. Returns { success, companyId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "companyId": {
+            "type": "string",
+            "description": "HubSpot company ID to archive."
+          }
+        },
+        "required": [
+          "companyId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "create-deal",
+      "description": "Create a new HubSpot deal. Returns curated deal shape. Not retryable. Params: name, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Deal name (required)."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Deal amount."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Deal stage ID."
+          },
+          "pipeline": {
+            "type": "string",
+            "description": "Pipeline ID."
+          },
+          "type": {
+            "type": "string",
+            "description": "Deal type: newbusiness or existingbusiness.",
+            "enum": [
+              "newbusiness",
+              "existingbusiness"
+            ]
+          },
+          "closeDate": {
+            "type": "string",
+            "description": "Expected close date (YYYY-MM-DD)."
+          },
+          "probability": {
+            "type": "number",
+            "description": "Probability of closing (0-100)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Deal description."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot deal properties as key-value pairs."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-deal",
+      "description": "Retrieve a HubSpot deal by ID. Returns curated { id, name, amount, stage, pipeline, type, closeDate, probability, description, source, createdAt, updatedAt }. Params: dealId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dealId": {
+            "type": "string",
+            "description": "HubSpot deal ID."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "dealId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-deals",
+      "description": "List HubSpot deals with optional filters. Returns curated rows { id, name, amount, stage, pipeline, type, closeDate, probability, description, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor from previous response.paging.next.after."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional deal properties to include."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-deal",
+      "description": "Update an existing HubSpot deal. Idempotent per-field — safe to retry. Params: dealId, name?, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dealId": {
+            "type": "string",
+            "description": "HubSpot deal ID."
+          },
+          "name": {
+            "type": "string",
+            "description": "Deal name."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Deal amount."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Deal stage ID."
+          },
+          "pipeline": {
+            "type": "string",
+            "description": "Pipeline ID."
+          },
+          "type": {
+            "type": "string",
+            "description": "Deal type.",
+            "enum": [
+              "newbusiness",
+              "existingbusiness"
+            ]
+          },
+          "closeDate": {
+            "type": "string",
+            "description": "Expected close date (YYYY-MM-DD)."
+          },
+          "probability": {
+            "type": "number",
+            "description": "Probability of closing (0-100)."
+          },
+          "description": {
+            "type": "string",
+            "description": "Deal description."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot deal properties as key-value pairs."
+          }
+        },
+        "required": [
+          "dealId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-deal",
+      "description": "Archive (soft delete) a HubSpot deal. Irreversible via API. Returns { success, dealId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dealId": {
+            "type": "string",
+            "description": "HubSpot deal ID to archive."
+          }
+        },
+        "required": [
+          "dealId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "create-ticket",
+      "description": "Create a new HubSpot ticket. Returns curated ticket shape. Not retryable. Params: subject, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "Ticket subject (required)."
+          },
+          "content": {
+            "type": "string",
+            "description": "Ticket description/content."
+          },
+          "status": {
+            "type": "string",
+            "description": "Ticket status."
+          },
+          "priority": {
+            "type": "string",
+            "description": "Ticket priority: LOW, MEDIUM, HIGH."
+          },
+          "category": {
+            "type": "string",
+            "description": "Ticket category."
+          },
+          "pipeline": {
+            "type": "string",
+            "description": "Pipeline ID."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Pipeline stage ID."
+          },
+          "source": {
+            "type": "string",
+            "description": "Ticket source type."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot ticket properties as key-value pairs."
+          }
+        },
+        "required": [
+          "subject"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-ticket",
+      "description": "Retrieve a HubSpot ticket by ID. Returns curated { id, subject, content, status, priority, category, pipeline, stage, source, createdAt, updatedAt }. Params: ticketId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "HubSpot ticket ID."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-tickets",
+      "description": "List HubSpot tickets with optional filters. Returns curated rows { id, subject, content, status, priority, category, pipeline, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor from previous response.paging.next.after."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional ticket properties to include."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-ticket",
+      "description": "Update an existing HubSpot ticket. Idempotent per-field — safe to retry. Params: ticketId, subject?, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "HubSpot ticket ID."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Ticket subject."
+          },
+          "content": {
+            "type": "string",
+            "description": "Ticket content."
+          },
+          "status": {
+            "type": "string",
+            "description": "Ticket status."
+          },
+          "priority": {
+            "type": "string",
+            "description": "Ticket priority."
+          },
+          "category": {
+            "type": "string",
+            "description": "Ticket category."
+          },
+          "pipeline": {
+            "type": "string",
+            "description": "Pipeline ID."
+          },
+          "stage": {
+            "type": "string",
+            "description": "Pipeline stage ID."
+          },
+          "source": {
+            "type": "string",
+            "description": "Ticket source."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional HubSpot ticket properties as key-value pairs."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-ticket",
+      "description": "Archive (soft delete) a HubSpot ticket. Irreversible via API. Returns { success, ticketId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "HubSpot ticket ID to archive."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "create-association",
+      "description": "Create an association between two HubSpot CRM objects (e.g., contact-company, deal-contact). Uses v4 associations API. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fromObjectType": {
+            "type": "string",
+            "description": "Source object type: contacts, companies, deals, tickets.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "fromObjectId": {
+            "type": "string",
+            "description": "Source object HubSpot ID."
+          },
+          "toObjectType": {
+            "type": "string",
+            "description": "Target object type: contacts, companies, deals, tickets.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "toObjectId": {
+            "type": "string",
+            "description": "Target object HubSpot ID."
+          },
+          "associationType": {
+            "type": "string",
+            "description": "Association type ID or label (e.g., \"contact_to_company\", \"deal_to_contact\"). Optional — HubSpot will use default if omitted."
+          }
+        },
+        "required": [
+          "fromObjectType",
+          "fromObjectId",
+          "toObjectType",
+          "toObjectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-association",
+      "description": "Delete an association between two HubSpot CRM objects. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fromObjectType": {
+            "type": "string",
+            "description": "Source object type.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "fromObjectId": {
+            "type": "string",
+            "description": "Source object HubSpot ID."
+          },
+          "toObjectType": {
+            "type": "string",
+            "description": "Target object type.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "toObjectId": {
+            "type": "string",
+            "description": "Target object HubSpot ID."
+          },
+          "associationType": {
+            "type": "string",
+            "description": "Association type ID. Optional."
+          }
+        },
+        "required": [
+          "fromObjectType",
+          "fromObjectId",
+          "toObjectType",
+          "toObjectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "list-associations",
+      "description": "List all associations for a HubSpot object. Params: objectType, objectId, toObjectType, limit?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "type": "string",
+            "description": "Object type.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "objectId": {
+            "type": "string",
+            "description": "HubSpot object ID."
+          },
+          "toObjectType": {
+            "type": "string",
+            "description": "Associated object type to retrieve.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results. Default 100."
+          }
+        },
+        "required": [
+          "objectType",
+          "objectId",
+          "toObjectType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-pipelines",
+      "description": "List HubSpot pipelines for deals or tickets. Returns pipeline definitions with stages. Params: objectType (deals or tickets), includeInactive?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "type": "string",
+            "description": "Pipeline object type.",
+            "enum": [
+              "deals",
+              "tickets"
+            ]
+          },
+          "includeInactive": {
+            "type": "boolean",
+            "description": "Include inactive pipelines. Default false."
+          }
+        },
+        "required": [
+          "objectType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-pipeline",
+      "description": "Get a specific HubSpot pipeline by ID. Returns pipeline with stages. Params: objectType, pipelineId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "objectType": {
+            "type": "string",
+            "description": "Pipeline object type.",
+            "enum": [
+              "deals",
+              "tickets"
+            ]
+          },
+          "pipelineId": {
+            "type": "string",
+            "description": "Pipeline ID."
+          }
+        },
+        "required": [
+          "objectType",
+          "pipelineId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-engagement",
+      "description": "Create a HubSpot engagement (call, email, meeting, note, task). Uses the v3 engagements API. Params: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Engagement type.",
+            "enum": [
+              "call",
+              "email",
+              "meeting",
+              "note",
+              "task"
+            ]
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject or title of the engagement."
+          },
+          "body": {
+            "type": "string",
+            "description": "Body/content of the engagement."
+          },
+          "status": {
+            "type": "string",
+            "description": "Status (e.g., \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\")."
+          },
+          "direction": {
+            "type": "string",
+            "description": "Direction: INBOUND or OUTBOUND (for calls/emails)."
+          },
+          "startTime": {
+            "type": "string",
+            "description": "Start time ISO string (for meetings/calls)."
+          },
+          "duration": {
+            "type": "number",
+            "description": "Duration in milliseconds (for calls)."
+          },
+          "associatedObjectType": {
+            "type": "string",
+            "description": "Associated object type: contacts, companies, deals, tickets.",
+            "enum": [
+              "contacts",
+              "companies",
+              "deals",
+              "tickets"
+            ]
+          },
+          "associatedObjectId": {
+            "type": "string",
+            "description": "HubSpot ID of the associated object."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Additional engagement properties as key-value pairs."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-engagement",
+      "description": "Retrieve a HubSpot engagement by ID. Params: type (call|email|meeting|note|task), engagementId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Engagement type.",
+            "enum": [
+              "call",
+              "email",
+              "meeting",
+              "note",
+              "task"
+            ]
+          },
+          "engagementId": {
+            "type": "string",
+            "description": "HubSpot engagement ID."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "type",
+          "engagementId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-engagements",
+      "description": "List HubSpot engagements (calls, emails, meetings, notes, tasks). Params: type (call|email|meeting|note|task), limit?, after?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Engagement type.",
+            "enum": [
+              "call",
+              "email",
+              "meeting",
+              "note",
+              "task"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "properties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional properties to include."
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "delete-engagement",
+      "description": "Archive (soft delete) a HubSpot engagement. Params: type (call|email|meeting|note|task), engagementId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Engagement type.",
+            "enum": [
+              "call",
+              "email",
+              "meeting",
+              "note",
+              "task"
+            ]
+          },
+          "engagementId": {
+            "type": "string",
+            "description": "HubSpot engagement ID to archive."
+          }
+        },
+        "required": [
+          "type",
+          "engagementId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "list-lists",
+      "description": "List HubSpot lists (CRM Lists v3). Returns curated rows { id, name, processingType, dynamic, objectTypeId, createdAt, updatedAt, memberCount }. Params: limit?, offset?, processingType?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Max 500, default 50."
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset (default 0)."
+          },
+          "processingType": {
+            "type": "string",
+            "description": "Filter by processing type.",
+            "enum": [
+              "MANUAL",
+              "STATIC",
+              "DYNAMIC",
+              "SNAPSHOT"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-list",
+      "description": "Get a specific HubSpot list by ID (CRM Lists v3). Params: listId",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "string",
+            "description": "HubSpot list ID."
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-conversations",
+      "description": "List HubSpot conversations (inbox) with optional filters. Returns curated rows. Params: limit?, after?, status?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Max 100, default 50."
+          },
+          "after": {
+            "type": "string",
+            "description": "Pagination cursor."
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status: OPEN, CLOSED, WAITING.",
+            "enum": [
+              "OPEN",
+              "CLOSED",
+              "WAITING"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-conversation",
+      "description": "Get a HubSpot conversation by ID, including messages. Params: conversationId, includeMessages?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "HubSpot conversation ID."
+          },
+          "includeMessages": {
+            "type": "boolean",
+            "description": "Include messages in the response. Default true."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max messages to include. Default 50."
+          }
+        },
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "send-conversation-message",
+      "description": "Send a message in a HubSpot conversation (inbox reply). Params: conversationId, text, channelId?",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "HubSpot conversation ID."
+          },
+          "text": {
+            "type": "string",
+            "description": "Message text content."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Optional channel ID override."
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Optional message attachments."
+          }
+        },
+        "required": [
+          "conversationId",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

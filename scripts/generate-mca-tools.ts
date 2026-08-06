@@ -16,6 +16,16 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { z } from 'zod';
+import { mergeCuratedAnnotations } from './lib/tool-annotations.js';
+
+// Permissive tools/list result schema. The SDK's `client.listTools()` validates
+// against ToolAnnotationsSchema, a closed z.object that silently STRIPS the
+// Teros policy flags (`irreversible`, `alwaysAsk`) declared in the tool source.
+// Requesting with this raw schema keeps every annotation key intact.
+const RawListToolsResultSchema = z
+  .object({ tools: z.array(z.record(z.string(), z.unknown())) })
+  .passthrough();
 
 // Get current directory - handle both ESM and CJS contexts
 let scriptDir: string;
@@ -60,6 +70,7 @@ interface ToolDefinition {
     properties: Record<string, any>;
     required?: string[];
   };
+  annotations?: Record<string, unknown>;
 }
 
 /**
@@ -214,19 +225,46 @@ async function generateToolsForMca(mcaId: string): Promise<boolean> {
     await Promise.race([connectPromise, timeoutPromise]);
     console.log(`  ✅ Connected`);
 
-    // List tools
-    const toolsResponse = await client.listTools();
-    const tools: ToolDefinition[] = toolsResponse.tools.map((tool) => ({
-      name: tool.name,
-      description: tool.description || '',
-      inputSchema: tool.inputSchema as ToolDefinition['inputSchema'],
-    }));
+    // Preserve author-curated catalog presentation (annotations.summary/group,
+    // TER-538) from the existing tools.json: these aren't declared in code for
+    // most MCAs, so a plain regen from listTools() would wipe them. We re-apply
+    // them per tool unless the code already declares them.
+    const toolsPath = join(MCAS_PATH, mcaId, 'tools.json');
+    const curated: Record<string, { summary?: string; group?: string }> = {};
+    try {
+      if (existsSync(toolsPath)) {
+        const prev = JSON.parse(readFileSync(toolsPath, 'utf-8')) as {
+          tools?: Array<{ name: string; annotations?: { summary?: string; group?: string } }>;
+        };
+        for (const t of prev.tools ?? []) {
+          const a = t.annotations;
+          if (a && (a.summary || a.group)) curated[t.name] = { summary: a.summary, group: a.group };
+        }
+      }
+    } catch {
+      // Malformed previous tools.json — regen from scratch.
+    }
+
+    // List tools (raw schema — see RawListToolsResultSchema above)
+    const toolsResponse = await client.request({ method: 'tools/list' }, RawListToolsResultSchema);
+    const tools: ToolDefinition[] = toolsResponse.tools.map((tool) => {
+      const def: ToolDefinition = {
+        name: tool.name as string,
+        description: (tool.description as string) || '',
+        inputSchema: tool.inputSchema as ToolDefinition['inputSchema'],
+      };
+      const annotations = (tool as { annotations?: Record<string, unknown> }).annotations;
+      const merged = mergeCuratedAnnotations(annotations, curated[tool.name]);
+      if (merged) {
+        def.annotations = merged;
+      }
+      return def;
+    });
 
     console.log(`  📋 Found ${tools.length} tools:`);
     tools.forEach((t) => console.log(`     - ${t.name}`));
 
     // Write tools.json
-    const toolsPath = join(MCAS_PATH, mcaId, 'tools.json');
     const output = {
       $schema: 'https://teros.ai/schemas/mca-tools.json',
       mcaId: manifest.id,
@@ -313,8 +351,13 @@ the result to tools.json in the MCA directory.
     process.exit(0);
   }
 
-  const mcaIds = args.length > 0 ? args : undefined;
-  const { successful, failed } = await generateMcaTools(mcaIds);
+  if (args.length === 0) {
+    console.error('❌ Error: specify at least one MCA ID');
+    console.error('   Usage: tsx scripts/generate-mca-tools.ts mca.github');
+    process.exit(1);
+  }
+
+  const { successful, failed } = await generateMcaTools(args);
 
   // Always exit 0 - failed MCAs are simply not included in the system
   // This allows the backend to start even if some MCAs are not implemented yet
@@ -326,8 +369,14 @@ the result to tools.json in the MCA directory.
   process.exit(0);
 }
 
-// Run if called directly
-if (import.meta.main) {
+// Run if called directly (works with both bun and tsx)
+const isMain =
+  typeof import.meta.main === 'boolean'
+    ? import.meta.main // Bun
+    : process.argv[1]?.endsWith('generate-mca-tools.ts') || // tsx direct
+      process.argv[1]?.includes('generate-mca-tools'); // tsx via yarn
+
+if (isMain) {
   main().catch((error) => {
     console.error('Fatal error:', error);
     process.exit(1);

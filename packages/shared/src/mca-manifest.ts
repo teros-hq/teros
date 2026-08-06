@@ -48,7 +48,7 @@ export type MCAAvailability = z.infer<typeof MCAAvailabilitySchema>;
 // AUTH CONFIGURATION
 // ============================================================================
 
-export const MCAAuthTypeSchema = z.enum(['oauth2', 'api-key', 'none']);
+export const MCAAuthTypeSchema = z.enum(['oauth2', 'api-key', 'none', 'github-app', 'agent']);
 export type MCAAuthType = z.infer<typeof MCAAuthTypeSchema>;
 
 // Base auth schema
@@ -60,6 +60,22 @@ const MCAAuthBaseSchema = z.object({
   userSecrets: z.array(z.string()).optional(),
 });
 
+// Extra field schema for OAuth apps (e.g., TEAM_ID in Figma)
+const MCAAuthExtraFieldSchema = z.object({
+  /** Internal field name used as credential key (e.g., 'TEAM_ID') */
+  name: z.string().min(1),
+  /** Human-readable label for UI (e.g., 'Team ID') */
+  label: z.string().optional(),
+  /** Input type */
+  type: z.enum(['text', 'password']).default('text'),
+  /** Whether the field is required */
+  required: z.boolean().default(false),
+  /** Placeholder text */
+  placeholder: z.string().optional(),
+  /** Hint/help text shown below the input */
+  hint: z.string().optional(),
+});
+
 // OAuth2 specific fields
 const MCAAuthOAuth2Schema = MCAAuthBaseSchema.extend({
   type: z.literal('oauth2'),
@@ -69,24 +85,35 @@ const MCAAuthOAuth2Schema = MCAAuthBaseSchema.extend({
   authorizeUrl: z.string().url('Invalid authorize URL'),
   /** OAuth2 token exchange URL */
   tokenUrl: z.string().url('Invalid token URL'),
-  /** OAuth2 scopes to request */
+  /** OAuth2 scopes to request (always included in authorization) */
   scopes: z.array(z.string()).min(1, 'At least one scope is required for OAuth2'),
+  /** OAuth2 optional scopes (user can grant/deny individually) */
+  optionalScopes: z.array(z.string()).optional(),
+  /** Separator used to join scopes (defaults to ' ', use ',' for providers like Athom/Homey) */
+  scopeSeparator: z.string().optional(),
   /** Whether to use PKCE (for public clients without client_secret) */
   pkce: z.boolean().default(false),
-  /** Required system secrets for OAuth2 */
+  /** Required system secrets for OAuth2. CLIENT_ID is always required; CLIENT_SECRET is optional for public PKCE clients (token_endpoint_auth_method = 'none'). */
   systemSecrets: z
     .array(z.string())
     .refine(
-      (secrets) => secrets.includes('CLIENT_ID') && secrets.includes('CLIENT_SECRET'),
-      'OAuth2 requires CLIENT_ID and CLIENT_SECRET in systemSecrets',
+      (secrets) => secrets.includes('CLIENT_ID'),
+      'OAuth2 requires CLIENT_ID in systemSecrets',
     ),
-  /** Required user secrets for OAuth2 */
+  /** Required user secrets for OAuth2. ACCESS_TOKEN is always required; REFRESH_TOKEN is optional for providers that do not issue refresh tokens. */
   userSecrets: z
     .array(z.string())
     .refine(
-      (secrets) => secrets.includes('ACCESS_TOKEN') && secrets.includes('REFRESH_TOKEN'),
-      'OAuth2 requires ACCESS_TOKEN and REFRESH_TOKEN in userSecrets',
+      (secrets) => secrets.includes('ACCESS_TOKEN'),
+      'OAuth2 requires ACCESS_TOKEN in userSecrets',
     ),
+  /**
+   * Extra user-configurable fields for OAuth apps.
+   * These appear as editable inputs in the UI alongside the OAuth connect button.
+   * Values are stored merged with OAuth tokens (without overwriting them).
+   * Example: TEAM_ID in Figma (not obtainable via OAuth but needed for some API calls).
+   */
+  extraFields: z.array(MCAAuthExtraFieldSchema).optional(),
 });
 
 // API Key specific fields (validation done in refinement below)
@@ -99,18 +126,133 @@ const MCAAuthNoneSchema = MCAAuthBaseSchema.extend({
   type: z.literal('none'),
 });
 
-// Combined auth schema with discriminated union
+// Agent-managed auth: la sesión la vincula/desvincula el propio agente usando
+// las tools de la MCA (e.g. pairing code de WhatsApp). Teros no almacena
+// credenciales; el estado en vivo lo reporta la MCA vía su health check
+// (campo `auth` de HealthCheckResult).
+const MCAAuthAgentSchema = MCAAuthBaseSchema.extend({
+  type: z.literal('agent'),
+  /** Texto mostrado al usuario en el panel Authentication explicando cómo conectar (pedírselo al agente). */
+  instructions: z.string().optional(),
+});
+
+// GitHub App. Two modes:
+//
+//   1. Server-to-server (default — `userOAuth: false`): Teros owns the App;
+//      identity is `Teros[bot]`. Tokens are 1h installation tokens generated
+//      server-side from the private key + JWT. User secrets only hold
+//      `INSTALLATION_ID`.
+//
+//   2. User-to-server (`userOAuth: true`): GitHub App with "Request user
+//      authorization (OAuth) during installation" enabled. Each user obtains
+//      their own `user_access_token` (8h) + `refresh_token` (6 months).
+//      Acciones aparecen firmadas por el user humano. Cada user mantiene
+//      INSTALLATION_ID + USER_ACCESS_TOKEN + USER_REFRESH_TOKEN +
+//      USER_TOKEN_EXPIRES_AT + USER_LOGIN.
+const MCAAuthGitHubAppSchemaBase = MCAAuthBaseSchema.extend({
+  type: z.literal('github-app'),
+  /** Provider — fixed to 'github' for now. */
+  provider: z.literal('github'),
+  /** Public slug of the App on github.com (`https://github.com/apps/<slug>`). */
+  appSlug: z.string().min(1, 'appSlug is required'),
+  /** Setup URL configured in the App settings — used by frontend to validate redirect. */
+  setupUrl: z.string().url('Invalid setupUrl'),
+  /**
+   * If true, the GitHub App has "Request user authorization (OAuth) during
+   * installation" enabled. The callback returns `code + installation_id +
+   * state` and Teros uses the standard OAuth2 flow to obtain a per-user
+   * access_token. If false (legacy), only `installation_id + state` is
+   * processed and identity is `Teros[bot]`.
+   */
+  userOAuth: z.boolean().default(false),
+  /** OAuth2 token endpoint — required when userOAuth=true. */
+  tokenUrl: z.string().url('Invalid tokenUrl').optional(),
+  /**
+   * Permissions the App requests at registration. Must match the App config
+   * on github.com — the schema does not enforce that match, but mismatches
+   * surface as 403 INSUFFICIENT_PERMISSIONS at runtime.
+   */
+  permissions: z.record(z.enum(['read', 'write', 'admin'])),
+  /** Webhook events subscribed by the App. */
+  events: z.array(z.string()).default([]),
+  /**
+   * Required system secrets. The private key + webhook secret live in
+   * Infisical; never serialized to disk in the MCA repo. When userOAuth=true,
+   * GITHUB_APP_CLIENT_SECRET is also required (validated by superRefine).
+   */
+  systemSecrets: z
+    .array(z.string())
+    .refine(
+      (s) =>
+        s.includes('GITHUB_APP_ID') &&
+        s.includes('GITHUB_APP_PRIVATE_KEY') &&
+        s.includes('GITHUB_APP_WEBHOOK_SECRET'),
+      'github-app requires GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET in systemSecrets',
+    ),
+  /** Per-user secret stored after installation callback. */
+  userSecrets: z
+    .array(z.string())
+    .refine(
+      (s) => s.includes('INSTALLATION_ID'),
+      'github-app requires INSTALLATION_ID in userSecrets',
+    ),
+});
+
+// Combined auth schema with discriminated union (uses the base schema for
+// github-app — userOAuth-specific refinements are applied below at the
+// union level so we can keep the `discriminatedUnion` happy with plain
+// ZodObjects).
 const MCAAuthSchemaBase = z.discriminatedUnion('type', [
   MCAAuthOAuth2Schema,
   MCAAuthApiKeySchema,
   MCAAuthNoneSchema,
+  MCAAuthAgentSchema,
+  MCAAuthGitHubAppSchemaBase,
 ]);
 
-// Add refinement for api-key validation
-export const MCAAuthSchema = MCAAuthSchemaBase.refine((auth) => {
-  if (auth.type !== 'api-key') return true;
-  return (auth.systemSecrets?.length ?? 0) + (auth.userSecrets?.length ?? 0) > 0;
-}, 'api-key auth requires at least one secret (systemSecrets or userSecrets)');
+// Refinements applied at the union level
+export const MCAAuthSchema = MCAAuthSchemaBase.superRefine((auth, ctx) => {
+  // api-key requires at least one secret
+  if (auth.type === 'api-key') {
+    if ((auth.systemSecrets?.length ?? 0) + (auth.userSecrets?.length ?? 0) === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'api-key auth requires at least one secret (systemSecrets or userSecrets)',
+      });
+    }
+  }
+  // github-app userOAuth=true requires extra secrets + tokenUrl
+  if (auth.type === 'github-app' && auth.userOAuth) {
+    if (!auth.tokenUrl) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'github-app userOAuth=true requires tokenUrl',
+        path: ['tokenUrl'],
+      });
+    }
+    if (!auth.systemSecrets?.includes('GITHUB_APP_CLIENT_ID')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'github-app userOAuth=true requires GITHUB_APP_CLIENT_ID in systemSecrets',
+        path: ['systemSecrets'],
+      });
+    }
+    if (!auth.systemSecrets?.includes('GITHUB_APP_CLIENT_SECRET')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'github-app userOAuth=true requires GITHUB_APP_CLIENT_SECRET in systemSecrets',
+        path: ['systemSecrets'],
+      });
+    }
+    if (!auth.userSecrets?.includes('USER_ACCESS_TOKEN')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'github-app userOAuth=true requires USER_ACCESS_TOKEN in userSecrets',
+        path: ['userSecrets'],
+      });
+    }
+  }
+});
 export type MCAAuth = z.infer<typeof MCAAuthSchema>;
 
 // ============================================================================
@@ -180,6 +322,30 @@ export const MCARuntimeSchema = z.object({
    * Merged with the standard MCA environment variables.
    */
   systemEnvironment: z.record(z.string()).optional(),
+  /**
+   * If true, a persistent directory is mounted into the container at /app-data.
+   * The host path is {workspaceHostPath}/.apps/{app.name}/ — scoped per app instance.
+   * Use for MCAs that need to persist state across container restarts (e.g. WhatsApp sessions).
+   */
+  appDataMount: z.boolean().optional(),
+  /**
+   * If true, the owner's workspace volume is bind-mounted read-write at
+   * /workspace, giving the MCA full access to the user's workspace files.
+   * Combine with appDataMount for app-private state (bash uses both).
+   */
+  workspaceMount: z.boolean().optional(),
+  /**
+   * Container resource limits (Docker: --cpus / --memory).
+   * When omitted, the backend-wide defaults apply (MCA_CONTAINER_CPUS /
+   * MCA_CONTAINER_MEMORY_MB env vars). Set only for MCAs that genuinely need
+   * more headroom (e.g. playwright browsers, WAHA).
+   */
+  resources: z
+    .object({
+      cpus: z.number().positive().max(16).optional(),
+      memoryMb: z.number().int().min(128).max(65536).optional(),
+    })
+    .optional(),
 });
 export type MCARuntime = z.infer<typeof MCARuntimeSchema>;
 
@@ -207,6 +373,7 @@ export const MCACategorySchema = z.enum([
   'storage',
   'utility',
   'other',
+  'google',
 ]);
 export type MCACategory = z.infer<typeof MCACategorySchema>;
 
@@ -294,6 +461,32 @@ export const MCAManifestSchema = z.object({
 
   /** Background/hero image URL */
   backgroundImage: z.string().url().optional(),
+
+  // --- Catalog presentation (TER-524) — all optional, retro-compatible. Feed
+  //     the pixel-perfect catalog detail view (docs/mcas/catalog-detail-*.html). ---
+
+  /** Short one-liner shown under the name in the catalog detail hero (≤120 chars) */
+  tagline: z.string().max(120).optional(),
+
+  /** Screenshot / preview image URLs for the catalog detail */
+  screenshots: z.array(z.string().url()).optional(),
+
+  /** Release notes shown in the catalog detail changelog section */
+  changelog: z
+    .array(
+      z.object({
+        version: z.string(),
+        date: z.string(),
+        notes: z.string(),
+      }),
+    )
+    .optional(),
+
+  /** Verified/official publisher badge in the catalog */
+  verified: z.boolean().optional(),
+
+  /** Homepage / docs URL (falls back to author.url when omitted) */
+  homepage: z.string().url().optional(),
 });
 
 // ============================================================================

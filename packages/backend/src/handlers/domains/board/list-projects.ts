@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import { computeProjectStats } from './_helpers'
 
 interface ListProjectsData {
   workspaceId: string
@@ -29,7 +30,8 @@ export function createListProjectsHandler(
     }
 
     const projects = await boardService.listProjects(workspaceId)
+    const enriched = await computeProjectStats(projects, boardService)
 
-    return { workspaceId, projects }
+    return { workspaceId, projects: enriched }
   }
 }

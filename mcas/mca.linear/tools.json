@@ -12,446 +12,466 @@
     },
     {
       "name": "linear-list-issues",
-      "description": "List issues with optional filtering",
+      "description": "List Linear issues with optional filters. Returns curated rows { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. Params: teamId?, status?, assigneeId?, priority?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "teamId": {
             "type": "string",
-            "description": "Filter by team ID"
+            "description": "Filter by team UUID."
           },
           "status": {
             "type": "string",
-            "description": "Filter by status (e.g., 'Backlog', 'In Progress')"
+            "description": "Filter by workflow state type.",
+            "enum": [
+              "backlog",
+              "unstarted",
+              "started",
+              "completed",
+              "canceled"
+            ]
           },
           "assigneeId": {
             "type": "string",
-            "description": "Filter by assignee ID"
+            "description": "Filter by assignee UUID."
           },
           "priority": {
             "type": "string",
+            "description": "Filter by priority.",
             "enum": [
               "urgent",
               "high",
               "medium",
-              "low"
-            ],
-            "description": "Filter by priority"
+              "low",
+              "none"
+            ]
           },
           "limit": {
             "type": "number",
-            "description": "Number of issues to return",
-            "default": 50
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear issue nodes. Default false."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "linear-get-issue",
-      "description": "Get detailed issue information",
+      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, descriptionFormat ('full' | 'summary', default 'full'), fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "issueId": {
             "type": "string",
-            "description": "Issue ID to retrieve"
+            "description": "Issue UUID or human identifier (e.g. \"TER-123\")."
+          },
+          "descriptionFormat": {
+            "type": "string",
+            "enum": [
+              "full",
+              "summary"
+            ],
+            "description": "Control description size. 'full' (default) returns the complete markdown; 'summary' truncates to 500 chars and adds descriptionTruncated=true. Useful when scanning issues for context size."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear issue object. Default false."
           }
         },
         "required": [
           "issueId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "linear-create-issue",
-      "description": "Create a new issue",
+      "description": "Create a Linear issue. Returns curated { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. Not retryable (no idempotency key). Params: title, teamId, description?, assigneeId?, priority?, projectId?, labelIds?, stateId?, parentId? (UUID or \"TER-123\"), fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "title": {
             "type": "string",
-            "description": "Issue title"
+            "description": "Issue title."
           },
           "teamId": {
             "type": "string",
-            "description": "Team ID (required)"
+            "description": "Team UUID (required)."
           },
           "description": {
             "type": "string",
-            "description": "Issue description"
+            "description": "Markdown description."
           },
           "assigneeId": {
             "type": "string",
-            "description": "Assignee ID"
+            "description": "Assignee UUID."
           },
           "priority": {
             "type": "string",
+            "description": "Issue priority.",
             "enum": [
               "urgent",
               "high",
               "medium",
-              "low"
-            ],
-            "description": "Issue priority",
-            "default": "medium"
+              "low",
+              "none"
+            ]
           },
           "projectId": {
             "type": "string",
-            "description": "Project ID"
+            "description": "Project UUID."
           },
-          "labels": {
+          "labelIds": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Label IDs to add"
+            "description": "Label UUIDs to attach on creation."
+          },
+          "stateId": {
+            "type": "string",
+            "description": "Workflow state UUID to set initially."
+          },
+          "parentId": {
+            "type": "string",
+            "description": "Parent issue UUID or identifier (e.g. \"TER-123\"). Only set when creating a sub-task; omit otherwise."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned issue."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear issue object. Default false."
           }
         },
         "required": [
           "title",
           "teamId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "linear-update-issue",
-      "description": "Update an existing issue",
+      "description": "Update a Linear issue. Returns curated updated issue. Idempotent per-field — safe to retry. Params: issueId, title?, description?, stateId?, assigneeId?, priority?, projectId?, labelIds?, estimate?, dueDate?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "issueId": {
             "type": "string",
-            "description": "Issue ID to update"
+            "description": "Issue UUID or identifier."
           },
           "title": {
             "type": "string",
-            "description": "Updated issue title"
+            "description": "New title."
           },
           "description": {
             "type": "string",
-            "description": "Updated issue description"
+            "description": "New markdown description."
           },
-          "statusId": {
+          "stateId": {
             "type": "string",
-            "description": "Updated status ID"
+            "description": "Workflow state UUID."
           },
           "assigneeId": {
             "type": "string",
-            "description": "Updated assignee ID"
+            "description": "Assignee UUID (null to unassign)."
           },
           "priority": {
             "type": "string",
+            "description": "New priority.",
             "enum": [
               "urgent",
               "high",
               "medium",
-              "low"
-            ],
-            "description": "Updated priority"
+              "low",
+              "none"
+            ]
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Project UUID (pass null-equivalent via remove-issues-from-project)."
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Full label-id set (overwrites). Use add/remove-labels-to-issue for delta."
+          },
+          "estimate": {
+            "type": "number",
+            "description": "Point estimate."
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "ISO date string (YYYY-MM-DD)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned issue."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear issue object. Default false."
           }
         },
         "required": [
           "issueId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "linear-list-teams",
-      "description": "List all teams",
-      "inputSchema": {
-        "type": "object",
-        "properties": {}
-      }
-    },
-    {
-      "name": "linear-list-users",
-      "description": "List all users in workspace",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string",
-            "description": "Filter by team ID"
-          }
-        }
-      }
-    },
-    {
-      "name": "linear-add-comment",
-      "description": "Add comment to an issue",
+      "name": "linear-delete-issue",
+      "description": "Permanently delete a Linear issue. Irreversible. Returns { success, issueId }.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "issueId": {
             "type": "string",
-            "description": "Issue ID to comment on"
+            "description": "Issue UUID or identifier."
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "linear-archive-issue",
+      "description": "Archive a Linear issue (soft delete). Reversible via un-archive. Returns { success, issueId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue UUID or identifier."
+          }
+        },
+        "required": [
+          "issueId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-add-comment",
+      "description": "Add a comment to a Linear issue. Returns curated { id, body, authorId, authorName, issueId, url, createdAt }. Not retryable. Params: issueId, body, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue UUID or identifier."
           },
           "body": {
             "type": "string",
-            "description": "Comment content"
+            "minLength": 1,
+            "description": "Markdown comment body. Must not be empty."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear comment object. Default false."
           }
         },
         "required": [
           "issueId",
           "body"
         ]
-      }
-    },
-    {
-      "name": "linear-delete-issue",
-      "description": "Permanently delete an issue",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "issueId": {
-            "type": "string",
-            "description": "Issue ID to delete"
-          }
-        },
-        "required": [
-          "issueId"
-        ]
-      }
-    },
-    {
-      "name": "linear-archive-issue",
-      "description": "Archive an issue (soft delete)",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "issueId": {
-            "type": "string",
-            "description": "Issue ID to archive"
-          }
-        },
-        "required": [
-          "issueId"
-        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "linear-list-projects",
-      "description": "List all projects",
+      "description": "List Linear projects. Returns curated rows { id, name, url, state, icon, color, progress, startDate, targetDate, createdAt, updatedAt }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "teamId": {
             "type": "string",
-            "description": "Filter by team ID"
+            "description": "Filter by team UUID."
           },
           "limit": {
             "type": "number",
-            "description": "Number of projects to return",
-            "default": 50
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear project nodes. Default false."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "linear-create-project",
-      "description": "Create a new project",
+      "description": "Create a Linear project. Returns curated project shape. Not retryable (no idempotency key). Params: name, teamIds, description?, leadId?, startDate?, targetDate?, fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "Project name"
+            "description": "Project name."
           },
           "teamIds": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Team IDs that own this project"
+            "description": "Team UUIDs that own this project."
           },
           "description": {
             "type": "string",
-            "description": "Project description"
+            "description": "Project description."
+          },
+          "leadId": {
+            "type": "string",
+            "description": "Project lead UUID."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "ISO date (YYYY-MM-DD)."
+          },
+          "targetDate": {
+            "type": "string",
+            "description": "ISO date (YYYY-MM-DD)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned project."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear project object. Default false."
           }
         },
         "required": [
           "name",
           "teamIds"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "linear-list-labels",
-      "description": "List all labels",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string",
-            "description": "Filter by team ID"
-          }
-        }
-      }
-    },
-    {
-      "name": "linear-create-label",
-      "description": "Create a new label",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "description": "Label name"
-          },
-          "teamId": {
-            "type": "string",
-            "description": "Team ID (required for team-specific labels)"
-          },
-          "color": {
-            "type": "string",
-            "description": "Label color in hex format (e.g., '#FF5733')"
-          },
-          "description": {
-            "type": "string",
-            "description": "Label description"
-          }
-        },
-        "required": [
-          "name",
-          "teamId"
-        ]
-      }
-    },
-    {
-      "name": "linear-update-label",
-      "description": "Update an existing label",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "labelId": {
-            "type": "string",
-            "description": "Label ID to update"
-          },
-          "name": {
-            "type": "string",
-            "description": "New label name"
-          },
-          "color": {
-            "type": "string",
-            "description": "New label color in hex format"
-          },
-          "description": {
-            "type": "string",
-            "description": "New label description"
-          }
-        },
-        "required": [
-          "labelId"
-        ]
-      }
-    },
-    {
-      "name": "linear-delete-label",
-      "description": "Delete a label",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "labelId": {
-            "type": "string",
-            "description": "Label ID to delete"
-          }
-        },
-        "required": [
-          "labelId"
-        ]
-      }
-    },
-    {
-      "name": "linear-add-labels-to-issue",
-      "description": "Add labels to an issue",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "issueId": {
-            "type": "string",
-            "description": "Issue ID"
-          },
-          "labelIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Label IDs to add"
-          }
-        },
-        "required": [
-          "issueId",
-          "labelIds"
-        ]
-      }
-    },
-    {
-      "name": "linear-remove-labels-from-issue",
-      "description": "Remove labels from an issue",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "issueId": {
-            "type": "string",
-            "description": "Issue ID"
-          },
-          "labelIds": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Label IDs to remove"
-          }
-        },
-        "required": [
-          "issueId",
-          "labelIds"
-        ]
-      }
-    },
-    {
-      "name": "linear-list-workflow-states",
-      "description": "List workflow states for a team",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "teamId": {
-            "type": "string",
-            "description": "Team ID"
-          }
-        },
-        "required": [
-          "teamId"
-        ]
-      }
-    },
-    {
-      "name": "linear-add-issues-to-project",
-      "description": "Add one or multiple issues to a project",
+      "name": "linear-delete-project",
+      "description": "Permanently delete a Linear project. Irreversible. Issues in the project become detached (not deleted). Returns { success, projectId }.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "projectId": {
             "type": "string",
-            "description": "Project ID to add issues to"
+            "description": "Project UUID."
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "linear-add-issues-to-project",
+      "description": "Attach one or more Linear issues to a project. Returns { projectId, added, failed, results: [{ issueId, identifier?, success, error? }] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "Project UUID."
           },
           "issueIds": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Array of issue IDs to add to the project"
+            "description": "Issue UUIDs or identifiers."
           }
         },
         "required": [
           "projectId",
           "issueIds"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "linear-remove-issues-from-project",
-      "description": "Remove one or multiple issues from their project",
+      "description": "Detach one or more Linear issues from their project. Returns { removed, failed, results: [{ issueId, identifier?, success, error? }] }.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -460,12 +480,313 @@
             "items": {
               "type": "string"
             },
-            "description": "Array of issue IDs to remove from their project"
+            "description": "Issue UUIDs or identifiers to detach."
           }
         },
         "required": [
           "issueIds"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-list-labels",
+      "description": "List Linear labels. Returns curated rows { id, name, color, description, isGroup, parentId }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team UUID (team-scoped labels)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear label nodes. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "linear-create-label",
+      "description": "Create a Linear label. Returns curated { id, name, color, description }. Not retryable. Params: name, teamId, color?, description?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Label name."
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Team UUID that owns the label."
+          },
+          "color": {
+            "type": "string",
+            "description": "Hex color (e.g. '#FF5733')."
+          },
+          "description": {
+            "type": "string",
+            "description": "Label description."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned label."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear label object. Default false."
+          }
+        },
+        "required": [
+          "name",
+          "teamId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-update-label",
+      "description": "Update a Linear label. Returns curated updated label. Idempotent per-field. Params: labelId, name?, color?, description?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "Label UUID."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name."
+          },
+          "color": {
+            "type": "string",
+            "description": "New hex color (e.g. '#FF5733')."
+          },
+          "description": {
+            "type": "string",
+            "description": "New description."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the returned label."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear label object. Default false."
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-delete-label",
+      "description": "Permanently delete a Linear label. Irreversible. Returns { success, labelId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "labelId": {
+            "type": "string",
+            "description": "Label UUID."
+          }
+        },
+        "required": [
+          "labelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "linear-add-labels-to-issue",
+      "description": "Add labels to a Linear issue (deduped server-side against existing labels). Returns { issueId, added, total, labelIds }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue UUID or identifier."
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label UUIDs to add."
+          }
+        },
+        "required": [
+          "issueId",
+          "labelIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-remove-labels-from-issue",
+      "description": "Remove labels from a Linear issue. Returns { issueId, removed, total, labelIds }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "issueId": {
+            "type": "string",
+            "description": "Issue UUID or identifier."
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label UUIDs to remove."
+          }
+        },
+        "required": [
+          "issueId",
+          "labelIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "linear-list-teams",
+      "description": "List Linear teams. Returns curated rows { id, name, key, icon, color, description, private }. Params: limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear team nodes. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "linear-list-users",
+      "description": "List Linear workspace users. Optionally filters by team membership. Returns curated rows { id, name, displayName, email, avatarUrl, active, admin }. Params: teamId?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team UUID (returns members of that team only)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear user nodes. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "linear-list-workflow-states",
+      "description": "List workflow states for a team. Returns curated rows { id, name, type, color, position, description }. Params: teamId, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Team UUID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 50."
+          },
+          "startCursor": {
+            "type": "string",
+            "description": "Linear relay cursor from previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Linear state nodes. Default false."
+          }
+        },
+        "required": [
+          "teamId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

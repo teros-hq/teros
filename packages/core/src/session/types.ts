@@ -105,6 +105,10 @@ export interface UserMessage {
   time: {
     created: number;
   };
+  meta?: {
+    /** Absent on legacy messages — ResumeService treats absent as `done`. */
+    queueState?: 'pending' | 'running' | 'done';
+  };
 }
 
 export interface AssistantMessage {

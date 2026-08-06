@@ -5,27 +5,15 @@
  * - create-folder
  */
 
-import { ExternalLink, FolderPlus } from '@tamagui/lucide-icons';
+import { ExternalLink } from '../../primitives';
 import type React from 'react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Linking } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
-
+import { Badge, ErrorBlock, ExpandedBody, ExpandedContainer, HeaderRow, SuccessBlock, ToolCallCard } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import {
-  Badge,
-  colors,
-  DriveFile,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
-  FileRow,
-  getShortToolName,
-  HeaderRow,
-  parseOutput,
-  SuccessBlock,
-  truncate,
-} from './shared';
+import { useDriveColors, parseOutput, truncate, formatDuration } from './shared';
 
 // ============================================================================
 // Create Folder Renderer
@@ -43,9 +31,11 @@ export function CreateFolderRenderer({
   toolName,
   status,
   output,
-  duration,
+  appIcon,
   input,
 }: ToolCallRendererProps) {
+  const { t } = useTranslation();
+  const colors = useDriveColors();
   const [expanded, setExpanded] = useState(false);
 
   const parsed = parseOutput<CreateFolderResult>(output || '');
@@ -54,7 +44,7 @@ export function CreateFolderRenderer({
 
   // Get folder name from input or result
   const inputParsed = typeof input === 'string' ? parseOutput<{ name?: string }>(input) : input;
-  const folderName = result?.name || inputParsed?.name || 'folder';
+  const folderName = result?.name || (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.name : undefined) || 'folder';
 
   // Badge
   let badge: React.ReactNode = null;
@@ -72,25 +62,11 @@ export function CreateFolderRenderer({
         ? `Create folder: ${truncate(folderName, 20)}`
         : 'Create folder';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
     <ExpandedContainer>
       <HeaderRow
         status={status}
         description={description}
-        duration={duration}
         badge={badge}
         expanded={true}
         onToggle={() => setExpanded(false)}
@@ -98,30 +74,30 @@ export function CreateFolderRenderer({
       />
       <ExpandedBody>
         {(status === 'failed' || result?.error) && (
-          <ErrorBlock error={result?.error || output || 'Failed to create folder'} />
+          <ErrorBlock error={result?.error || output || t('errors.drive.createFolderFailed')} />
         )}
 
-        {status === 'completed' && isSuccess && (
-          <YStack gap={4}>
-            <SuccessBlock message={`Folder "${folderName}" created`} />
+      {status === 'completed' && isSuccess && (
+        <YStack gap={4}>
+          <SuccessBlock message={`Folder "${folderName}" created`} />
 
-            {result?.webViewLink && (
-              <XStack
-                gap={4}
-                alignItems="center"
-                paddingLeft={8}
-                pressStyle={{ opacity: 0.7 }}
-                onPress={() => Linking.openURL(result.webViewLink!)}
-                cursor="pointer"
-              >
-                <ExternalLink size={10} color={colors.driveBlue} />
-                <Text color={colors.driveBlue} fontSize={9}>
-                  Open in Drive
-                </Text>
-              </XStack>
-            )}
-          </YStack>
-        )}
+          {result?.webViewLink && (
+            <XStack
+              gap={4}
+              alignItems="center"
+              paddingLeft={8}
+              pressStyle={{ opacity: 0.7 }}
+              onPress={() => Linking.openURL(result.webViewLink!)}
+              cursor="pointer"
+            >
+              <ExternalLink size={10} color={colors.driveBlue} />
+              <Text color={colors.driveBlue} fontSize={9}>
+                Open in Drive
+              </Text>
+            </XStack>
+          )}
+        </YStack>
+      )}
       </ExpandedBody>
     </ExpandedContainer>
   );

@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "send-image": {
+      "name": "send-image",
+      "description": "사용자에게 이미지를 전송합니다. 이미지는 채팅에 표시됩니다. 공개 URL 또는 로컬 파일 경로를 지원합니다.",
+      "params": {
+        "url": "이미지의 공개 URL (이것 또는 filePath 사용)",
+        "filePath": "/workspace/의 파일 경로 (예: '/workspace/image.png'). 모든 MCA가 접근할 수 있는 공유 볼륨입니다. 이것 또는 url 사용.",
+        "caption": "이미지에 대한 선택적 캡션/설명",
+        "width": "선택적 너비 (픽셀 단위)",
+        "height": "선택적 높이 (픽셀 단위)"
+      }
+    },
+    "send-audio": {
+      "name": "send-audio",
+      "description": "사용자에게 오디오 파일을 전송합니다. 오디오는 채팅에서 재생할 수 있습니다. 공개 URL 또는 로컬 파일 경로를 지원합니다.",
+      "params": {
+        "url": "오디오 파일의 공개 URL (이것 또는 filePath 사용)",
+        "filePath": "/workspace/의 파일 경로 (예: '/workspace/audio.mp3'). 모든 MCA가 접근할 수 있는 공유 볼륨입니다. 이것 또는 url 사용.",
+        "caption": "오디오에 대한 선택적 캡션/설명",
+        "duration": "선택적 지속 시간 (초 단위)",
+        "mimeType": "선택적 MIME 타입 (예: 'audio/mp3')"
+      }
+    },
+    "send-video": {
+      "name": "send-video",
+      "description": "사용자에게 비디오를 전송합니다. 비디오는 채팅에서 재생할 수 있습니다. 공개 URL 또는 로컬 파일 경로를 지원합니다.",
+      "params": {
+        "url": "비디오의 공개 URL (이것 또는 filePath 사용)",
+        "filePath": "/workspace/의 파일 경로 (예: '/workspace/video.mp4'). 모든 MCA가 접근할 수 있는 공유 볼륨입니다. 이것 또는 url 사용.",
+        "caption": "비디오에 대한 선택적 캡션/설명",
+        "duration": "선택적 지속 시간 (초 단위)",
+        "width": "선택적 너비 (픽셀 단위)",
+        "height": "선택적 높이 (픽셀 단위)",
+        "thumbnailUrl": "비디오 썸네일/미리보기 이미지에 대한 선택적 URL",
+        "mimeType": "선택적 MIME 타입 (예: 'video/mp4')"
+      }
+    },
+    "send-file": {
+      "name": "send-file",
+      "description": "사용자에게 문서 또는 파일을 전송합니다. 파일은 채팅에서 다운로드할 수 있습니다. 공개 URL 또는 로컬 파일 경로를 지원합니다.",
+      "params": {
+        "url": "파일의 공개 URL (이것 또는 filePath 사용)",
+        "filePath": "/workspace/의 파일 경로 (예: '/workspace/document.pdf'). 모든 MCA가 접근할 수 있는 공유 볼륨입니다. 이것 또는 url 사용.",
+        "filename": "파일의 표시 이름 (예: 'report.pdf'). url을 사용하는 경우 필수, filePath의 경우 선택적.",
+        "caption": "파일에 대한 선택적 캡션/설명",
+        "mimeType": "선택적 MIME 타입 (예: 'application/pdf')",
+        "size": "선택적 파일 크기 (바이트 단위)"
+      }
+    },
+    "send-html": {
+      "name": "send-html",
+      "description": "사용자에게 HTML 위젯을 전송합니다. HTML은 채팅에서 직접 렌더링됩니다. UI 목업, 인터랙티브 미리보기, 스타일이 적용된 테이블, 다이어그램 또는 HTML/CSS로 표현할 수 있는 모든 시각적 콘텐츠를 표시하는 데 사용합니다. HTML은 보안을 위해 샌드박스화됩니다.",
+      "params": {
+        "html": "렌더링할 HTML 콘텐츠. CSS를 위한 인라인 <style> 태그를 포함할 수 있습니다.",
+        "caption": "위젯에 대한 선택적 캡션/설명",
+        "height": "선택적 고정 높이 (픽셀 단위). 제공되지 않으면 높이가 자동으로 계산됩니다."
+      }
+    },
+    "send-html-file": {
+      "name": "send-html-file",
+      "description": "사용자에게 HTML 파일을 전송합니다. 파일은 채팅에서 인라인으로 렌더링되며 (경로에서 가져옴) 파일이 변경될 때 자동으로 새로 고침되는 전용 FileViewer 창에서 열 수 있습니다. 사용자가 편집 중인 HTML 파일의 실시간 미리보기를 보도록 하려면 이 옵션을 사용하세요.",
+      "params": {
+        "filePath": "HTML 파일의 절대 경로 (예: '/workspace/mockup.html'). 파일은 공유 볼륨에 존재해야 합니다.",
+        "caption": "위젯에 대한 선택적 캡션/설명"
+      }
+    },
+    "notify-by-email": {
+      "name": "notify-by-email",
+      "description": "현재 사용자에게 알림 이메일을 전송합니다. 이메일은 Teros 알림 주소 (notifications@teros.ai)에서 Resend를 통해 전송됩니다. 사용자가 이메일로 보고서나 알림을 전달하려는 경우 Gmail 대신 이 옵션을 사용하세요 — 이메일 계정 연결이 필요하지 않습니다. 사용자의 이메일은 Teros 계정에서 자동으로 확인됩니다. 백엔드는 하단에 os.teros.ai로의 CTA가 포함된 Teros 배너를 자동으로 추가합니다 — 자체 바닥글이나 Teros 브랜드를 포함하지 마세요. EMAIL HTML GUIDELINES: 테이블 기반 레이아웃 사용 (divs/flexbox/grid 사용 금지). 모든 스타일 인라인으로 사용 (스타일 블록, 클래스 속성 없음). 전체 HTML 문서 사용: <!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>...</body></html>. 콘텐츠의 최대 너비 560px. 시스템 글꼴 사용: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif. 제목에는 Georgia, serif 사용. 배경은 <body> 또는 외부 테이블의 bgcolor를 통해 설정. 레이아웃에는 <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"> 사용. 스페이서: <tr><td style=\"height: Npx;\"></td></tr>. 버튼: <a> 인라인 display:inline-block, padding, background-color, border-radius 포함. 이미지: 절대 URL만 사용, width/height 속성, style=\"display:block\". JavaScript, <form>, 외부 CSS, 웹 글꼴 사용 금지. 색상: 어두운 테마 #0A0A0F (bg), #FAFAFA (text), #A1A1AA (secondary), #5E6AD2 (accent/CTA). 밝은 테마: #EFE9DB (bg), #18181B (text). 깔끔하고 최소한으로 유지하세요.",
+      "params": {
+        "subject": "이메일 제목",
+        "content": "이메일 본문 콘텐츠를 이메일 안전한 HTML로. 백엔드는 이를 있는 그대로 전송하며 (템플릿 래핑 없음) 하단에 Teros 배너를 추가합니다. HTML 형식 지침은 도구 설명을 참조하세요. contentType이 \"text\"인 경우 줄 바꿈이 <br> 태그로 변환됩니다.",
+        "contentType": "콘텐츠 형식. \"text\" = 일반 텍스트 (줄 바꿈이 있는 HTML로 변환됨). \"html\" = 원시 HTML (있는 그대로 포함됨). 기본값: \"html\"."
+      }
+    }
+  },
+  "name": "Messaging",
+  "description": "사용자에게 멀티미디어 메시지를 전송합니다: 이미지, 오디오, 비디오, 문서, HTML 위젯 및 Resend를 통한 알림 이메일",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 이미지, 오디오, 비디오 및 문서를 채팅으로 전송하고, 실시간 HTML 미리보기 추가"
+    }
+  ]
+}

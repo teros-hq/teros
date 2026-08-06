@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const deleteDraft: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a draft email.',
   parameters: {
     type: 'object',

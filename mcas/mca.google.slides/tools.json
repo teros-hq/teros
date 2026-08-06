@@ -1,0 +1,238 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.google.slides",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "read-presentation",
+      "description": "Read slide content from a Google Slides presentation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          }
+        },
+        "required": [
+          "presentationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "read-slide",
+      "description": "Read a specific slide from a Google Slides presentation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "description": "ID of the Google Slides file"
+          },
+          "slideIndex": {
+            "type": "number",
+            "description": "0-based index of the slide to read (0 = first slide)"
+          }
+        },
+        "required": [
+          "fileId",
+          "slideIndex"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-presentation",
+      "description": "Create a new Google Slides presentation with a title. Returns the presentation ID and URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title of the new presentation"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "add-slide",
+      "description": "Add a new slide to a Google Slides presentation. Returns the slideObjectId of the new slide.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          },
+          "layout": {
+            "type": "string",
+            "description": "Optional layout for the new slide. Can be a layout name (blank, title-slide, title-and-body, title-and-two-columns, title-only, section-header, two-section) or a raw layout objectId. Defaults to \"blank\"."
+          },
+          "insertionIndex": {
+            "type": "number",
+            "description": "Optional 0-based index where the slide should be inserted. If omitted, the slide is appended at the end."
+          }
+        },
+        "required": [
+          "presentationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-slide",
+      "description": "Update the text content of a slide in a Google Slides presentation. Can target a slide by its objectId or by 0-based slide index. Uses insertText to add text to the first text element found on the slide, or replaceAllText to replace text across the entire presentation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          },
+          "slideObjectId": {
+            "type": "string",
+            "description": "The objectId of the slide to update. If provided, takes precedence over slideIndex."
+          },
+          "slideIndex": {
+            "type": "number",
+            "description": "0-based index of the slide to update (used if slideObjectId is not provided)."
+          },
+          "text": {
+            "type": "string",
+            "description": "Text to insert into the slide. Supports \\n for line breaks."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "insert",
+              "replace"
+            ],
+            "description": "insert (default): insert text into the first text shape on the slide. replace: replace all occurrences of findText with text across the entire presentation."
+          },
+          "findText": {
+            "type": "string",
+            "description": "Text to find (required when mode=replace)."
+          },
+          "matchCase": {
+            "type": "boolean",
+            "description": "Whether to match case when replacing (default: true). Only used with mode=replace."
+          }
+        },
+        "required": [
+          "presentationId",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-slide",
+      "description": "Delete a slide from a Google Slides presentation by its objectId or 0-based index.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          },
+          "slideObjectId": {
+            "type": "string",
+            "description": "The objectId of the slide to delete. If provided, takes precedence over slideIndex."
+          },
+          "slideIndex": {
+            "type": "number",
+            "description": "0-based index of the slide to delete (used if slideObjectId is not provided)."
+          }
+        },
+        "required": [
+          "presentationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "batch-update",
+      "description": "Execute advanced operations on a Google Slides presentation using the Slides API batchUpdate endpoint. Pass an array of native Slides API request objects. Supports: createSlide, deleteObject, insertText, replaceAllText, createShape, updateShapeProperties, createImage, createTable, updatePageProperties, updateTextStyle, and more. See https://developers.google.com/slides/api/reference/rest/v1/presentations/batchUpdate for full schema.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          },
+          "requests": {
+            "type": "array",
+            "description": "Array of Slides API batchUpdate request objects. Each object is a key mapped to its request type. Common types: createSlide, deleteObject, insertText, replaceAllText, createShape, createImage, createTable, createLine, updateShapeProperties, updateTextStyle, updatePageProperties, updatePageElementsZOrder, updateSlidesPosition. See https://developers.google.com/slides/api/reference/rest/v1/presentations/request for full schema.",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "presentationId",
+          "requests"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "replace-text",
+      "description": "Replace all occurrences of a text string across an entire Google Slides presentation. Uses the Slides API replaceAllText request to find and replace text in all slides at once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "presentationId": {
+            "type": "string",
+            "description": "The ID of the presentation"
+          },
+          "findText": {
+            "type": "string",
+            "description": "Text to find and replace"
+          },
+          "replaceText": {
+            "type": "string",
+            "description": "Text to replace with. Supports \\n for line breaks."
+          },
+          "matchCase": {
+            "type": "boolean",
+            "description": "Whether to match case (default: true)"
+          }
+        },
+        "required": [
+          "presentationId",
+          "findText",
+          "replaceText"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

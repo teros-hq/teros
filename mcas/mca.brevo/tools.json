@@ -1,0 +1,1017 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.brevo",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Validates the Brevo API key against GET /account.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "send-transactional-email",
+      "description": "Send a transactional email via Brevo (POST /smtp/email). Returns { messageId, subject, sender, recipients, recipientCount }. The sender email MUST be a verified sender or domain in the Brevo account. Provide htmlContent and/or textContent (at least one). Params: sender{email,name?}, to[{email,name?}] (≥1), subject, htmlContent?, textContent?, cc?, bcc?, replyTo{email,name?}?, params? (template variables), tags?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sender": {
+            "type": "object",
+            "description": "Verified sender. { email (required), name? }.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Verified sender email address."
+              },
+              "name": {
+                "type": "string",
+                "description": "Optional sender display name."
+              }
+            },
+            "required": [
+              "email"
+            ]
+          },
+          "to": {
+            "type": "array",
+            "description": "Recipients (≥1). Each { email (required), name? }.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "Recipient email address."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Optional recipient name."
+                }
+              },
+              "required": [
+                "email"
+              ]
+            }
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject line."
+          },
+          "htmlContent": {
+            "type": "string",
+            "description": "HTML body. At least one of htmlContent / textContent is required."
+          },
+          "textContent": {
+            "type": "string",
+            "description": "Plain-text body. At least one of htmlContent / textContent is required."
+          },
+          "cc": {
+            "type": "array",
+            "description": "Optional CC recipients. Each { email (required), name? }.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email"
+              ]
+            }
+          },
+          "bcc": {
+            "type": "array",
+            "description": "Optional BCC recipients. Each { email (required), name? }.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "email"
+              ]
+            }
+          },
+          "replyTo": {
+            "type": "object",
+            "description": "Optional Reply-To. { email (required), name? }.",
+            "properties": {
+              "email": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "email"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "description": "Optional template variables substituted in the content (e.g. { FNAME: \"Ana\" })."
+          },
+          "tags": {
+            "type": "array",
+            "description": "Optional tags for tracking/reporting.",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "sender",
+          "to",
+          "subject"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true,
+        "destructiveHint": true,
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "list-contacts",
+      "description": "List contacts from Brevo (GET /contacts). Returns { contacts:[{id,email,emailBlacklisted,smsBlacklisted,listIds,attributes,createdAt,modifiedAt}], count, limit, offset }. Params: limit? (1-1000, default 50), offset? (default 0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max contacts to return (1-1000, default 50).",
+            "default": 50
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first contact for pagination (default 0).",
+            "default": 0
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-contact",
+      "description": "Create (or update) a contact in Brevo (POST /contacts). Returns { id, email, listIds, updated }. Set updateEnabled:true to update an existing contact instead of failing on a duplicate. Params: email (required), attributes? (e.g. { FIRSTNAME, LASTNAME, SMS }), listIds? (number[]), updateEnabled? (default false).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Contact email address (required)."
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Contact attributes keyed by Brevo attribute name (e.g. { FIRSTNAME, LASTNAME, SMS })."
+          },
+          "listIds": {
+            "type": "array",
+            "description": "Brevo list ids to add the contact to.",
+            "items": {
+              "type": "number"
+            }
+          },
+          "updateEnabled": {
+            "type": "boolean",
+            "description": "If true, update the contact when it already exists instead of erroring (default false).",
+            "default": false
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "get-contact",
+      "description": "Get one contact by email or id from Brevo (GET /contacts/{identifier}). Returns { id, email, emailBlacklisted, smsBlacklisted, listIds, attributes, createdAt, modifiedAt }. Params: identifier (required — the contact email or id).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "The contact email or numeric id (required)."
+          }
+        },
+        "required": [
+          "identifier"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-contact",
+      "description": "Update a contact in Brevo (PUT /contacts/{identifier}). Returns { identifier, updated, listIds, unlinkListIds }. Attributes must already exist in the account (pass them UPPERCASE). listIds adds the contact to lists, unlinkListIds removes it. Params: identifier (required — email or id), attributes? (e.g. { FIRSTNAME }), emailBlacklisted?, smsBlacklisted?, listIds? (number[]), unlinkListIds? (number[]).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "The contact email or numeric id to update (required)."
+          },
+          "attributes": {
+            "type": "object",
+            "description": "Attributes to set (must already exist in the account, UPPERCASE, e.g. { FIRSTNAME, LASTNAME })."
+          },
+          "emailBlacklisted": {
+            "type": "boolean",
+            "description": "Blacklist (true) or allow (false) the contact for emails."
+          },
+          "smsBlacklisted": {
+            "type": "boolean",
+            "description": "Blacklist (true) or allow (false) the contact for SMS."
+          },
+          "listIds": {
+            "type": "array",
+            "description": "List ids to add the contact to.",
+            "items": {
+              "type": "number"
+            }
+          },
+          "unlinkListIds": {
+            "type": "array",
+            "description": "List ids to remove the contact from.",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "identifier"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "delete-contact",
+      "description": "Delete a contact permanently from Brevo (DELETE /contacts/{identifier}). IRREVERSIBLE — the contact and its history are removed. Returns { identifier, deleted }. Params: identifier (required — the contact email or id).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "description": "The contact email or numeric id to delete (required)."
+          }
+        },
+        "required": [
+          "identifier"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true,
+        "destructiveHint": true,
+        "openWorldHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "add-contact-to-list",
+      "description": "Add contacts to a Brevo list (POST /contacts/lists/{listId}/contacts/add). Identify contacts by emails[] and/or ids[]. Returns { listId, success, failure } (contacts that were / were not added). Params: listId (required, integer), emails? (string[]), ids? (number[]).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "number",
+            "description": "Id of the list (required)."
+          },
+          "emails": {
+            "type": "array",
+            "description": "Contact emails to add.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ids": {
+            "type": "array",
+            "description": "Contact ids to add.",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "remove-contact-from-list",
+      "description": "Remove contacts from a Brevo list (POST /contacts/lists/{listId}/contacts/remove). Identify contacts by emails[] and/or ids[]. Returns { listId, success, failure } (contacts that were / were not removed). Params: listId (required, integer), emails? (string[]), ids? (number[]).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "listId": {
+            "type": "number",
+            "description": "Id of the list (required)."
+          },
+          "emails": {
+            "type": "array",
+            "description": "Contact emails to remove.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ids": {
+            "type": "array",
+            "description": "Contact ids to remove.",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "import-contacts",
+      "description": "Bulk-import contacts into Brevo lists (POST /contacts/import). Provide EITHER jsonBody[] (inline contacts) OR fileUrl (a .csv/.json/.txt file), never both. Runs asynchronously — returns { processId, listIds, contactCount, source }. Params: jsonBody? ([{ email (required), attributes? }]), fileUrl? (http(s) URL), listIds (required, integer[] — the target lists), updateExistingContacts? (default false — update contacts that already exist instead of skipping them).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "jsonBody": {
+            "type": "array",
+            "description": "Inline contacts to import (mutually exclusive with fileUrl).",
+            "items": {
+              "type": "object",
+              "properties": {
+                "email": {
+                  "type": "string",
+                  "description": "Contact email address (required)."
+                },
+                "attributes": {
+                  "type": "object",
+                  "description": "Contact attributes keyed by Brevo attribute name (e.g. { FIRSTNAME, LASTNAME })."
+                }
+              },
+              "required": [
+                "email"
+              ]
+            }
+          },
+          "fileUrl": {
+            "type": "string",
+            "description": "Public http(s) URL of a .csv/.json/.txt file to import (mutually exclusive with jsonBody)."
+          },
+          "listIds": {
+            "type": "array",
+            "description": "Ids of the lists the contacts are imported into (required, at least one).",
+            "items": {
+              "type": "number"
+            }
+          },
+          "updateExistingContacts": {
+            "type": "boolean",
+            "description": "If true, update contacts that already exist instead of skipping them (default false).",
+            "default": false
+          }
+        },
+        "required": [
+          "listIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "list-attributes",
+      "description": "List the contact attributes defined in the Brevo account (GET /contacts/attributes). Use it to discover valid attribute keys (e.g. FIRSTNAME, LASTNAME, custom fields) before creating/updating/importing contacts. Returns { attributes:[{name,category,type}], count }. No params.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-segments",
+      "description": "List the contact segments (saved filters) in the Brevo account (GET /contacts/segments). Their ids can be used as recipients.segmentIds in create-email-campaign. Returns { segments:[{id,segmentName,categoryName,updatedAt}], count, limit, offset, sort }. Params: limit? (1-50, default 10), offset? (default 0), sort? (asc | desc — by creation date, default desc).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max segments to return (1-50, default 10).",
+            "default": 10
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first segment for pagination (default 0).",
+            "default": 0
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort by record creation: asc or desc (default desc).",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-folders",
+      "description": "List contact folders from Brevo (GET /contacts/folders). Folders group contact lists; a folderId is required to create a list, so use this to discover one. Returns { folders:[{id,name,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }. Params: limit? (1-50, default 50), offset? (default 0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max folders to return (1-50, default 50).",
+            "default": 50
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first folder for pagination (default 0).",
+            "default": 0
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-lists",
+      "description": "List contact lists from Brevo (GET /contacts/lists). Returns { lists:[{id,name,folderId,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }. Params: limit? (1-50, default 50), offset? (default 0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max lists to return (1-50, default 50).",
+            "default": 50
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first list for pagination (default 0).",
+            "default": 0
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-list",
+      "description": "Create a contact list in Brevo (POST /contacts/lists). Returns { id, name, folderId }. Lists live inside a folder — pass a folderId (call list-folders to find one). Params: name (required), folderId (required, integer).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the new list (required)."
+          },
+          "folderId": {
+            "type": "number",
+            "description": "Id of the parent folder (required). Use list-folders to find one."
+          }
+        },
+        "required": [
+          "name",
+          "folderId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "list-email-templates",
+      "description": "List transactional email templates from Brevo (GET /smtp/templates). Returns { templates:[{id,name,subject,isActive,testSent,sender,replyTo,toField,tag,createdAt,modifiedAt}], count, templateStatus, limit, offset }. Params: templateStatus? (true=active only, false=inactive only, omit for all), limit? (1-1000, default 50), offset? (default 0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "templateStatus": {
+            "type": "boolean",
+            "description": "Filter by status: true=active only, false=inactive only. Omit to return all."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max templates to return (1-1000, default 50).",
+            "default": 50
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first template for pagination (default 0).",
+            "default": 0
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-email-template",
+      "description": "Create a transactional email template in Brevo (POST /smtp/templates). Returns { id, templateName, subject, isActive }. Templates are INACTIVE by default — set isActive:true to enable. sender takes EITHER {email} (a verified sender) OR {id} (a Brevo sender id), not both. Provide htmlContent (≥10 chars) or htmlUrl. Params: templateName (required), subject (required), sender{email?,id?,name?} (required), htmlContent?, htmlUrl?, isActive?, replyTo?, toField?, tag?, attachmentUrl?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "templateName": {
+            "type": "string",
+            "description": "Name of the template (required)."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject line of the template (required)."
+          },
+          "sender": {
+            "type": "object",
+            "description": "Sender — EITHER { email } (a verified sender) OR { id } (a Brevo sender id), not both. Optional name.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Verified sender email address."
+              },
+              "id": {
+                "type": "number",
+                "description": "Brevo sender id (alternative to email)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Optional sender display name."
+              }
+            }
+          },
+          "htmlContent": {
+            "type": "string",
+            "description": "HTML body (at least 10 characters). Provide this or htmlUrl."
+          },
+          "htmlUrl": {
+            "type": "string",
+            "description": "Absolute http(s) URL whose content is the HTML body. Provide this or htmlContent."
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Whether the template is active (default false — inactive).",
+            "default": false
+          },
+          "replyTo": {
+            "type": "string",
+            "description": "Optional Reply-To email address."
+          },
+          "toField": {
+            "type": "string",
+            "description": "Optional personalization of the To field (e.g. {{contact.FNAME}} {{contact.LNAME}})."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Optional tag for the template."
+          },
+          "attachmentUrl": {
+            "type": "string",
+            "description": "Optional absolute http(s) URL of an attachment."
+          }
+        },
+        "required": [
+          "templateName",
+          "subject",
+          "sender"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "list-email-campaigns",
+      "description": "List email campaigns from Brevo (GET /emailCampaigns). Returns { campaigns:[{id,name,subject,type,status,scheduledAt,createdAt,modifiedAt}], count, type, status, limit, offset }. Params: type? (classic|trigger), status? (draft|sent|archive|queued|suspended|inProcess), limit? (1-100, default 50), offset? (default 0).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Filter by campaign type.",
+            "enum": [
+              "classic",
+              "trigger"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by campaign status.",
+            "enum": [
+              "draft",
+              "sent",
+              "archive",
+              "queued",
+              "suspended",
+              "inProcess"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max campaigns to return (1-100, default 50).",
+            "default": 50
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first campaign for pagination (default 0).",
+            "default": 0
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-email-campaign",
+      "description": "Get one email campaign by id from Brevo (GET /emailCampaigns/{campaignId}). Returns { id, name, subject, type, status, scheduledAt, createdAt, modifiedAt }. Params: campaignId (required, integer).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "number",
+            "description": "Id of the campaign (required)."
+          }
+        },
+        "required": [
+          "campaignId"
+        ]
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-email-campaign",
+      "description": "Create an email campaign (newsletter) in Brevo (POST /emailCampaigns). Returns { id, name, subject, scheduledAt }. Provide content via EXACTLY ONE of htmlContent (≥10 chars), htmlUrl or templateId. sender is { email } XOR { id }. Add recipients{listIds} to target lists; if scheduledAt (ISO 8601) is set, listIds is required. Without scheduledAt the campaign is a draft you send later with send-email-campaign. Params: name (required), subject (required), sender{email?,id?,name?} (required), htmlContent?, htmlUrl?, templateId?, recipients{listIds?,exclusionListIds?,segmentIds?}?, scheduledAt?, replyTo?, toField?, tag?, previewText?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Internal campaign name (required)."
+          },
+          "subject": {
+            "type": "string",
+            "description": "Email subject line (required)."
+          },
+          "sender": {
+            "type": "object",
+            "description": "Sender — EITHER { email } (verified) OR { id }, not both. Optional name.",
+            "properties": {
+              "email": {
+                "type": "string",
+                "description": "Verified sender email address."
+              },
+              "id": {
+                "type": "number",
+                "description": "Brevo sender id (alternative to email)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Optional sender display name."
+              }
+            }
+          },
+          "htmlContent": {
+            "type": "string",
+            "description": "HTML body (≥10 chars). Provide exactly one of htmlContent, htmlUrl or templateId."
+          },
+          "htmlUrl": {
+            "type": "string",
+            "description": "Absolute http(s) URL of the HTML body. Provide exactly one of htmlContent, htmlUrl or templateId."
+          },
+          "templateId": {
+            "type": "number",
+            "description": "Id of an active transactional template used as content. Provide exactly one of htmlContent, htmlUrl or templateId."
+          },
+          "recipients": {
+            "type": "object",
+            "description": "Who receives the campaign. Required to send; listIds is required when scheduledAt is set.",
+            "properties": {
+              "listIds": {
+                "type": "array",
+                "description": "List ids to send to.",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "exclusionListIds": {
+                "type": "array",
+                "description": "List ids to exclude from the send.",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "segmentIds": {
+                "type": "array",
+                "description": "Segment ids to send to (alternative to listIds).",
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "scheduledAt": {
+            "type": "string",
+            "description": "ISO 8601 send date-time (e.g. 2026-06-01T12:30:00+02:00). Omit to create a draft sent later with send-email-campaign."
+          },
+          "replyTo": {
+            "type": "string",
+            "description": "Optional Reply-To email address."
+          },
+          "toField": {
+            "type": "string",
+            "description": "Optional To-field personalization (e.g. {FNAME} {LNAME})."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Optional campaign tag."
+          },
+          "previewText": {
+            "type": "string",
+            "description": "Optional preview text / preheader."
+          }
+        },
+        "required": [
+          "name",
+          "subject",
+          "sender"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "send-test-email",
+      "description": "Send a test of an email campaign to specific addresses (POST /emailCampaigns/{campaignId}/sendTest). Delivers REAL emails to the given testers. Returns { campaignId, emailTo }. Params: campaignId (required, integer), emailTo (required, array of up to 99 email addresses).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "number",
+            "description": "Id of the campaign to test (required)."
+          },
+          "emailTo": {
+            "type": "array",
+            "description": "Recipients of the test (1-99 email addresses).",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "campaignId",
+          "emailTo"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true,
+        "destructiveHint": true,
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "send-email-campaign",
+      "description": "Send an email campaign immediately (POST /emailCampaigns/{campaignId}/sendNow). IRREVERSIBLE — delivers to every recipient with no undo. The campaign must be a draft with recipients set. Returns { campaignId, sent }. Params: campaignId (required, integer).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "campaignId": {
+            "type": "number",
+            "description": "Id of the campaign to send now (required)."
+          }
+        },
+        "required": [
+          "campaignId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable",
+        "irreversible": true,
+        "destructiveHint": true,
+        "openWorldHint": true,
+        "idempotentHint": false
+      }
+    },
+    {
+      "name": "get-email-event-report",
+      "description": "Get transactional email events from Brevo (GET /smtp/statistics/events): per-message delivery events (delivered, opened, clicks, bounces, spam, unsubscribed…). Returns { events:[{date,email,event,messageId,subject,tag,reason,link,from,templateId}], count, limit, offset }. Timeframe: pass days (1-90) OR a startDate+endDate range (YYYY-MM-DD), not both; defaults to the last 30 days. Params: limit? (1-5000, default 100), offset? (default 0), startDate?, endDate?, days?, email?, event? (bounces|hardBounces|softBounces|delivered|spam|requests|opened|clicks|invalid|deferred|blocked|unsubscribed|error|loadedByProxy), messageId?, templateId?, sort? (asc|desc, default desc).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max events to return (1-5000, default 100).",
+            "default": 100
+          },
+          "offset": {
+            "type": "number",
+            "description": "Index of the first event for pagination (default 0).",
+            "default": 0
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start of the range (YYYY-MM-DD). Must be paired with endDate; not compatible with days."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End of the range (YYYY-MM-DD). Must be paired with startDate; not compatible with days."
+          },
+          "days": {
+            "type": "number",
+            "description": "Number of days in the past incl. today (1-90). Not compatible with startDate/endDate."
+          },
+          "email": {
+            "type": "string",
+            "description": "Filter events for a specific recipient email address."
+          },
+          "event": {
+            "type": "string",
+            "description": "Filter by event type.",
+            "enum": [
+              "bounces",
+              "hardBounces",
+              "softBounces",
+              "delivered",
+              "spam",
+              "requests",
+              "opened",
+              "clicks",
+              "invalid",
+              "deferred",
+              "blocked",
+              "unsubscribed",
+              "error",
+              "loadedByProxy"
+            ]
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Filter events for a specific messageId."
+          },
+          "templateId": {
+            "type": "number",
+            "description": "Filter events for a specific template id."
+          },
+          "sort": {
+            "type": "string",
+            "description": "Sort by record creation: asc or desc (default desc).",
+            "enum": [
+              "asc",
+              "desc"
+            ]
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-aggregated-smtp-report",
+      "description": "Get aggregated transactional email stats from Brevo (GET /smtp/statistics/aggregatedReport): totals over a timeframe. Returns { range, requests, delivered, opens, uniqueOpens, clicks, uniqueClicks, hardBounces, softBounces, blocked, invalid, spamReports, unsubscribed }. Timeframe: pass days (1-90) OR a startDate+endDate range (YYYY-MM-DD), not both; defaults to the last 90 days. Params: startDate?, endDate?, days?, tag? (filter by email tag).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start of the range (YYYY-MM-DD). Must be paired with endDate; not compatible with days."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End of the range (YYYY-MM-DD). Must be paired with startDate; not compatible with days."
+          },
+          "days": {
+            "type": "number",
+            "description": "Number of days in the past incl. today (1-90). Not compatible with startDate/endDate."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Filter the totals for a specific email tag."
+          }
+        }
+      },
+      "annotations": {
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

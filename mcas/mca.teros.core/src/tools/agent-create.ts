@@ -1,14 +1,12 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const agentCreate: ToolConfig = {
-  description: 'Create a new agent instance from an agent core.',
+  annotations: { readOnlyHint: false },
+  description:
+    'Create a new agent instance. The core is assigned automatically by scope (no workspace → super-agent; workspace → agent).',
   parameters: {
     type: 'object',
     properties: {
-      coreId: {
-        type: 'string',
-        description: "The agent core ID to use (e.g., 'alice', 'iria')",
-      },
       name: {
         type: 'string',
         description: "Short name for the agent (e.g., 'Alice')",
@@ -28,14 +26,13 @@ export const agentCreate: ToolConfig = {
       workspaceId: {
         type: 'string',
         description:
-          'Optional: Workspace ID to create the agent in. If not provided, creates a global agent.',
+          'Optional: Workspace ID to create the agent in. If not provided, creates a global agent. Pass null explicitly to create a Superagent (a global agent with elevated capabilities not bound to any workspace).',
       },
     },
-    required: ['coreId', 'name', 'fullName', 'role', 'intro'],
+    required: ['name', 'fullName', 'role', 'intro'],
   },
   handler: async (args, context) => {
     return context.agentCreate({
-      coreId: args.coreId as string,
       name: args.name as string,
       fullName: args.fullName as string,
       role: args.role as string,

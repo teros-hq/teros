@@ -3,7 +3,8 @@
  */
 
 import type { Job, JobManager } from './job-manager.js';
-import { detectFileType } from './processors/base.js';
+import { getExtension } from './processors/base.js';
+import { createProcessor } from './processors/factory.js';
 import { PDFProcessor } from './processors/pdf.js';
 
 export class JobWorker {
@@ -78,20 +79,16 @@ export class JobWorker {
       // Update status to processing
       this.jobManager.updateJobStatus(job.id, 'processing');
 
-      // Detect file type
-      const fileType = detectFileType(job.inputPath);
-      if (!fileType) {
-        throw new Error('Unsupported file type');
-      }
-
-      // Process based on type
+      // Process based on type. PDF gets chunk-level progress tracking; other
+      // supported formats (docx) are extracted in one shot. Unsupported
+      // formats throw an actionable error via the shared factory.
       let result;
 
-      if (fileType === 'pdf') {
-        // Process with progress tracking
+      if (getExtension(job.inputPath) === 'pdf') {
         result = await this.processPDFWithProgress(job);
       } else {
-        throw new Error(`File type "${fileType}" not yet implemented`);
+        const processor = createProcessor(job.inputPath, this.anthropicApiKey);
+        result = await processor.process(job.inputPath, job.options);
       }
 
       // Mark as completed

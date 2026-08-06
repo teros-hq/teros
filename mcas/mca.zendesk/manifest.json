@@ -1,0 +1,45 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.zendesk",
+  "name": "Zendesk",
+  "version": "1.1.0",
+  "description": "Zendesk support integration — manage tickets, users, organizations, views, groups, triggers, automations, attachments, webhooks, and satisfaction ratings via the Zendesk REST API v2 with rate limiting.",
+  "type": "integration",
+  "icon": "icon.svg",
+  "category": "other",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["zendesk", "customer-support", "tickets", "helpdesk", "support", "crm"],
+  "layers": {
+    "tools": false,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["SUBDOMAIN", "EMAIL", "API_TOKEN"]
+    },
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-05-01",
+      "notes": "Create, search, and reply to support tickets, manage users, organizations, and views, and track satisfaction ratings"
+    }
+  ]
+}

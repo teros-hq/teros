@@ -9,6 +9,8 @@ import React from 'react';
 import { ScrollView } from 'react-native';
 import CodeHighlighter from 'react-native-code-highlighter';
 import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { surface } from './primitives/colors';
+import { useColors } from './primitives/useColors';
 
 // Map file extensions to language names
 const extensionToLanguage: Record<string, string> = {
@@ -127,10 +129,17 @@ export function addLineNumbers(code: string, startLine: number = 1): string {
     .join('\n');
 }
 
-// Background color from vs2015 theme
-const CODE_BG_COLOR = '#1E1E1E';
+// Background color for the code surface — uses the design system's inner
+// surface token so it adapts to light/dark. The hljs vs2015 theme handles
+// syntax token colors (those are theme-agnostic on the dark bg).
+const CODE_BG_DARK = '#1E1E1E';
+const CODE_BG_LIGHT = 'rgba(10,10,15,0.05)';
 
 export function CodeBlock({ code, language, filename, maxHeight }: CodeBlockProps) {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
+  const codeBg = isDark ? CODE_BG_DARK : CODE_BG_LIGHT;
+
   // Auto-detect language from filename if not provided
   const detectedLanguage = language || detectLanguage(filename) || 'plaintext';
 
@@ -140,7 +149,7 @@ export function CodeBlock({ code, language, filename, maxHeight }: CodeBlockProp
         maxHeight: maxHeight || 400,
         paddingLeft: 8,
         paddingVertical: 6,
-        backgroundColor: CODE_BG_COLOR,
+        backgroundColor: codeBg,
       }}
       horizontal={false}
       nestedScrollEnabled
@@ -150,13 +159,13 @@ export function CodeBlock({ code, language, filename, maxHeight }: CodeBlockProp
         language={detectedLanguage}
         textStyle={{
           fontSize: 10,
-          fontFamily:
-            'ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace',
+          fontFamily: '$mono',
           fontWeight: '400',
           lineHeight: 14,
+          color: isDark ? undefined : c.text,
         }}
         scrollViewProps={{
-          style: { backgroundColor: CODE_BG_COLOR },
+          style: { backgroundColor: codeBg },
         }}
       >
         {code}

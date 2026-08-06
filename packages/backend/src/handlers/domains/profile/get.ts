@@ -15,6 +15,11 @@ interface ProfileData {
   locale?: string
   timezone?: string
   createdAt: string
+  termsAcceptedAt?: string
+  onboardingCompletedAt?: string
+  accessGranted: boolean
+  badges?: Array<'founding_partner' | 'early_bird'>
+  lastChangelogSeen?: string
 }
 
 export function createGetProfileHandler(userService: UserService) {
@@ -34,6 +39,11 @@ export function createGetProfileHandler(userService: UserService) {
       locale: user.profile.locale,
       timezone: user.profile.timezone,
       createdAt: user.createdAt.toISOString(),
+      termsAcceptedAt: user.termsAcceptedAt?.toISOString(),
+      onboardingCompletedAt: user.onboardingCompletedAt?.toISOString(),
+      accessGranted: user.accessGranted ?? false,
+      badges: user.badges ?? [],
+      lastChangelogSeen: user.lastChangelogSeen,
     }
   }
 }

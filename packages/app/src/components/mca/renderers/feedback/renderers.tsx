@@ -2,29 +2,30 @@
  * Feedback Renderer - Sub-renderers for each tool
  */
 
-import { Bug, CheckCircle, Lightbulb } from '@tamagui/lucide-icons';
 import type React from 'react';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
+  countBadgeVariant,
   ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
+  formatCountBadge,
+  ToolCallCard,
+} from '../../primitives';
+import type { ToolCallRendererProps } from '../../types';
+import {
+  useFeedbackColors,
   type Feedback,
   FeedbackRow,
+  FeedbackSuccessBlock,
   type FeedbackUpdate,
   formatDate,
-  getShortToolName,
-  HeaderRow,
   parseOutput,
   SeverityBadge,
   StatusBadge,
-  SuccessBlock,
   TypeBadge,
   UnreadBadge,
   UpdateRow,
@@ -41,8 +42,8 @@ interface ReportBugOutput {
   error?: string;
 }
 
-export function ReportBugRenderer({ toolName, status, duration, output }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+export function ReportBugRenderer({ toolName, status, duration, output, appIcon }: ToolCallRendererProps) {
+  const { t } = useTranslation();
   const parsed = output ? parseOutput<ReportBugOutput>(output) : null;
   const data = typeof parsed === 'object' ? parsed : null;
 
@@ -64,41 +65,23 @@ export function ReportBugRenderer({ toolName, status, duration, output }: ToolCa
     badge = <Badge text="error" variant="error" />;
   }
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {status === 'failed' && <ErrorBlock error="Failed to report bug" />}
-        {data?.error && <ErrorBlock error={data.error} />}
-        {isSuccess && (
-          <SuccessBlock
-            message={data.message || 'Bug report submitted successfully'}
-            feedbackId={data.feedbackId}
-          />
-        )}
-      </ExpandedBody>
-    </ExpandedContainer>
+    <ToolCallCard
+      status={status}
+      description={description}
+      badge={badge}
+      iconUri={appIcon}
+      defaultExpanded
+    >
+      {status === 'failed' && <ErrorBlock error={t('errors.feedback.reportBugFailed')} />}
+      {data?.error && <ErrorBlock error={data.error} />}
+      {isSuccess && (
+        <FeedbackSuccessBlock
+          message={data.message || t('errors.feedback.bugReportSuccess')}
+          feedbackId={data.feedbackId}
+        />
+      )}
+    </ToolCallCard>
   );
 }
 
@@ -116,10 +99,10 @@ interface ReportSuggestionOutput {
 export function ReportSuggestionRenderer({
   toolName,
   status,
-  duration,
   output,
+  appIcon,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
+  const { t } = useTranslation();
   const parsed = output ? parseOutput<ReportSuggestionOutput>(output) : null;
   const data = typeof parsed === 'object' ? parsed : null;
 
@@ -141,41 +124,23 @@ export function ReportSuggestionRenderer({
     badge = <Badge text="error" variant="error" />;
   }
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {status === 'failed' && <ErrorBlock error="Failed to submit suggestion" />}
-        {data?.error && <ErrorBlock error={data.error} />}
-        {isSuccess && (
-          <SuccessBlock
-            message={data.message || 'Suggestion submitted successfully'}
-            feedbackId={data.feedbackId}
-          />
-        )}
-      </ExpandedBody>
-    </ExpandedContainer>
+    <ToolCallCard
+      status={status}
+      description={description}
+      badge={badge}
+      iconUri={appIcon}
+      defaultExpanded
+    >
+      {status === 'failed' && <ErrorBlock error={t('errors.feedback.suggestionFailed')} />}
+      {data?.error && <ErrorBlock error={data.error} />}
+      {isSuccess && (
+        <FeedbackSuccessBlock
+          message={data.message || t('errors.feedback.suggestionSuccess')}
+          feedbackId={data.feedbackId}
+        />
+      )}
+    </ToolCallCard>
   );
 }
 
@@ -193,9 +158,10 @@ interface ListMyFeedbackOutput {
 export function ListMyFeedbackRenderer({
   toolName,
   status,
-  duration,
   output,
+  appIcon,
 }: ToolCallRendererProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(status === 'completed');
   const parsed = output ? parseOutput<ListMyFeedbackOutput>(output) : null;
   const data = typeof parsed === 'object' ? parsed : null;
@@ -212,38 +178,16 @@ export function ListMyFeedbackRenderer({
     if (unread > 0) {
       badge = <Badge text={`${unread} unread`} variant="info" />;
     } else {
-      badge = <Badge text={`${count}`} variant="gray" />;
+      badge = <Badge text={formatCountBadge(count, 'item')} variant={countBadgeVariant(count)} />;
     }
   } else if (status === 'failed') {
     badge = <Badge text="error" variant="error" />;
   }
 
-  if (!expanded || !data?.feedbacks?.length) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {data.error && <ErrorBlock error={data.error} />}
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {data?.error && <ErrorBlock error={data.error} />}
+      {data?.feedbacks && data.feedbacks.length > 0 && (
         <ScrollView style={{ maxHeight: 300 }} showsVerticalScrollIndicator={false}>
           <YStack gap={6}>
             {data.feedbacks.map((feedback) => (
@@ -251,8 +195,8 @@ export function ListMyFeedbackRenderer({
             ))}
           </YStack>
         </ScrollView>
-      </ExpandedBody>
-    </ExpandedContainer>
+      )}
+    </ToolCallCard>
   );
 }
 
@@ -275,8 +219,10 @@ interface GetFeedbackOutput {
   error?: string;
 }
 
-export function GetFeedbackRenderer({ toolName, status, duration, output }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(status === 'completed');
+export function GetFeedbackRenderer({ toolName, status, output, appIcon }: ToolCallRendererProps) {
+  const c = useFeedbackColors();
+  const colors = useFeedbackColors();
+  const { t } = useTranslation();
   const parsed = output ? parseOutput<GetFeedbackOutput>(output) : null;
   const data = typeof parsed === 'object' ? parsed : null;
 
@@ -290,80 +236,52 @@ export function GetFeedbackRenderer({ toolName, status, duration, output }: Tool
     badge = <Badge text="error" variant="error" />;
   }
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
-
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
-        {status === 'failed' && <ErrorBlock error="Failed to load feedback" />}
-        {data?.error && <ErrorBlock error={data.error} />}
+    <ToolCallCard
+      status={status}
+      description={description}
+      badge={badge}
+      iconUri={appIcon}
+      defaultExpanded
+    >
+      {status === 'failed' && <ErrorBlock error={t('errors.feedback.loadFailed')} />}
+      {data?.error && <ErrorBlock error={data.error} />}
+      {data && (
+        <YStack gap={8}>
+          <Text color={c.text} fontSize={13} fontWeight="600">
+            {data.title}
+          </Text>
 
-        {data && !data.error && (
-          <YStack gap={10}>
-            {/* Header */}
-            <YStack gap={6}>
-              <XStack alignItems="center" gap={8}>
-                <TypeBadge type={data.type} />
-                {data.severity && <SeverityBadge severity={data.severity} />}
-                {data.hasUnreadUpdates && <UnreadBadge />}
-              </XStack>
+          <Text color={c.text2} fontSize={10} fontFamily="$mono">
+            {data.feedbackId} • {formatDate(data.createdAt)}
+          </Text>
 
-              <Text color={colors.primary} fontSize={13} fontWeight="600">
-                {data.title}
-              </Text>
-
-              <Text color={colors.secondary} fontSize={10} fontFamily="$mono">
-                {data.feedbackId} • {formatDate(data.createdAt)}
+          {/* Description */}
+          {data.description && (
+            <YStack backgroundColor={c.bgInner} borderRadius={6} padding={10}>
+              <Text color={c.text} fontSize={11} lineHeight={18}>
+                {data.description}
               </Text>
             </YStack>
+          )}
 
-            {/* Description */}
-            {data.description && (
-              <YStack backgroundColor={colors.bgInner} borderRadius={6} padding={10}>
-                <Text color={colors.primary} fontSize={11} lineHeight={18}>
-                  {data.description}
-                </Text>
-              </YStack>
-            )}
-
-            {/* Updates */}
-            {data.updates && data.updates.length > 0 && (
-              <YStack gap={6}>
-                <Text color={colors.secondary} fontSize={10} fontWeight="500">
-                  UPDATES ({data.updates.length})
-                </Text>
-                <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
-                  <YStack gap={6}>
-                    {data.updates.map((update) => (
-                      <UpdateRow key={update.updateId} update={update} />
-                    ))}
-                  </YStack>
-                </ScrollView>
-              </YStack>
-            )}
-          </YStack>
-        )}
-      </ExpandedBody>
-    </ExpandedContainer>
+          {/* Updates */}
+          {data.updates && data.updates.length > 0 && (
+            <YStack gap={6}>
+              <Text color={c.text2} fontSize={10} fontWeight="500">
+                UPDATES ({data.updates.length})
+              </Text>
+              <ScrollView style={{ maxHeight: 200 }} showsVerticalScrollIndicator={false}>
+                <YStack gap={6}>
+                  {data.updates.map((update) => (
+                    <UpdateRow key={update.updateId} update={update} />
+                  ))}
+                </YStack>
+              </ScrollView>
+            </YStack>
+          )}
+        </YStack>
+      )}
+    </ToolCallCard>
   );
 }

@@ -5,6 +5,11 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />
     
+    <!-- Google Fonts — MCA catalog redesign (DM Sans / Newsreader / JetBrains Mono) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;1,6..72,300&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
     <!-- SEO Meta Tags -->
     <meta name="description" content="Teros - Plataforma de asistentes IA personalizables con capacidades avanzadas. Automatiza tareas, gestiona proyectos y potencia tu productividad con IA." />
     <meta name="keywords" content="IA, asistente virtual, automatización, productividad, agentes IA, Teros, AI assistant, workspace" />
@@ -41,7 +46,49 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#000000" />
     
+    <!-- Theme detection: read saved theme from localStorage before paint to avoid flash -->
+    <script>
+      (function() {
+        var theme = 'dark';
+        try {
+          var raw = localStorage.getItem('teros-ui-theme');
+          if (raw) {
+            var parsed = JSON.parse(raw);
+            if (parsed && parsed.state && parsed.state.theme === 'light') {
+              theme = 'light';
+            }
+          }
+        } catch (e) {}
+
+        var root = document.documentElement;
+        if (theme === 'light') {
+          root.style.setProperty('--teros-loader-bg', '#EFE9DB');
+          root.style.setProperty('--teros-loader-text', '#1a1a1f');
+          root.style.setProperty('--teros-loader-text-secondary', '#6b7280');
+          root.style.setProperty('--teros-loader-btn-text', '#EFE9DB');
+          root.style.setProperty('--teros-loader-btn-bg', '#1a1a1f');
+        } else {
+          root.style.setProperty('--teros-loader-bg', '#000000');
+          root.style.setProperty('--teros-loader-text', '#ffffff');
+          root.style.setProperty('--teros-loader-text-secondary', '#a1a1aa');
+          root.style.setProperty('--teros-loader-btn-text', '#000000');
+          root.style.setProperty('--teros-loader-btn-bg', '#ffffff');
+        }
+
+        // Update meta theme-color to match
+        var metaTheme = document.querySelector('meta[name="theme-color"]');
+        if (metaTheme) {
+          metaTheme.setAttribute('content', theme === 'light' ? '#EFE9DB' : '#000000');
+        }
+      })();
+    </script>
+    
     <title>Teros</title>
+    
+    <!-- Teros Design System — Google Fonts (DM Sans, Newsreader, JetBrains Mono) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=Newsreader:ital,opsz,wght@0,6..72,300;1,6..72,300;1,6..72,400&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet" />
     
     <!-- Canonical URL -->
     <link rel="canonical" href="https://os.teros.ai" />
@@ -71,6 +118,82 @@
         display: flex;
         height: 100%;
         flex: 1;
+      }
+    </style>
+
+    <!-- App Shell / Loading Screen -->
+    <style id="teros-app-shell">
+      #teros-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: var(--teros-loader-bg, #000000);
+        color: var(--teros-loader-text, #ffffff);
+        z-index: 9999;
+        transition: opacity 0.4s ease-out;
+      }
+      #teros-loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #teros-loading .shell-logo {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 24px;
+      }
+      #teros-loading .shell-text {
+        margin-top: 16px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        color: var(--teros-loader-text-secondary, #a1a1aa);
+        letter-spacing: 0.02em;
+      }
+      #teros-error {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 32px;
+      }
+      #teros-error .shell-logo {
+        width: 64px;
+        height: 64px;
+        margin-bottom: 24px;
+        opacity: 0.45;
+      }
+      #teros-error h1 {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 20px;
+        font-weight: 600;
+        margin: 0 0 8px;
+        color: var(--teros-loader-text, #ffffff);
+      }
+      #teros-error p {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        color: var(--teros-loader-text-secondary, #a1a1aa);
+        margin: 0 0 24px;
+        max-width: 320px;
+        line-height: 1.5;
+      }
+      #teros-error .reload-btn {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--teros-loader-btn-text, #000000);
+        background: var(--teros-loader-btn-bg, #ffffff);
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        cursor: pointer;
+        transition: opacity 0.2s;
+      }
+      #teros-error .reload-btn:hover {
+        opacity: 0.85;
       }
     </style>
     
@@ -106,7 +229,20 @@
   </head>
   <body>
     <noscript>Necesitas habilitar JavaScript para usar Teros.</noscript>
-    <div id="root"></div>
+    <div id="root">
+      <!-- App Shell: se muestra mientras React carga -->
+      <div id="teros-loading">
+        <svg id="teros-shell-spinner" width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="shell-text">Loading Teros...</div>
+
+        <div id="teros-error">
+          <svg id="teros-shell-error-logo" class="shell-logo" width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"></svg>
+          <h1>Something went wrong</h1>
+          <p>We couldn't load Teros. This may be due to a temporary network issue or a problem with your browser.</p>
+          <button class="reload-btn" onclick="window.location.reload()">Reload</button>
+        </div>
+      </div>
+    </div>
     
     <!-- Register Service Worker for PWA -->
     <script>
@@ -121,6 +257,127 @@
             });
         });
       }
+    </script>
+
+    <!-- Loading Watchdog -->
+    <script>
+      (function() {
+        const MOUNT_TIMEOUT = 60000; // 60 segundos
+        const CHECK_INTERVAL = 500;    // revisar cada 500ms
+
+        const loadingEl = document.getElementById('teros-loading');
+        const errorEl   = document.getElementById('teros-error');
+
+        let elapsed = 0;
+        let intervalId = null;
+
+        function isAppMounted() {
+          // React Native Web monta dentro de #root, reemplazando los hijos.
+          // Si #root tiene un hijo que NO es teros-loading, React ya hidrató.
+          const root = document.getElementById('root');
+          if (!root) return false;
+
+          const children = Array.from(root.children);
+          // Si hay algún hijo distinto a teros-loading, React montó
+          const hasReactContent = children.some(function(el) {
+            return el.id !== 'teros-loading';
+          });
+
+          // También comprobamos clase de marca manual (fallback)
+          const hasMountClass = document.body.classList.contains('app-mounted');
+
+          return hasReactContent || hasMountClass;
+        }
+
+        function showError() {
+          if (intervalId) clearInterval(intervalId);
+          if (!loadingEl || !errorEl) return;
+
+          // Ocultar spinner, mostrar error
+          const spinner = document.getElementById('teros-shell-spinner');
+          const text    = loadingEl.querySelector('.shell-text');
+          if (spinner) spinner.style.display = 'none';
+          if (text)    text.style.display = 'none';
+
+          errorEl.style.display = 'flex';
+        }
+
+        function check() {
+          if (isAppMounted()) {
+            if (intervalId) clearInterval(intervalId);
+            loadingEl.classList.add('hidden');
+            return;
+          }
+
+          elapsed += CHECK_INTERVAL;
+          if (elapsed >= MOUNT_TIMEOUT) {
+            showError();
+          }
+        }
+
+        // Iniciar watchdog
+        intervalId = setInterval(check, CHECK_INTERVAL);
+
+        // Comprobación inmediata por si el bundle ya cargó
+        setTimeout(check, 100);
+      })();
+    </script>
+
+    <!-- TerosLoading spinner (pure JS, no React) -->
+    <script>
+      (function() {
+        var size  = 48;
+        var color = '#5E6AD2';
+
+        function buildPoints(s) {
+          var padding   = s * 0.15;
+          var innerSize = s - padding * 2;
+          return [
+            { x: s / 2,                               y: padding },
+            { x: s - padding - innerSize * 0.067,     y: padding + innerSize * 0.25 },
+            { x: s - padding - innerSize * 0.067,     y: padding + innerSize * 0.75 },
+            { x: s / 2,                               y: s - padding },
+            { x: padding + innerSize * 0.067,        y: padding + innerSize * 0.75 },
+            { x: padding + innerSize * 0.067,        y: padding + innerSize * 0.25 },
+          ];
+        }
+
+        function render(svgEl, activeIndex) {
+          var points  = buildPoints(size);
+          var baseR   = size * 0.08;
+          var activeR = baseR * 1.2;
+          svgEl.innerHTML = '';
+          for (var i = 0; i < points.length; i++) {
+            var dist    = Math.min(Math.abs(i - activeIndex), 6 - Math.abs(i - activeIndex));
+            var opacity = dist === 0 ? 1 : dist === 1 ? 0.6 : 0.3;
+            var r       = dist === 0 ? activeR : baseR;
+            var circle  = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            circle.setAttribute('cx', points[i].x);
+            circle.setAttribute('cy', points[i].y);
+            circle.setAttribute('r', r);
+            circle.setAttribute('fill', color);
+            circle.setAttribute('opacity', opacity);
+            svgEl.appendChild(circle);
+          }
+        }
+
+        // Animated spinner
+        var svg = document.getElementById('teros-shell-spinner');
+        if (svg) {
+          var active = 0;
+          render(svg, active);
+          setInterval(function() {
+            active = (active + 1) % 6;
+            render(svg, active);
+          }, 150);
+        }
+
+        // Static error logo (dimmed)
+        var errorSvg = document.getElementById('teros-shell-error-logo');
+        if (errorSvg) {
+          render(errorSvg, -99); // activeIndex=-99 → all dots at dist≥2 → opacity 0.3
+        }
+      })();
     </script>
   </body>
 </html>

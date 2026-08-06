@@ -7,6 +7,7 @@ import {
 } from '../lib/index.js';
 
 export const listProjects: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all projects in an organization',
   parameters: {
     type: 'object',

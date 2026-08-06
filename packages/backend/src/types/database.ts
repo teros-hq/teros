@@ -35,7 +35,13 @@ export interface Model {
    * - 'zhipu': Z.ai / ZhipuAI API (GLM models)
    * - 'zhipu-coding': Z.ai coding API endpoint (GLM models optimized for coding)
    * - 'ollama': Local Ollama models
+   * - 'ollama-cloud': Ollama Cloud hosted models (https://ollama.com/v1, requires API key)
    * - 'openai-codex-oauth': Uses OAuth (ChatGPT Pro/Plus subscription via Codex)
+   * - 'openai-compatible': Generic OpenAI-compatible endpoint (Tower, LM Studio, vLLM, etc.)
+   * - 'minimax': MiniMax Token Plan (Anthropic-compatible API)
+   * - 'teros': Teros official provider via Fireworks AI (Zero Data Retention, OpenAI-compatible API, system secret)
+   * - 'cloudflare': User-owned Cloudflare Workers AI (OpenAI-compatible API, user secret)
+
    */
   provider:
     | 'anthropic'
@@ -47,7 +53,15 @@ export interface Model {
     | 'groq'
     | 'zhipu'
     | 'zhipu-coding'
-    | 'ollama';
+    | 'ollama'
+    | 'ollama-cloud'
+    | 'openai-compatible'
+    | 'minimax'
+    | 'teros'
+    | 'cloudflare'
+    | 'fireworks'
+    | 'together'
+
 
   /** Human-readable name */
   name: string;
@@ -176,8 +190,15 @@ export interface Model {
  * Can override model defaults with core-specific settings.
  */
 export interface AgentCore {
-  /** Unique identifier (e.g., 'alice', 'iria') */
+  /** Unique identifier (e.g., 'agent', 'super-agent') */
   coreId: string;
+
+  /**
+   * Internal core kind. Assigned by the server from the agent's scope
+   * (global/personal → 'super-agent'; workspace-scoped → 'agent').
+   * Never chosen by the user.
+   */
+  coreType: 'agent' | 'super-agent';
 
   /** Human-readable name */
   name: string;
@@ -196,6 +217,13 @@ export interface AgentCore {
 
   /** Core capabilities */
   capabilities: string[];
+
+  /**
+   * MCA ids preinstalled and granted to every agent of this core on creation
+   * (and ensured idempotently afterwards). Only non-system MCAs belong here —
+   * system MCAs (e.g. mca.teros.memory) are auto-provisioned separately.
+   */
+  defaultApps: string[];
 
   /** Default avatar URL */
   avatarUrl: string;
@@ -270,8 +298,31 @@ export interface AgentInstance {
   /** Agent-specific context (injected after identity in system prompt) */
   context?: string;
 
+  /**
+   * Optional email address for the agent.
+   * Used for skill variable interpolation: {{agent.email}}
+   */
+  email?: string;
+
   /** Maximum conversation steps (0 = unlimited, undefined = use default) */
   maxSteps?: number;
+
+  /**
+   * Cache block size for the mod-N breakpoint strategy (A/B testing feature flag).
+   * undefined = use platform default (20)
+   * 0 = disable mod-N, use legacy moving breakpoint
+   * N > 0 = snap cache breakpoint to multiples of N
+   */
+  cacheBlockSize?: number;
+
+  /** Providers this agent may use. Empty array = use the user's system default. */
+  availableProviders?: string[];
+
+  /** Preferred provider (null = use the user's system default). */
+  selectedProviderId?: string | null;
+
+  /** Preferred model (null = use the core/model default). */
+  selectedModelId?: string | null;
 
   /** Metadata */
   createdAt: string;
@@ -401,12 +452,36 @@ export interface McpCatalogEntry {
    * OAuth/Auth configuration from manifest
    */
   auth?: {
-    type: 'oauth2' | 'apikey' | 'none';
+    type: 'oauth2' | 'apikey' | 'none' | 'github-app' | 'agent';
     provider?: string;
+    // --- Agent-managed auth specific fields ---
+    /** Texto mostrado al usuario explicando cómo conectar (pedírselo al agente). */
+    instructions?: string;
+    // --- OAuth2 specific fields ---
     authorizeUrl?: string;
     tokenUrl?: string;
     scopes?: string[];
+    optionalScopes?: string[];
+    scopeSeparator?: string;
     pkce?: boolean;
+    /**
+     * Extra user-configurable fields for OAuth apps.
+     * These are stored alongside OAuth tokens but shown as editable inputs in the UI.
+     * Example: TEAM_ID in Figma (not obtainable via OAuth but needed for some tools).
+     */
+    extraFields?: Array<{
+      name: string;
+      label?: string;
+      type?: 'text' | 'password';
+      required?: boolean;
+      placeholder?: string;
+      hint?: string;
+    }>;
+    // --- GitHub App specific fields ---
+    appSlug?: string;
+    setupUrl?: string;
+    permissions?: Record<string, 'read' | 'write' | 'admin'>;
+    events?: string[];
   };
 
   /**
@@ -421,8 +496,27 @@ export interface McpCatalogEntry {
    */
   authSchema?: McaConfigSchema;
 
-  /** Tools this MCP provides */
+  /** Tools this MCP provides (names only — kept for counts and back-compat) */
   tools: string[];
+
+  /**
+   * Tools with their *human* description (jargon stripped) and derived domain
+   * `group`, materialised from tools.json during sync (TER-538). Optional and
+   * additive: consumers fall back to `tools` (names only).
+   */
+  toolsDetailed?: Array<{ name: string; description: string; group?: string }>;
+
+  /**
+   * Brand accent colours extracted from the icon at sync (TER-538) — the
+   * client builds the hero gradient from them. Empty for monochrome logos.
+   */
+  accentColors?: string[];
+
+  /**
+   * Runtime permissions for the detail view (network / filesystem), derived
+   * from the execution model at sync (TER-538). Distinct from `auth.permissions`.
+   */
+  permissions?: Array<{ type: string; label: string; detail: string }>;
 
   /** Category for organization */
   category:
@@ -436,13 +530,36 @@ export interface McpCatalogEntry {
     | 'design'
     | 'storage'
     | 'utility'
-    | 'other';
+    | 'other'
+    | 'google';
 
   /** Icon identifier (lucide icon name) or URL */
   icon?: string;
 
   /** Brand color for icon background */
   color?: string;
+
+  // --- Catalog presentation (TER-524) — optional, surfaced in the detail view ---
+  /** Semantic version (from manifest) */
+  version?: string;
+  /** Author info (from manifest) */
+  author?: { name: string; email?: string; url?: string };
+  /** Search keywords / tags */
+  keywords?: string[];
+  /** Logo/avatar image URL */
+  image?: string;
+  /** Background/hero image URL */
+  backgroundImage?: string;
+  /** Short one-liner for the detail hero */
+  tagline?: string;
+  /** Screenshot / preview image URLs */
+  screenshots?: string[];
+  /** Release notes for the changelog section */
+  changelog?: Array<{ version: string; date: string; notes: string }>;
+  /** Verified/official publisher badge */
+  verified?: boolean;
+  /** Homepage / docs URL */
+  homepage?: string;
 
   /**
    * Runtime configuration for containerized MCAs
@@ -482,7 +599,44 @@ export interface McpCatalogEntry {
      * Example: "DOCKER_ENV_DOMAIN": "${DOCKER_ENV_DOMAIN}"
      */
     systemEnvironment?: Record<string, string>;
+    /**
+     * If true, a persistent directory is mounted into the container at /app-data.
+     * The host path is {workspaceHostPath}/.apps/{app.name}/ — scoped per app instance.
+     */
+    appDataMount?: boolean;
+    /**
+     * If true, the owner's workspace volume is bind-mounted read-write at
+     * /workspace. Grants the MCA full access to the user's workspace files.
+     */
+    workspaceMount?: boolean;
+    /**
+     * Container resource limits (Docker --cpus / --memory). When omitted, the
+     * backend-wide defaults apply (MCA_CONTAINER_CPUS / MCA_CONTAINER_MEMORY_MB).
+     */
+    resources?: {
+      cpus?: number;
+      memoryMb?: number;
+    };
   };
+
+  /**
+   * MCA-level translations extracted from mcas/<mca-id>/i18n/*.json files.
+   * Keys are locale codes (e.g., 'en', 'es', 'ko'). Each value mirrors the
+   * structure of the English source (name, description, tagline, changelog,
+   * tools with name/description/params). Generated by generate-mca-i18n.ts
+   * and loaded during sync-mcas.
+   */
+  i18n?: Record<string, {
+    name?: string;
+    description?: string;
+    tagline?: string;
+    changelog?: Array<{ notes: string }>;
+    tools?: Record<string, {
+      name?: string;
+      description?: string;
+      params?: Record<string, string>;
+    }>;
+  }>;
 
   /** MCP status - deprecated, use availability.enabled instead */
   status: 'active' | 'deprecated' | 'disabled';
@@ -507,7 +661,7 @@ export interface McpCatalogEntry {
  * Users can have multiple workspaces and share them with others.
  */
 export interface Workspace {
-  /** Unique identifier (e.g., "work_my-project", "work_dev-team") */
+  /** Unique identifier (e.g., "work_teros-v2", "work_hexagon") */
   workspaceId: string;
 
   /** Human-readable name */
@@ -557,6 +711,13 @@ export interface Workspace {
     icon?: string;
   };
 
+  /**
+   * Workspace type
+   * - 'private': Auto-created for each user on registration. Cannot be deleted.
+   * - 'shared': Regular user-created workspace (default for existing workspaces).
+   */
+  type?: 'private' | 'shared';
+
   /** Status */
   status: 'active' | 'archived';
 
@@ -588,19 +749,14 @@ export interface App {
   mcaId: string;
 
   /**
-   * Owner of this app instance
-   * - If ownerType='user': this is a userId
-   * - If ownerType='workspace': this is a workspaceId
+   * Owner of this app instance — always a workspaceId
    */
   ownerId: string;
 
   /**
-   * Type of owner - determines access resolution
-   * - 'user': Personal app, only accessible by the user's agents
-   * - 'workspace': Workspace app, accessible by all workspace members
-   * @default 'user' for backwards compatibility
+   * Type of owner — always 'workspace' (all apps are workspace-scoped)
    */
-  ownerType?: 'user' | 'workspace';
+  ownerType?: 'workspace';
 
   /** Human-readable name for this instance */
   name: string;
@@ -625,6 +781,18 @@ export interface App {
    * If not set, all tools default to 'ask'.
    */
   permissions?: AppToolPermissions;
+
+  /**
+   * How this app's tools reach the LLM context window while the
+   * `tools.execution-proxy` feature flag is ON (with the flag off, everything
+   * is direct and this field is ignored).
+   * - unset / 'proxy' (default): tools are NOT listed individually; the agent
+   *   discovers them via `list-app-tools` and runs them via `execute-tool`.
+   * - 'direct': per-app opt-out — every tool listed individually in the
+   *   agent's tool list, like the pre-proxy behavior.
+   * Context-budget mechanism only — the permission gate is identical on both paths.
+   */
+  toolExposure?: 'direct' | 'proxy';
 
   /**
    * Volume mounts for this app
@@ -753,6 +921,23 @@ export interface Project {
   updatedAt: string;
 }
 
+/**
+ * Agent Project Relationship - Links an agent to a project with autoplay config
+ */
+export interface AgentProjectRelationship {
+  /** Agent involved in this relationship */
+  agentId: string;
+
+  /** Project this relationship belongs to */
+  projectId: string;
+
+  /** Number of parallel execution slots (0 = autoplay disabled) */
+  slots: number;
+
+  /** Whether autoplay is currently active for this agent in this project */
+  playEnabled: boolean;
+}
+
 // ============================================================================
 // BOARDS COLLECTION
 // ============================================================================
@@ -775,20 +960,10 @@ export interface BoardColumn {
 }
 
 /**
- * Board execution config (auto-dispatcher settings)
+ * Board configuration
  */
 export interface BoardConfig {
-  /** Worker slots per agent (agentId → max concurrent tasks) */
-  workerSlots?: Record<string, number>;
-
-  /** Auto-dispatch running state */
-  autoDispatchRunning?: boolean;
-
-  /** Selected supervisor agent ID */
-  selectedSupervisorId?: string | null;
-
-  /** Active supervisor conversation channel ID */
-  activeSupervisorChannelId?: string | null;
+  // Reserved for future configuration options
 }
 
 /**
@@ -821,9 +996,6 @@ export interface Board {
 
 /** Task priority levels */
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
-
-/** Task semantic status (decoupled from column position) */
-export type TaskStatus = 'idle' | 'assigned' | 'working' | 'blocked' | 'review' | 'done' | 'circular_dependency';
 
 /** Task activity event types */
 export type TaskActivityEventType =
@@ -910,14 +1082,20 @@ export interface Task {
   /** Task title */
   title: string;
 
-  /** Task description (supports markdown) */
+  /** Task description (plain text, max ~1000 chars) */
   description?: string;
+
+  /** Task instructions (full markdown — detailed specs, context, steps) */
+  instructions?: string;
 
   /** Priority level */
   priority: TaskPriority;
 
-  /** Semantic status (decoupled from column) */
-  taskStatus: TaskStatus;
+  /** Whether this task has been archived (out of the active board) */
+  archived: boolean;
+
+  /** Optional note explaining why the task was archived */
+  archiveNote?: string;
 
   /** Free-form tags for categorization and agent matching */
   tags: string[];
@@ -933,6 +1111,15 @@ export interface Task {
 
   /** Whether the agent is actively processing (system-controlled, not manual) */
   running: boolean;
+
+  /**
+   * Consecutive autoplay re-wakes WITHOUT progress (TER-650/G2). Incremented on
+   * each `_rewakeTask`, reset to 0 whenever the task actually advances (column
+   * move or progress note — NOT the per-turn `running` toggle). When it reaches
+   * the cap the task is moved to `blocked` instead of re-woken, so a stuck task
+   * can't churn autonomous turns (and bill) forever. System-controlled.
+   */
+  autoWakeCount?: number;
 
   /** Parent task ID for sub-tasks (nullable) */
   parentTaskId?: string;
@@ -952,6 +1139,22 @@ export interface Task {
 
   /** User or agent who created this task */
   createdBy: string;
+
+  // --------------------------------------------------------------------------
+  // Stop signal (cooperative stop mechanism — §6 of board-supervision spec)
+  // --------------------------------------------------------------------------
+
+  /**
+   * When true, the assigned runner agent should finish its current step and stop.
+   * Set by board.stop-task; cleared automatically when the agent moves/updates the task.
+   */
+  stopRequested?: boolean;
+
+  /** ISO timestamp when the stop was requested */
+  stopRequestedAt?: string;
+
+  /** agentId or userId that requested the stop */
+  stopRequestedBy?: string;
 
   /** Metadata */
   createdAt: string;
@@ -1251,6 +1454,14 @@ export interface LLMUsage {
   /** Provider-specific generation ID (e.g., OpenRouter gen-xxx, Anthropic msg_xxx) */
   generationId?: string;
 
+  /**
+   * FK to `agent_usage_sessions.sessionUsageId` — present when this LLM call
+   * happened inside an instrumented turn. Allows grouping all the LLM calls of
+   * a multi-step turn under the same session. Sparse index `{sessionUsageId:1}`.
+   * Optional and additive — legacy rows without it are valid.
+   */
+  sessionUsageId?: string;
+
   /** Timestamp of this generation */
   timestamp: Date;
 
@@ -1296,7 +1507,9 @@ export interface LLMUsage {
     | 'groq'
     | 'zhipu'
     | 'zhipu-coding'
-    | 'ollama';
+    | 'ollama'
+    | 'ollama-cloud'
+    | 'openai-compatible';
 
   /** Model ID in our system (e.g., 'deepseek-v3', 'claude-sonnet-4-5') */
   modelId: string;
@@ -1310,6 +1523,15 @@ export interface LLMUsage {
    * Example: requested 'openrouter/auto' but actually used 'anthropic/claude-sonnet-4.5'
    */
   actualModel?: string;
+
+  /**
+   * Real upstream provider that served the request (`fireworks` | `together` |
+   * `cloudflare` | …). Distinct from the logical `provider` (e.g. `teros`):
+   * lets observability tell Fireworks from Together even when the logical
+   * provider is identical. Populated by the OpenAI-compatible adapter
+   * (TER-615 / gap C1). Absent for providers without an upstream split.
+   */
+  actualProvider?: string;
 
   /** Provider-specific metadata (e.g., OpenRouter routing info) */
   providerMetadata?: Record<string, any>;
@@ -1385,6 +1607,14 @@ export interface LLMUsage {
   /** Latency in milliseconds (time from request to completion) */
   latencyMs?: number;
 
+  /** Time-to-first-token in milliseconds (client-side wall clock). TER-615. */
+  ttftMs?: number;
+
+  /** True if this turn failed over Fireworks→Together (TER-617/F3). */
+  fallbackUsed?: boolean;
+  /** When `fallbackUsed`, the errorClass that made Fireworks fail (preserved for error-rate). */
+  primaryErrorClass?: string;
+
   // ============================================================================
   // METADATA
   // ============================================================================
@@ -1400,4 +1630,1240 @@ export interface LLMUsage {
 
   /** Created timestamp */
   createdAt: Date;
+}
+
+// ============================================================================
+// SKILLS COLLECTION
+// ============================================================================
+
+/**
+ * Skill - A reusable block of instructions/knowledge for agents
+ *
+ * Skills are workspace-scoped resources that can be assigned to multiple agents.
+ * They are injected into the agent's system prompt at conversation time.
+ * Content supports Markdown and {{variable}} interpolation (e.g., {{agent.name}}).
+ */
+export interface Skill {
+  /** Unique identifier (e.g., "sk_a1b2c3d4e5f6g7h8") */
+  skillId: string;
+
+  /** Workspace this skill belongs to */
+  workspaceId: string;
+
+  /** Human-readable name, unique within the workspace */
+  name: string;
+
+  /** Short description of what this skill does */
+  description?: string;
+
+  /**
+   * Markdown content of the skill, injected into the system prompt.
+   * Supports {{variable}} interpolation:
+   * - {{agent.name}}, {{agent.fullName}}, {{agent.role}}, {{agent.intro}}, {{agent.email}}
+   * - {{workspace.name}}
+   */
+  content: string;
+
+  /**
+   * Optional category for organization
+   * - 'development': Coding, git, CI/CD
+   * - 'communication': Style, tone, language
+   * - 'domain-knowledge': Business/domain-specific knowledge
+   * - 'security': Security policies and practices
+   * - 'workflow': Process and workflow definitions
+   */
+  category?: 'development' | 'communication' | 'domain-knowledge' | 'security' | 'workflow';
+
+  /** Optional tags for search and categorization */
+  tags?: string[];
+
+  /** User who created this skill */
+  createdBy: string;
+
+  /** Metadata */
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============================================================================
+// AGENT SKILL ACCESS COLLECTION
+// ============================================================================
+
+/**
+ * Agent Skill Access - Assignment of a skill to an agent
+ *
+ * Models the many-to-many relationship between agents and skills.
+ * Follows the same pattern as AgentAppAccess.
+ * A skill can be disabled per-agent without removing the assignment.
+ */
+export interface AgentSkillAccess {
+  /** Agent that has this skill assigned (foreign key to agents.agentId) */
+  agentId: string;
+
+  /** Skill assigned (foreign key to skills.skillId) */
+  skillId: string;
+
+  /** Workspace (denormalized for efficient queries) */
+  workspaceId: string;
+
+  /**
+   * Whether the skill is active for this agent.
+   * Skills with enabled=false are assigned but not injected into the prompt.
+   */
+  enabled: boolean;
+
+  /**
+   * Injection order in the system prompt (lower = earlier).
+   * Skills are sorted by this value when building the prompt.
+   */
+  order: number;
+
+  /** Who granted this skill access */
+  grantedBy: string;
+
+  /** When this assignment was created */
+  grantedAt: string;
+}
+
+// ============================================================================
+// BOARD SUBSCRIPTIONS
+// ============================================================================
+
+/**
+ * Board event types — emitted by BoardEventEmitter and delivered to subscribers.
+ * Named as {context}.{artifact}_{action} for easy migration to generic MCA events.
+ */
+export type BoardEventType =
+  | 'board.task_moved'
+  | 'board.task_archived'
+  | 'board.task_assigned'
+  | 'board.task_created'
+  | 'board.task_updated'
+  | 'board.task_progress_note'
+  | 'board.agent_play_changed'
+  | 'board.agent_slots_changed'
+  | 'board.dependency_added'
+  | 'board.dependency_removed';
+
+/**
+ * Filter for a board subscription.
+ * All fields are optional — an empty filter matches all events.
+ * Multiple fields are AND-ed; multiple values within a field are OR-ed.
+ *
+ * NOTE: Kept flat (not nested under `metadata`) so migration to generic
+ * SubscriptionFilter.metadata is a simple rename — see SUBSCRIPTIONS-AND-MCA-ARTIFACTS.md §5.1
+ */
+export interface BoardSubscriptionFilter {
+  /** Only events where the task is assigned to one of these agents */
+  agentIds?: string[];
+  /** Only events where the task is in one of these columns */
+  columnIds?: string[];
+  /** Only tasks that have ALL of these tags */
+  tags?: string[];
+  /** Only these event types */
+  eventTypes?: BoardEventType[];
+  /** Event types that wake the subscribed agent (trigger a response turn) */
+  wakeUpOn?: BoardEventType[];
+}
+
+/**
+ * A board subscription — links a conversation channel to a board.
+ * The channel receives board events filtered by `filter`.
+ *
+ * Collection: board_subscriptions
+ * Indexes:
+ *   { boardId: 1 }                       — find all subscribers of a board
+ *   { channelId: 1 }                      — manage subscriptions from a channel
+ *   { boardId: 1, channelId: 1 } unique   — prevent duplicates
+ *
+ * Migration path → mca_subscriptions: rename boardId → mcaId+filter.metadata.boardId
+ * See SUBSCRIPTIONS-AND-MCA-ARTIFACTS.md §5.1
+ */
+export interface BoardSubscription {
+  /** Unique ID, e.g. "bsub_xxx" */
+  subscriptionId: string;
+  /** Board being watched */
+  boardId: string;
+  /** Conversation that receives the events */
+  channelId: string;
+  /** Agent that owns the subscribed conversation */
+  agentId: string;
+  /** Optional filter — empty = receive all events */
+  filter: BoardSubscriptionFilter;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================================
+// USER DESKTOP STATE
+// ============================================================================
+
+/**
+ * Persisted desktop layout state per user per workspace.
+ * Stored in the `user_desktop_state` MongoDB collection.
+ */
+export interface UserDesktopState {
+  /** Flat key/value map of all persisted storage keys for this workspace */
+  state: Record<string, string>;
+
+  /** userId */
+  userId: string;
+  /** workspaceId (or 'global' for superagent desktops with no workspace) */
+  workspaceId: string;
+
+  /** Last updated timestamp */
+  updatedAt: Date;
+}
+
+// ============================================================================
+// FEATURE FLAGS COLLECTION
+// ============================================================================
+
+import type {
+  FeatureFlagDefinition,
+  FeatureFlagTargetType,
+  FeatureFlagValue,
+} from '@teros/shared';
+
+export type { FeatureFlagDefinition, FeatureFlagTargetType, FeatureFlagValue };
+
+/**
+ * FeatureFlag — A flag definition synced from the code registry to MongoDB.
+ *
+ * Collection: feature_flags
+ * This is the DB mirror of FEATURE_FLAG_REGISTRY from @teros/shared.
+ * At startup, the registry is synced: missing flags are created, existing
+ * flags have their type/description/category updated if changed.
+ *
+ * The `defaultValue` in the DB reflects the current registry default.
+ * It can be changed via setDefault() without touching the registry.
+ */
+export interface FeatureFlag extends FeatureFlagDefinition {
+  /** ISO timestamp of last sync from registry */
+  syncedAt: string;
+
+  /** ISO timestamp of last value change */
+  updatedAt: string;
+
+  /**
+   * Optional percentage rollout. When set, `resolve()` returns `rollout.value`
+   * for ids whose deterministic bucket falls in [0, percentage) — after exact
+   * overrides (user/workspace/company) and before the default. `percentage` is
+   * an integer 0..100 (0 = off but config retained). Mutable by admin via
+   * setRollout(); embedded here (no separate collection). See TER-412.
+   */
+  rollout?: {
+    value: FeatureFlagValue;
+    percentage: number;
+  };
+}
+
+// ============================================================================
+// FEATURE FLAG OVERRIDES COLLECTION
+// ============================================================================
+
+/**
+ * FeatureFlagOverride — Scoped override for a feature flag.
+ *
+ * Collection: feature_flag_overrides
+ * Resolution hierarchy (most specific wins):
+ *   user → workspace → company → global (feature_flags.defaultValue)
+ *
+ * Indexes:
+ *   { key: 1, targetType: 1, targetId: 1 } unique
+ *   { key: 1 }
+ *   { targetType: 1, targetId: 1 }
+ */
+export interface FeatureFlagOverride {
+  /** Feature flag key (e.g., 'voice.enabled') */
+  key: string;
+
+  /** Target type: user, workspace, or company */
+  targetType: FeatureFlagTargetType;
+
+  /** Target ID (userId, workspaceId, or companyId) */
+  targetId: string;
+
+  /** Override value */
+  value: FeatureFlagValue;
+
+  /** Optional note explaining why this override exists */
+  note?: string;
+
+  /** Who created this override */
+  createdBy: string;
+
+  /** ISO timestamp */
+  createdAt: string;
+
+  /** ISO timestamp of last update */
+  updatedAt: string;
+}
+
+// ============================================================================
+// FEATURE FLAG AUDIT LOG COLLECTION
+// ============================================================================
+
+/**
+ * FeatureFlagAuditLog — Immutable record of every change to flags or overrides.
+ *
+ * Collection: feature_flag_audit_log
+ * Indexes:
+ *   { key: 1, timestamp: -1 }
+ *   { actor: 1, timestamp: -1 }
+ *   { timestamp: -1 }
+ */
+export interface FeatureFlagAuditLog {
+  /** Audit entry ID */
+  auditId: string;
+
+  /** Feature flag key */
+  key: string;
+
+  /** Action performed */
+  action:
+    | 'set_default'
+    | 'reset_default'
+    | 'set_override'
+    | 'delete_override'
+    | 'sync_registry'
+    | 'set_rollout'
+    | 'clear_rollout'
+    | 'apply_rollout';
+
+  /** Who performed the action */
+  actor: string;
+
+  /** ISO timestamp */
+  timestamp: string;
+
+  /** Previous state (null if new) */
+  previousValue?: FeatureFlagValue;
+
+  /** New state */
+  newValue?: FeatureFlagValue;
+
+  /** Override target info (for override actions) */
+  targetType?: FeatureFlagTargetType;
+  targetId?: string;
+
+  /** Optional note */
+  note?: string;
+}
+
+// ============================================================================
+// AGENT USAGE INSTRUMENTATION COLLECTIONS
+// ============================================================================
+// New subsystem to measure, per user, tokens + active time per agent /
+// provider / model. Reuses LLMResponse.usage capture; persists via event
+// sourcing with 6 projections (sessions, tool executions, rollups hourly +
+// user_hourly, and an idempotency log).
+//
+//
+// ============================================================================
+
+/**
+ * Trigger that initiated an agent turn.
+ *
+ * Filtered by default to 'user_message' in self-service endpoints to avoid
+ * showing autorun/scheduled activity that the user did not directly trigger.
+ */
+export type AgentUsageTriggerKind =
+  | 'user_message'
+  | 'delegation'
+  | 'autorun'
+  | 'scheduled'
+  | 'event_subscription';
+
+/**
+ * Taxonomy of error kinds. Mapped from `AgentError.type` in `classifyError()`.
+ */
+export type AgentUsageErrorKind =
+  | 'llm_error'
+  | 'tool_error'
+  | 'session_error'
+  | 'validation_error'
+  | 'network_error'
+  | 'aborted_by_user'
+  | 'reconciled_timeout'
+  // Degradation buckets mapped from the adapter's `errorClass` (TER-615/F0):
+  // they refine the old `llm_error` catch-all so the F1 model-health window can
+  // tell a rate-limit storm from a 5xx outage. Additive — legacy rows keep
+  // their original kind.
+  | 'rate_limited'
+  | 'overloaded'
+  | 'server_error'
+  | 'spend_gate'
+  | 'auth_error'
+  // A retired/undeployed model (404) — closes the gap where it telemetered as
+  // `unknown` (TER-698). Persistent: the user must switch the agent's model.
+  | 'model_unavailable'
+  | 'unknown';
+
+/**
+ * Source of the durationMs measurement.
+ * - 'monotonic' — computed with performance.now() in the same process that
+ *   started the session (preferred, NTP-safe).
+ * - 'wallclock_reconciled' — computed by the reconciler from Date.now()
+ *   because the original monoStart was lost (process restart, OOM).
+ */
+export type AgentUsageDurationSource = 'monotonic' | 'wallclock_reconciled';
+
+/**
+ * Session status lifecycle.
+ *
+ * A session is `queued` from the moment `processAgentResponse` opens it (the
+ * turn is enqueued on the ChannelWorker) until the worker actually starts
+ * executing it, at which point it flips to `running` with an
+ * execution-anchored `startedAt` (TER-650/G1). Billing meters the
+ * `[startedAt, endedAt]` execution interval, NOT the queue wait, and the
+ * reconciler distinguishes a stuck-queued turn (never ran) from a hung-running
+ * one (ran past the turn deadline).
+ *
+ * Transitions:
+ *   queued  → running           (ChannelWorker pulled the item; awaitStart fired)
+ *           → timed_out         (reconciler closed a queue-orphan: worker died)
+ *           → aborted / errored (turn cancelled/failed before it ever ran)
+ *   running → completed         (LLM end_turn, no error)
+ *           → errored           (uncaught error in processAgentResponse)
+ *           → aborted           (user interrupted with a new message)
+ *           → timed_out         (reconciler closed an execution-orphan)
+ */
+export type AgentUsageSessionStatus =
+  | 'queued'
+  | 'running'
+  | 'completed'
+  | 'errored'
+  | 'timed_out'
+  | 'aborted';
+
+/**
+ * Tool execution status lifecycle.
+ */
+export type ToolExecutionStatus =
+  | 'running'
+  | 'success'
+  | 'error'
+  | 'permission_denied'
+  | 'aborted';
+
+// ----------------------------------------------------------------------------
+// Event payloads (discriminated by AgentUsageEvent.type)
+// ----------------------------------------------------------------------------
+
+export interface SessionStartedPayload {
+  parentSessionUsageId: string | null;
+  /**
+   * Root of the delegation tree this turn belongs to (F3a — Latitude OTLP
+   * export). For a top-level turn it equals the session's own id; for a
+   * delegated child it is inherited from the parent (propagated via
+   * AsyncLocalStorage). Denormalized at emit time so the OTLP span export can
+   * derive a stable, tree-wide `traceId` without walking the ancestor chain.
+   * Optional + additive: events emitted before F3a fall back to the session id.
+   */
+  rootSessionUsageId?: string;
+  triggerKind: AgentUsageTriggerKind;
+  userId: string;
+  agentId: string;
+  workspaceId: string;
+  channelId: string;
+  coreId?: string;
+  provider: LLMUsage['provider'];
+  modelId: string;
+  /**
+   * Expected upstream that will serve the turn (`fireworks` | `together` | …),
+   * pre-computed at start so error/timeout turns — which never emit
+   * `session.delta` — still bucket under the real upstream instead of the
+   * logical `provider` alias (TER-616/C1). A successful turn overwrites it via
+   * `session.delta.actualProvider` (identical value for `teros`/Fireworks).
+   * Absent for providers without an upstream split.
+   */
+  actualProvider?: string;
+  /** Expected actual model string for the same reason. See `actualProvider`. */
+  actualModel?: string;
+  /**
+   * Enqueue timestamp (when `processAgentResponse` opened the session). The
+   * turn is `queued` at this point — NOT yet executing. The applier stores the
+   * session with `startedAt=null` and only sets the authoritative
+   * execution-anchored `startedAt` from `session.running` (TER-650/G1). Kept
+   * here for diagnostics (queue-wait = running.startedAt − this).
+   */
+  startedAt: Date;
+}
+
+/**
+ * Emitted when the ChannelWorker pulls the turn out of the queue and starts
+ * executing it (surfaced via `ConversationManager` `onTurnStart` ← the worker's
+ * `awaitStart`). Flips the session `queued → running` and sets the
+ * authoritative `startedAt` that billing meters. TER-650/G1.
+ */
+export interface SessionRunningPayload {
+  /** Wall-clock instant execution actually began. Authoritative billing anchor. */
+  startedAt: Date;
+}
+
+export interface SessionDeltaPayload {
+  inputTokens: number;
+  outputTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
+  reasoningTokens: number;
+  costUsd: number;
+  llmCallCount: number;
+  toolCallCount: number;
+  actualModel?: string;
+  /** Real upstream provider that served the turn (`fireworks` | `together` | …). TER-615 / C1. */
+  actualProvider?: string;
+  /** Total LLM wall-clock latency of the turn (ms, summed across steps). TER-615. */
+  latencyMs?: number;
+  /** Time-to-first-token of the turn's first LLM step (ms, client-side). TER-615. */
+  ttftMs?: number;
+  /** Provider finish_reason of the turn (stop/length/tool_calls/…) — truncation proxy §3.1. */
+  stopReason?: string;
+  /** True if the turn failed over Fireworks→Together (TER-617/F3). */
+  fallbackUsed?: boolean;
+  /** When `fallbackUsed`, the errorClass that made the primary fail. */
+  primaryErrorClass?: string;
+  /** True if the provider returned a partial/null usage object. */
+  usagePartial?: boolean;
+  /**
+   * Per-category token breakdown for the input side, scaled so that the
+   * sum matches the provider's real `inputTokens` (factor correction).
+   * Categories: system, tools, examples, memory, summary, conversation,
+   * toolCalls (input args), toolResults, plus `output` for assistant
+   * tokens. The breakdown is best-effort heuristic (ai-tokenizer 97%+
+   * accuracy on the per-text level, normalised on the bucket level).
+   *
+   * Optional: emitted only when ConversationManager could compute it
+   * (depends on `PromptBuilder.breakdown` being available and the LLM
+   * response carrying `inputTokens`).
+   */
+  tokenBreakdown?: SessionTokenBreakdown;
+}
+
+/**
+ * Per-category token breakdown stored in `AgentUsageSession` and emitted
+ * via `session.delta` events. All fields are token counts; the sum of
+ * input-side categories ≈ `inputTokens + cachedReadTokens` after
+ * factor-of-correction normalisation in `ConversationManager`.
+ */
+export interface SessionTokenBreakdown {
+  /** System prompt: identity, personality, rules. */
+  system: number;
+  /** MCA tool definitions (descriptions + input_schema JSON). */
+  tools: number;
+  /** Few-shot examples (if the agent ships any). */
+  examples: number;
+  /** RAG retrieved knowledge / memory context. */
+  memory: number;
+  /** Compacted conversation summary (post-compaction synthetic msg). */
+  summary: number;
+  /** Conversation history (user + assistant text combined). */
+  conversation: number;
+  /** Tool call inputs (JSON args from the LLM's tool_calls). */
+  toolCalls: number;
+  /** Tool execution outputs (results returned to the LLM). */
+  toolResults: number;
+  /** Assistant output (final + intermediate text). */
+  output: number;
+}
+
+export interface SessionEndedPayload {
+  endedAt: Date;
+  durationMs: number;
+  durationSource: AgentUsageDurationSource;
+  /** Terminal status only — a session never ends `queued` or `running`. */
+  status: Exclude<AgentUsageSessionStatus, 'running' | 'queued'>;
+  errorKind?: AgentUsageErrorKind;
+  /** Sanitized via sanitizeErrorMessage() and truncated to 1k chars. */
+  errorMessage?: string;
+  /**
+   * Honest-attribution sub-reason from the adapter (TER-698): `provider_capacity`
+   * / `account_rate_limit` / `token_rate_limit` / `provider_billing` /
+   * `model_unavailable` / `provider_overloaded` / `provider_server_error` /
+   * `auth`. Ops-only (drives the upstream-errors feed + alerts); never shown to
+   * the user. A safe enum string, not sanitized.
+   */
+  errorSubReason?: string;
+  /**
+   * The literal upstream provider message (TER-698), preserved verbatim for the
+   * ops feed / session-detail. Sanitized via sanitizeErrorMessage() and
+   * truncated to 1k chars. Never rendered raw to the end user.
+   */
+  upstreamMessage?: string;
+  /**
+   * Denormalized parent id (mirrors what the started event already carried).
+   * Allows the applier to decide whether to propagate descendant counters
+   * without a follow-up `findById` round-trip. `null` for top-level turns.
+   */
+  parentSessionUsageId: string | null;
+}
+
+export interface ToolStartedPayload {
+  channelId: string;
+  userId: string;
+  agentId: string;
+  workspaceId: string;
+  stepIndex: number;
+  /** Index within the LLM step. Always 0 today (sequential); reserved for
+   *  future Promise.all parallel tool execution. */
+  toolCallIndex: number;
+  toolName: string;
+  mcaId?: string;
+  startedAt: Date;
+  /** Buffer.byteLength(JSON.stringify(input), 'utf8'). Optional if calc fails. */
+  inputSizeBytes?: number;
+}
+
+export interface ToolEndedPayload {
+  endedAt: Date;
+  durationMs: number;
+  durationSource: AgentUsageDurationSource;
+  status: Exclude<ToolExecutionStatus, 'running'>;
+  /** Sanitized via sanitizeErrorMessage() and truncated to 1k chars. */
+  errorMessage?: string;
+  outputSizeBytes?: number;
+}
+
+/**
+ * Event sourcing source-of-truth row.
+ *
+ * Discriminated union by `type`. Both `agent_usage_sessions` and
+ * `tool_executions` are projections rebuilt from this collection.
+ */
+export type AgentUsageEvent =
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      type: 'session.started';
+      payload: SessionStartedPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    }
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      type: 'session.running';
+      payload: SessionRunningPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    }
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      type: 'session.delta';
+      payload: SessionDeltaPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    }
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      type: 'session.ended';
+      payload: SessionEndedPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    }
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      toolExecutionId: string;
+      type: 'tool.started';
+      payload: ToolStartedPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    }
+  | {
+      eventId: string;
+      sessionUsageId: string;
+      toolExecutionId: string;
+      type: 'tool.ended';
+      payload: ToolEndedPayload;
+      appliedAt: Date;
+      schemaVersion: 1;
+    };
+
+/**
+ * Idempotency log for the EventApplier.
+ *
+ * Before applying any event to projections, the applier insertOne's into this
+ * collection. If duplicate key (11000), the event was already applied → skip.
+ * Robust across process restarts.
+ */
+export interface AgentUsageEventApplication {
+  eventId: string;
+  projectedAt: Date;
+}
+
+/**
+ * Per-turn projection of usage. One document per `prompt()` call.
+ *
+ * Derived from `agent_usage_events`. Rebuildable via
+ * `scripts/rebuild-agent-usage-projections.ts --shadow`.
+ */
+export interface AgentUsageSession {
+  /** Format: usess_<hex16>. Primary key. */
+  sessionUsageId: string;
+
+  /** Parent session id when this turn was triggered by delegation
+   *  (recursive, unbounded depth). null for top-level turns. */
+  parentSessionUsageId: string | null;
+
+  /**
+   * Root of the delegation tree (F3a — Latitude OTLP export). Equals
+   * `sessionUsageId` for top-level turns; inherited from the parent for
+   * delegated children. Denormalized from `session.started` so the OTLP span
+   * export derives a stable tree-wide `traceId`. Optional + additive: sessions
+   * created before F3a have it undefined (the assembler falls back to
+   * `sessionUsageId`).
+   */
+  rootSessionUsageId?: string;
+
+  triggerKind: AgentUsageTriggerKind;
+
+  // Context (denormalized for query speed)
+  userId: string;
+  agentId: string;
+  workspaceId: string;
+  channelId: string;
+  coreId?: string;
+
+  // Provider/model
+  provider: LLMUsage['provider'];
+  modelId: string;
+  /** Actual model used by the provider (after auto-routing if applicable). */
+  actualModel?: string;
+  /**
+   * Real upstream provider that served the turn (`fireworks` | `together` | …).
+   * Distinct from the logical `provider` (e.g. `teros`). Projected from
+   * `session.delta` (TER-615/F0). Drives the per-upstream health rollup (F1/C1).
+   */
+  actualProvider?: string;
+
+  // Timing (wall-clock for display; durationMs is the authoritative figure).
+  // `startedAt` is null while the session is `queued` and set to the
+  // execution-anchored instant when it flips to `running` (TER-650/G1). Billing
+  // (rollup union) and the reconciler's execution-orphan cutoff both key off it.
+  startedAt: Date | null;
+  endedAt: Date | null;
+  durationMs: number | null;
+  durationSource: AgentUsageDurationSource | null;
+  /**
+   * LLM wall-clock latency of the turn (ms, summed across steps) and
+   * time-to-first-token of the first step (ms), measured client-side by the
+   * adapter (TER-615/F0). Feed the latency/TTFT histograms in the F1 rollup.
+   * Distinct from `durationMs` (which includes tool execution + queueing).
+   */
+  latencyMs?: number;
+  ttftMs?: number;
+
+  // Status
+  status: AgentUsageSessionStatus;
+  errorKind?: AgentUsageErrorKind;
+  errorMessage?: string;
+  /** Honest-attribution sub-reason (TER-698). Ops-only; see SessionEndedPayload. */
+  errorSubReason?: string;
+  /** Literal upstream provider message (TER-698, sanitized). Feeds the ops feed. */
+  upstreamMessage?: string;
+  usagePartial?: boolean;
+  /**
+   * Provider finish_reason of the turn's last LLM step (`stop` / `length` /
+   * `tool_calls` / …). Projected from session.delta (TER-616/R4). `length` is
+   * the truncation proxy (§3.1). Absent for turns that errored before any
+   * response, or for providers that do not report it.
+   */
+  stopReason?: string;
+  /** True if the turn failed over Fireworks→Together (TER-617/F3, R4). */
+  fallbackUsed?: boolean;
+  /** When `fallbackUsed`, the errorClass that made the primary fail. */
+  primaryErrorClass?: string;
+
+  // Own tokens (this turn only)
+  inputTokens: number;
+  outputTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
+  reasoningTokens: number;
+  /** input + output (without cache, to avoid double counting). */
+  totalTokens: number;
+  costUsd: number;
+
+  // Descendant tokens (delegation: aggregated from child sessions)
+  descendantInputTokens: number;
+  descendantOutputTokens: number;
+  descendantCostUsd: number;
+  descendantSessionCount: number;
+
+  // Counts
+  llmCallCount: number;
+  toolCallCount: number;
+  /**
+   * Tool executions of the turn that ended in `status: 'error'`. Incremented
+   * by the applier on each failing `tool.ended` (idempotent via the event
+   * claim). Feeds the per-upstream tool-error-rate in the F1 rollup (R4.3).
+   */
+  toolErrorCount?: number;
+
+  /**
+   * Per-category token breakdown (accumulated via $inc from session.delta
+   * payloads). Optional: legacy sessions created before this field landed
+   * have it undefined; new sessions always carry it once at least one
+   * delta has applied. The breakdown is scaled to match `inputTokens +
+   * cachedReadTokens` (factor of correction in ConversationManager) so
+   * the categories sum exactly to the real input side.
+   */
+  tokenBreakdown?: SessionTokenBreakdown;
+
+  // Audit
+  schemaVersion: 1;
+  createdAt: Date;
+  updatedAt: Date;
+
+  /**
+   * Marker written ONLY by `scripts/demo-monitoring-seed.mts` (local dev). Real
+   * turns never set it. Every dashboard/rollup read excludes `demoSeed: true`
+   * via `EXCLUDE_DEMO_SEED` so seed data never blends into real numbers. A1.2.
+   */
+  demoSeed?: boolean;
+}
+
+/**
+ * Per-tool projection (append-only). One document per tool invocation.
+ *
+ * Correlation with tokens: not directly (LLMs don't report per-tool usage).
+ * Use `(sessionUsageId, stepIndex+1)` to find the LLM call that processed
+ * this tool's output in `llm_usage`.
+ */
+export interface ToolExecution {
+  /** Format: tex_<hex16>. Primary key. */
+  toolExecutionId: string;
+  /** FK to agent_usage_sessions.sessionUsageId. */
+  sessionUsageId: string;
+  channelId: string;
+  userId: string;
+  agentId: string;
+  workspaceId: string;
+  /** LLM step that requested this tool call. */
+  stepIndex: number;
+  /** Index within the step. Always 0 today (sequential execution). */
+  toolCallIndex: number;
+  toolName: string;
+  mcaId?: string;
+  startedAt: Date;
+  endedAt: Date | null;
+  durationMs: number | null;
+  durationSource: AgentUsageDurationSource | null;
+  status: ToolExecutionStatus;
+  errorMessage?: string;
+  inputSizeBytes?: number;
+  outputSizeBytes?: number;
+  schemaVersion: 1;
+  createdAt: Date;
+  /** Local-dev seed marker; excluded from every real read. See AgentUsageSession.demoSeed. */
+  demoSeed?: boolean;
+}
+
+/**
+ * MCA tool test status — mirrors the UI union in
+ * packages/app/src/windows/McasWindow/mcaStatus.types.ts (D-01, lossless rehydration).
+ *
+ * The backend cannot import app code, so this is a deliberate copy that MUST be kept
+ * in sync with the app union — the whole point of D-01 is that the two are identical
+ * so rehydration into the dashboard is lossless. Distinct from `ToolExecutionStatus`
+ * (append-only session telemetry — wrong domain, do NOT reuse).
+ */
+export type ToolTestStatus = 'ok' | 'pending' | 'fail' | 'confirm' | 'skip';
+
+/**
+ * Per-tool health snapshot for an MCA (Phase 5, TEST-06).
+ *
+ * One row per (mcaId, tool) — the collection's unique key; re-recording a tool
+ * overwrites rather than appends (upsert semantics). Stores ONLY the last test
+ * outcome; there is intentionally NO `overall`, `appId`, `inputs`, or `outputs`
+ * field: the UI derives `overall` itself (D-04), and raw inputs/outputs are never
+ * persisted because they carry PII/secret leak risk (D-07 / SC3). Distinct from
+ * `ToolExecution` (append-only session telemetry); this is upsert-overwrite fleet
+ * health.
+ */
+export interface McaToolHealth {
+  /** Joins to mca_catalog.mcaId. Part of the unique key. */
+  mcaId: string;
+  /** Tool name; joins to catalog tools[]. Part of the unique key. */
+  tool: string;
+  /** Reuses the UI's 5-state union (D-01). Do NOT reuse ToolExecutionStatus. */
+  status: ToolTestStatus;
+  /** Server-generated at record time (D-05). Serialized to ISO on read. */
+  testedAt: Date;
+  /** Short error/notes, server-truncated to ~500 chars (D-06). Seed `notes` maps here. */
+  error?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Additive latency distribution (bucketed sketch) persisted in the F1 rollup.
+ * The bucket layout is fixed (OTel GenAI duration boundaries expressed in ms —
+ * see `services/latency-histogram.ts`); `buckets` length is bounds.length + 1
+ * (the last slot is the overflow bucket). Additivity is the whole point: the WS
+ * query merges hourly histograms into a range view and derives the (NON-additive)
+ * percentiles at read time. TER-616/F1.
+ */
+export interface LatencyHistogram {
+  buckets: number[];
+  count: number;
+  sum: number;
+  /**
+   * Largest sample observed (ms), or 0 for an empty histogram. Additive under
+   * merge via `Math.max` — lets a percentile that falls in the unbounded
+   * overflow bucket `(81920ms, +inf)` be reported as "≥81.9s" (capped) instead
+   * of silently clamping to the lower edge, and gives the UI the real tail
+   * magnitude for reasoning models >82s. Optional: legacy rollups predate it
+   * (treated as 0 / "unknown tail"). TER-674/A3.1.
+   */
+  max?: number;
+}
+
+/**
+ * Per-`actualProvider×modelId` health entry embedded in
+ * `AgentUsageRollupHourly.modelHealth`. Every counter is additive across hourly
+ * rollups, so a 24h/7d view is a plain merge. TER-616/F1.
+ */
+export interface ModelHealthEntry {
+  /** Real upstream provider that served the turns (`fireworks` | `together` | …). */
+  actualProvider: string;
+  /** Logical model id. */
+  modelId: string;
+  /** Turns observed for this upstream×model in the bucket (throughput). */
+  requestCount: number;
+  /** End-to-end latency distribution (ms per turn). */
+  latency: LatencyHistogram;
+  /** Time-to-first-token distribution (ms, first step of the turn). */
+  ttft: LatencyHistogram;
+  /** Turns per terminal status — drives success-rate. */
+  statusCounts: Partial<Record<AgentUsageSessionStatus, number>>;
+  /** Errored turns per errorKind — the degradation breakdown (rate_limited / overloaded / …). */
+  errorCounts: Partial<Record<AgentUsageErrorKind, number>>;
+  /**
+   * Errored turns per honest-attribution sub-reason (TER-698/TER-700):
+   * `provider_capacity` / `account_rate_limit` / `provider_billing` /
+   * `model_unavailable` / … — refines `errorCounts` so the ops feed can split a
+   * capacity storm from a billing wall. Additive; legacy rollups predate it.
+   */
+  subReasonCounts?: Partial<Record<string, number>>;
+  /**
+   * Turns per provider finish_reason (`stop` / `length` / `tool_calls` / …).
+   * `length` is the truncation proxy (§3.1, TER-616/R4). Additive. Optional:
+   * legacy rollups predate it.
+   */
+  finishReasons?: Partial<Record<string, number>>;
+  /** Completed turns that produced zero output tokens — the empty-response proxy (§3.1, R4.5). */
+  emptyCount?: number;
+  /**
+   * Turns with RELIABLE usage (`!usagePartial`) — the denominator for
+   * `emptyRate`. The `emptyCount` numerator already excludes `usagePartial`
+   * turns; denominating over `requestCount` (which includes them) biases the
+   * rate toward green when most turns have partial usage (74% in the alpha
+   * snapshot → a real 8% empty-rate rendered ~2%). Additive. Optional: legacy
+   * rollups predate it — the aggregator falls back to `requestCount`. TER-674/A3.3.
+   */
+  measuredCount?: number;
+  /**
+   * Turns that reported a provider `finish_reason` — the denominator for
+   * `truncationRate` (only turns whose finish_reason is known can be judged
+   * truncated). Additive. Optional: legacy rollups predate it — the aggregator
+   * falls back to `requestCount`. TER-674/A3.3.
+   */
+  stopReasonCount?: number;
+  /** Turns that failed over Fireworks→Together (TER-617/F3, R3.4). Drives fallbackRate. */
+  fallbackCount?: number;
+  /** Total tool executions across the bucket's turns — denominator for toolErrorRate (R4.3). */
+  toolCallCount?: number;
+  /** Tool executions that ended in `error` — numerator for toolErrorRate (R4.3). */
+  toolErrorCount?: number;
+}
+
+/**
+ * Hourly rollup by (user, agent, provider, workspace).
+ *
+ * `modelId` is intentionally NOT in the groupKey to keep cardinality
+ * manageable (~315 GB at TTL 730d for 1k users). Per-model breakdown is
+ * embedded in `modelMix`.
+ *
+ * Sessions crossing midnight are split proportionally across buckets
+ * (decision #18).
+ */
+export interface AgentUsageRollupHourly {
+  /** Format: usro_<hex16>. Primary key. */
+  rollupId: string;
+  /** Truncated to hour UTC. */
+  hourBucket: Date;
+  groupKey: {
+    userId: string;
+    agentId: string;
+    provider: LLMUsage['provider'];
+    workspaceId: string;
+  };
+  /** Per-model breakdown for drill-down (sums to the totals below). */
+  modelMix: Record<
+    string,
+    {
+      inputTokens: number;
+      outputTokens: number;
+      cachedReadTokens: number;
+      totalTokens: number;
+      costUsd: number;
+      sessionCount: number;
+    }
+  >;
+  /**
+   * Per-`actualProvider×modelId` health distribution for the model-observability
+   * window (TER-616/F1). ADDITIVE and orthogonal to `modelMix`: keyed by
+   * `${actualProvider}::${modelId}` so the real upstream (Fireworks vs Together)
+   * is distinguishable even when the logical `provider` is the same (`teros`).
+   * The histograms are additive → the WS query merges these across the hours of
+   * the requested range and derives p50/p95/p99 (percentiles are NOT additive,
+   * the histograms are). Optional: legacy rollups predate this field.
+   */
+  modelHealth?: Record<string, ModelHealthEntry>;
+  // Totals (sum of modelMix)
+  sessionCount: number;
+  completedCount: number;
+  erroredCount: number;
+  timedOutCount: number;
+  abortedCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedReadTokens: number;
+  cachedWriteTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  /** SUM(durationMs) split proportionally if the session crosses midnight. */
+  agentActiveMs: number;
+  computedAt: Date;
+  jobRunId: string;
+  schemaVersion: 1;
+  createdAt: Date;
+  /** Local-dev seed marker; excluded from every real read. See AgentUsageSession.demoSeed. */
+  demoSeed?: boolean;
+}
+
+/**
+ * Per-hour completion marker for the rollup job (A1.2).
+ *
+ * One document per fully-rolled closed hour, written ONLY after both persist
+ * phases of `processHour` succeed with at least one rollup doc. The job gates on
+ * the presence of this marker instead of `agent_usage_rollups_hourly.findOne(
+ * {hourBucket})`, which fixes two failure modes of the old exists-check:
+ *   - demo-seed rollups for an hour made the job skip that hour forever, losing
+ *     the real sessions that landed in it;
+ *   - a crash between the agent-rollup and user-rollup writes left a partial doc
+ *     that likewise bricked the hour.
+ * The marker is never written by the seed, and only after both writes complete,
+ * so a partially-rolled or demo-only hour is reprocessed (upserts are idempotent)
+ * until it genuinely completes.
+ */
+export interface AgentUsageRollupRun {
+  /** Truncated to hour UTC. Unique. */
+  hourBucket: Date;
+  /** When the hour finished rolling successfully. */
+  completedAt: Date;
+  /** The `jobRunId` of the run that completed the hour. */
+  jobRunId: string;
+  agentDocsWritten: number;
+  userDocsWritten: number;
+  schemaVersion: 1;
+}
+
+/**
+ * Hourly rollup by user only.
+ *
+ * Required because `userActiveSeconds` (union of intervals across all the
+ * user's agents) cannot be reconstructed by summing per-agent rollups
+ * (intervals may overlap). Computed by the rollup job with a JS merge of
+ * intervals (decision #26).
+ */
+export interface AgentUsageRollupUserHourly {
+  /** Format: usro_<hex16>. Primary key. */
+  rollupId: string;
+  hourBucket: Date;
+  groupKey: {
+    userId: string;
+    workspaceId: string;
+  };
+  /** Union of session intervals truncated to the hour. <= 3_600_000. */
+  userActiveMs: number;
+  sessionCount: number;
+  totalTokens: number;
+  costUsd: number;
+  computedAt: Date;
+  jobRunId: string;
+  schemaVersion: 1;
+  createdAt: Date;
+}
+
+/**
+ * Append-only audit trail of admin access to a session's full trace (TER-671 /
+ * A6.3). One document per `admin-api.agent-usage-session-detail` call — the trace
+ * exposes cross-tenant conversation structure (and, for supers, plaintext), so
+ * every read is recorded before the data is returned (ledger-first). Never
+ * updated or deleted by the app; TTL-bounded.
+ */
+export interface AgentUsageAccessLog {
+  /** The admin/super who read the trace. */
+  adminUserId: string;
+  /** Their system role at access time. */
+  role: 'admin' | 'super';
+  /** The session whose trace was read. */
+  sessionUsageId: string;
+  /** Whether the plaintext was included (super) or redacted (admin). */
+  textIncluded: boolean;
+  at: Date;
+  schemaVersion: 1;
+}
+
+// ============================================================================
+// MESSAGE FEEDBACK COLLECTION
+// ============================================================================
+
+/**
+ * Thumbs up/down rating attached to a specific assistant message.
+ * One document per (userId, messageId) pair.
+ */
+export interface MessageFeedback {
+  /** Format: fb_<uuid>. Primary key. */
+  feedbackId: string;
+  messageId: string;
+  conversationId: string;
+  workspaceId: string;
+  userId: string;
+  agentId: string;
+  rating: 'up' | 'down';
+  reasons?: string[];
+  comment?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================================
+// MESSAGE ACTIONS COLLECTION
+// ============================================================================
+
+/**
+ * Logged action on a message (copy or report).
+ */
+export interface MessageAction {
+  /** Format: act_<uuid>. Primary key. */
+  actionId: string;
+  messageId: string;
+  conversationId: string;
+  workspaceId: string;
+  userId: string;
+  action: 'copy' | 'report';
+  context?: Record<string, unknown>;
+  createdAt: Date;
+}
+
+// ============================================================================
+// CONVERSATION FEEDBACK COLLECTION
+// ============================================================================
+
+/**
+ * End-of-conversation quality signal.
+ */
+export interface ConversationFeedback {
+  /** Format: cfb_<uuid>. Primary key. */
+  conversationFeedbackId: string;
+  conversationId: string;
+  workspaceId: string;
+  userId: string;
+  rating: number | 'up' | 'down';
+  solvedProblem?: boolean;
+  comment?: string;
+  createdAt: Date;
+}
+
+// ============================================================================
+// BILLING COLLECTIONS
+// ============================================================================
+
+/**
+ * Billing Plan — Base plan template (seeded, rarely changes).
+ *
+ * Defines the tiers available in Teros Cloud: Basic, Pro, Max, Infinity.
+ * Used for feature-gating and pricing reference.
+ */
+export interface BillingPlan {
+  /** Primary key — human-readable, e.g. "plan_starter" */
+  _id: string;
+
+  name: string;
+  displayName: string;
+  description: string;
+
+  // Pricing
+  price: number;
+  currency: string;
+
+  // Consumption
+  agentHoursLimit: number;
+
+  // Features (feature-gating)
+  features: {
+    byok: boolean;
+    sectureModel: boolean;
+    unlimitedAgents: boolean;
+    maxWorkspaces: number;
+    prioritySupport: boolean;
+  };
+
+  // Visibility
+  isPublic: boolean;
+
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Billing Subscription — One per user. Overrides plan values when needed.
+ *
+ * Tracks the user's current tier, custom limits/prices (for discounts),
+ * agent-hours consumed this cycle, and manual billing status.
+ */
+export interface BillingSubscription {
+  /** MongoDB ObjectId */
+  _id: string;
+
+  userId: string;
+  planId: string;
+
+  // Individual overrides (what Pablo requested)
+  customAgentHoursLimit: number | null;
+  customPrice: number | null;
+  customPriceNote: string | null;
+
+  // Consumption (current cycle)
+  agentHoursUsed: number;
+  overageHours: number;
+
+  /**
+   * Greatest hourBucket already billed into agentHoursUsed by the
+   * agent-hours-tracker. Idempotency cursor — absent means "never billed".
+   */
+  lastBilledHourBucket?: Date;
+
+  // Billing cycle
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+
+  // Status
+  status: 'active' | 'paused' | 'cancelled' | 'past_due';
+
+  // Manual billing (Phase 1)
+  billingStatus: 'pending' | 'invoiced' | 'paid' | 'waived';
+  billingNotes: string;
+
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
 }

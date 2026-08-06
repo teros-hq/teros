@@ -3,8 +3,10 @@ services:
   qdrant:
     image: qdrant/qdrant:latest
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:6333:6333"
     volumes:
-      - ./data/qdrant:/qdrant/storage
+      - qdrant_data:/qdrant/storage
     networks:
       - teros-network
 
@@ -12,11 +14,17 @@ services:
   mongodb:
     image: mongo:7.0
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "127.0.0.1:27017:27017"
     environment:
       MONGO_INITDB_DATABASE: teros
     volumes:
-      - ./data/mongodb:/data/db
-      - ./data/mongodb-config:/data/configdb
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     networks:
       - teros-network
     healthcheck:
@@ -35,7 +43,11 @@ services:
     ports:
       - "127.0.0.1:10001:3000"
     volumes:
-      - ./data/volumes:/data/volumes
+      # Same-path bind mounts: the container-agent does `docker run -v <path>` on the
+      # HOST daemon, so mcas/ and volumes/ must live at the SAME absolute path inside
+      # the container and on the host or the mount is denied. ${PWD} = the repo dir.
+      - ${PWD}/mcas:${PWD}/mcas
+      - ${PWD}/data/volumes:${PWD}/data/volumes
       - ./.secrets:/app/.secrets:ro
       - /var/run/docker.sock:/var/run/docker.sock
     group_add:
@@ -43,13 +55,21 @@ services:
     environment:
       PORT: 3000
       NODE_ENV: production
-      MCA_BASE_PATH: /app/mcas
+      MCA_BASE_PATH: ${PWD}/mcas
+      VOLUMES_BASE_PATH: ${PWD}/data/volumes
       MONGODB_URI: mongodb://mongodb:27017
       MONGODB_DATABASE: teros
       STATIC_BASE_URL: http://localhost:10001/static
+      # All container operations go to the container-agent over HTTP (the backend
+      # keeps its own docker.sock only for the terminal window's docker exec).
+      CONTAINER_AGENT_URL: http://container-agent:10011
+      CONTAINER_AGENT_TOKEN: ${CONTAINER_AGENT_TOKEN:?CONTAINER_AGENT_TOKEN is required (openssl rand -hex 32; shared with the container-agent)}
     depends_on:
       - mongodb
       - qdrant
+      - container-agent
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - teros-network
     healthcheck:
@@ -58,6 +78,47 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # Container Agent — the only Docker path for MCAs (TWO-HOST-SEPARATION-PLAN.md).
+  # The backend delegates every MCA spawn/stop to this daemon over HTTP; it holds
+  # the docker.sock and runs the MCA containers on the host daemon. No published
+  # port: only the backend reaches it, over the compose network (container-agent:10011).
+  container-agent:
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile
+    restart: unless-stopped
+    # Override the backend image's default CMD (`yarn start` -> index.ts + sync);
+    # the agent must not run the DB sync, just its own entrypoint.
+    command: ["tsx", "src/container-agent.ts"]
+    volumes:
+      # Same-path bind mounts (see the backend service): the agent runs `docker run
+      # -v <path>` on the host daemon, so these must match host & container paths.
+      - ${PWD}/mcas:${PWD}/mcas
+      - ${PWD}/data/volumes:${PWD}/data/volumes
+      - ./.secrets:/app/.secrets:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "999"
+    environment:
+      NODE_ENV: production
+      CONTAINER_AGENT_TOKEN: ${CONTAINER_AGENT_TOKEN:?CONTAINER_AGENT_TOKEN is required (openssl rand -hex 32; shared with the backend)}
+      # Listen on all interfaces INSIDE the compose network (no host port is
+      # published, so this is not exposed to the host).
+      CONTAINER_AGENT_HOST: 0.0.0.0
+      CONTAINER_AGENT_PORT: 10011
+      # Core port MCAs use for callback URLs (host.docker.internal:<port>): the
+      # host-published backend port, not the in-container 3000.
+      BACKEND_PORT: 10001
+      MCA_BASE_PATH: ${PWD}/mcas
+      VOLUMES_BASE_PATH: ${PWD}/data/volumes
+      # Makes the agent add `--add-host=host.docker.internal:host-gateway` to each
+      # MCA container so callbacks resolve on Linux (automatic on Docker Desktop).
+      MCA_HOST_GATEWAY: host-gateway
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - teros-network
 
   # Frontend Web App
   frontend:
@@ -83,6 +144,17 @@ services:
 
 networks:
   teros-network:
+    # Pinned name: the container-agent launches MCA containers with
+    # `--network teros_teros-network` (hardcoded TEROS_INTERNAL_NETWORK in
+    # services/mca-network-policy.ts), so the compose network MUST resolve to that
+    # exact name regardless of the project/directory name.
+    name: teros_teros-network
     driver: bridge
 
-
+volumes:
+  mongodb_data:
+    driver: local
+  mongodb_config:
+    driver: local
+  qdrant_data:
+    driver: local

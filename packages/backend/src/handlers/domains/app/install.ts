@@ -1,18 +1,22 @@
 /**
- * app.install — Install an MCA from the catalog for the current user
+ * app.install — Install an MCA from the catalog
  */
 
-import { generateAppId } from '@teros/core'
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { generateAppId } from '@teros/core'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface InstallAppData {
   mcaId: string
   name?: string
 }
 
-export function createInstallAppHandler(mcaService: McaService) {
+export function createInstallAppHandler(
+  mcaService: McaService,
+  pubSubService?: PubSubService | null,
+) {
   return async function installApp(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as InstallAppData
     const { mcaId, name } = data
@@ -21,12 +25,13 @@ export function createInstallAppHandler(mcaService: McaService) {
       throw new HandlerError('MISSING_MCA_ID', 'mcaId is required')
     }
 
-    // Verify MCA exists and is available
+    // Verify MCA exists in catalog
     const mca = await mcaService.getMcaFromCatalog(mcaId)
     if (!mca) {
       throw new HandlerError('MCA_NOT_FOUND', `MCA ${mcaId} not found in catalog`)
     }
 
+    // Verify MCA is enabled
     if (mca.availability?.enabled === false) {
       throw new HandlerError('MCA_DISABLED', `MCA ${mcaId} is not available`)
     }
@@ -52,43 +57,95 @@ export function createInstallAppHandler(mcaService: McaService) {
       }
     }
 
+    // Bug 1 fix: resolve privateWorkspaceId as ownerId (same as app.list does)
+    const usersCollection = mcaService['db'].collection('users')
+    const userDoc = await usersCollection.findOne(
+      { userId: ctx.userId },
+      { projection: { privateWorkspaceId: 1, _id: 0 } },
+    )
+    const ownerId = userDoc?.privateWorkspaceId
+    if (!ownerId) {
+      throw new HandlerError('NO_WORKSPACE', 'User has no private workspace configured')
+    }
+
+    // Bug 2 fix: idempotent install — return existing app if mcaId already installed for this owner
+    if (!mca.availability?.multi) {
+      const existing = await mcaService.getAppByMcaIdAndOwner(mcaId, ownerId)
+      if (existing) {
+        console.log(`✅ App ${existing.appId} already installed for owner ${ownerId}, returning existing`)
+        // Reinstalling heals a missing superagent grant (upsert)
+        await mcaService.grantAccessToUserSuperagents(ctx.userId, existing.appId)
+        return {
+          app: {
+            appId: existing.appId,
+            mcaId: existing.mcaId,
+            name: existing.name,
+            description: mca.description,
+            icon: mca.icon,
+            color: mca.color,
+            category: mca.category,
+            status: existing.status,
+          },
+        }
+      }
+    }
+
+    // Generate unique app ID
     const appId = generateAppId()
 
+    // Bug 3 fix: use ownerId (privateWorkspaceId) for name availability checks
     let appName: string
     if (name) {
       const validation = mcaService.validateAppName(name)
       if (!validation.valid) {
         throw new HandlerError('INVALID_APP_NAME', validation.error || 'Invalid app name')
       }
-      const isAvailable = await mcaService.isAppNameAvailable(ctx.userId, name)
+      const isAvailable = await mcaService.isAppNameAvailable(ownerId, name)
       if (!isAvailable) {
         throw new HandlerError('APP_NAME_TAKEN', `App name "${name}" is already in use`)
       }
       appName = name
     } else {
-      appName = await mcaService.generateDefaultAppName(mcaId, ctx.userId)
+      appName = await mcaService.generateDefaultAppName(mcaId, ownerId)
     }
 
+    // Create the app using ownerId (privateWorkspaceId) and ownerType: 'workspace'
     const app = await mcaService.createApp({
       appId,
       mcaId,
-      ownerId: ctx.userId,
+      ownerId,
+      ownerType: 'workspace',
       name: appName,
       status: 'active',
     })
 
-    console.log(`✅ Installed app ${app.appId} for user ${ctx.userId}`)
+    console.log(`✅ Installed app ${app.appId} for owner ${ownerId} (user ${ctx.userId})`)
 
-    return {
-      app: {
-        appId: app.appId,
-        mcaId: app.mcaId,
-        name: app.name,
-        description: mca.description,
-        icon: mca.icon,
-        category: mca.category,
-        status: app.status,
-      },
+    // Auto-grant the newly installed app to the user's superagents
+    await mcaService.grantAccessToUserSuperagents(ctx.userId, app.appId)
+
+    const appPayload = {
+      appId: app.appId,
+      mcaId: app.mcaId,
+      // Include the MCA's catalog name so the NavBar can render it without a
+      // round-trip. Mirrors the shape returned by workspace.install-app.
+      mcaName: mca.name,
+      name: app.name,
+      description: mca.description,
+      icon: mca.icon,
+      color: mca.color,
+      category: mca.category,
+      status: app.status,
     }
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(ownerId, {
+        type: 'app.installed',
+        app: appPayload,
+        ownerId,
+      })
+    }
+
+    return { app: appPayload }
   }
 }

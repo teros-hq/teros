@@ -28,6 +28,9 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -49,6 +52,9 @@
             "description": "Maximum number of channels to return (default: 20)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -77,6 +83,9 @@
         "required": [
           "channelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -93,6 +102,9 @@
         "required": [
           "channelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -113,6 +125,36 @@
         "required": [
           "agentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delegate-task",
+      "description": "Delegate a task to a new sub-conversation with an agent (defaults to yourself). Creates the conversation, sends the task prompt, and returns immediately. The sub-agent works independently and each of its responses is automatically forwarded back to this conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "Full task description and instructions to send to the sub-agent"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID to delegate to. Defaults to the current agent (self-delegation)."
+          },
+          "taskName": {
+            "type": "string",
+            "description": "Optional name for the delegated task conversation"
+          }
+        },
+        "required": [
+          "prompt"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -134,6 +176,9 @@
           "channelId",
           "message"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -155,6 +200,44 @@
           "channelId",
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "import-attachment",
+      "description": "Copy a file the user uploaded in chat (image or document) into the agent workspace volume so filesystem tools can read it. Identify it by the filename shown in the \"[User sent ...]\" message reference. Returns { workspacePath, size, mime }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filename": {
+            "type": "string",
+            "description": "Filename of the chat attachment to import, as shown in the message reference"
+          },
+          "destPath": {
+            "type": "string",
+            "description": "Optional destination path inside the workspace (relative). Defaults to the original filename at the workspace root."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Channel to import from. Defaults to the current conversation."
+          },
+          "messageId": {
+            "type": "string",
+            "description": "Optional message ID to disambiguate when several attachments share a filename."
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Overwrite the destination if it already exists (default: false)."
+          }
+        },
+        "required": [
+          "filename"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

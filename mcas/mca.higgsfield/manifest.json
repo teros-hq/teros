@@ -48,5 +48,12 @@
     "image-to-video",
     "soul",
     "character"
+  ],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-02-09",
+      "notes": "Initial release — generate images from text, turn images into videos, and create consistent characters with Soul"
+    }
   ]
 }

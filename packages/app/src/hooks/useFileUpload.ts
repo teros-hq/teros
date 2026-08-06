@@ -2,15 +2,16 @@
  * useFileUpload Hook
  *
  * Handles file uploads for chat messages (images, documents, etc.)
+ * Supports multiple file selection and batch upload.
  * Works on web platform using native file input.
  */
 
 import { useCallback, useRef, useState } from "react"
 import { Platform } from "react-native"
-import { getTerosClient } from "../../app/_layout"
+import { getTerosClient } from "../services/terosClientSingleton"
 import { useAuthStore } from "../store/authStore"
 
-// Allowed file types - now accepts all common types
+// Allowed file types - accepts all common types
 const ALLOWED_IMAGE_TYPES = [
   "image/jpeg",
   "image/png",
@@ -80,150 +81,213 @@ export interface UploadedFile {
 }
 
 export interface FileUploadState {
-  /** Currently selected file (before upload) */
-  selectedFile: File | null
-  /** Preview URL for selected file (local blob URL) */
-  previewUrl: string | null
-  /** Image dimensions (detected locally for preview) */
-  dimensions: { width: number; height: number } | null
+  /** Currently selected files (before upload) */
+  selectedFiles: File[]
+  /** Preview URLs for selected files (local blob URLs, keyed by index) */
+  previewUrls: Record<number, string>
+  /** Image dimensions keyed by index */
+  dimensions: Record<number, { width: number; height: number }>
   /** Upload in progress */
   isUploading: boolean
-  /** Upload progress (0-100) */
+  /** Overall upload progress (0-100) */
   progress: number
   /** Error message if upload failed */
   error: string | null
   /** Uploaded file info (after successful upload) */
-  uploadedFile: UploadedFile | null
+  uploadedFiles: UploadedFile[]
 }
 
 export interface UseFileUploadReturn extends FileUploadState {
-  /** Open file picker dialog */
+  /** Open file picker dialog (multi-select) */
   pickFile: () => void
-  /** Upload the selected file */
-  upload: () => Promise<UploadedFile | null>
-  /** Clear selected file and reset state */
+  /** Upload all selected files */
+  upload: () => Promise<UploadedFile[]>
+  /** Clear all selected files and reset state */
   clear: () => void
-  /** Select a specific file programmatically */
-  selectFile: (file: File) => void
+  /** Add files programmatically (from drag-drop or programmatic selection) */
+  addFiles: (files: File[] | FileList) => void
+  /** Remove a specific file by index */
+  removeFile: (index: number) => void
 }
 
 /**
- * Hook for handling file uploads
+ * Validate a single file — returns error string or null if valid.
+ */
+function validateFile(file: File): string | null {
+  if (file.type && !ALLOWED_TYPES.includes(file.type)) {
+    const blockedTypes = ["application/x-msdownload", "application/x-executable"]
+    if (blockedTypes.includes(file.type)) {
+      return `File type not allowed: ${file.type}`
+    }
+  }
+  if (file.size > MAX_FILE_SIZE) {
+    return `File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Max: ${MAX_FILE_SIZE / 1024 / 1024}MB`
+  }
+  return null
+}
+
+/**
+ * Upload a single file via XMLHttpRequest.
+ */
+function uploadSingleFile(
+  file: File,
+  apiBaseUrl: string,
+  sessionToken: string,
+  onProgress: (pct: number) => void,
+): Promise<UploadedFile> {
+  const formData = new FormData()
+  formData.append("file", file)
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100))
+      }
+    }
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText)
+          if (response.success && response.file) {
+            resolve(response.file)
+          } else {
+            reject(new Error(response.error || "Upload failed"))
+          }
+        } catch {
+          reject(new Error("Invalid response from server"))
+        }
+      } else {
+        try {
+          const response = JSON.parse(xhr.responseText)
+          reject(new Error(response.error || `Upload failed: ${xhr.status}`))
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status}`))
+        }
+      }
+    }
+
+    xhr.onerror = () => reject(new Error("Network error during upload"))
+    xhr.open("POST", `${apiBaseUrl}/api/upload/static`)
+    xhr.setRequestHeader("Authorization", `Bearer ${sessionToken}`)
+    xhr.send(formData)
+  })
+}
+
+/**
+ * Hook for handling file uploads (multiple files supported)
  */
 export function useFileUpload(): UseFileUploadReturn {
   const sessionToken = useAuthStore((state) => state.sessionToken)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const addFilesRef = useRef<(files: File[] | FileList) => void>(() => {})
 
-  // Get backend URL from TerosClient (derives from WebSocket URL)
   const client = getTerosClient()
   const API_BASE_URL = client?.getBackendBaseUrl() || process.env.EXPO_PUBLIC_BACKEND_URL || ""
 
   const [state, setState] = useState<FileUploadState>({
-    selectedFile: null,
-    previewUrl: null,
+    selectedFiles: [],
+    previewUrls: {},
+    dimensions: {},
     isUploading: false,
     progress: 0,
     error: null,
-    uploadedFile: null,
+    uploadedFiles: [],
   })
 
-  // Create hidden file input on first use (web only)
+  // Add files (from picker, drag-drop, or programmatic)
+  const addFiles = useCallback((files: File[] | FileList) => {
+    const fileArray = Array.isArray(files) ? files : Array.from(files)
+
+    // Validate all files first
+    const errors: string[] = []
+    const validFiles: File[] = []
+
+    fileArray.forEach((file) => {
+      const err = validateFile(file)
+      if (err) {
+        errors.push(`${file.name}: ${err}`)
+      } else {
+        validFiles.push(file)
+      }
+    })
+
+    if (errors.length > 0) {
+      setState((prev) => ({
+        ...prev,
+        error: errors.join("; "),
+      }))
+      if (validFiles.length === 0) return
+    }
+
+    setState((prev) => {
+      const combined = [...prev.selectedFiles, ...validFiles]
+      const updatedPreviewUrls: Record<number, string> = { ...prev.previewUrls }
+      const updatedDimensions: Record<number, { width: number; height: number }> = {
+        ...prev.dimensions,
+      }
+
+      validFiles.forEach((file) => {
+        const idx = combined.indexOf(file)
+        if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
+          const url = URL.createObjectURL(file)
+          updatedPreviewUrls[idx] = url
+
+          // Load dimensions asynchronously
+          const img = new Image()
+          img.onload = () => {
+            setState((s) => ({
+              ...s,
+              dimensions: { ...s.dimensions, [idx]: { width: img.naturalWidth, height: img.naturalHeight } },
+            }))
+            URL.revokeObjectURL(img.src)
+          }
+          img.onerror = () => {
+            URL.revokeObjectURL(img.src)
+          }
+          img.src = url
+        }
+      })
+
+      return {
+        ...prev,
+        selectedFiles: combined,
+        previewUrls: updatedPreviewUrls,
+        dimensions: updatedDimensions,
+        error: prev.error && validFiles.length === 0 ? prev.error : null,
+      }
+    })
+  }, [])
+
+  // Keep ref in sync so getFileInput always sees latest
+  addFilesRef.current = addFiles
+
+  // Create hidden file input on first use (web only, multi-select)
   const getFileInput = useCallback(() => {
     if (Platform.OS !== "web") return null
 
     if (!fileInputRef.current) {
       const input = document.createElement("input")
       input.type = "file"
+      input.multiple = true
       input.accept = ALLOWED_TYPES.join(",")
       input.style.display = "none"
       document.body.appendChild(input)
       fileInputRef.current = input
 
       input.onchange = (e) => {
-        const file = (e.target as HTMLInputElement).files?.[0]
-        if (file) {
-          handleFileSelected(file)
+        const files = (e.target as HTMLInputElement).files
+        if (files && files.length > 0) {
+          addFilesRef.current(Array.from(files))
         }
-        // Reset input so same file can be selected again
+        // Reset input so same files can be selected again
         input.value = ""
       }
     }
 
     return fileInputRef.current
-  }, [])
-
-  // Handle file selection
-  const handleFileSelected = useCallback((file: File) => {
-    // Validate file type (allow most common types, or generic binary)
-    // If the browser doesn't recognize the type, it may be empty - allow it
-    if (file.type && !ALLOWED_TYPES.includes(file.type)) {
-      // Be lenient - only block truly dangerous types
-      const blockedTypes = ["application/x-msdownload", "application/x-executable"]
-      if (blockedTypes.includes(file.type)) {
-        setState((prev) => ({
-          ...prev,
-          error: `File type not allowed: ${file.type}`,
-        }))
-        return
-      }
-    }
-
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      setState((prev) => ({
-        ...prev,
-        error: `File too large: ${(file.size / 1024 / 1024).toFixed(1)}MB. Max: ${MAX_FILE_SIZE / 1024 / 1024}MB`,
-      }))
-      return
-    }
-
-    // Create preview URL for images
-    let previewUrl: string | null = null
-    const dimensions: { width: number; height: number } | null = null
-
-    if (ALLOWED_IMAGE_TYPES.includes(file.type)) {
-      previewUrl = URL.createObjectURL(file)
-      // Load image to get dimensions
-      const img = new Image()
-      img.onload = () => {
-        const w = img.naturalWidth
-        const h = img.naturalHeight
-        setState((prev) => ({
-          ...prev,
-          selectedFile: file,
-          previewUrl,
-          dimensions: { width: w, height: h },
-          isUploading: false,
-          progress: 0,
-          error: null,
-          uploadedFile: null,
-        }))
-        URL.revokeObjectURL(img.src)
-      }
-      img.onerror = () => {
-        setState((prev) => ({
-          ...prev,
-          selectedFile: file,
-          previewUrl,
-          dimensions: null,
-          isUploading: false,
-          progress: 0,
-          error: null,
-          uploadedFile: null,
-        }))
-      }
-      img.src = previewUrl
-    } else {
-      setState({
-        selectedFile: file,
-        previewUrl,
-        dimensions: null,
-        isUploading: false,
-        progress: 0,
-        error: null,
-        uploadedFile: null,
-      })
-    }
   }, [])
 
   // Open file picker
@@ -237,84 +301,88 @@ export function useFileUpload(): UseFileUploadReturn {
     input?.click()
   }, [getFileInput])
 
-  // Select file programmatically
-  const selectFile = useCallback(
-    (file: File) => {
-      handleFileSelected(file)
-    },
-    [handleFileSelected],
-  )
+  // Remove a specific file by index
+  const removeFile = useCallback((index: number) => {
+    setState((prev) => {
+      const file = prev.selectedFiles[index]
+      if (!file) return prev
 
-  // Upload the selected file
-  const upload = useCallback(async (): Promise<UploadedFile | null> => {
-    const { selectedFile } = state
+      // Revoke preview URL if exists
+      const previewUrl = prev.previewUrls[index]
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl)
+      }
 
-    if (!selectedFile) {
-      setState((prev) => ({ ...prev, error: "No file selected" }))
-      return null
+      const newFiles = prev.selectedFiles.filter((_, i) => i !== index)
+      const newPreviewUrls: Record<number, string> = {}
+      const newDimensions: Record<number, { width: number; height: number }> = {}
+
+      // Re-index previews and dimensions
+      newFiles.forEach((_, newIdx) => {
+        const oldIdx = newIdx < index ? newIdx : newIdx + 1
+        if (prev.previewUrls[oldIdx]) {
+          newPreviewUrls[newIdx] = prev.previewUrls[oldIdx]
+        }
+        if (prev.dimensions[oldIdx]) {
+          newDimensions[newIdx] = prev.dimensions[oldIdx]
+        }
+      })
+
+      return {
+        ...prev,
+        selectedFiles: newFiles,
+        previewUrls: newPreviewUrls,
+        dimensions: newDimensions,
+      }
+    })
+  }, [])
+
+  // Upload all selected files
+  const upload = useCallback(async (): Promise<UploadedFile[]> => {
+    const { selectedFiles } = state
+
+    if (selectedFiles.length === 0) {
+      setState((prev) => ({ ...prev, error: "No files selected" }))
+      return []
     }
 
     if (!sessionToken) {
       setState((prev) => ({ ...prev, error: "Not authenticated" }))
-      return null
+      return []
     }
 
     setState((prev) => ({ ...prev, isUploading: true, progress: 0, error: null }))
 
+    const progressMap = new Map<number, number>()
+    const updateOverallProgress = () => {
+      const total = Array.from(progressMap.values()).reduce((sum, p) => sum + p, 0)
+      const avg = Math.round(total / selectedFiles.length)
+      setState((prev) => ({ ...prev, progress: avg }))
+    }
+
     try {
-      const formData = new FormData()
-      formData.append("file", selectedFile)
-
-      // Use XMLHttpRequest for progress tracking
-      const result = await new Promise<UploadedFile>((resolve, reject) => {
-        const xhr = new XMLHttpRequest()
-
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const progress = Math.round((e.loaded / e.total) * 100)
-            setState((prev) => ({ ...prev, progress }))
-          }
-        }
-
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const response = JSON.parse(xhr.responseText)
-              if (response.success && response.file) {
-                resolve(response.file)
-              } else {
-                reject(new Error(response.error || "Upload failed"))
-              }
-            } catch (e) {
-              reject(new Error("Invalid response from server"))
-            }
-          } else {
-            try {
-              const response = JSON.parse(xhr.responseText)
-              reject(new Error(response.error || `Upload failed: ${xhr.status}`))
-            } catch {
-              reject(new Error(`Upload failed: ${xhr.status}`))
-            }
-          }
-        }
-
-        xhr.onerror = () => {
-          reject(new Error("Network error during upload"))
-        }
-
-        xhr.open("POST", `${API_BASE_URL}/api/upload/static`)
-        xhr.setRequestHeader("Authorization", `Bearer ${sessionToken}`)
-        xhr.send(formData)
-      })
+      const results = await Promise.all(
+        selectedFiles.map((file, idx) =>
+          uploadSingleFile(
+            file,
+            API_BASE_URL,
+            sessionToken,
+            (pct) => {
+              progressMap.set(idx, pct)
+              updateOverallProgress()
+            },
+          ),
+        ),
+      )
 
       setState((prev) => ({
         ...prev,
         isUploading: false,
         progress: 100,
-        uploadedFile: result,
+        uploadedFiles: results,
       }))
 
-      return result
+      return results
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Upload failed"
       setState((prev) => ({
@@ -323,33 +391,35 @@ export function useFileUpload(): UseFileUploadReturn {
         progress: 0,
         error: errorMessage,
       }))
-      return null
+      return []
     }
-  }, [state.selectedFile, sessionToken])
+  }, [state.selectedFiles, sessionToken])
 
-  // Clear state
+  // Clear all state
   const clear = useCallback(() => {
-    // Revoke preview URL to free memory
-    if (state.previewUrl) {
-      URL.revokeObjectURL(state.previewUrl)
-    }
+    // Revoke all preview URLs
+    Object.values(state.previewUrls).forEach((url) => {
+      URL.revokeObjectURL(url)
+    })
 
     setState({
-      selectedFile: null,
-      previewUrl: null,
+      selectedFiles: [],
+      previewUrls: {},
+      dimensions: {},
       isUploading: false,
       progress: 0,
       error: null,
-      uploadedFile: null,
+      uploadedFiles: [],
     })
-  }, [state.previewUrl])
+  }, [state.previewUrls])
 
   return {
     ...state,
     pickFile,
     upload,
     clear,
-    selectFile,
+    addFiles,
+    removeFile,
   }
 }
 

@@ -11,6 +11,7 @@ interface SendMessageData {
   content: any
   requestId?: string
   requireAck?: boolean
+  wakeUpAgent?: boolean
 }
 
 export function createSendMessageHandler(messageHandler: MessageHandler) {
@@ -22,6 +23,7 @@ export function createSendMessageHandler(messageHandler: MessageHandler) {
       type: 'send_message',
       channelId: data.channelId,
       content: data.content,
+      wakeUpAgent: data.wakeUpAgent,
     })
 
     // handleSendMessage sends its own response (message_sent) directly via ws.

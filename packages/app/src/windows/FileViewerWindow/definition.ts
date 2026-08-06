@@ -13,8 +13,12 @@ import { FileViewerWindowContent } from './FileViewerWindowContent';
 export interface FileViewerWindowProps {
   /** Absolute path inside the agent's volume (e.g. '/workspace/mockup.html') */
   filePath: string;
-  /** Channel ID — used to resolve the correct volume */
-  channelId: string;
+  /** Channel ID — used to resolve the correct volume when opened from a chat context.
+   *  At least one of channelId or workspaceId must be provided. */
+  channelId?: string;
+  /** Workspace ID — direct fast-path when the caller knows the workspace.
+   *  Preferred over channelId (avoids channel→workspace DB lookup). */
+  workspaceId?: string;
 }
 
 export const fileViewerWindowDefinition: WindowTypeDefinition<FileViewerWindowProps> = {
@@ -28,7 +32,6 @@ export const fileViewerWindowDefinition: WindowTypeDefinition<FileViewerWindowPr
   defaultSize: { width: 800, height: 600 },
   minSize: { width: 400, height: 300 },
 
-  singleton: false,
 
   // Deduplicate by filePath so the same file only opens one viewer
   getKey: (props) => props.filePath,
@@ -43,10 +46,12 @@ export const fileViewerWindowDefinition: WindowTypeDefinition<FileViewerWindowPr
   serialize: (props) => ({
     filePath: props.filePath,
     channelId: props.channelId,
+    workspaceId: props.workspaceId,
   }),
 
   deserialize: (data) => ({
     filePath: data.filePath as string,
-    channelId: data.channelId as string,
+    channelId: data.channelId as string | undefined,
+    workspaceId: data.workspaceId as string | undefined,
   }),
 };

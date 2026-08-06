@@ -1,0 +1,197 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Google OAuth 자격 증명 및 Calendar API 연결을 확인합니다."
+    },
+    "calendar-list-calendars": {
+      "name": "calendar-list-calendars",
+      "description": "사용자 캘린더 목록(주 캘린더, 보조 캘린더, 공유 캘린더)을 반환합니다. 정리된 행 { id, summary, timeZone, primary, accessRole, backgroundColor, ... }을 반환합니다. 매개변수: limit (1-250, 기본 100), cursor, fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 최대 캘린더 수. 최소 1, 최대 250, 기본 100.",
+        "cursor": "페이지 매김 커서(Google calendarList nextPageToken).",
+        "showHidden": "숨겨진 캘린더 포함. 기본값 false.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-list-events": {
+      "name": "calendar-list-events",
+      "description": "날짜 범위 내의 이벤트 목록을 반환합니다. 참석자 응답 상태, 주최자, 색상 ID, htmlLink, hangoutLink, 반복 정보를 포함한 정리된 행을 반환합니다. 매개변수: startDate, endDate, calendarId?, limit (1-2500, 기본 25), cursor, timeZone?, fields?, includeRaw.",
+      "params": {
+        "startDate": "하한(포함) ISO 8601, 예: \"2026-04-28T00:00:00Z\".",
+        "endDate": "상한(제외) ISO 8601, 예: \"2026-04-29T00:00:00Z\".",
+        "calendarId": "캘린더 ID. 기본값은 \"primary\".",
+        "limit": "페이지당 최대 이벤트 수. 최소 1, 최대 2500, 기본 25.",
+        "cursor": "페이지 매김 커서(Google events nextPageToken).",
+        "timeZone": "IANA 시간대(예: \"Europe/Madrid\"). 기본값: 캘린더 시간대.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-get-event": {
+      "name": "calendar-get-event",
+      "description": "ID로 단일 이벤트를 전체 세부정보(주최자, 참석자 응답 상태, 반복 규칙 + 구문 분석된 구문, conferenceData, hangoutLink, htmlLink)와 함께 검색합니다. 매개변수: eventId, calendarId?, fields?, includeRaw.",
+      "params": {
+        "eventId": "Google 이벤트 ID.",
+        "calendarId": "캘린더 ID. 기본값은 \"primary\".",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-search-events": {
+      "name": "calendar-search-events",
+      "description": "자유 텍스트 쿼리로 이벤트를 검색합니다(제목, 설명, 위치, 참석자와 일치). 전체 참석자/주최자/반복/Meet 세부정보가 포함된 정리된 행을 반환합니다. 매개변수: query, calendarId?, startDate?, endDate?, limit (1-2500, 기본 25), cursor, fields?, includeRaw.",
+      "params": {
+        "query": "자유 텍스트 쿼리.",
+        "calendarId": "캘린더 ID. 기본값은 \"primary\".",
+        "startDate": "선택적 하한(포함) ISO 8601.",
+        "endDate": "선택적 상한(제외) ISO 8601.",
+        "limit": "페이지당 최대 이벤트 수. 최소 1, 최대 2500, 기본 25.",
+        "cursor": "페이지 매김 커서(Google events nextPageToken).",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-create-event": {
+      "name": "calendar-create-event",
+      "description": "캘린더 이벤트를 생성합니다. 반복(RRULE), addConference를 통한 Google Meet, sendUpdates를 통한 참석자 알림, 사용자 정의 알림 및 이벤트별 색상을 지원합니다. hangoutLink + htmlLink가 포함된 정리된 이벤트를 반환합니다. 매개변수: summary, start, end, 선택적 calendarId, description, location, attendees, recurrence, addConference, sendUpdates, reminders, colorId.",
+      "params": {
+        "summary": "이벤트 제목.",
+        "start": "ISO 8601 시작. 모호성을 피하기 위해 전체 시간대 오프셋을 사용합니다(예: \"2026-04-29T14:00:00+02:00\").",
+        "end": "시간대 오프셋이 있는 ISO 8601 종료.",
+        "timeZone": "IANA 시간대 이름(예: \"Europe/Madrid\"). 선택적 재정의. 반복 이벤트에서 생략하면 핸들러가 사용자의 캘린더 설정에서 자동으로 해결합니다.",
+        "calendarId": "캘린더 ID. 기본값은 \"primary\".",
+        "description": "이벤트 본문. HTML을 포함할 수 있습니다.",
+        "attendees": "참석자 이메일(선택 사항).",
+        "recurrence": "RRULE 문자열(예: [\"RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR\"]).",
+        "addConference": "Google Meet 링크를 자동으로 생성합니다. 기본값 false.",
+        "sendUpdates": "참석자에게 알림: \"all\"은 모든 사람에게 알림, \"externalOnly\"는 동일한 도메인의 사용자를 건너뜁니다, \"none\"은 무시합니다. 기본값은 \"none\".",
+        "reminders": "알림 재정의. {overrides:[{method:\"popup\"|\"email\", minutes}], useDefault:false}. useDefault=true인 경우 캘린더 기본값이 사용됩니다.",
+        "colorId": "이벤트 타일에 대한 Google 캘린더 색상 ID(1-11).",
+        "attachments": "첨부할 드라이브 파일. 각 항목: { fileUrl: 필수, title?, mimeType?, iconLink?, fileId? }. fileUrl은 드라이브 `alternateLink`(또는 webViewLink)여야 합니다. MCA는 `supportsAttachments=true`를 Google에 전달합니다.",
+        "fields": "반환된 이벤트의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-update-event": {
+      "name": "calendar-update-event",
+      "description": "기존 이벤트를 패치합니다. 참석자 변경 사항은 명시적입니다: addAttendees / removeAttendees는 기존 목록과 병합되고, replaceAttendees는 모든 것을 덮어씁니다(파괴적). 반복, 알림, 색상, sendUpdates 업데이트를 지원합니다. 매개변수: eventId 필수; 나머지 모든 필드는 선택 사항입니다. 핸들러는 최대 ONE 패치만 발행합니다(참석자 병합이 요청된 경우에만 events.get가 실행됩니다).",
+      "params": {
+        "calendarId": "기본값은 \"primary\".",
+        "start": "시간대 오프셋이 있는 ISO 8601.",
+        "end": "시간대 오프셋이 있는 ISO 8601.",
+        "timeZone": "IANA 시간대 이름(예: \"Europe/Madrid\"). 선택적 재정의. 반복 이벤트의 시작/종료를 변경할 때 생략하면 핸들러가 사용자의 캘린더 설정에서 자동으로 해결합니다.",
+        "recurrence": "RRULE 문자열. 반복을 지우려면 빈 배열을 전달합니다.",
+        "addAttendees": "추가할 이메일(기존 참석자는 유지됨).",
+        "removeAttendees": "제거할 이메일(기존 참석자는 그렇지 않으면 유지됨).",
+        "replaceAttendees": "파괴적: 전체 참석자 목록을 교체합니다. 주의하여 사용하십시오 — 이 목록에 없는 모든 사람을 조용히 삭제합니다.",
+        "sendUpdates": "변경 사항에 대해 참석자에게 알림을 보냅니다. 기본값은 \"none\".",
+        "reminders": "알림 재정의 {overrides, useDefault}.",
+        "colorId": "Google 캘린더 색상 ID(1-11).",
+        "attachments": "이 드라이브 파일 세트로 첨부 목록을 교체합니다. 지우려면 빈 배열을 전달합니다. MCA는 `supportsAttachments=true`를 Google에 전달합니다."
+      }
+    },
+    "calendar-delete-event": {
+      "name": "calendar-delete-event",
+      "description": "ID로 이벤트를 삭제합니다. 선택적 sendUpdates는 참석자가 취소 통지를 받는지 여부를 제어합니다. 구조화된 작업 결과를 반환합니다 — 렌더러가 사용자에게 표시할 메시지를 구성합니다.",
+      "params": {
+        "calendarId": "기본값은 \"primary\".",
+        "sendUpdates": "참석자에게 취소 통지를 보냅니다. 기본값은 \"none\"."
+      }
+    },
+    "calendar-get-free-busy": {
+      "name": "calendar-get-free-busy",
+      "description": "하나 이상의 캘린더에서 자유/바쁨을 확인합니다. 정리된 행 [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}]을 반환합니다 — 원시 Google 봉투는 절대 반환하지 않습니다. 매개변수: startDate, endDate, calendarIds[], fields?, includeRaw.",
+      "params": {
+        "startDate": "하한(포함) ISO 8601.",
+        "endDate": "상한(제외) ISO 8601.",
+        "calendarIds": "쿼리할 캘린더 ID. 기본값은 [\"primary\"].",
+        "timeZone": "응답 슬롯에 대한 IANA 시간대. 기본값: 호출자 캘린더 시간대.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-respond-to-event": {
+      "name": "calendar-respond-to-event",
+      "description": "연결된 사용자로서 캘린더 이벤트에 RSVP합니다. 이벤트의 참석자 목록을 읽고 사용자를 찾은 다음 응답 상태를 \"accepted\" / \"declined\" / \"tentative\"로 패치합니다(선택적으로 댓글과 함께). 사용자가 현재 참석자 목록에 없으면 패치가 항목을 생성하도록 추가됩니다. {success, account, eventId, response, eventSummary}를 반환합니다.",
+      "params": {
+        "response": "연결된 사용자의 새로운 응답 상태.",
+        "comment": "RSVP 옆에 표시되는 선택적 회신 댓글.",
+        "calendarId": "기본값은 \"primary\".",
+        "sendUpdates": "RSVP에 대해 주최자 + 다른 참석자에게 알립니다. 기본값은 \"none\"."
+      }
+    },
+    "calendar-quick-add-event": {
+      "name": "calendar-quick-add-event",
+      "description": "자연어로 이벤트를 생성합니다(\"Café con Antonio mañana 10am\"). Google은 텍스트를 제목 + 날짜/시간으로 구문 분석합니다. 구문 분석된 시작/종료를 포함한 정리된 이벤트를 반환합니다. 낮은 노력의 일정 잡기에 유용합니다. 참고: 제목과 시간만 추론됩니다 — 참석자, 반복, 위치 또는 Meet의 경우 create-event를 대신 사용하십시오.",
+      "params": {
+        "text": "자유 형식 설명(예: \"lunch with Ana tomorrow 1pm\").",
+        "calendarId": "기본값은 \"primary\".",
+        "sendUpdates": "텍스트에서 구문 분석된 잠재적 참석자에게 알립니다. 기본값은 \"none\".",
+        "fields": "반환된 이벤트의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Google 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "calendar-create-focus-time": {
+      "name": "calendar-create-focus-time",
+      "description": "사용자 캘린더에 집중 시간을 차단합니다. eventType: \"focusTime\" + transparency: \"opaque\"로 생성되어 슬롯이 하루 종일이 아닙니다. 선택적으로 충돌하는 초대를 자동으로 거부하고 Chat 상태를 \"doNotDisturb\"로 설정합니다. 정리된 이벤트를 반환합니다.",
+      "params": {
+        "start": "시간대 오프셋이 있는 ISO 8601 시작.",
+        "end": "시간대 오프셋이 있는 ISO 8601 종료.",
+        "summary": "제목. 기본값은 \"Focus time\".",
+        "autoDeclineMode": "집중 시간 동안 충돌하는 초대를 처리하는 방법. 기본값은 \"declineNone\".",
+        "chatStatus": "집중 시간 동안의 채팅 상태. 기본값은 \"doNotDisturb\".",
+        "calendarId": "기본값은 \"primary\"."
+      }
+    },
+    "calendar-create-out-of-office": {
+      "name": "calendar-create-out-of-office",
+      "description": "사용자를 외부로 표시합니다. eventType: \"outOfOffice\" + transparency: \"opaque\"로 생성됩니다. 기본적으로 제공된 메시지로 모든 충돌하는 초대를 거부합니다. 하루 종일이 아니며 전체 ISO 타임스탬프가 필요합니다.",
+      "params": {
+        "start": "시간대 오프셋이 있는 ISO 8601 시작.",
+        "end": "시간대 오프셋이 있는 ISO 8601 종료.",
+        "summary": "제목. 기본값은 \"Out of office\".",
+        "autoDeclineMode": "기본값은 \"declineAllConflictingInvitations\"."
+      }
+    },
+    "calendar-set-working-location": {
+      "name": "calendar-set-working-location",
+      "description": "날짜 범위에 대한 사용자 작업 위치를 표시합니다. eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\"로 생성되어 자유/바쁨을 차단하지 않습니다. 하루 종일(단일 일만 해당) 또는 시간 제한일 수 있습니다.",
+      "params": {
+        "type": "어떤 하위 속성이 존중되는지.",
+        "officeLocation": "type=officeLocation일 때: { buildingId?, deskId?, floorId?, floorSectionId?, label? }.",
+        "customLocation": "type=customLocation일 때: { label? } — 자유 텍스트 위치."
+      }
+    },
+    "calendar-get-settings": {
+      "name": "calendar-get-settings",
+      "description": "사용자 캘린더 기본 설정(시간대, 로케일, 주 시작, 날짜 필드 순서, 자동 추가 행아웃, 키보드 단축키 사용 등)을 읽습니다. `setting`이 전달되면 해당 단일 값을 반환하고, 그렇지 않으면 설정 ID로 키가 지정된 전체 맵을 반환합니다. 설정은 사용자의 캘린더 전역 범위를 가집니다.",
+      "params": {
+        "setting": "단일 설정의 선택적 ID(예: \"timezone\", \"locale\", \"weekStart\")."
+      }
+    },
+    "calendar-get-colors": {
+      "name": "calendar-get-colors",
+      "description": "공식 Google 캘린더 색상 팔레트를 반환합니다: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. 이를 사용하여 런타임에서 이벤트 colorIds(1..11)를 검증합니다."
+    },
+    "calendar-move-event": {
+      "name": "calendar-move-event",
+      "description": "이벤트를 한 캘린더에서 다른 캘린더로 이동합니다. 제한: 오직 `eventType: \"default\"`만 이동할 수 있습니다 — 생일/집중 시간/외부/작업 위치/fromGmail 이벤트는 오류를 반환합니다. 대상 캘린더 형태로 이동된 이벤트를 반환합니다."
+    },
+    "calendar-import-event": {
+      "name": "calendar-import-event",
+      "description": "외부 이벤트(iCalUID 포함)를 캘린더로 가져옵니다. 개인 복사본을 생성합니다 — create-event와는 다르게 원래 UID를 보존하여 시스템 간 조정을 가능하게 합니다. 에이전트가 `.ics` 파일이나 다른 시스템의 이벤트 참조를 받을 때 사용합니다."
+    },
+    "calendar-list-instances": {
+      "name": "calendar-list-instances",
+      "description": "재발 이벤트의 인스턴스와 그 재정의 메타데이터를 나열합니다. 이동/수정된 인스턴스를 표시할 수 있도록 `originalStartTime`이 포함된 행을 반환합니다. `pageToken`을 통한 커서 페이지 매김."
+    }
+  },
+  "name": "Google 캘린더",
+  "description": "Google 캘린더 관리: 캘린더 검색, 이벤트 목록/가져오기/검색, 반복 + Meet + 알림 + RSVP 알림이 포함된 이벤트 생성/업데이트/삭제, 가용성 확인",
+  "changelog": [
+    {
+      "notes": "캘린더를 탐색하고, 반복 및 Meet가 있는 이벤트를 생성 및 관리하고, RSVP하고, 자유-바쁨 가용성을 확인합니다."
+    }
+  ]
+}

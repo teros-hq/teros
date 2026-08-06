@@ -1,0 +1,393 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies HubSpot OAuth credentials and connectivity."
+    },
+    "search": {
+      "name": "search",
+      "description": "Search across HubSpot CRM objects (contacts, companies, deals) using the v3 search API. Returns curated results. Params: query, objectType, limit?, after?, sorts?, filters?",
+      "params": {
+        "query": "Search query string.",
+        "objectType": "Object type to search: contacts, companies, or deals.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination offset (cursor number).",
+        "sorts": "Sort configuration.",
+        "filters": "Filter groups for advanced search.",
+        "properties": "Specific properties to return."
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Create a new HubSpot contact. Returns curated contact shape. Not retryable (no idempotency key). Params: email, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "email": "Contact email address (required, unique).",
+        "firstName": "First name.",
+        "lastName": "Last name.",
+        "phone": "Phone number.",
+        "company": "Company name.",
+        "jobTitle": "Job title.",
+        "website": "Website URL.",
+        "lifecycleStage": "Lifecycle stage: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other.",
+        "properties": "Additional HubSpot contact properties as key-value pairs."
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Retrieve a HubSpot contact by ID or email. Returns curated { id, email, firstName, lastName, phone, company, jobTitle, website, lifecycleStage, leadStatus, createdAt, updatedAt }. Params: contactId, idProperty?",
+      "params": {
+        "contactId": "Contact ID (HubSpot ID) or email if idProperty=email.",
+        "idProperty": "Identifier type: \"email\" to lookup by email address. Default uses HubSpot ID.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "List HubSpot contacts with optional filters. Returns curated rows { id, email, firstName, lastName, phone, company, jobTitle, lifecycleStage, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination cursor from previous response.paging.next.after.",
+        "properties": "Additional contact properties to include."
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Update an existing HubSpot contact. Idempotent per-field — safe to retry. Params: contactId, email?, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "contactId": "HubSpot contact ID.",
+        "email": "Contact email address.",
+        "firstName": "First name.",
+        "lastName": "Last name.",
+        "phone": "Phone number.",
+        "company": "Company name.",
+        "jobTitle": "Job title.",
+        "website": "Website URL.",
+        "lifecycleStage": "Lifecycle stage.",
+        "properties": "Additional HubSpot contact properties as key-value pairs."
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Archive (soft delete) a HubSpot contact. Irreversible via API. Returns { success, contactId }.",
+      "params": {
+        "contactId": "HubSpot contact ID to archive."
+      }
+    },
+    "create-company": {
+      "name": "create-company",
+      "description": "Create a new HubSpot company. Returns curated company shape. Not retryable. Params: name, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "name": "Company name (required).",
+        "domain": "Company domain (e.g. \"example.com\").",
+        "industry": "Industry.",
+        "type": "Company type.",
+        "phone": "Phone number.",
+        "website": "Website URL.",
+        "city": "City.",
+        "state": "State/region.",
+        "country": "Country.",
+        "numberOfEmployees": "Number of employees.",
+        "annualRevenue": "Annual revenue.",
+        "lifecycleStage": "Lifecycle stage.",
+        "properties": "Additional HubSpot company properties as key-value pairs."
+      }
+    },
+    "get-company": {
+      "name": "get-company",
+      "description": "Retrieve a HubSpot company by ID or domain. Returns curated { id, name, domain, industry, type, phone, website, city, state, country, numberOfEmployees, annualRevenue, lifecycleStage, createdAt, updatedAt }. Params: companyId, idProperty?",
+      "params": {
+        "companyId": "Company ID (HubSpot ID) or domain if idProperty=domain.",
+        "idProperty": "Identifier type: \"domain\" to lookup by domain name. Default uses HubSpot ID.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "list-companies": {
+      "name": "list-companies",
+      "description": "List HubSpot companies with optional filters. Returns curated rows { id, name, domain, industry, type, phone, city, state, country, numberOfEmployees, lifecycleStage, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination cursor from previous response.paging.next.after.",
+        "properties": "Additional company properties to include."
+      }
+    },
+    "update-company": {
+      "name": "update-company",
+      "description": "Update an existing HubSpot company. Idempotent per-field — safe to retry. Params: companyId, name?, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "companyId": "HubSpot company ID.",
+        "name": "Company name.",
+        "domain": "Company domain.",
+        "industry": "Industry.",
+        "type": "Company type.",
+        "phone": "Phone number.",
+        "website": "Website URL.",
+        "city": "City.",
+        "state": "State/region.",
+        "country": "Country.",
+        "numberOfEmployees": "Number of employees.",
+        "annualRevenue": "Annual revenue.",
+        "lifecycleStage": "Lifecycle stage.",
+        "properties": "Additional HubSpot company properties as key-value pairs."
+      }
+    },
+    "delete-company": {
+      "name": "delete-company",
+      "description": "Archive (soft delete) a HubSpot company. Irreversible via API. Returns { success, companyId }.",
+      "params": {
+        "companyId": "HubSpot company ID to archive."
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "Create a new HubSpot deal. Returns curated deal shape. Not retryable. Params: name, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "name": "Deal name (required).",
+        "amount": "Deal amount.",
+        "stage": "Deal stage ID.",
+        "pipeline": "Pipeline ID.",
+        "type": "Deal type: newbusiness or existingbusiness.",
+        "closeDate": "Expected close date (YYYY-MM-DD).",
+        "probability": "Probability of closing (0-100).",
+        "description": "Deal description.",
+        "properties": "Additional HubSpot deal properties as key-value pairs."
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "Retrieve a HubSpot deal by ID. Returns curated { id, name, amount, stage, pipeline, type, closeDate, probability, description, source, createdAt, updatedAt }. Params: dealId",
+      "params": {
+        "dealId": "HubSpot deal ID.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "List HubSpot deals with optional filters. Returns curated rows { id, name, amount, stage, pipeline, type, closeDate, probability, description, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination cursor from previous response.paging.next.after.",
+        "properties": "Additional deal properties to include."
+      }
+    },
+    "update-deal": {
+      "name": "update-deal",
+      "description": "Update an existing HubSpot deal. Idempotent per-field — safe to retry. Params: dealId, name?, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "dealId": "HubSpot deal ID.",
+        "name": "Deal name.",
+        "amount": "Deal amount.",
+        "stage": "Deal stage ID.",
+        "pipeline": "Pipeline ID.",
+        "type": "Deal type.",
+        "closeDate": "Expected close date (YYYY-MM-DD).",
+        "probability": "Probability of closing (0-100).",
+        "description": "Deal description.",
+        "properties": "Additional HubSpot deal properties as key-value pairs."
+      }
+    },
+    "delete-deal": {
+      "name": "delete-deal",
+      "description": "Archive (soft delete) a HubSpot deal. Irreversible via API. Returns { success, dealId }.",
+      "params": {
+        "dealId": "HubSpot deal ID to archive."
+      }
+    },
+    "create-ticket": {
+      "name": "create-ticket",
+      "description": "Create a new HubSpot ticket. Returns curated ticket shape. Not retryable. Params: subject, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "subject": "Ticket subject (required).",
+        "content": "Ticket description/content.",
+        "status": "Ticket status.",
+        "priority": "Ticket priority: LOW, MEDIUM, HIGH.",
+        "category": "Ticket category.",
+        "pipeline": "Pipeline ID.",
+        "stage": "Pipeline stage ID.",
+        "source": "Ticket source type.",
+        "properties": "Additional HubSpot ticket properties as key-value pairs."
+      }
+    },
+    "get-ticket": {
+      "name": "get-ticket",
+      "description": "Retrieve a HubSpot ticket by ID. Returns curated { id, subject, content, status, priority, category, pipeline, stage, source, createdAt, updatedAt }. Params: ticketId",
+      "params": {
+        "ticketId": "HubSpot ticket ID.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "list-tickets": {
+      "name": "list-tickets",
+      "description": "List HubSpot tickets with optional filters. Returns curated rows { id, subject, content, status, priority, category, pipeline, createdAt }. Params: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination cursor from previous response.paging.next.after.",
+        "properties": "Additional ticket properties to include."
+      }
+    },
+    "update-ticket": {
+      "name": "update-ticket",
+      "description": "Update an existing HubSpot ticket. Idempotent per-field — safe to retry. Params: ticketId, subject?, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "ticketId": "HubSpot ticket ID.",
+        "subject": "Ticket subject.",
+        "content": "Ticket content.",
+        "status": "Ticket status.",
+        "priority": "Ticket priority.",
+        "category": "Ticket category.",
+        "pipeline": "Pipeline ID.",
+        "stage": "Pipeline stage ID.",
+        "source": "Ticket source.",
+        "properties": "Additional HubSpot ticket properties as key-value pairs."
+      }
+    },
+    "delete-ticket": {
+      "name": "delete-ticket",
+      "description": "Archive (soft delete) a HubSpot ticket. Irreversible via API. Returns { success, ticketId }.",
+      "params": {
+        "ticketId": "HubSpot ticket ID to archive."
+      }
+    },
+    "create-association": {
+      "name": "create-association",
+      "description": "Create an association between two HubSpot CRM objects (e.g., contact-company, deal-contact). Uses v4 associations API. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "Source object type: contacts, companies, deals, tickets.",
+        "fromObjectId": "Source object HubSpot ID.",
+        "toObjectType": "Target object type: contacts, companies, deals, tickets.",
+        "toObjectId": "Target object HubSpot ID.",
+        "associationType": "Association type ID or label (e.g., \"contact_to_company\", \"deal_to_contact\"). Optional — HubSpot will use default if omitted."
+      }
+    },
+    "delete-association": {
+      "name": "delete-association",
+      "description": "Delete an association between two HubSpot CRM objects. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "Source object type.",
+        "fromObjectId": "Source object HubSpot ID.",
+        "toObjectType": "Target object type.",
+        "toObjectId": "Target object HubSpot ID.",
+        "associationType": "Association type ID. Optional."
+      }
+    },
+    "list-associations": {
+      "name": "list-associations",
+      "description": "List all associations for a HubSpot object. Params: objectType, objectId, toObjectType, limit?",
+      "params": {
+        "objectType": "Object type.",
+        "objectId": "HubSpot object ID.",
+        "toObjectType": "Associated object type to retrieve.",
+        "limit": "Max results. Default 100."
+      }
+    },
+    "list-pipelines": {
+      "name": "list-pipelines",
+      "description": "List HubSpot pipelines for deals or tickets. Returns pipeline definitions with stages. Params: objectType (deals or tickets), includeInactive?",
+      "params": {
+        "objectType": "Pipeline object type.",
+        "includeInactive": "Include inactive pipelines. Default false."
+      }
+    },
+    "get-pipeline": {
+      "name": "get-pipeline",
+      "description": "Get a specific HubSpot pipeline by ID. Returns pipeline with stages. Params: objectType, pipelineId",
+      "params": {
+        "objectType": "Pipeline object type.",
+        "pipelineId": "Pipeline ID."
+      }
+    },
+    "create-engagement": {
+      "name": "create-engagement",
+      "description": "Create a HubSpot engagement (call, email, meeting, note, task). Uses the v3 engagements API. Params: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "params": {
+        "type": "Engagement type.",
+        "subject": "Subject or title of the engagement.",
+        "body": "Body/content of the engagement.",
+        "status": "Status (e.g., \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
+        "direction": "Direction: INBOUND or OUTBOUND (for calls/emails).",
+        "startTime": "Start time ISO string (for meetings/calls).",
+        "duration": "Duration in milliseconds (for calls).",
+        "associatedObjectType": "Associated object type: contacts, companies, deals, tickets.",
+        "associatedObjectId": "HubSpot ID of the associated object.",
+        "properties": "Additional engagement properties as key-value pairs."
+      }
+    },
+    "get-engagement": {
+      "name": "get-engagement",
+      "description": "Retrieve a HubSpot engagement by ID. Params: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "Engagement type.",
+        "engagementId": "HubSpot engagement ID.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "list-engagements": {
+      "name": "list-engagements",
+      "description": "List HubSpot engagements (calls, emails, meetings, notes, tasks). Params: type (call|email|meeting|note|task), limit?, after?",
+      "params": {
+        "type": "Engagement type.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "after": "Pagination cursor.",
+        "properties": "Additional properties to include."
+      }
+    },
+    "delete-engagement": {
+      "name": "delete-engagement",
+      "description": "Archive (soft delete) a HubSpot engagement. Params: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "Engagement type.",
+        "engagementId": "HubSpot engagement ID to archive."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "List HubSpot lists (CRM Lists v3). Returns curated rows { id, name, processingType, dynamic, objectTypeId, createdAt, updatedAt, memberCount }. Params: limit?, offset?, processingType?",
+      "params": {
+        "limit": "Results per page. Max 500, default 50.",
+        "offset": "Pagination offset (default 0).",
+        "processingType": "Filter by processing type."
+      }
+    },
+    "get-list": {
+      "name": "get-list",
+      "description": "Get a specific HubSpot list by ID (CRM Lists v3). Params: listId",
+      "params": {
+        "listId": "HubSpot list ID."
+      }
+    },
+    "list-conversations": {
+      "name": "list-conversations",
+      "description": "List HubSpot conversations (inbox) with optional filters. Returns curated rows. Params: limit?, after?, status?",
+      "params": {
+        "limit": "Results per page. Max 100, default 50.",
+        "after": "Pagination cursor.",
+        "status": "Filter by status: OPEN, CLOSED, WAITING."
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "Get a HubSpot conversation by ID, including messages. Params: conversationId, includeMessages?",
+      "params": {
+        "conversationId": "HubSpot conversation ID.",
+        "includeMessages": "Include messages in the response. Default true.",
+        "limit": "Max messages to include. Default 50."
+      }
+    },
+    "send-conversation-message": {
+      "name": "send-conversation-message",
+      "description": "Send a message in a HubSpot conversation (inbox reply). Params: conversationId, text, channelId?",
+      "params": {
+        "conversationId": "HubSpot conversation ID.",
+        "text": "Message text content.",
+        "channelId": "Optional channel ID override.",
+        "attachments": "Optional message attachments."
+      }
+    }
+  },
+  "name": "HubSpot",
+  "description": "HubSpot CRM integration - manage contacts, companies, deals, tickets, engagements, lists, and conversations via HubSpot REST API v3 with OAuth2",
+  "changelog": [
+    {
+      "notes": "Initial release — manage HubSpot contacts, companies, deals, tickets, activities, lists, conversations and webhooks straight from your agents"
+    }
+  ]
+}

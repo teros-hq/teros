@@ -13,7 +13,7 @@ import { config } from '../config';
  *
  * @example
  * getMcaStaticUrl('mca.perplexity', 'logo.svg')
- * // → 'https://your-backend-domain.com/static/mcas/mca.perplexity/logo.svg'
+ * // → 'https://be.teros.ai/static/mcas/mca.perplexity/logo.svg'
  */
 export function getMcaStaticUrl(mcaId: string, relativePath: string): string {
   // Remove leading slash if present
@@ -29,7 +29,7 @@ export function getMcaStaticUrl(mcaId: string, relativePath: string): string {
  *
  * @example
  * getStaticUrl('alice-avatar.jpg')
- * // → 'https://your-backend-domain.com/static/alice-avatar.jpg'
+ * // → 'https://be.teros.ai/static/alice-avatar.jpg'
  */
 export function getStaticUrl(relativePath: string): string {
   const cleanPath = relativePath.startsWith('/') ? relativePath.slice(1) : relativePath;

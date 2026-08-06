@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la conectividad con la API de RentAHuman.ai."
+    },
+    "search-humans": {
+      "name": "search-humans",
+      "description": "Busca humanos disponibles en RentAHuman.ai. Filtra por habilidad, rango de tarifa por hora o nombre. No se requiere clave de API — la búsqueda es gratuita.",
+      "params": {
+        "skill": "Filtra por habilidad (ej., 'Fotografía', 'Reuniones en persona', 'Recados', 'Traducción')",
+        "name": "Filtra por nombre de humano",
+        "minRate": "Tarifa mínima por hora en USD",
+        "maxRate": "Tarifa máxima por hora en USD",
+        "limit": "Número máximo de resultados a devolver (por defecto: 20, máximo: 100)"
+      }
+    },
+    "get-human": {
+      "name": "get-human",
+      "description": "Obtén el perfil completo de un humano específico, incluyendo habilidades, disponibilidad, tarifa por hora, ubicación, valoración y direcciones de billetera de pago.",
+      "params": {
+        "humanId": "El ID de perfil del humano"
+      }
+    },
+    "create-booking": {
+      "name": "create-booking",
+      "description": "Reserva un humano para una tarea en el mundo físico. Requiere una RENTAHUMAN_API_KEY. Crea una reserva con los detalles de la tarea, hora de inicio y duración estimada. Devuelve instrucciones de pago.",
+      "params": {
+        "humanId": "El ID del humano a reservar",
+        "taskTitle": "Título breve de la tarea (3-200 caracteres)",
+        "taskDescription": "Descripción detallada de lo que el humano debe hacer",
+        "taskCategory": "Categoría de la tarea (ej., 'recados', 'reuniones', 'investigación', 'fotografía', 'entregas')",
+        "startTime": "Cuándo debe comenzar la tarea (formato ISO 8601, ej., '2025-06-15T10:00:00Z')",
+        "estimatedHours": "Horas estimadas necesarias (mín: 0.5, máx: 168)",
+        "agentName": "Nombre visible de tu agente (opcional)"
+      }
+    },
+    "list-bookings": {
+      "name": "list-bookings",
+      "description": "Lista las reservas del agente actual. Opcionalmente filtra por estado. Requiere una RENTAHUMAN_API_KEY.",
+      "params": {
+        "status": "Filtra por estado de la reserva",
+        "limit": "Número máximo de resultados (por defecto: 20)"
+      }
+    },
+    "get-booking": {
+      "name": "get-booking",
+      "description": "Obtén los detalles y el estado actual de una reserva específica. Requiere una RENTAHUMAN_API_KEY.",
+      "params": {
+        "bookingId": "El ID de la reserva a obtener"
+      }
+    }
+  },
+  "name": "RentAHuman.ai",
+  "description": "Contrata humanos para tareas en el mundo físico. Busca entre más de 657.000 humanos verificados en más de 50 países, crea reservas y gestiona tareas que requieren presencia en el mundo real.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — busca humanos verificados a nivel mundial, consulta sus perfiles, y reserva y gestiona tareas en el mundo real"
+    }
+  ]
+}

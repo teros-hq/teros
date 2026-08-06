@@ -1,0 +1,787 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.zendesk",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Zendesk credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-tickets",
+      "description": "List Zendesk tickets with optional filters. Returns curated rows { id, subject, status, priority, requester, assignee, createdAt, updatedAt }. Params: status?, priority?, assigneeId?, requesterId?, organizationId?, limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "open",
+              "pending",
+              "hold",
+              "solved",
+              "closed"
+            ],
+            "description": "Filter by ticket status."
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "normal",
+              "low"
+            ],
+            "description": "Filter by ticket priority."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Filter by assignee user ID."
+          },
+          "requesterId": {
+            "type": "string",
+            "description": "Filter by requester user ID."
+          },
+          "organizationId": {
+            "type": "string",
+            "description": "Filter by organization ID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-ticket",
+      "description": "Get a single Zendesk ticket by ID with full details including description, custom fields, and tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-ticket",
+      "description": "Create a new Zendesk ticket. Returns the created ticket. Not retryable (no idempotency key). Params: subject, description, requesterEmail?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "Ticket subject line."
+          },
+          "description": {
+            "type": "string",
+            "description": "Ticket body/description."
+          },
+          "requesterEmail": {
+            "type": "string",
+            "description": "Email address of the requester. If omitted, uses the authenticated user."
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "normal",
+              "low"
+            ],
+            "description": "Ticket priority."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "open",
+              "pending",
+              "hold",
+              "solved",
+              "closed"
+            ],
+            "description": "Initial ticket status. Default: open."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "User ID to assign the ticket to."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to attach to the ticket."
+          },
+          "customFields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "number"
+                },
+                "value": {}
+              }
+            },
+            "description": "Custom field values [{id, value}]."
+          }
+        },
+        "required": [
+          "subject",
+          "description"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-ticket",
+      "description": "Update an existing Zendesk ticket. Only provided fields are changed. Returns the updated ticket. Params: ticketId, subject?, description?, priority?, status?, assigneeId?, tags?, customFields?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID to update."
+          },
+          "subject": {
+            "type": "string",
+            "description": "New subject line."
+          },
+          "description": {
+            "type": "string",
+            "description": "New comment/description to add."
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "urgent",
+              "high",
+              "normal",
+              "low"
+            ],
+            "description": "New priority."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "new",
+              "open",
+              "pending",
+              "hold",
+              "solved",
+              "closed"
+            ],
+            "description": "New status."
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "User ID to assign the ticket to."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Replace existing tags with these."
+          },
+          "customFields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "number"
+                },
+                "value": {}
+              }
+            },
+            "description": "Custom field values [{id, value}]."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-ticket",
+      "description": "Delete (soft-delete) a Zendesk ticket by ID. Returns { success, ticketId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID to delete."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "search-tickets",
+      "description": "Search Zendesk tickets using Zendesk Search API. Supports query syntax (e.g. \"status:open type:ticket\", \"assignee:me\", \"tags:urgent\"). Returns curated results. Params: query, limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Zendesk search query string."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-ticket-comments",
+      "description": "List all comments (public and internal notes) on a Zendesk ticket. Returns curated rows { id, authorId, body, public, createdAt }. Params: ticketId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID."
+          }
+        },
+        "required": [
+          "ticketId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "add-ticket-comment",
+      "description": "Add a comment to a Zendesk ticket. Can be public (customer-visible) or internal note. Returns the updated ticket. Params: ticketId, body, public?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID."
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment text/body."
+          },
+          "public": {
+            "type": "boolean",
+            "description": "Whether the comment is public (customer-visible). Default true."
+          }
+        },
+        "required": [
+          "ticketId",
+          "body"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "add-comment-with-attachment",
+      "description": "Add a comment to a Zendesk ticket with file attachments. Uses upload tokens from upload-attachment. Returns the updated ticket. Params: ticketId, body, uploadTokens?, public?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "description": "Zendesk ticket ID."
+          },
+          "body": {
+            "type": "string",
+            "description": "Comment text/body."
+          },
+          "uploadTokens": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Upload tokens from upload-attachment tool."
+          },
+          "public": {
+            "type": "boolean",
+            "description": "Whether the comment is public (customer-visible). Default true."
+          }
+        },
+        "required": [
+          "ticketId",
+          "body"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "upload-attachment",
+      "description": "Upload a file attachment to Zendesk for use in ticket comments. Returns upload token. Params: filePath, fileName?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "filePath": {
+            "type": "string",
+            "description": "Path to the file to upload."
+          },
+          "fileName": {
+            "type": "string",
+            "description": "Desired filename for the attachment. Defaults to basename of filePath."
+          }
+        },
+        "required": [
+          "filePath"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-attachment",
+      "description": "Get details of a Zendesk attachment by ID. Returns { id, fileName, contentUrl, size, contentType, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attachmentId": {
+            "type": "string",
+            "description": "Zendesk attachment ID."
+          }
+        },
+        "required": [
+          "attachmentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-users",
+      "description": "List Zendesk users with optional filters. Returns curated rows { id, name, email, role, active, createdAt }. Params: role?, query?, limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "end-user",
+              "agent",
+              "admin"
+            ],
+            "description": "Filter by user role."
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query for user name or email."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "Get a single Zendesk user by ID with full details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Zendesk user ID."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-user",
+      "description": "Create a new Zendesk user (end-user, agent, or admin). Returns the created user. Not retryable. Params: name, email, role?, phone?, organizationId?, tags?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Full name of the user."
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address (must be unique)."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "end-user",
+              "agent",
+              "admin"
+            ],
+            "description": "User role. Default: end-user."
+          },
+          "phone": {
+            "type": "string",
+            "description": "Phone number."
+          },
+          "organizationId": {
+            "type": "string",
+            "description": "Organization ID to associate the user with."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to attach to the user."
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "Whether the user is verified. Default true for agents/admins."
+          }
+        },
+        "required": [
+          "name",
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-user",
+      "description": "Update an existing Zendesk user. Only provided fields are changed. Returns the updated user. Params: userId, name?, email?, role?, phone?, organizationId?, tags?, active?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Zendesk user ID to update."
+          },
+          "name": {
+            "type": "string",
+            "description": "New full name."
+          },
+          "email": {
+            "type": "string",
+            "description": "New email address (must be unique)."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "end-user",
+              "agent",
+              "admin"
+            ],
+            "description": "New user role."
+          },
+          "phone": {
+            "type": "string",
+            "description": "New phone number."
+          },
+          "organizationId": {
+            "type": "string",
+            "description": "Organization ID to associate the user with."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Replace existing tags with these."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Activate or deactivate the user."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-organizations",
+      "description": "List Zendesk organizations. Returns curated rows { id, name, domainNames, tags, createdAt }. Params: limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-organization",
+      "description": "Get a single Zendesk organization by ID with full details including domain names and tags.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "description": "Zendesk organization ID."
+          }
+        },
+        "required": [
+          "organizationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-organization",
+      "description": "Create a new Zendesk organization. Returns the created organization. Not retryable. Params: name, domainNames?, tags?.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Organization name (must be unique)."
+          },
+          "domainNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Email domains to auto-associate users (e.g. [\"example.com\"])."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to attach to the organization."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-views",
+      "description": "List Zendesk views (ticket filters). Returns curated rows { id, title, active, position, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-view-tickets",
+      "description": "Get tickets from a specific Zendesk view. Returns curated ticket rows. Params: viewId, limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "viewId": {
+            "type": "string",
+            "description": "Zendesk view ID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        },
+        "required": [
+          "viewId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-groups",
+      "description": "List Zendesk groups (ticket assignment groups). Returns curated rows { id, name, default, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-triggers",
+      "description": "List Zendesk triggers (business rules that fire on ticket events). Read-only for agents. Returns curated rows { id, title, active, position, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-automations",
+      "description": "List Zendesk automations (time-based business rules). Read-only for agents. Returns curated rows { id, title, active, position, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "active": {
+            "type": "boolean",
+            "description": "Filter by active status."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-webhooks",
+      "description": "List Zendesk webhooks (HTTP endpoints that receive real-time event notifications). Returns curated rows { id, name, status, endpoint, createdAt }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-satisfaction-ratings",
+      "description": "List Zendesk satisfaction ratings (CSAT scores). Returns curated rows { id, score, comment, ticketId, requesterId, createdAt }. Params: score?, limit (1-100, def 30), page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "score": {
+            "type": "string",
+            "enum": [
+              "good",
+              "bad",
+              "offered",
+              "unoffered"
+            ],
+            "description": "Filter by satisfaction score."
+          },
+          "ticketId": {
+            "type": "string",
+            "description": "Filter by specific ticket ID."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 100, default 30."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination. Default 1."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

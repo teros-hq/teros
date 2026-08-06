@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "Run AI models on Replicate - FLUX image generation, Minimax video, Veo video, and thousands of other models.",
   "type": "ai",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "ai",
   "entrypoint": "src/index.ts",
   "author": {
@@ -36,5 +36,12 @@
     "port": 3000,
     "healthCheck": "/health"
   },
-  "keywords": ["replicate", "ai", "ml", "flux", "image-generation", "video", "models"]
+  "keywords": ["replicate", "ai", "ml", "flux", "image-generation", "video", "models"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — browse AI models, generate images, video and audio, then track or cancel each generation"
+    }
+  ]
 }

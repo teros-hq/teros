@@ -6,41 +6,47 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "bun": "./dist/index.js",
+      "bun": "./src/index.ts",
       "import": "./dist/index.js",
       "require": "./dist/index.js",
       "default": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
     "./memory": {
+      "bun": "./src/memory/index.ts",
       "import": "./dist/memory/index.js",
       "types": "./dist/memory/index.d.ts"
     },
     "./memory/*": {
-      "bun": "./dist/memory/*.js",
+      "bun": "./src/memory/*.ts",
       "import": "./dist/memory/*.js",
       "types": "./dist/memory/*.d.ts"
     },
     "./memory/conversation": {
+      "bun": "./src/memory/conversation.ts",
       "import": "./dist/memory/conversation.js",
       "types": "./dist/memory/conversation.d.ts"
     },
     "./memory/knowledge": {
+      "bun": "./src/memory/knowledge.ts",
       "import": "./dist/memory/knowledge.js",
       "types": "./dist/memory/knowledge.d.ts"
     },
     "./memory/importance": {
+      "bun": "./src/memory/importance.ts",
       "import": "./dist/memory/importance.js",
       "types": "./dist/memory/importance.d.ts"
     },
     "./memory/types": {
+      "bun": "./src/memory/types.ts",
       "import": "./dist/memory/types.js",
       "types": "./dist/memory/types.d.ts"
     }
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "generate-icons": "bun run scripts/generate-lucide-icons.ts"
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.12.0",

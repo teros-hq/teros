@@ -4,6 +4,7 @@ import { ensureQdrantInitialized } from '../qdrant-init';
 
 export const memoryCalculateImportance: HttpToolConfig = {
   description: 'Calculate importance score for a message',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {
@@ -30,7 +31,7 @@ export const memoryCalculateImportance: HttpToolConfig = {
     },
     required: ['userMessage', 'assistantResponse'],
   },
-  handler: async (args, _context) => {
+  handler: async (args, context) => {
     await ensureQdrantInitialized(context);
     const {
       userMessage,

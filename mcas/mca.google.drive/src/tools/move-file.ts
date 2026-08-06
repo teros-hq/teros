@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const moveFile: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Move a file or folder to a different location in Google Drive.',
   parameters: {
     type: 'object',
@@ -28,6 +29,7 @@ export const moveFile: ToolConfig = {
       async () => {
         // Get current parents
         const file = await clients.drive.files.get({
+          ...ALL_DRIVES,
           fileId,
           fields: 'parents',
         });
@@ -36,6 +38,7 @@ export const moveFile: ToolConfig = {
 
         // Move file
         const response = await clients.drive.files.update({
+          ...ALL_DRIVES,
           fileId,
           addParents: newParentId,
           removeParents: previousParents,

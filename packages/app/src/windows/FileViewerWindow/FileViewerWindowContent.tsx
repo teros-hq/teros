@@ -3,9 +3,14 @@
  *
  * Renders an HTML file in real time. On mount it calls `client.fileWatcher.watch()`
  * which sends a `file.watch` request via WsFramework; the backend resolves the
- * host path, sends the current file content immediately, then pushes `file.changed`
+ * host path, sends the current file content immediately, then pushes `file_changed`
  * events via SubscriptionManager on every subsequent save. On unmount it calls
  * `client.fileWatcher.unwatch()` to stop the watcher.
+ *
+ * Migrated to the Design System:
+ * - Uses `useColors()` for theme-adaptive surface/border/text tokens.
+ * - Uses `semanticColors` for status accents (green, red).
+ * - Uses Tamagui font tokens (`$body`, `$mono`).
  */
 
 import { RefreshCw } from '@tamagui/lucide-icons';
@@ -13,17 +18,76 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Platform } from 'react-native';
 import WebView from 'react-native-webview';
 import { Button, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import type { FileViewerWindowProps } from './definition';
-import { AppSpinner, FullscreenLoader } from '../../components/ui';
+import { AppSpinner, FullscreenLoader, SharePopover } from '../../components/ui';
+import { colors as semanticColors } from '../../components/mca/primitives/colors';
+import { useColors } from '../../components/mca/primitives/useColors';
 
 interface Props extends FileViewerWindowProps {
   windowId: string;
 }
 
-/** Build a self-contained HTML document from raw content */
+/**
+ * Responsive CSS injected into every rendered HTML file so the content
+ * adapts to the width of the FileViewer window instead of overflowing.
+ * Uses `!important` + high specificity to override author styles that
+ * set fixed pixel widths on common layout primitives (tables, containers,
+ * images, svgs). Authors can still opt out by setting `max-width: none`.
+ */
+const RESPONSIVE_CSS = `
+  html, body {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+  }
+  /* Constrain the most common fixed-width layout primitives */
+  table, div, section, article, main, header, footer, aside, nav,
+  figure, figcaption, form, fieldset, pre, blockquote {
+    max-width: 100% !important;
+  }
+  /* Media and embedded objects must never overflow horizontally */
+  img, svg, video, canvas, iframe, embed, object {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  /* Prevent horizontal overflow from pre/code blocks */
+  pre {
+    overflow-x: auto !important;
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+  }
+  /* Allow authors to opt out per-element when they really need fixed width */
+  [data-teros-fixed-width] {
+    max-width: none !important;
+  }
+`;
+
+/**
+ * Build a self-contained HTML document from raw content.
+ *
+ * Always injects {@link RESPONSIVE_CSS} so the rendered file fills the
+ * available width of the FileViewer window. When the content already has
+ * a full `<html>` document, the responsive `<style>` is inserted into the
+ * existing `<head>` (or prepended to `<body>` if no head is present).
+ */
 function wrapHtml(content: string): string {
-  if (/<!DOCTYPE|<html/i.test(content)) return content;
+  // Already a full HTML document — inject the responsive CSS into <head>
+  if (/<!DOCTYPE|<html/i.test(content)) {
+    // Try to insert into <head> (after any existing <style>/<meta> for cascade order)
+    const headMatch = content.match(/<head[^>]*>/i);
+    if (headMatch) {
+      const insertAt = headMatch.index! + headMatch[0].length;
+      return content.slice(0, insertAt) + `\n  <style>${RESPONSIVE_CSS}</style>` + content.slice(insertAt);
+    }
+    // No <head> — try to prepend inside <body>
+    const bodyMatch = content.match(/<body[^>]*>/i);
+    if (bodyMatch) {
+      const insertAt = bodyMatch.index! + bodyMatch[0].length;
+      return content.slice(0, insertAt) + `\n  <style>${RESPONSIVE_CSS}</style>` + content.slice(insertAt);
+    }
+    // No head or body — just prepend the style block
+    return `<style>${RESPONSIVE_CSS}</style>` + content;
+  }
 
   return `<!DOCTYPE html>
 <html>
@@ -37,6 +101,7 @@ function wrapHtml(content: string): string {
       font-size: 14px; line-height: 1.5; color: #1a1a1a; background: #ffffff;
       overflow: auto; min-height: 100%;
     }
+    ${RESPONSIVE_CSS}
   </style>
 </head>
 <body>
@@ -54,7 +119,8 @@ function formatElapsed(ms: number): string {
   return `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
-export function FileViewerWindowContent({ windowId, filePath, channelId }: Props) {
+export function FileViewerWindowContent({ windowId, filePath, channelId, workspaceId }: Props) {
+  const c = useColors();
   const [htmlContent, setHtmlContent]     = useState<string | null>(null);
   const [error, setError]                 = useState<string | null>(null);
 
@@ -105,7 +171,7 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
   const startWatchingRef = useRef<() => void>(() => {});
 
   const startWatching = useCallback(() => {
-    if (!client || !filePath || !channelId) return;
+    if (!client || !filePath || (!channelId && !workspaceId)) return;
 
     setError(null);
 
@@ -122,13 +188,13 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
       setUpdateKey((k) => k + 1);
     };
 
-    listenerRef.current = handler;
-    client.on('file_changed', handler);
+    listenerRef.current = handler as (...args: unknown[]) => void;
+    client.on('file_changed', handler as (...args: unknown[]) => void);
 
-    client.fileWatcher.watch(filePath, channelId).catch((err) => {
+    client.fileWatcher.watch(filePath, channelId!, workspaceId!).catch((err) => {
       console.warn("[FileViewerWindow] watchFile error:", err);
     });
-  }, [client, filePath, channelId]);
+  }, [client, filePath, channelId, workspaceId]);
 
   // Always keep the ref up to date
   useEffect(() => {
@@ -148,7 +214,7 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
         }
       }
     };
-  }, [filePath, channelId]);
+  }, [filePath, channelId, workspaceId]);
 
   // Re-start watching whenever the WS reconnects (uses ref to avoid stale closure)
   useEffect(() => {
@@ -169,7 +235,7 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
   if (error) {
     return (
       <YStack flex={1} alignItems="center" justifyContent="center" padding={24} gap={12}>
-        <Text color="#ef4444" fontSize={14} textAlign="center">
+        <Text color={semanticColors.red} fontSize={14} fontFamily="$body" textAlign="center">
           {error}
         </Text>
         <Button size="$3" onPress={handleRefresh} icon={<RefreshCw size={14} />}>
@@ -186,23 +252,23 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
   }
 
   return (
-    <YStack flex={1} backgroundColor="#ffffff">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* ── Toolbar ── */}
       <XStack
-        backgroundColor="rgba(24,24,27,0.95)"
+        backgroundColor={c.bgCard}
         paddingHorizontal={12}
         paddingVertical={6}
         alignItems="center"
         gap={8}
         borderBottomWidth={1}
-        borderBottomColor="rgba(255,255,255,0.08)"
+        borderBottomColor={c.borderStrong}
       >
         {/* Connection dot — green = connected, red = disconnected */}
         <YStack
           width={7}
           height={7}
           borderRadius={4}
-          backgroundColor={connected ? '#22c55e' : '#ef4444'}
+          backgroundColor={connected ? semanticColors.green : semanticColors.red}
           flexShrink={0}
           // @ts-ignore web-only style
           style={
@@ -214,7 +280,7 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
 
         {/* File path */}
         <Text
-          color="rgba(255,255,255,0.6)"
+          color={c.text2}
           fontSize={11}
           fontFamily="$mono"
           flex={1}
@@ -225,18 +291,30 @@ export function FileViewerWindowContent({ windowId, filePath, channelId }: Props
 
         {/* Timing info */}
         {updatedAgo && (
-          <Text color="rgba(255,255,255,0.35)" fontSize={10}>
+          <Text color={c.text3} fontSize={10} fontFamily="$body">
             Updated{' '}
-            <Text color="rgba(255,255,255,0.55)" fontSize={10}>
+            <Text color={c.text2} fontSize={10} fontFamily="$body">
               {updatedAgo} ago
             </Text>
           </Text>
         )}
 
+        {/* Share popover */}
+        {client && channelId && (
+          <SharePopover
+            filePath={filePath}
+            channelId={channelId}
+            workspaceId={workspaceId}
+            fileType="html"
+            client={client}
+          />
+        )}
+
+        {/* Refresh button */}
         <Button
           size="$2"
           chromeless
-          icon={<RefreshCw size={12} color="rgba(255,255,255,0.5)" />}
+          icon={<RefreshCw size={12} color={c.text3} />}
           onPress={handleRefresh}
           pressStyle={{ opacity: 0.7 }}
         />

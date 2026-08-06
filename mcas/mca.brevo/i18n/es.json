@@ -1,0 +1,236 @@
+{
+  "name": "Brevo",
+  "description": "Email marketing con Brevo: envía emails transaccionales, gestiona contactos y listas, crea plantillas de email y consulta campañas a través de la API de Brevo.",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Valida la clave de API de Brevo contra GET /account."
+    },
+    "send-transactional-email": {
+      "name": "send-transactional-email",
+      "description": "Envía un email transaccional a través de Brevo (POST /smtp/email). Devuelve { messageId, subject, sender, recipients, recipientCount }. El email del remitente DEBE ser un remitente o dominio verificado en la cuenta de Brevo. Proporciona htmlContent y/o textContent (al menos uno). Parámetros: sender{email,name?}, to[{email,name?}] (≥1), subject, htmlContent?, textContent?, cc?, bcc?, replyTo{email,name?}?, params? (variables de plantilla), tags?.",
+      "params": {
+        "sender": "Remitente verificado. { email (obligatorio), name? }.",
+        "to": "Destinatarios (≥1). Cada uno { email (obligatorio), name? }.",
+        "subject": "Asunto del email.",
+        "htmlContent": "Cuerpo HTML. Al menos uno de htmlContent / textContent es obligatorio.",
+        "textContent": "Cuerpo en texto plano. Al menos uno de htmlContent / textContent es obligatorio.",
+        "cc": "Destinatarios CC opcionales. Cada uno { email (obligatorio), name? }.",
+        "bcc": "Destinatarios BCC opcionales. Cada uno { email (obligatorio), name? }.",
+        "replyTo": "Reply-To opcional. { email (obligatorio), name? }.",
+        "params": "Variables de plantilla opcionales sustituidas en el contenido (ej. { FNAME: \"Ana\" }).",
+        "tags": "Etiquetas opcionales para seguimiento/estadísticas."
+      }
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Lista contactos de Brevo (GET /contacts). Devuelve { contacts:[{id,email,emailBlacklisted,smsBlacklisted,listIds,attributes,createdAt,modifiedAt}], count, limit, offset }. Parámetros: limit? (1-1000, por defecto 50), offset? (por defecto 0).",
+      "params": {
+        "limit": "Máximo de contactos a devolver (1-1000, por defecto 50).",
+        "offset": "Índice del primer contacto para paginación (por defecto 0)."
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Crea (o actualiza) un contacto en Brevo (POST /contacts). Devuelve { id, email, listIds, updated }. Establece updateEnabled:true para actualizar un contacto existente en lugar de fallar por duplicado. Parámetros: email (obligatorio), attributes? (ej. { FIRSTNAME, LASTNAME, SMS }), listIds? (number[]), updateEnabled? (por defecto false).",
+      "params": {
+        "email": "Email del contacto (obligatorio).",
+        "attributes": "Atributos del contacto claveados por nombre de atributo Brevo (ej. { FIRSTNAME, LASTNAME, SMS }).",
+        "listIds": "Ids de listas de Brevo a las que añadir el contacto.",
+        "updateEnabled": "Si es true, actualiza el contacto cuando ya existe en lugar de dar error (por defecto false)."
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Obtiene un contacto por email o id de Brevo (GET /contacts/{identifier}). Devuelve { id, email, emailBlacklisted, smsBlacklisted, listIds, attributes, createdAt, modifiedAt }. Parámetros: identifier (obligatorio — el email o id del contacto).",
+      "params": {
+        "identifier": "El email o id numérico del contacto (obligatorio)."
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Actualiza un contacto en Brevo (PUT /contacts/{identifier}). Devuelve { identifier, updated, listIds, unlinkListIds }. Los atributos ya deben existir en la cuenta (pásalos en MAYÚSCULAS). listIds añade el contacto a listas, unlinkListIds lo elimina. Parámetros: identifier (obligatorio — email o id), attributes? (ej. { FIRSTNAME }), emailBlacklisted?, smsBlacklisted?, listIds? (number[]), unlinkListIds? (number[]).",
+      "params": {
+        "identifier": "El email o id numérico del contacto a actualizar (obligatorio).",
+        "attributes": "Atributos a establecer (ya deben existir en la cuenta, en MAYÚSCULAS, ej. { FIRSTNAME, LASTNAME }).",
+        "emailBlacklisted": "Bloquear (true) o permitir (false) el contacto para emails.",
+        "smsBlacklisted": "Bloquear (true) o permitir (false) el contacto para SMS.",
+        "listIds": "Ids de listas a las que añadir el contacto.",
+        "unlinkListIds": "Ids de listas de las que eliminar el contacto."
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Elimina un contacto permanentemente de Brevo (DELETE /contacts/{identifier}). IRREVERSIBLE — el contacto y su historial se eliminan. Devuelve { identifier, deleted }. Parámetros: identifier (obligatorio — el email o id del contacto).",
+      "params": {
+        "identifier": "El email o id numérico del contacto a eliminar (obligatorio)."
+      }
+    },
+    "add-contact-to-list": {
+      "name": "add-contact-to-list",
+      "description": "Añade contactos a una lista de Brevo (POST /contacts/lists/{listId}/contacts/add). Identifica los contactos por emails[] y/o ids[]. Devuelve { listId, success, failure } (contactos que se añadieron / no se añadieron). Parámetros: listId (obligatorio, entero), emails? (string[]), ids? (number[]).",
+      "params": {
+        "listId": "Id de la lista (obligatorio).",
+        "emails": "Emails de contactos a añadir.",
+        "ids": "Ids de contactos a añadir."
+      }
+    },
+    "remove-contact-from-list": {
+      "name": "remove-contact-from-list",
+      "description": "Elimina contactos de una lista de Brevo (POST /contacts/lists/{listId}/contacts/remove). Identifica los contactos por emails[] y/o ids[]. Devuelve { listId, success, failure } (contactos que se eliminaron / no se eliminaron). Parámetros: listId (obligatorio, entero), emails? (string[]), ids? (number[]).",
+      "params": {
+        "listId": "Id de la lista (obligatorio).",
+        "emails": "Emails de contactos a eliminar.",
+        "ids": "Ids de contactos a eliminar."
+      }
+    },
+    "import-contacts": {
+      "name": "import-contacts",
+      "description": "Importa contactos masivamente a listas de Brevo (POST /contacts/import). Proporciona O jsonBody[] (contactos inline) O fileUrl (un archivo .csv/.json/.txt), nunca ambos. Se ejecuta asíncronamente — devuelve { processId, listIds, contactCount, source }. Parámetros: jsonBody? ([{ email (obligatorio), attributes? }]), fileUrl? (URL http(s)), listIds (obligatorio, integer[] — las listas destino), updateExistingContacts? (por defecto false — actualiza los contactos que ya existen en lugar de saltarlos).",
+      "params": {
+        "jsonBody": "Contactos inline a importar (excluyente con fileUrl).",
+        "fileUrl": "URL pública http(s) de un archivo .csv/.json/.txt a importar (excluyente con jsonBody).",
+        "listIds": "Ids de las listas a las que se importan los contactos (obligatorio, al menos una).",
+        "updateExistingContacts": "Si es true, actualiza los contactos que ya existen en lugar de saltarlos (por defecto false)."
+      }
+    },
+    "list-attributes": {
+      "name": "list-attributes",
+      "description": "Lista los atributos de contacto definidos en la cuenta de Brevo (GET /contacts/attributes). Úsalo para descubrir claves de atributos válidas (ej. FIRSTNAME, LASTNAME, campos personalizados) antes de crear/actualizar/importar contactos. Devuelve { attributes:[{name,category,type}], count }. Sin parámetros."
+    },
+    "list-segments": {
+      "name": "list-segments",
+      "description": "Lista los segmentos de contacto (filtros guardados) en la cuenta de Brevo (GET /contacts/segments). Sus ids se pueden usar como recipients.segmentIds en create-email-campaign. Devuelve { segments:[{id,segmentName,categoryName,updatedAt}], count, limit, offset, sort }. Parámetros: limit? (1-50, por defecto 10), offset? (por defecto 0), sort? (asc | desc — por fecha de creación, por defecto desc).",
+      "params": {
+        "limit": "Máximo de segmentos a devolver (1-50, por defecto 10).",
+        "offset": "Índice del primer segmento para paginación (por defecto 0).",
+        "sort": "Ordenar por fecha de creación: asc o desc (por defecto desc)."
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "Lista las carpetas de contactos de Brevo (GET /contacts/folders). Las carpetas agrupan listas de contactos; se necesita un folderId para crear una lista, así que úsalo para descubrir uno. Devuelve { folders:[{id,name,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }. Parámetros: limit? (1-50, por defecto 50), offset? (por defecto 0).",
+      "params": {
+        "limit": "Máximo de carpetas a devolver (1-50, por defecto 50).",
+        "offset": "Índice de la primera carpeta para paginación (por defecto 0)."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "Lista las listas de contactos de Brevo (GET /contacts/lists). Devuelve { lists:[{id,name,folderId,totalSubscribers,uniqueSubscribers,totalBlacklisted}], count, limit, offset }. Parámetros: limit? (1-50, por defecto 50), offset? (por defecto 0).",
+      "params": {
+        "limit": "Máximo de listas a devolver (1-50, por defecto 50).",
+        "offset": "Índice de la primera lista para paginación (por defecto 0)."
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Crea una lista de contactos en Brevo (POST /contacts/lists). Devuelve { id, name, folderId }. Las listas viven dentro de una carpeta — pasa un folderId (llama a list-folders para encontrar uno). Parámetros: name (obligatorio), folderId (obligatorio, entero).",
+      "params": {
+        "name": "Nombre de la nueva lista (obligatorio).",
+        "folderId": "Id de la carpeta padre (obligatorio). Usa list-folders para encontrar uno."
+      }
+    },
+    "list-email-templates": {
+      "name": "list-email-templates",
+      "description": "Lista las plantillas de email transaccional de Brevo (GET /smtp/templates). Devuelve { templates:[{id,name,subject,isActive,testSent,sender,replyTo,toField,tag,createdAt,modifiedAt}], count, templateStatus, limit, offset }. Parámetros: templateStatus? (true=solo activas, false=solo inactivas, omítelo para todas), limit? (1-1000, por defecto 50), offset? (por defecto 0).",
+      "params": {
+        "templateStatus": "Filtrar por estado: true=solo activas, false=solo inactivas. Omitir para devolver todas.",
+        "limit": "Máximo de plantillas a devolver (1-1000, por defecto 50).",
+        "offset": "Índice de la primera plantilla para paginación (por defecto 0)."
+      }
+    },
+    "create-email-template": {
+      "name": "create-email-template",
+      "description": "Crea una plantilla de email transaccional en Brevo (POST /smtp/templates). Devuelve { id, templateName, subject, isActive }. Las plantillas están INACTIVAS por defecto — establece isActive:true para activarlas. sender admite O {email} (un remitente verificado) O {id} (un id de remitente de Brevo), no ambos. Proporciona htmlContent (≥10 caracteres) o htmlUrl. Parámetros: templateName (obligatorio), subject (obligatorio), sender{email?,id?,name?} (obligatorio), htmlContent?, htmlUrl?, isActive?, replyTo?, toField?, tag?, attachmentUrl?.",
+      "params": {
+        "templateName": "Nombre de la plantilla (obligatorio).",
+        "subject": "Asunto de la plantilla (obligatorio).",
+        "sender": "Remitente — O { email } (un remitente verificado) O { id } (un id de remitente de Brevo), no ambos. Nombre opcional.",
+        "htmlContent": "Cuerpo HTML (mínimo 10 caracteres). Proporciona esto o htmlUrl.",
+        "htmlUrl": "URL absoluta http(s) cuyo contenido es el cuerpo HTML. Proporciona esto o htmlContent.",
+        "isActive": "Si la plantilla está activa (por defecto false — inactiva).",
+        "replyTo": "Email de Reply-To opcional.",
+        "toField": "Personalización opcional del campo Para (ej. {{contact.FNAME}} {{contact.LNAME}}).",
+        "tag": "Etiqueta opcional para la plantilla.",
+        "attachmentUrl": "URL absoluta http(s) opcional de un adjunto."
+      }
+    },
+    "list-email-campaigns": {
+      "name": "list-email-campaigns",
+      "description": "Lista las campañas de email de Brevo (GET /emailCampaigns). Devuelve { campaigns:[{id,name,subject,type,status,scheduledAt,createdAt,modifiedAt}], count, type, status, limit, offset }. Parámetros: type? (classic|trigger), status? (draft|sent|archive|queued|suspended|inProcess), limit? (1-100, por defecto 50), offset? (por defecto 0).",
+      "params": {
+        "type": "Filtrar por tipo de campaña.",
+        "status": "Filtrar por estado de campaña.",
+        "limit": "Máximo de campañas a devolver (1-100, por defecto 50).",
+        "offset": "Índice de la primera campaña para paginación (por defecto 0)."
+      }
+    },
+    "get-email-campaign": {
+      "name": "get-email-campaign",
+      "description": "Obtiene una campaña de email por id de Brevo (GET /emailCampaigns/{campaignId}). Devuelve { id, name, subject, type, status, scheduledAt, createdAt, modifiedAt }. Parámetros: campaignId (obligatorio, entero).",
+      "params": {
+        "campaignId": "Id de la campaña (obligatorio)."
+      }
+    },
+    "create-email-campaign": {
+      "name": "create-email-campaign",
+      "description": "Crea una campaña de email (newsletter) en Brevo (POST /emailCampaigns). Devuelve { id, name, subject, scheduledAt }. Proporciona contenido mediante EXACTAMENTE UNO de htmlContent (≥10 caracteres), htmlUrl o templateId. sender es { email } XOR { id }. Añade recipients{listIds} para dirigirte a listas; si scheduledAt (ISO 8601) está establecido, listIds es obligatorio. Sin scheduledAt la campaña es un borrador que envías después con send-email-campaign. Parámetros: name (obligatorio), subject (obligatorio), sender{email?,id?,name?} (obligatorio), htmlContent?, htmlUrl?, templateId?, recipients{listIds?,exclusionListIds?,segmentIds?}?, scheduledAt?, replyTo?, toField?, tag?, previewText?.",
+      "params": {
+        "name": "Nombre interno de la campaña (obligatorio).",
+        "subject": "Asunto del email (obligatorio).",
+        "sender": "Remitente — O { email } (verificado) O { id }, no ambos. Nombre opcional.",
+        "htmlContent": "Cuerpo HTML (≥10 caracteres). Proporciona exactamente uno de htmlContent, htmlUrl o templateId.",
+        "htmlUrl": "URL absoluta http(s) del cuerpo HTML. Proporciona exactamente uno de htmlContent, htmlUrl o templateId.",
+        "templateId": "Id de una plantilla transaccional activa usada como contenido. Proporciona exactamente uno de htmlContent, htmlUrl o templateId.",
+        "recipients": "Quién recibe la campaña. Obligatorio para enviar; listIds es obligatorio cuando scheduledAt está establecido.",
+        "scheduledAt": "Fecha-hora de envío ISO 8601 (ej. 2026-06-01T12:30:00+02:00). Omitir para crear un borrador enviado después con send-email-campaign.",
+        "replyTo": "Email de Reply-To opcional.",
+        "toField": "Personalización opcional del campo Para (ej. {FNAME} {LNAME}).",
+        "tag": "Etiqueta opcional de campaña.",
+        "previewText": "Texto de previsualización / preheader opcional."
+      }
+    },
+    "send-test-email": {
+      "name": "send-test-email",
+      "description": "Envía una prueba de una campaña de email a direcciones específicas (POST /emailCampaigns/{campaignId}/sendTest). Entrega emails REALES a los testers indicados. Devuelve { campaignId, emailTo }. Parámetros: campaignId (obligatorio, entero), emailTo (obligatorio, array de hasta 99 direcciones de email).",
+      "params": {
+        "campaignId": "Id de la campaña a probar (obligatorio).",
+        "emailTo": "Destinatarios de la prueba (1-99 direcciones de email)."
+      }
+    },
+    "send-email-campaign": {
+      "name": "send-email-campaign",
+      "description": "Envía una campaña de email inmediatamente (POST /emailCampaigns/{campaignId}/sendNow). IRREVERSIBLE — se entrega a todos los destinatarios sin posibilidad de deshacer. La campaña debe ser un borrador con destinatarios configurados. Devuelve { campaignId, sent }. Parámetros: campaignId (obligatorio, entero).",
+      "params": {
+        "campaignId": "Id de la campaña a enviar ahora (obligatorio)."
+      }
+    },
+    "get-email-event-report": {
+      "name": "get-email-event-report",
+      "description": "Obtiene eventos de email transaccional de Brevo (GET /smtp/statistics/events): eventos de entrega por mensaje (entregados, abiertos, clics, rebotes, spam, bajas…). Devuelve { events:[{date,email,event,messageId,subject,tag,reason,link,from,templateId}], count, limit, offset }. Periodo: pasa days (1-90) O un rango startDate+endDate (YYYY-MM-DD), no ambos; por defecto los últimos 30 días. Parámetros: limit? (1-5000, por defecto 100), offset? (por defecto 0), startDate?, endDate?, days?, email?, event? (bounces|hardBounces|softBounces|delivered|spam|requests|opened|clicks|invalid|deferred|blocked|unsubscribed|error|loadedByProxy), messageId?, templateId?, sort? (asc|desc, por defecto desc).",
+      "params": {
+        "limit": "Máximo de eventos a devolver (1-5000, por defecto 100).",
+        "offset": "Índice del primer evento para paginación (por defecto 0).",
+        "startDate": "Inicio del rango (YYYY-MM-DD). Debe ir con endDate; no compatible con days.",
+        "endDate": "Fin del rango (YYYY-MM-DD). Debe ir con startDate; no compatible con days.",
+        "days": "Número de días en el pasado incluido hoy (1-90). No compatible con startDate/endDate.",
+        "email": "Filtrar eventos para una dirección de email de destinatario específica.",
+        "event": "Filtrar por tipo de evento.",
+        "messageId": "Filtrar eventos para un messageId específico.",
+        "templateId": "Filtrar eventos para un id de plantilla específico.",
+        "sort": "Ordenar por fecha de creación: asc o desc (por defecto desc)."
+      }
+    },
+    "get-aggregated-smtp-report": {
+      "name": "get-aggregated-smtp-report",
+      "description": "Obtiene estadísticas agregadas de email transaccional de Brevo (GET /smtp/statistics/aggregatedReport): totales en un periodo. Devuelve { range, requests, delivered, opens, uniqueOpens, clicks, uniqueClicks, hardBounces, softBounces, blocked, invalid, spamReports, unsubscribed }. Periodo: pasa days (1-90) O un rango startDate+endDate (YYYY-MM-DD), no ambos; por defecto los últimos 90 días. Parámetros: startDate?, endDate?, days?, tag? (filtrar por etiqueta de email).",
+      "params": {
+        "startDate": "Inicio del rango (YYYY-MM-DD). Debe ir con endDate; no compatible con days.",
+        "endDate": "Fin del rango (YYYY-MM-DD). Debe ir con startDate; no compatible con days.",
+        "days": "Número de días en el pasado incluido hoy (1-90). No compatible con startDate/endDate.",
+        "tag": "Filtrar los totales para una etiqueta de email específica."
+      }
+    }
+  }
+}

@@ -16,6 +16,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -24,6 +27,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -40,6 +46,9 @@
         "required": [
           "device_id"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -65,6 +74,9 @@
           "capability",
           "value"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -73,6 +85,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -89,6 +104,9 @@
         "required": [
           "flow_id"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -97,27 +115,92 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "homey-rename-device",
-      "description": "Rename a Homey device",
+      "name": "homey-get-system-info",
+      "description": "Get Homey system information including firmware version, model, uptime, Wi-Fi status, and more",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "homey-list-notifications",
+      "description": "List notifications from Homey (alerts, warnings, system messages)",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "homey-get-variables",
+      "description": "List all logic variables configured in Homey. Logic variables are used in flows/automations for state tracking.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "homey-set-variable",
+      "description": "Set the value of a Homey logic variable by its ID. Use homey-get-variables to find variable IDs.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "device_id": {
+          "variable_id": {
             "type": "string",
-            "description": "Device ID"
+            "description": "Variable ID (UUID)"
           },
-          "name": {
-            "type": "string",
-            "description": "New name for the device"
+          "value": {
+            "description": "New value for the variable (string, number, or boolean — must match the variable type)"
           }
         },
         "required": [
-          "device_id",
-          "name"
+          "variable_id",
+          "value"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "homey-list-apps",
+      "description": "List all apps installed on Homey. Useful for diagnostics and checking which integrations are active.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "homey-get-energy",
+      "description": "Get live energy report from Homey including current power usage and generation across the home",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "zone": {
+            "type": "string",
+            "description": "Optional zone ID to filter energy data for a specific zone"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

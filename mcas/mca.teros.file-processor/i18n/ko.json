@@ -1,0 +1,77 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. API 키와 연결성을 확인합니다."
+    },
+    "file-to-markdown": {
+      "name": "file-to-markdown",
+      "description": "파일을 텍스트/Markdown으로 변환합니다(동기식). PDF 및 Word .docx는 로컬에서 추출되며, 스캔된 PDF는 시스템 키가 설정된 경우 LLM OCR로 대체됩니다. 장기 실행 작업에는 file-to-markdown-async를 사용하세요.",
+      "params": {
+        "inputPath": "변환할 파일의 경로",
+        "outputPath": "선택적 출력 경로(기본값: .md 확장자를 가진 입력 경로)",
+        "chunkSize": "대형 PDF의 청크당 페이지 수(기본값: 10). PDF >3MB에만 사용됨",
+        "maxRetries": "처리가 실패할 경우 청크당 최대 재시도 횟수(기본값: 3)",
+        "timeout": "청크당 밀리초 단위의 타임아웃(기본값: 청크 120000, 직접 처리 180000)"
+      }
+    },
+    "file-to-markdown-async": {
+      "name": "file-to-markdown-async",
+      "description": "파일을 비동기적으로 Markdown으로 변환합니다(비차단). PDF 및 Word .docx를 지원합니다. 즉시 작업 ID를 반환합니다. 진행 상황을 확인하려면 get-job-status를 사용하세요.",
+      "params": {
+        "inputPath": "변환할 파일의 경로",
+        "outputPath": "선택적 출력 경로(기본값: .md 확장자를 가진 입력 경로)",
+        "chunkSize": "대형 PDF의 청크당 페이지 수(기본값: 10)",
+        "maxRetries": "처리가 실패할 경우 청크당 최대 재시도 횟수(기본값: 3)",
+        "timeout": "청크당 밀리초 단위의 타임아웃(기본값: 120000)"
+      }
+    },
+    "get-job-status": {
+      "name": "get-job-status",
+      "description": "비동기 작업의 상태를 가져옵니다. 완료 시 현재 진행 상황, 상태 및 결과를 반환합니다.",
+      "params": {
+        "jobId": "file-to-markdown-async에서 반환된 작업 ID"
+      }
+    },
+    "list-jobs": {
+      "name": "list-jobs",
+      "description": "선택적 필터와 함께 모든 작업을 나열합니다. 활성 작업이나 최근 완료 작업을 확인하는 데 유용합니다.",
+      "params": {
+        "status": "상태로 필터링: 대기, 처리 중, 완료, 실패, 취소됨",
+        "limit": "반환할 최대 작업 수(기본값: 20)"
+      }
+    },
+    "cancel-job": {
+      "name": "cancel-job",
+      "description": "대기 중이거나 처리 중인 작업을 취소합니다. 완료되거나 실패한 작업은 취소할 수 없습니다.",
+      "params": {
+        "jobId": "취소할 작업 ID"
+      }
+    },
+    "audio-to-text": {
+      "name": "audio-to-text",
+      "description": "OpenAI Whisper API를 사용하여 오디오 파일을 텍스트로 전사합니다. .m4a, .mp3, .wav, .ogg, .webm, .opus 및 기타 오디오 형식을 지원합니다.",
+      "params": {
+        "inputPath": "전사할 오디오 파일의 경로",
+        "language": "선택적: 언어 코드(예: 스페인어는 'es', 영어는 'en'). 제공되지 않으면 자동 감지됩니다."
+      }
+    },
+    "svg-to-png": {
+      "name": "svg-to-png",
+      "description": "SVG 파일을 PNG로 변환하며 선택적 너비/높이 제약을 설정할 수 있습니다.",
+      "params": {
+        "inputPath": "변환할 SVG 파일의 경로",
+        "outputPath": "선택적 출력 경로(기본값: .png 확장자를 가진 입력 경로)",
+        "width": "선택적: 픽셀 단위의 목표 너비",
+        "height": "선택적: 픽셀 단위의 목표 높이"
+      }
+    }
+  },
+  "name": "파일 프로세서",
+  "description": "파일을 Markdown으로 변환하고, 오디오를 전사하며, Markdown을 PDF로 변환합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 문서를 Markdown으로 변환하고, 오디오를 텍스트로 전사하며, SVG를 PNG 이미지로 변환합니다."
+    }
+  ]
+}

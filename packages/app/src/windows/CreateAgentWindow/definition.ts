@@ -6,6 +6,7 @@
  */
 
 import { UserPlus } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { CreateAgentWindowContent } from './CreateAgentWindowContent';
 
@@ -23,10 +24,9 @@ export const createAgentWindowDefinition: WindowTypeDefinition<CreateAgentWindow
   defaultSize: { width: 600, height: 500 },
   minSize: { width: 400, height: 400 },
 
-  singleton: true,
   isLauncher: true,
 
-  getTitle: () => 'Crear Agente',
+  getTitle: () => i18n.t("windows.createAgent"),
 
   serialize: (props) => ({ workspaceId: props.workspaceId }),
   deserialize: (data) => ({ workspaceId: data.workspaceId }),

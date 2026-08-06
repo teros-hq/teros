@@ -3,6 +3,7 @@ import { createGraphClient, formatMessage } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const getMessage: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get full details of a specific email message by ID, including body and attachments.',
   parameters: {
     type: 'object',

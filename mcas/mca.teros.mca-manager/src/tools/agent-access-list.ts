@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { adminRequest, isWsConnected } from '../lib';
 
 export const agentAccessList: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'List all agent app access grants. Shows which agents have access to which apps.',
   parameters: {
     type: 'object',

@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "kelify_create_conversation": {
+      "name": "kelify_create_conversation",
+      "description": "Create a new conversation session for property search. Each conversation maintains context across multiple messages, allowing for natural follow-up questions."
+    },
+    "kelify_send_message": {
+      "name": "kelify_send_message",
+      "description": "Send a user message to a conversation and receive an AI response with property search results. Can use streaming or non-streaming mode.",
+      "params": {
+        "conversation_id": "The conversation UUID to send the message to",
+        "message": "The user's message to the AI assistant for property search",
+        "stream": "Whether to stream the response. Default is true."
+      }
+    },
+    "kelify_get_conversation": {
+      "name": "kelify_get_conversation",
+      "description": "Retrieve full conversation history including all messages, AI responses, search results, and usage statistics.",
+      "params": {
+        "conversation_id": "The conversation UUID to retrieve"
+      }
+    }
+  },
+  "name": "Kelify AI Property Search",
+  "description": "AI-powered conversational property search API for real estate listings",
+  "changelog": [
+    {
+      "notes": "Initial release — search real estate listings through AI conversations, with follow-up questions and full chat history"
+    }
+  ]
+}

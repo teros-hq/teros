@@ -1,238 +1,123 @@
 /**
- * Canva API Client Manager
+ * Canva Connect API Client
  *
- * Manages OAuth2 authentication and API requests for Canva Connect API.
+ * Stateless: secrets read from `context` every call. On 401 the access token
+ * is refreshed and persisted to the backend via `context.updateUserSecrets`,
+ * so subsequent requests (in this or any other worker) see the fresh token.
  */
 
-import type { HttpToolContext as ToolContext } from '@teros/mca-sdk';
-
-// =============================================================================
-// CONSTANTS
-// =============================================================================
+import type { ToolContext } from '@teros/mca-sdk';
+import { CanvaApiError, classifyCanvaApiError } from './_canva-error';
 
 const CANVA_API_BASE = 'https://api.canva.com/rest/v1';
 
-// =============================================================================
-// TYPES
-// =============================================================================
-
 export interface CanvaRequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
-  body?: any;
+  body?: unknown;
   headers?: Record<string, string>;
 }
 
-// =============================================================================
-// SINGLETON STATE
-// =============================================================================
-
-let cachedSystemSecrets: Record<string, string> | null = null;
-let cachedUserSecrets: Record<string, string> | null = null;
-
-// =============================================================================
-// HELPER FUNCTIONS
-// =============================================================================
-
-function getAccessToken(): string | null {
-  return cachedUserSecrets?.ACCESS_TOKEN || cachedUserSecrets?.access_token || null;
+interface Credentials {
+  clientId: string;
+  clientSecret: string;
+  accessToken: string;
+  refreshToken: string;
 }
 
-function getRefreshToken(): string | null {
-  return cachedUserSecrets?.REFRESH_TOKEN || cachedUserSecrets?.refresh_token || null;
-}
+async function readCredentials(context: ToolContext): Promise<Credentials> {
+  const [systemSecrets, userSecrets] = await Promise.all([
+    context.getSystemSecrets(),
+    context.getUserSecrets(),
+  ]);
+  const clientId = systemSecrets.CLIENT_ID || systemSecrets.client_id;
+  const clientSecret = systemSecrets.CLIENT_SECRET || systemSecrets.client_secret;
+  const accessToken = userSecrets.ACCESS_TOKEN || userSecrets.access_token;
+  const refreshToken = userSecrets.REFRESH_TOKEN || userSecrets.refresh_token;
 
-function getClientId(): string | null {
-  return cachedSystemSecrets?.CLIENT_ID || cachedSystemSecrets?.client_id || null;
-}
-
-function getClientSecret(): string | null {
-  return cachedSystemSecrets?.CLIENT_SECRET || cachedSystemSecrets?.client_secret || null;
-}
-
-// =============================================================================
-// CLIENT INITIALIZATION
-// =============================================================================
-
-/**
- * Initialize Canva client with credentials from context
- */
-export async function initializeCanvaClient(context: ToolContext): Promise<void> {
-  // Get secrets from context
-  const systemSecrets = await context.getSystemSecrets();
-  const userSecrets = await context.getUserSecrets();
-
-  // Cache secrets
-  cachedSystemSecrets = systemSecrets;
-  cachedUserSecrets = userSecrets;
-}
-
-/**
- * Ensure user is authenticated
- */
-export async function ensureAuthenticated(context: ToolContext): Promise<string> {
-  await initializeCanvaClient(context);
-
-  const accessToken = getAccessToken();
-  if (!accessToken) {
+  if (!clientId || !clientSecret) {
+    throw new Error('Canva system secrets missing: CLIENT_ID and CLIENT_SECRET required.');
+  }
+  if (!accessToken || !refreshToken) {
     throw new Error('Canva authentication required. Please connect your Canva account.');
   }
 
-  return accessToken;
+  return { clientId, clientSecret, accessToken, refreshToken };
 }
 
-/**
- * Refresh the access token using the refresh token
- */
-async function refreshAccessToken(): Promise<string> {
-  const clientId = getClientId();
-  const clientSecret = getClientSecret();
-  const refreshToken = getRefreshToken();
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    throw new Error('Missing credentials for token refresh');
-  }
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-
+async function refreshAccessToken(context: ToolContext, creds: Credentials): Promise<string> {
+  const basic = Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64');
   const response = await fetch(`${CANVA_API_BASE}/oauth/token`, {
     method: 'POST',
     headers: {
-      Authorization: `Basic ${credentials}`,
+      Authorization: `Basic ${basic}`,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: refreshToken,
+      refresh_token: creds.refreshToken,
     }),
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Failed to refresh token: ${error}`);
+    const errorText = await response.text();
+    throw new Error(`Failed to refresh Canva token: ${errorText}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as { access_token: string; refresh_token?: string };
 
-  // Update cached secrets
-  if (cachedUserSecrets) {
-    cachedUserSecrets.ACCESS_TOKEN = data.access_token;
-    if (data.refresh_token) {
-      cachedUserSecrets.REFRESH_TOKEN = data.refresh_token;
-    }
-  }
+  // Persist to backend so future requests see the fresh token.
+  const updated: Record<string, string> = { ACCESS_TOKEN: data.access_token };
+  if (data.refresh_token) updated.REFRESH_TOKEN = data.refresh_token;
+  await context.updateUserSecrets(updated);
 
-  console.error('✅ Canva token refreshed successfully');
   return data.access_token;
 }
 
-// =============================================================================
-// API REQUEST HELPER
-// =============================================================================
-
-/**
- * Make an authenticated request to the Canva API
- */
-export async function canvaRequest<T = any>(
+export async function canvaRequest<T = unknown>(
   context: ToolContext,
   endpoint: string,
   options: CanvaRequestOptions = {},
 ): Promise<T> {
-  let accessToken = await ensureAuthenticated(context);
+  const creds = await readCredentials(context);
 
-  const makeRequest = async (token: string) => {
+  const fetchWith = async (token: string): Promise<Response> => {
     const headers: Record<string, string> = {
       Authorization: `Bearer ${token}`,
       ...options.headers,
     };
-
-    if (options.body && !options.headers?.['Content-Type']) {
+    if (options.body !== undefined && !options.headers?.['Content-Type']) {
       headers['Content-Type'] = 'application/json';
     }
-
-    const response = await fetch(`${CANVA_API_BASE}${endpoint}`, {
+    return fetch(`${CANVA_API_BASE}${endpoint}`, {
       method: options.method || 'GET',
       headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
     });
-
-    return response;
   };
 
-  let response = await makeRequest(accessToken);
+  let response = await fetchWith(creds.accessToken);
 
-  // If unauthorized, try refreshing the token
   if (response.status === 401) {
-    try {
-      accessToken = await refreshAccessToken();
-      response = await makeRequest(accessToken);
-    } catch (refreshError) {
-      throw new Error('Authentication expired. Please reconnect your Canva account.');
-    }
+    const fresh = await refreshAccessToken(context, creds);
+    response = await fetchWith(fresh);
   }
 
   if (!response.ok) {
     const errorText = await response.text();
-    let errorMessage: string;
+    let parsed: unknown = errorText;
     try {
-      const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.message || errorJson.error_description || errorText;
+      parsed = JSON.parse(errorText);
     } catch {
-      errorMessage = errorText;
+      // not JSON; keep raw text for the message
     }
-    throw new Error(`Canva API error (${response.status}): ${errorMessage}`);
+    const classified = classifyCanvaApiError(
+      response.status,
+      parsed,
+      errorText || 'Canva API error',
+    );
+    throw new CanvaApiError(response.status, classified);
   }
 
-  // Handle 204 No Content
-  if (response.status === 204) {
-    return {} as T;
-  }
-
-  return response.json();
-}
-
-/**
- * Wrapper that handles 401 errors by attempting token refresh
- */
-export async function withAuthRetry<T>(
-  context: ToolContext,
-  operation: () => Promise<T>,
-  operationName: string,
-): Promise<T> {
-  try {
-    return await operation();
-  } catch (error: any) {
-    // Check if it's a 401 error
-    const is401 =
-      error?.code === 401 ||
-      error?.status === 401 ||
-      error?.message?.includes('401') ||
-      error?.message?.toLowerCase().includes('authentication');
-
-    if (!is401) {
-      throw error;
-    }
-
-    console.error(`[CanvaClient] 401 error in ${operationName}, attempting token refresh...`);
-
-    // Try to refresh and retry
-    try {
-      await refreshAccessToken();
-      return await operation();
-    } catch (refreshError) {
-      throw new Error('Authentication expired. Please reconnect your Canva account.');
-    }
-  }
-}
-
-/**
- * Get cached secrets for health check
- */
-export function getCachedSecrets(): {
-  system: Record<string, string> | null;
-  user: Record<string, string> | null;
-} {
-  return {
-    system: cachedSystemSecrets,
-    user: cachedUserSecrets,
-  };
+  if (response.status === 204) return {} as T;
+  return (await response.json()) as T;
 }

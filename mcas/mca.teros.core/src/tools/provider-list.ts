@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const providerList: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'List all LLM providers available to the user. Returns providers with their models, status, and configuration.',
   parameters: {

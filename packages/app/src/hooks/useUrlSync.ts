@@ -10,7 +10,7 @@
  * - The URL to always reflect the current state
  */
 
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import { useTilingStore } from '../store/tilingStore';
@@ -19,22 +19,10 @@ import { useTilingStore } from '../store/tilingStore';
 type UrlGenerator = (props: Record<string, any>) => string | null;
 
 const urlGenerators: Record<string, UrlGenerator> = {
-  // Chat windows - with optional workspace prefix
+  // Chat windows
   chat: (props) => {
-    // If we have a channelId, use it
-    if (props.channelId) {
-      if (props.workspaceId) {
-        return `/workspace/${props.workspaceId}/chat/${props.channelId}`;
-      }
-      return `/chat/${props.channelId}`;
-    }
-    // Draft chat (no channelId yet) - use agent URL
-    if (props.agentId) {
-      if (props.workspaceId) {
-        return `/workspace/${props.workspaceId}/chat/new/${props.agentId}`;
-      }
-      return `/chat/new/${props.agentId}`;
-    }
+    if (props.channelId) return `/chat/${props.channelId}`;
+    if (props.agentId) return `/chat/new/${props.agentId}`;
     return null;
   },
   conversations: () => '/conversations',
@@ -43,35 +31,41 @@ const urlGenerators: Record<string, UrlGenerator> = {
   // Dev tools
   console: () => '/console',
 
-  // Voice
-  'voice-chat': (props) => (props.agentId ? `/voicechat/${props.agentId}` : null),
-
   // Config windows
   agent: (props) => {
     if (!props.agentId) return null;
-    if (props.workspaceId) return `/workspace/${props.workspaceId}/agent/${props.agentId}`;
     return `/agent/${props.agentId}`;
   },
   app: (props) => {
     if (!props.appId) return null;
-    if (props.workspaceId) return `/workspace/${props.workspaceId}/app/${props.appId}`;
     return `/app/${props.appId}`;
   },
   apps: () => '/apps',
+  catalog: () => '/catalog',
 
   // Admin windows
   providers: () => '/providers',
   'agent-cores': () => '/admin/agent-cores',
   mcas: () => '/admin/mcas',
   users: () => '/admin/users',
+  'agent-usage': () => '/admin/agent-usage',
+  'model-health': () => '/admin/model-health',
+  monitoring: () => '/admin/monitoring',
+  'feature-flags': () => '/admin/feature-flags',
+  'session-trace': (props) =>
+    props.sessionUsageId ? `/admin/trace/${props.sessionUsageId}` : null,
+  'billing-audit': (props) =>
+    props.userId ? `/admin/billing-audit/${props.userId}` : '/admin/billing-audit',
+  'billing-requests': () => '/admin/billing-requests',
+  'billing-teams': () => '/admin/billing-teams',
 
   // User
   profile: () => '/profile',
-  invitations: (props) => {
-    const tab = props.tab || 'status';
-    if (tab === 'status') return '/invitations';
-    return `/invitations/${tab}`;
-  },
+  'pending-approvals': () => '/pending-approvals',
+  skills: () => '/skills',
+  'create-agent': () => '/create-agent',
+  launcher: () => '/launcher',
+  // uitest: () => '/uitest',  // disabled — UITestWindow removed from launcher
 
   // Workspaces
   workspaces: () => '/workspaces',
@@ -79,11 +73,58 @@ const urlGenerators: Record<string, UrlGenerator> = {
 
   // Board
   board: (props) => {
-    if (props.workspaceId && props.projectId) {
-      return `/workspace/${props.workspaceId}/board/${props.projectId}`;
-    }
+    if (props.projectId) return `/board/${props.projectId}`;
     return null;
   },
+
+  // Project
+  project: (props) => (props.projectId ? `/project/${props.projectId}` : null),
+
+  // File windows — filePaths contain slashes, so encode as query param
+  'file-browser': (props) => {
+    if (!props.workspaceId) return null;
+    const params = new URLSearchParams();
+    if (props.initialPath) params.set('path', props.initialPath);
+    const qs = params.toString();
+    return `/files/${props.workspaceId}${qs ? `?${qs}` : ''}`;
+  },
+  'file-viewer': (props) => {
+    if (!props.filePath) return null;
+    const params = new URLSearchParams();
+    params.set('path', props.filePath);
+    if (props.workspaceId) params.set('workspaceId', props.workspaceId);
+    if (props.channelId) params.set('channelId', props.channelId);
+    return `/file-viewer?${params.toString()}`;
+  },
+  'code-editor': (props) => {
+    if (!props.filePath) return null;
+    const params = new URLSearchParams();
+    params.set('path', props.filePath);
+    if (props.workspaceId) params.set('workspaceId', props.workspaceId);
+    if (props.channelId) params.set('channelId', props.channelId);
+    return `/code-editor?${params.toString()}`;
+  },
+  'markdown-viewer': (props) => {
+    if (!props.filePath) return null;
+    const params = new URLSearchParams();
+    params.set('path', props.filePath);
+    if (props.workspaceId) params.set('workspaceId', props.workspaceId);
+    if (props.channelId) params.set('channelId', props.channelId);
+    return `/markdown-viewer?${params.toString()}`;
+  },
+
+  // Terminal — encode cwd as query param
+  terminal: (props) => {
+    const params = new URLSearchParams();
+    if (props.initialCwd) params.set('cwd', props.initialCwd);
+    if (props.workspaceId) params.set('workspaceId', props.workspaceId);
+    const qs = params.toString();
+    return `/terminal${qs ? `?${qs}` : ''}`;
+  },
+
+  // Browserbase — one URL per session
+  'browserbase-live-view': (props) =>
+    props.sessionId ? `/browserbase/${props.sessionId}` : null,
 };
 
 /**

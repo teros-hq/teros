@@ -1,0 +1,193 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Railway API token and connectivity."
+    },
+    "railway-get-user": {
+      "name": "railway-get-user",
+      "description": "Get current Railway user info including available workspaces."
+    },
+    "railway-list-workspaces": {
+      "name": "railway-list-workspaces",
+      "description": "List all Railway workspaces available to the current user."
+    },
+    "railway-list-projects": {
+      "name": "railway-list-projects",
+      "description": "List all Railway projects in the connected account."
+    },
+    "railway-get-project": {
+      "name": "railway-get-project",
+      "description": "Get detailed information about a Railway project including services and environments.",
+      "params": {
+        "projectId": "The Railway project ID"
+      }
+    },
+    "railway-create-project": {
+      "name": "railway-create-project",
+      "description": "Create a new Railway project. Requires a workspaceId - use railway-list-workspaces to get available workspaces.",
+      "params": {
+        "name": "Project name",
+        "workspaceId": "Workspace ID to create the project in (use railway-list-workspaces to get IDs)",
+        "description": "Optional project description"
+      }
+    },
+    "railway-delete-project": {
+      "name": "railway-delete-project",
+      "description": "Delete a Railway project. This action is irreversible!",
+      "params": {
+        "projectId": "The Railway project ID to delete"
+      }
+    },
+    "railway-list-environments": {
+      "name": "railway-list-environments",
+      "description": "List all environments in a Railway project.",
+      "params": {
+        "projectId": "The Railway project ID"
+      }
+    },
+    "railway-create-environment": {
+      "name": "railway-create-environment",
+      "description": "Create a new environment in a Railway project (e.g., staging, production).",
+      "params": {
+        "projectId": "The Railway project ID",
+        "name": "Environment name (e.g., \"staging\", \"production\")"
+      }
+    },
+    "railway-list-services": {
+      "name": "railway-list-services",
+      "description": "List all services in a Railway project.",
+      "params": {
+        "projectId": "The Railway project ID"
+      }
+    },
+    "railway-create-service": {
+      "name": "railway-create-service",
+      "description": "Create a new service in a Railway project.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "name": "Service name (e.g., \"web\", \"api\", \"worker\")"
+      }
+    },
+    "railway-delete-service": {
+      "name": "railway-delete-service",
+      "description": "Delete a service from a Railway project.",
+      "params": {
+        "serviceId": "The Railway service ID to delete"
+      }
+    },
+    "railway-list-variables": {
+      "name": "railway-list-variables",
+      "description": "List environment variables for a service.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID"
+      }
+    },
+    "railway-set-variables": {
+      "name": "railway-set-variables",
+      "description": "Set environment variables for a service.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID",
+        "variables": "Key-value pairs of environment variables to set"
+      }
+    },
+    "railway-list-deployments": {
+      "name": "railway-list-deployments",
+      "description": "List recent deployments for a service.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID"
+      }
+    },
+    "railway-get-deployment": {
+      "name": "railway-get-deployment",
+      "description": "Get the status of a specific deployment.",
+      "params": {
+        "deploymentId": "The Railway deployment ID"
+      }
+    },
+    "railway-redeploy": {
+      "name": "railway-redeploy",
+      "description": "Trigger a redeploy of an existing deployment.",
+      "params": {
+        "deploymentId": "The Railway deployment ID to redeploy"
+      }
+    },
+    "railway-list-domains": {
+      "name": "railway-list-domains",
+      "description": "List domains for a service.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID"
+      }
+    },
+    "railway-create-domain": {
+      "name": "railway-create-domain",
+      "description": "Create a Railway-generated domain for a service (e.g., myapp.up.railway.app).",
+      "params": {
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID"
+      }
+    },
+    "railway-connect-repo": {
+      "name": "railway-connect-repo",
+      "description": "Connect a GitHub repository to a Railway service. Works with both public and private repos (if GitHub is connected in your Railway account). Automatically triggers a deployment.",
+      "params": {
+        "serviceId": "The Railway service ID",
+        "repo": "GitHub repository in format \"owner/repo\" (e.g., \"myuser/myapp\")",
+        "branch": "Branch to deploy from (default: \"main\")"
+      }
+    },
+    "railway-deploy-public-repo": {
+      "name": "railway-deploy-public-repo",
+      "description": "Deploy a public GitHub repository to Railway. Creates a new service from the repo. Only works with PUBLIC repositories. For private repos, use railway-connect-repo instead.",
+      "params": {
+        "projectId": "The Railway project ID",
+        "repo": "Public GitHub repository in format \"owner/repo\" (e.g., \"myuser/myapp\")",
+        "branch": "Branch to deploy from (default: \"main\")",
+        "environmentId": "The Railway environment ID (optional)"
+      }
+    },
+    "railway-create-volume": {
+      "name": "railway-create-volume",
+      "description": "Create a persistent volume for a service (useful for databases).",
+      "params": {
+        "projectId": "The Railway project ID",
+        "serviceId": "The Railway service ID",
+        "environmentId": "The Railway environment ID",
+        "mountPath": "Path to mount the volume (e.g., \"/data/db\" for MongoDB)"
+      }
+    },
+    "railway-get-build-logs": {
+      "name": "railway-get-build-logs",
+      "description": "Get build logs for a deployment. Shows what happened during the build/compile phase.",
+      "params": {
+        "deploymentId": "The deployment ID to get build logs for",
+        "limit": "Maximum number of log lines to return (default: 100, max: 500)",
+        "filter": "Optional text filter to search within logs"
+      }
+    },
+    "railway-get-deploy-logs": {
+      "name": "railway-get-deploy-logs",
+      "description": "Get runtime/deployment logs for a deployment. Shows application output, errors, and startup logs.",
+      "params": {
+        "deploymentId": "The deployment ID to get runtime logs for",
+        "limit": "Maximum number of log lines to return (default: 100, max: 500)",
+        "filter": "Optional text filter to search within logs"
+      }
+    }
+  },
+  "name": "Railway",
+  "description": "Deploy projects to Railway directly from Teros workspaces. Supports automatic deployments, environment management, and database provisioning.",
+  "changelog": [
+    {
+      "notes": "Initial release — create and deploy projects, manage services, environments, variables, domains and volumes, and watch deployment logs"
+    }
+  ]
+}

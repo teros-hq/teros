@@ -1,0 +1,9 @@
+{
+  "name": "mca.plaud",
+  "version": "2.0.0",
+  "type": "module",
+  "dependencies": {
+    "@teros/mca-sdk": "0.1.0",
+    "@modelcontextprotocol/sdk": "^1.20.2"
+  }
+}

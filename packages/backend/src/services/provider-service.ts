@@ -10,8 +10,19 @@ import { ObjectId } from 'mongodb';
 import { LLMClientFactory } from '@teros/core';
 import { decrypt, encrypt, generateKey, generateSalt } from '../auth/encryption';
 import type { EncryptedData, UserEncryptionKeyDocument } from '../auth/types';
+import { HttpClient } from '../lib/HttpClient';
 import { getActiveModelsByProvider } from '../models/definitions';
 import { secrets } from '../secrets/secrets-manager';
+import { canUseTerosModel, getUserTerosProviderConfig, decryptTerosProviderApiKey, UpgradeRequiredError, assertTerosHoursAvailable, assertAccountNotBlocked } from './billing-gate.js';
+
+// Dedicated HTTP client for local provider discovery (Ollama, OpenAI-compatible)
+const providerDiscoveryClient = new HttpClient({
+  timeout: 10_000,
+  maxRetries: 1,
+  retryStatusCodes: [429, 503, 504],
+  logging: false,
+  logLabel: 'ProviderService',
+});
 
 // ============================================================================
 // TYPES
@@ -23,9 +34,30 @@ export type ProviderType =
   | 'openai'
   | 'openai-codex-oauth'
   | 'openrouter'
+  | 'google'
   | 'zhipu'
   | 'zhipu-coding'
-  | 'ollama';
+  | 'ollama'
+  | 'ollama-cloud'
+  | 'openai-compatible'
+  | 'minimax'
+  | 'teros'
+  | 'cloudflare'
+  | 'fireworks'
+  | 'together';
+
+/**
+ * Provider types that do not require user-supplied secrets (no API key, no OAuth).
+ * Credentials are either absent (local Ollama) or managed server-side (teros).
+ * Add new credential-free providers here — this is the single source of truth
+ * consumed by add.ts, provider-commands.ts, llm-client-manager.ts, and
+ * resolveModelFromProviders.
+ */
+export const PROVIDER_TYPES_WITHOUT_SECRETS: readonly ProviderType[] = [
+  'ollama',
+  'openai-compatible',
+  'teros',
+] as const;
 
 export interface ProviderCapabilities {
   streaming: boolean;
@@ -55,7 +87,17 @@ export interface UserProviderRecord {
   encryptionTag?: string;
   // Models discovered/configured
   models: ProviderModel[];
+  /**
+   * Default model to use when no specific model is selected.
+   * Used when the agent falls back to the user's default provider.
+   */
   defaultModelId?: string;
+  /**
+   * If true, this is the user's default provider.
+   * Used as fallback when an agent has no availableProviders configured.
+   * Only one provider per user should have isDefault: true.
+   */
+  isDefault?: boolean;
   priority: number;
   status: 'active' | 'error' | 'disabled';
   lastTestedAt?: string;
@@ -161,6 +203,53 @@ export class ProviderService {
       await this.setProviderSecrets(userId, provider.providerId, secrets);
     }
 
+    return provider;
+  }
+
+  /**
+   * Ensure the user has the default Teros provider.
+   *
+   * Teros is the platform's credential-free provider: its secrets are managed
+   * server-side (the system `fireworks` secret) and its models come from the
+   * static catalogue, so this is a cheap, network-free write — safe to call on
+   * every signup. It is what makes "Teros by default" work after onboarding
+   * stopped asking users to connect a provider: a freshly-created agent has
+   * `availableProviders: []` and falls back to the user's default provider
+   * (`resolveProviderForAgent` step 2), which without this would be absent and
+   * surface as "No AI provider is configured".
+   *
+   * Idempotent and non-destructive:
+   *  - No-op if the user already has a Teros provider (returns the existing one).
+   *  - Claims the `isDefault` slot only when the user has no default yet, so it
+   *    never demotes a provider the user explicitly chose (e.g. a BYOK key).
+   */
+  async ensureDefaultTerosProvider(userId: string): Promise<UserProviderRecord> {
+    const coll = this.db.collection<UserProviderRecord>('user_providers');
+
+    const existing = await coll.findOne({ userId, providerType: 'teros' });
+    if (existing) return existing;
+
+    // Static catalogue models (MODELS_TEROS) — no network, no user secrets.
+    const models = await this.discoverModels('teros', {});
+    const hasDefault = await coll.findOne({ userId, isDefault: true });
+    const now = new Date().toISOString();
+
+    const provider: UserProviderRecord = {
+      providerId: `prov_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      userId,
+      providerType: 'teros',
+      displayName: 'Teros',
+      config: {},
+      models,
+      defaultModelId: models[0]?.modelId,
+      isDefault: !hasDefault,
+      priority: 100,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await coll.insertOne(provider);
     return provider;
   }
 
@@ -280,12 +369,13 @@ export class ProviderService {
       return { ok: false, error: 'Provider not found' };
     }
 
-    // Ollama doesn't need secrets - it uses baseUrl from config
-    const isOllama = provider.providerType === 'ollama';
+    // Credential-free providers don't store user secrets — credentials come
+    // from config (ollama: baseUrl) or from system secrets (teros: cloudflare).
+    const isCredentialFree = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType);
 
-    // Get decrypted secrets (not required for Ollama)
-    const secretsData = isOllama ? {} : await this.getProviderSecrets(provider.userId, providerId);
-    if (!secretsData && !isOllama) {
+    // Get decrypted secrets (not required for credential-free providers)
+    const secretsData = isCredentialFree ? {} : await this.getProviderSecrets(provider.userId, providerId);
+    if (!secretsData && !isCredentialFree) {
       return { ok: false, error: 'No secrets configured for this provider' };
     }
 
@@ -316,6 +406,9 @@ export class ProviderService {
           break;
         case 'openrouter':
           cfg.openrouter = { apiKey: secretsData!.apiKey, model: modelToTest.modelString };
+          break;
+        case 'google':
+          cfg.google = { apiKey: secretsData!.apiKey, model: modelToTest.modelString };
           break;
         case 'zhipu':
         case 'zhipu-coding':
@@ -348,6 +441,83 @@ export class ProviderService {
             model: modelToTest.modelString,
           };
           break;
+        case 'ollama-cloud':
+          cfg['ollama-cloud'] = {
+            apiKey: secretsData!.apiKey!,
+            model: modelToTest.modelString,
+          };
+          break;
+        case 'openai-compatible':
+          cfg['openai-compatible'] = {
+            baseUrl: provider.config?.baseUrl,
+            model: modelToTest.modelString,
+            apiKey: secretsData?.apiKey,
+            customHeaders: provider.config?.customHeaders,
+          };
+          break;
+        case 'minimax':
+          cfg.minimax = { apiKey: secretsData!.apiKey, model: modelToTest.modelString };
+          break;
+        case 'teros': {
+          // R8.5: `testProvider` intentionally uses the per-user admin Teros
+          // config (assigned via billing_subscriptions), NOT the runtime
+          // `secrets.system('fireworks')` path that `resolveTerosUpstream` owns
+          // (the teros-fallback-invariant lint). This is the admin "test
+          // connection" flow — a distinct, legitimate read that decrypts the
+          // per-user fireworksApiKey, so it does not route through the resolver.
+          const terosConfig = await getUserTerosProviderConfig(this.db, provider.userId);
+          if (!terosConfig) {
+            return { ok: false, error: 'Teros provider not configured (no default config found)' };
+          }
+          let apiKey: string;
+          try {
+            apiKey = decryptTerosProviderApiKey(terosConfig.fireworksApiKey);
+          } catch (err: any) {
+            return { ok: false, error: `Failed to decrypt Teros provider API key: ${err.message}` };
+          }
+          cfg.teros = {
+            apiKey,
+            model: modelToTest.modelString,
+          };
+          break;
+        }
+        case 'cloudflare': {
+          // User-owned Cloudflare: apiKey from user secrets, accountId from config
+          if (!secretsData?.apiKey) {
+            return { ok: false, error: 'No API key configured for Cloudflare provider' };
+          }
+          if (!provider.config?.accountId) {
+            return { ok: false, error: 'Cloudflare accountId is required in provider config' };
+          }
+          cfg.cloudflare = {
+            apiKey: secretsData.apiKey,
+            accountId: provider.config.accountId,
+            model: modelToTest.modelString,
+          };
+          break;
+        }
+        case 'fireworks': {
+          // Fireworks AI: apiKey from user secrets, fixed base URL
+          if (!secretsData?.apiKey) {
+            return { ok: false, error: 'No API key configured for Fireworks AI provider' };
+          }
+          cfg.fireworks = {
+            apiKey: secretsData.apiKey,
+            model: modelToTest.modelString,
+          };
+          break;
+        }
+        case 'together': {
+          // Together AI: apiKey from user secrets, fixed base URL
+          if (!secretsData?.apiKey) {
+            return { ok: false, error: 'No API key configured for Together AI provider' };
+          }
+          cfg.together = {
+            apiKey: secretsData.apiKey,
+            model: modelToTest.modelString,
+          };
+          break;
+        }
         default:
           break;
       }
@@ -404,16 +574,35 @@ export class ProviderService {
     _secrets: ProviderSecrets,
     config?: Record<string, any>,
   ): Promise<ProviderModel[]> {
-    // For Ollama, query the live API to discover installed models
+    // For local Ollama, query the live API to discover installed models
     if (providerType === 'ollama') {
       return this.discoverOllamaModels(config?.baseUrl || 'http://localhost:11434');
+    }
+
+    // Ollama Cloud uses static model definitions (cloud catalog, not live discovery)
+    // Falls through to getActiveModelsByProvider below
+
+    // For openai-compatible, query /v1/models to discover available models.
+    // Falls back to a single static entry when the caller forced a specific
+    // model via config.model (useful for endpoints that don't expose /models
+    // or when the user wants to pin a specific model).
+    if (providerType === 'openai-compatible') {
+      if (!config?.baseUrl) {
+        throw new Error('openai-compatible: baseUrl is required in config');
+      }
+      return this.discoverOpenAICompatibleModels(
+        config.baseUrl as string,
+        _secrets?.apiKey,
+        config.customHeaders as Record<string, string> | undefined,
+        config.model as string | undefined,
+      );
     }
 
     // Get active models from centralized definitions
     const models = getActiveModelsByProvider(providerType);
 
     // Map to ProviderModel format
-    return models.map((m) => ({
+    const providerModels = models.map((m) => ({
       modelId: m.modelId,
       modelString: m.modelString,
       capabilities: {
@@ -422,10 +611,108 @@ export class ProviderService {
         vision: m.capabilities.vision,
         thinking: m.capabilities.thinking,
         // Map thinking capability to reasoningLevel for backwards compatibility
-        reasoningLevel: m.capabilities.thinking ? 2 : 1,
+        reasoningLevel: (m.capabilities.thinking ? 2 : 1) as 0 | 1 | 2 | 3,
       },
       context: m.context,
     }));
+
+    // For OpenRouter, Ollama Cloud, Ollama Local: append custom model string if configured
+    if (['openrouter', 'ollama-cloud', 'ollama'].includes(providerType) && config?.customModel) {
+      const slug = (config.customModel as string).replace(/\//g, '-').replace(/:/g, '-');
+      providerModels.push({
+        modelId: `${providerType}-custom-${slug}`,
+        modelString: config.customModel as string,
+        capabilities: {
+          streaming: true,
+          tools: false,
+          vision: false,
+          thinking: false,
+          reasoningLevel: 1 as const,
+        },
+        context: { maxTokens: 200000, maxOutputTokens: 8192 },
+      });
+    }
+
+    return providerModels;
+  }
+
+  /**
+   * Discover models from an OpenAI-compatible endpoint via /v1/models.
+   *
+   * Follows the OpenAI list-models response shape:
+   *   { data: [{ id: "model-name", ... }, ...] }
+   *
+   * When the endpoint does not expose /models or returns an invalid payload,
+   * falls back to the optional `fallbackModel` (the user-pinned config.model)
+   * so legacy/private endpoints keep working. If neither path yields a model
+   * we throw — the caller surfaces the error to the UI.
+   */
+  private async discoverOpenAICompatibleModels(
+    baseUrl: string,
+    apiKey?: string,
+    customHeaders?: Record<string, string>,
+    fallbackModel?: string,
+  ): Promise<ProviderModel[]> {
+    const trimmedBase = baseUrl.replace(/\/+$/, '');
+    const modelsUrl = trimmedBase.endsWith('/v1')
+      ? `${trimmedBase}/models`
+      : `${trimmedBase}/v1/models`;
+    const headers: Record<string, string> = { Accept: 'application/json' };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    if (customHeaders) Object.assign(headers, customHeaders);
+
+    try {
+      const payload = await providerDiscoveryClient.get<{ data?: Array<{ id?: string }> }>(
+        modelsUrl,
+        { headers },
+      );
+      const entries = Array.isArray(payload?.data) ? payload.data : [];
+
+      const discovered = entries
+        .map((m) => (typeof m?.id === 'string' ? m.id.trim() : ''))
+        .filter((id): id is string => id.length > 0)
+        .map((id) => this.buildOpenAICompatibleModel(id));
+
+      if (discovered.length > 0) return discovered;
+      throw new Error('/v1/models returned no entries');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (fallbackModel) {
+        console.warn(
+          `[ProviderService] openai-compatible /models discovery failed at ${modelsUrl} (${message}); ` +
+            `falling back to pinned config.model=${fallbackModel}`,
+        );
+        return [this.buildOpenAICompatibleModel(fallbackModel)];
+      }
+      throw new Error(
+        `openai-compatible: could not discover models at ${modelsUrl} and no config.model was provided. ` +
+          `Last error: ${message}`,
+      );
+    }
+  }
+
+  /** Shape a single model entry from an openai-compatible endpoint. */
+  private buildOpenAICompatibleModel(modelName: string): ProviderModel {
+    return {
+      modelId: `openai-compatible-${modelName.replace(/[^a-zA-Z0-9]/g, '-')}`,
+      modelString: modelName,
+      capabilities: {
+        streaming: true,
+        tools: true,
+        vision: false,
+        thinking: false,
+        reasoningLevel: 1 as const,
+      },
+      // 32768 (vs previous 8192): reasoning-capable models served over
+      // OpenAI-compatible APIs (llama.cpp + Qwopus/QwQ/DeepSeek R1, etc.)
+      // stream `reasoning_content` that counts against the same `max_tokens`
+      // pool as the user-visible `content`. With 8192 the model typically
+      // exhausts the budget thinking and emits zero content chunks, leaving
+      // the UI silent. 32768 gives reasoning + answer comfortable headroom
+      // without being excessive for non-reasoning models (they simply stop
+      // at finish_reason: "stop" well before the ceiling).
+      context: { maxTokens: 128000, maxOutputTokens: 32768 },
+    };
   }
 
   /**
@@ -433,12 +720,7 @@ export class ProviderService {
    */
   private async discoverOllamaModels(baseUrl: string): Promise<ProviderModel[]> {
     try {
-      const response = await fetch(`${baseUrl}/api/tags`);
-      if (!response.ok) {
-        throw new Error(`Ollama API returned ${response.status}: ${response.statusText}`);
-      }
-
-      const data = (await response.json()) as {
+      const data = await providerDiscoveryClient.get<{
         models: Array<{
           name: string;
           model: string;
@@ -448,7 +730,7 @@ export class ProviderService {
             quantization_level: string;
           };
         }>;
-      };
+      }>(`${baseUrl}/api/tags`);
 
       if (!data.models || !Array.isArray(data.models)) {
         return [];
@@ -492,11 +774,54 @@ export class ProviderService {
 
   /**
    * Resolve the best provider for an agent based on:
-   * - Agent's availableProviders
-   * - Core's requiredCapabilities
-   * - Provider priority and selectedProviderId
+   * 1. Agent's availableProviders (explicit configuration)
+   * 2. User's default provider (isDefault: true) as fallback
+   *
+   * Within a provider, model selection follows:
+   * - agent.selectedModelId (explicit model choice)
+   * - provider.defaultModelId (provider's default model)
+   * - First model matching requiredCapabilities
+   * - First available model
    */
   async resolveProviderForAgent(
+    agentId: string,
+    workspaceId?: string,
+    /**
+     * The user whose agent-hours this turn actually consumes — the channel actor
+     * (`channel.userId`), which can differ from the agent owner for a shared
+     * workspace agent. The hours gate must follow the actor (billing charges the
+     * actor), while the provider is still resolved from the owner's config.
+     * Falls back to the owner when omitted (direct owner runs). TER-650/G6.
+     */
+    actorUserId?: string,
+  ): Promise<ResolvedProvider | null> {
+    // Structural billing choke point: every LLM invocation resolves its provider
+    // here, so enforcing the gate at this single point covers ALL entry points
+    // (chat, autorun, scheduler, voice, delegation, resume) by construction — no
+    // per-caller instrumentation to forget. The inner method already throws
+    // UpgradeRequiredError on a tier violation; here we additionally enforce the
+    // agent-hours limit once the resolved provider is known to be 'teros'
+    // (decision #1: hard block). Runs per turn, so an in-flight turn finishes and
+    // the next one is blocked (decision #2).
+    const resolved = await this.resolveProviderForAgentInner(agentId, workspaceId);
+    const ownerUserId = resolved?.provider?.userId;
+    if (ownerUserId) {
+      // Payment-due hard block (decision B): an account with an unpaid invoice
+      // past grace cannot run agents on ANY provider — including BYOK. This gates
+      // whoever OWNS/pays for the provider (the owner), on purpose: the choke
+      // point every entry point flows through. NOT guarded by providerType.
+      await assertAccountNotBlocked(this.db, ownerUserId);
+      // Teros-hours hard block: gate the ACTOR whose hours are consumed, not the
+      // owner — they diverge for a shared workspace agent, and the rollup charges
+      // the actor. Falls back to the owner for direct runs. TER-650/G6, decision #1.
+      if (resolved.provider.providerType === 'teros') {
+        await assertTerosHoursAvailable(this.db, actorUserId ?? ownerUserId);
+      }
+    }
+    return resolved;
+  }
+
+  private async resolveProviderForAgentInner(
     agentId: string,
     _workspaceId?: string,
   ): Promise<ResolvedProvider | null> {
@@ -505,78 +830,144 @@ export class ProviderService {
     if (!agent) return null;
 
     const availableProviderIds: string[] = agent.availableProviders ?? [];
-    if (!availableProviderIds.length) return null;
 
     // Get agent core for requiredCapabilities
     const core = await this.db.collection<any>('agent_cores').findOne({ coreId: agent.coreId });
     const requiredCaps = core?.requiredCapabilities ?? {};
 
-    // Fetch all available providers
-    const providers = await this.db
+    // ── Billing gate: check if user can use teros model ───────────────────────
+    const userId = agent.ownerId;
+    const terosAllowed = userId ? await canUseTerosModel(this.db, userId) : true;
+
+    // ── Step 1: Try agent's explicitly configured providers ──────────────────
+    if (availableProviderIds.length > 0) {
+      const providers = await this.db
+        .collection<UserProviderRecord>('user_providers')
+        .find({
+          providerId: { $in: availableProviderIds },
+          status: 'active',
+        })
+        .toArray();
+
+      // Billing gate: filter out teros providers for Basic users
+      const filteredProviders = terosAllowed
+        ? providers
+        : providers.filter((p) => p.providerType !== 'teros');
+
+      if (filteredProviders.length > 0) {
+        // Sort by: selectedProviderId first, then by priority (lower = better)
+        const preferredId = agent.selectedProviderId;
+        filteredProviders.sort((a, b) => {
+          if (a.providerId === preferredId) return -1;
+          if (b.providerId === preferredId) return 1;
+          return a.priority - b.priority;
+        });
+
+        const resolved = await this.resolveModelFromProviders(
+          filteredProviders,
+          agent.selectedModelId,
+          requiredCaps,
+        );
+        if (resolved) return resolved;
+      }
+    }
+
+    // ── Step 2: Fall back to user's default provider ─────────────────────────
+    // Find the user who owns the channel (via agent ownership or channel.userId)
+    // We resolve by looking at who owns the agent
+    if (!userId) return null;
+
+    const defaultProvider = await this.db
       .collection<UserProviderRecord>('user_providers')
-      .find({
-        providerId: { $in: availableProviderIds },
-        status: 'active',
-      })
-      .toArray();
+      .findOne({ userId, isDefault: true, status: 'active' });
 
-    if (!providers.length) return null;
+    if (!defaultProvider) {
+      // No default set — try first active provider by priority as last resort
+      const firstProvider = await this.db
+        .collection<UserProviderRecord>('user_providers')
+        .findOne({ userId, status: 'active' }, { sort: { priority: 1 } });
 
-    // Sort by: selectedProviderId first, then by priority (lower = better)
-    const preferredId = agent.selectedProviderId;
-    providers.sort((a, b) => {
-      if (a.providerId === preferredId) return -1;
-      if (b.providerId === preferredId) return 1;
-      return a.priority - b.priority;
-    });
+      if (!firstProvider) return null;
 
-    // If agent has a selectedModelId, try to find that specific model first
-    const selectedModelId = agent.selectedModelId;
+      // Billing gate: skip teros provider for Basic users
+      if (!terosAllowed && firstProvider.providerType === 'teros') {
+        throw new UpgradeRequiredError(
+          'teros_model',
+          'Basic',
+          'Pro',
+          'The Teros model is not available on your plan. Upgrade to Pro to use Teros AI without bringing your own API keys.',
+        );
+      }
+
+      console.log(
+        `[ProviderService] No default provider for user ${userId}, ` +
+          `using first active provider ${firstProvider.providerId} for agent ${agentId}`,
+      );
+      return this.resolveModelFromProviders([firstProvider], undefined, requiredCaps);
+    }
+
+    // Billing gate: skip teros provider for Basic users
+    if (!terosAllowed && defaultProvider.providerType === 'teros') {
+      throw new UpgradeRequiredError(
+        'teros_model',
+        'Basic',
+        'Pro',
+        'The Teros model is not available on your plan. Upgrade to Pro to use Teros AI without bringing your own API keys.',
+      );
+    }
+
+    console.log(
+      `[ProviderService] Agent ${agentId} has no availableProviders, ` +
+        `falling back to default provider ${defaultProvider.providerId} for user ${userId}`,
+    );
+    return this.resolveModelFromProviders([defaultProvider], undefined, requiredCaps);
+  }
+
+  /**
+   * Given a sorted list of providers, find the best (provider, model) pair.
+   * Prefers selectedModelId, then provider.defaultModelId, then capability match, then first.
+   */
+  private async resolveModelFromProviders(
+    providers: UserProviderRecord[],
+    selectedModelId?: string,
+    requiredCaps: Record<string, any> = {},
+  ): Promise<ResolvedProvider | null> {
+    // If a specific model is requested, find it across providers
     if (selectedModelId) {
       for (const provider of providers) {
-        const selectedModel = provider.models.find((m) => m.modelId === selectedModelId);
-        if (selectedModel) {
-          // Ollama doesn't need secrets
-          const secretsData = provider.providerType === 'ollama'
+        const model = provider.models.find((m) => m.modelId === selectedModelId);
+        if (model) {
+          const secretsData = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType)
             ? {}
             : await this.getProviderSecrets(provider.userId, provider.providerId);
-          if (secretsData) {
-            return { provider, model: selectedModel, secrets: secretsData };
-          }
+          if (secretsData !== null) return { provider, model, secrets: secretsData ?? {} };
         }
       }
     }
 
-    // Find first provider with a model that satisfies requirements
+    // Try each provider: prefer defaultModelId, then capability match, then first
     for (const provider of providers) {
-      const model = this.findMatchingModel(provider.models, requiredCaps);
-      if (model) {
-        // Ollama doesn't need secrets
-        const secretsData = provider.providerType === 'ollama'
-          ? {}
-          : await this.getProviderSecrets(provider.userId, provider.providerId);
-        if (secretsData) {
-          return { provider, model, secrets: secretsData };
-        }
-      }
-    }
+      if (provider.models.length === 0) continue;
 
-    // Fallback: return first provider with any model (if no capabilities required)
-    const fallbackProvider = providers[0];
-    if (fallbackProvider.models.length > 0) {
-      const secretsData = fallbackProvider.providerType === 'ollama'
-        ? {}
-        : await this.getProviderSecrets(
-            fallbackProvider.userId,
-            fallbackProvider.providerId,
-          );
-      if (secretsData) {
-        return {
-          provider: fallbackProvider,
-          model: fallbackProvider.models[0],
-          secrets: secretsData,
-        };
+      // Try provider's defaultModelId first
+      let model = provider.defaultModelId
+        ? provider.models.find((m) => m.modelId === provider.defaultModelId)
+        : undefined;
+
+      // Fall back to capability-matched model
+      if (!model) {
+        model = this.findMatchingModel(provider.models, requiredCaps);
       }
+
+      // Last resort: first model
+      if (!model) {
+        model = provider.models[0];
+      }
+
+      const secretsData = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType)
+        ? {}
+        : await this.getProviderSecrets(provider.userId, provider.providerId);
+      if (secretsData !== null) return { provider, model, secrets: secretsData ?? {} };
     }
 
     return null;

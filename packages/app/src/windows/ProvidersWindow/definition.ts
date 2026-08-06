@@ -5,6 +5,7 @@
  */
 
 import { Cloud } from '@tamagui/lucide-icons';
+import i18n from '../../i18n';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { ProvidersWindowContent } from './ProvidersWindowContent';
 
@@ -20,11 +21,10 @@ export const providersWindowDefinition: WindowTypeDefinition<ProvidersWindowProp
   defaultSize: { width: 900, height: 700 },
   minSize: { width: 500, height: 400 },
 
-  singleton: true,
   isLauncher: true,
 
-  getTitle: () => 'My Providers',
-  getSubtitle: () => 'Manage your LLM API keys',
+  getTitle: () => i18n.t("windows.myProviders"),
+  getSubtitle: () => i18n.t("windows.myProvidersSub"),
 
   serialize: () => ({}),
   deserialize: () => ({}),

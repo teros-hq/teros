@@ -28,16 +28,23 @@
             "type": "number",
             "description": "Timeout in seconds for docker-compose up --build (default: 300)",
             "default": 300
+          },
+          "slug": {
+            "type": "string",
+            "description": "Optional custom URL slug for the environment (e.g. \"teros-landing-maria\"). Must be lowercase letters, digits, and hyphens only. If omitted, the slug is derived automatically from the last segment of localPath. If there is a collision, a short random suffix is appended (e.g. \"-a3f2\")."
           }
         },
         "required": [
           "localPath"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "env-status",
-      "description": "Get detailed status of a Docker environment. Useful for polling after env-create until the environment is \"running\". Returns status, URLs, services, createdAt, error (if failed), and last build log lines. Possible statuses: creating, building, running, stopped, error.",
+      "description": "Get detailed status of a Docker environment. Useful for polling after env-create until the environment is \"running\". Returns status, URLs, services, createdAt, error (if failed), and last build log lines.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -47,18 +54,21 @@
           },
           "buildLogLines": {
             "type": "number",
-            "description": "Number of recent build log lines to include in the response (default: 20, max: 100)",
+            "description": "Number of recent build log lines to include (default: 20, max: 100)",
             "default": 20
           }
         },
         "required": [
           "envId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "env-exec",
-      "description": "Execute a command inside a running environment. The command runs in the context of the docker-compose project (e.g. `npx playwright test`, `npm run build`, `curl http://app:3000/health`). Returns stdout, stderr, and exit code.",
+      "description": "Execute a command inside a running environment. The command runs in the context of the docker-compose project. Returns stdout, stderr, and exit code.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -76,7 +86,7 @@
           },
           "workdir": {
             "type": "string",
-            "description": "Working directory inside the container (optional, defaults to container default)"
+            "description": "Working directory inside the container (optional)"
           },
           "timeout": {
             "type": "number",
@@ -89,6 +99,9 @@
           "service",
           "command"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -103,7 +116,7 @@
           },
           "service": {
             "type": "string",
-            "description": "Name of the service to get logs from (as defined in docker-compose). Omit to get logs from all services."
+            "description": "Service name (as defined in docker-compose). Omit for all services."
           },
           "lines": {
             "type": "number",
@@ -119,6 +132,9 @@
         "required": [
           "envId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -127,11 +143,14 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "env-restart",
-      "description": "Restart a Docker environment: stops all containers and brings them back up. Useful to reload config changes or recover from a stopped state. Returns immediately — use env-status to poll until status is \"running\".",
+      "description": "Restart a Docker environment: stops all containers and brings them back up. Useful to reload config changes or recover from a stopped state. Returns immediately — use env-status to poll until \"running\".",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -141,13 +160,16 @@
           },
           "rebuild": {
             "type": "boolean",
-            "description": "If true, rebuild images before restarting (equivalent to docker-compose up --build). Default: false.",
+            "description": "If true, rebuild images before restarting (docker-compose up --build). Default: false.",
             "default": false
           }
         },
         "required": [
           "envId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -169,6 +191,34 @@
         "required": [
           "envId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "env-rename",
+      "description": "Rename the URL slug of an existing environment. Updates the Caddy route so the environment becomes accessible at the new URL immediately. The envId does not change.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "envId": {
+            "type": "string",
+            "description": "Environment ID to rename"
+          },
+          "slug": {
+            "type": "string",
+            "description": "New URL slug (e.g. \"my-project-v2\"). Must be lowercase letters, digits, and hyphens only, and must not start or end with a hyphen. Max 63 characters."
+          }
+        },
+        "required": [
+          "envId",
+          "slug"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {

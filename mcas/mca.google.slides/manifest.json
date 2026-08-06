@@ -1,0 +1,91 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.google.slides",
+  "name": "Google Slides",
+  "version": "2.0.0",
+  "description": "Create, read, update, and delete Google Slides presentations \u2014 full read/write support for slides, text, and batch operations",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "google",
+  "entrypoint": "./src/index.ts",
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": [
+    "CLIENT_ID",
+    "CLIENT_SECRET"
+  ],
+  "userSecrets": [
+    "ACCESS_TOKEN",
+    "REFRESH_TOKEN",
+    "EMAIL",
+    "EXPIRY_DATE"
+  ],
+  "auth": {
+    "type": "oauth2",
+    "provider": "google",
+    "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+    "tokenUrl": "https://oauth2.googleapis.com/token",
+    "scopes": [
+      "https://www.googleapis.com/auth/presentations",
+      "https://www.googleapis.com/auth/presentations.readonly",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ],
+    "pkce": false,
+    "systemSecrets": [
+      "CLIENT_ID",
+      "CLIENT_SECRET"
+    ],
+    "userSecrets": [
+      "ACCESS_TOKEN",
+      "REFRESH_TOKEN"
+    ]
+  },
+  "keywords": [
+    "google",
+    "slides",
+    "presentation",
+    "deck"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "google",
+      "authorizeUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "scopes": [
+        "https://www.googleapis.com/auth/presentations",
+        "https://www.googleapis.com/auth/presentations.readonly",
+        "https://www.googleapis.com/auth/userinfo.email"
+      ],
+      "pkce": false,
+      "systemSecrets": [
+        "CLIENT_ID",
+        "CLIENT_SECRET"
+      ],
+      "userSecrets": [
+        "ACCESS_TOKEN",
+        "REFRESH_TOKEN"
+      ]
+    },
+    "agent": false
+  }
+}

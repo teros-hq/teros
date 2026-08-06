@@ -1,0 +1,338 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.make",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. The webhook trigger needs no credentials; if a MAKE_API_TOKEN is configured, validates it against the Make account API. For full scenario management, the token should have scopes: scenarios:read, scenarios:write, teams:read, organizations:read.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "trigger-webhook",
+      "description": "Trigger a Make.com scenario by POSTing a JSON payload to its webhook URL. No account token required — the user supplies the webhook URL (https://hook.<region>.make.com/<token>). Returns { delivered, statusCode, webhookHost, region, responseType, response }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "webhookUrl": {
+            "type": "string",
+            "description": "The Make.com webhook URL (https://hook.<region>.make.com/<token>). Only *.make.com hosts over https are accepted."
+          },
+          "payload": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": true
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "description": "Body sent to the webhook. A JSON object is sent as application/json; a string is forwarded as-is (JSON string → application/json, otherwise text/plain)."
+          }
+        },
+        "required": [
+          "webhookUrl",
+          "payload"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list-scenarios",
+      "description": "List Make.com scenarios for the configured account (requires MAKE_API_TOKEN in user secrets). Optionally filter by teamId and page with limit/offset. Returns { scenarios: [{ id, name, isActive, isPaused, teamId }], returned, total, offset, limit, hasMore, nextOffset, teamId, region }. When hasMore is true, call again with offset=nextOffset to fetch the next page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Make team id to scope the scenarios (found in the team URL). Required by the Make API on most accounts."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max scenarios to return per page (1-100, default 50)."
+          },
+          "offset": {
+            "type": "number",
+            "description": "Number of scenarios to skip for pagination (default 0). Pass the `nextOffset` from a previous response to fetch the next page."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Include the unprocessed upstream scenario rows under `raw` for debugging (default false)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "run-scenario",
+      "description": "Run a Make.com scenario on demand by id (requires MAKE_API_TOKEN in user secrets). Pass optional `data` for the run inputs and `responsive: true` to wait for and return its outputs. Returns { scenarioId, executionId, status, responsive, outputs }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to run (from list-scenarios)."
+          },
+          "data": {
+            "type": "object",
+            "description": "Optional input data passed to the scenario run.",
+            "additionalProperties": true
+          },
+          "responsive": {
+            "type": "boolean",
+            "description": "If true, wait for the run to finish and return its outputs (default false)."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "create-scenario",
+      "description": "Create a new Make.com scenario (requires MAKE_API_TOKEN in user secrets). The `blueprint` is provided as a JSON object and is serialized internally. Returns { scenarioId, name, teamId, folderId, isActive, region, url }. Some Make plans require a paid subscription to use this endpoint.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "teamId": {
+            "type": "string",
+            "description": "Make team id that will own the scenario."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name for the scenario."
+          },
+          "blueprint": {
+            "type": "object",
+            "description": "Scenario blueprint as a JSON object (not an escaped string). It will be serialized to a string before sending to Make.",
+            "additionalProperties": true
+          },
+          "scheduling": {
+            "type": "object",
+            "description": "Scheduling configuration. Defaults to { type: \"indefinitely\", interval: 60 }.",
+            "additionalProperties": true
+          },
+          "folderId": {
+            "type": "string",
+            "description": "Optional folder id to place the scenario in."
+          },
+          "confirmed": {
+            "type": "boolean",
+            "description": "Whether the scenario is confirmed on creation (default true)."
+          },
+          "basedon": {
+            "type": "string",
+            "description": "Optional id of an existing scenario to base this one on."
+          }
+        },
+        "required": [
+          "teamId",
+          "blueprint"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-scenario",
+      "description": "Get a single Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns the scenario object as returned by Make.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to retrieve."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get-scenario-blueprint",
+      "description": "Get the blueprint of a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, blueprint } where blueprint is a parsed JSON object when possible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario whose blueprint to retrieve."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "update-scenario",
+      "description": "Update an existing Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Supports updating name, blueprint (as a JSON object), scheduling, and folderId. Returns the updated scenario summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to update."
+          },
+          "name": {
+            "type": "string",
+            "description": "New name for the scenario."
+          },
+          "blueprint": {
+            "type": "object",
+            "description": "New scenario blueprint as a JSON object (not an escaped string). It will be serialized to a string before sending to Make.",
+            "additionalProperties": true
+          },
+          "scheduling": {
+            "type": "object",
+            "description": "New scheduling configuration.",
+            "additionalProperties": true
+          },
+          "folderId": {
+            "type": "string",
+            "description": "New folder id for the scenario."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "delete-scenario",
+      "description": "Delete a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). This action is irreversible. Returns { scenarioId, deleted, region }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to delete."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "clone-scenario",
+      "description": "Clone an existing Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Optionally set a new name or folder. Returns the cloned scenario summary.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to clone."
+          },
+          "name": {
+            "type": "string",
+            "description": "Optional new name for the cloned scenario."
+          },
+          "folderId": {
+            "type": "string",
+            "description": "Optional folder id for the cloned scenario."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "start-scenario",
+      "description": "Activate (start) a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, isActive, region }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to activate."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "stop-scenario",
+      "description": "Pause (stop) a Make.com scenario by id (requires MAKE_API_TOKEN in user secrets). Returns { scenarioId, isActive, region }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "scenarioId": {
+            "type": "string",
+            "description": "The id of the scenario to pause."
+          }
+        },
+        "required": [
+          "scenarioId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

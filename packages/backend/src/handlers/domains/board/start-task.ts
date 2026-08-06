@@ -7,7 +7,7 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import { buildTaskInitialMessage } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 import type { ChannelManager } from '../../../services/channel-manager'
 import type { MessageHandler } from '../../message-handler'
 
@@ -20,21 +20,10 @@ interface StartTaskData {
 export function createStartTaskHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
   channelManager: ChannelManager,
   messageHandler: MessageHandler,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function startTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as StartTaskData
     const { taskId, agentId, prompt } = data
@@ -71,7 +60,7 @@ export function createStartTaskHandler(
     if (!channel) {
       channel = await channelManager.createChannel(ctx.userId, assignedAgentId, {
         name: task.title,
-      })
+      }, { workspaceId: project.workspaceId })
       await boardService.linkConversation(task.taskId, ctx.userId, channel.channelId)
     }
 
@@ -80,7 +69,7 @@ export function createStartTaskHandler(
 
     const startedFullTask = { ...task, channelId: channel.channelId }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task: startedFullTask })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task: startedFullTask })
 
     // Send the initial message to trigger the agent (fire-and-forget)
     // Save message directly and call processAgentResponse to avoid broadcast issues
@@ -106,7 +95,14 @@ export function createStartTaskHandler(
           timestamp: msgTimestamp,
         })
 
-        await messageHandler.processAgentResponse(channel.channelId, assignedAgentId, initialMessage)
+        await messageHandler.processAgentResponse(
+          channel.channelId,
+          assignedAgentId,
+          initialMessage,
+          undefined,
+          undefined,
+          'autorun',
+        )
       } catch (err: any) {
         console.error(`❌ Error sending initial task message to ${channel.channelId}:`, err)
       }

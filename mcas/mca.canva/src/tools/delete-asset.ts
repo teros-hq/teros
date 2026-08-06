@@ -1,20 +1,25 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { ToolConfig } from '@teros/mca-sdk';
 import { canvaRequest } from '../lib';
+import { validateNonEmpty } from './_validate';
+import { wrapCanvaCall } from './utils';
 
 export const deleteAsset: ToolConfig = {
-  description: 'Delete an asset.',
+  description:
+    'Delete an asset (moved to trash). Idempotent — repeated deletes return 404 (already deleted). Returns { assetId, deleted: true }. Params: assetId.',
   parameters: {
     type: 'object',
     properties: {
-      assetId: {
-        type: 'string',
-      },
+      assetId: { type: 'string', description: 'Canva asset ID.' },
     },
     required: ['assetId'],
   },
+  annotations: { readOnlyHint: false, irreversible: true, version: '1.0.0', stability: 'stable' },
   handler: async (args, context) => {
     const { assetId } = args as { assetId: string };
-    await canvaRequest(context, `/assets/${assetId}`, { method: 'DELETE' });
-    return { success: true, message: 'Asset deleted (moved to trash)' };
+    validateNonEmpty(assetId, 'assetId');
+    await wrapCanvaCall(() =>
+      canvaRequest(context, `/assets/${encodeURIComponent(assetId)}`, { method: 'DELETE' }),
+    );
+    return { assetId, deleted: true };
   },
 };

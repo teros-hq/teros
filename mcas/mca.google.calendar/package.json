@@ -1,14 +1,14 @@
 {
-  "name": "mca.google.calendar",
-  "version": "1.0.0",
+  "name": "mca-google-calendar",
+  "version": "2.0.0",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
     "start": "tsx src/index.ts"
   },
   "dependencies": {
-    "@teros/mca-sdk": "file:../../packages/mca-sdk",
-    "googleapis": "latest",
-    "google-auth-library": "latest"
+    "@teros/mca-sdk": "0.1.0",
+    "googleapis": "^144.0.0",
+    "google-auth-library": "^9.15.1"
   }
 }

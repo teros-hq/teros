@@ -1,0 +1,143 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.plaud",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies PLAUD OAuth configuration and makes a live MCP call to confirm connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-notes",
+      "description": "List PLAUD voice recordings. Returns metadata for each recording ordered by creation date (most recent first).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of recordings to return (default: 50, max: 200)",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-note",
+      "description": "Get full details for a PLAUD recording: transcript (concatenated), AI summary, and metadata.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The recording file ID (32-char hex string)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-transcript",
+      "description": "Get raw transcript segments for a PLAUD recording. Returns each segment with text and optional timing. Use this instead of get-note when you only need the transcript and want to save token budget.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The recording file ID (32-char hex string)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "search-notes",
+      "description": "Search PLAUD recordings by keyword and/or date range. Filters are passed to the official Plaud MCP server; results are sorted by creation date (most recent first). At least one filter parameter is required.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Keyword to search in recording title and summary preview (case-insensitive)"
+          },
+          "date_from": {
+            "type": "string",
+            "description": "Start date (ISO 8601, inclusive). Example: \"2026-01-01\""
+          },
+          "date_to": {
+            "type": "string",
+            "description": "End date (ISO 8601, inclusive). Example: \"2026-01-31\""
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of results to return (default: 50, max: 200)",
+            "default": 50
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-tags",
+      "description": "List all tags and folders in your PLAUD library. Each tag includes its ID, name, and recording count if available.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-current-user",
+      "description": "Get the current PLAUD user profile (id, email, name). Useful for health checks and confirming OAuth connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "download-recording",
+      "description": "Download a PLAUD recording audio file. Returns a public or presigned URL to the recording audio.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The recording file ID (32-char hex string)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Perplexity API key and connectivity."
+    },
+    "perplexity-search": {
+      "name": "perplexity-search",
+      "description": "Search the web using Perplexity AI with real-time information. Returns comprehensive answers with sources.",
+      "params": {
+        "query": "The search query or question to ask Perplexity AI",
+        "model": "Model to use (default: sonar)"
+      }
+    },
+    "perplexity-chat": {
+      "name": "perplexity-chat",
+      "description": "Have a multi-turn conversation with Perplexity AI. Can maintain context across messages.",
+      "params": {
+        "messages": "Array of message objects with role (system/user/assistant) and content",
+        "model": "Model to use (default: sonar)"
+      }
+    }
+  },
+  "name": "Perplexity AI",
+  "description": "AI-powered web search with real-time information using Perplexity API. Provides comprehensive answers with sources.",
+  "changelog": [
+    {
+      "notes": "Initial release — search the web for up-to-date answers with sources and hold multi-turn AI conversations"
+    }
+  ]
+}

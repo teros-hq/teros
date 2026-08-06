@@ -1,0 +1,347 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "search": {
+      "name": "search",
+      "description": "Search pages & databases by title. Returns curated rows { id, object, url, title, icon, lastEditedTime }. Params: query, filter?, sort?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "query": "Search query text",
+        "filter": "Limit to 'page' (pages only) or 'data_source' (databases — note: Notion API 2025-09-03+ uses 'data_source', NOT 'database').",
+        "sort": "Sort by 'last_edited_time' (descending)",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Notion pagination cursor from previous response.nextCursor.",
+        "fields": "Override default whitelist. Pass field names from the curated shape.",
+        "includeRaw": "Return raw Notion API response. Default false."
+      }
+    },
+    "get-page": {
+      "name": "get-page",
+      "description": "Retrieve a page. Returns curated { id, url, title, icon, cover, properties, createdTime, lastEditedTime, parentType, parentId, archived }. Params: pageId, fields?, includeRaw.",
+      "params": {
+        "pageId": "Page UUID (with or without dashes).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "get-page-markdown": {
+      "name": "get-page-markdown",
+      "description": "Retrieve a page's full content as markdown using the native Notion v5 endpoint. Replaces `get-page-content` (eliminated 2026-05). Pass `includeTranscript=true` to inline meeting_notes transcripts. Response: { markdown }.",
+      "params": {
+        "pageId": "Page UUID.",
+        "includeTranscript": "Inline transcripts of meeting_notes blocks. Default false.",
+        "includeRaw": "Return raw API response. Default false."
+      }
+    },
+    "create-page": {
+      "name": "create-page",
+      "description": "Create a new page under a page (parentType='page') or database (parentType='database'). For database parents, the row is added to the first data source unless `dataSourceId` is provided. Returns curated { id, url, title, icon, cover, parentType, parentId, createdTime }. Not retryable (no idempotency key).",
+      "params": {
+        "parentId": "Parent page or database UUID.",
+        "parentType": "'page' or 'database'.",
+        "dataSourceId": "For multi-source DBs, the specific data source UUID to insert under. Ignored when parentType=page.",
+        "title": "Page title. For database pages ignored when `properties` is provided; defaults to \"Untitled\".",
+        "properties": "Full Notion properties object for database pages (used as-is). Overrides `title` for the title column.",
+        "propertiesSimple": "Agent-friendly flat map: `{ Status: 'Done', Tags: ['urgent'] }`. Schema is resolved automatically. parentType=database only. If both `properties` and `propertiesSimple` are passed, raw `properties` wins (with warning).",
+        "fields": "Override default whitelist on the returned page.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "update-page": {
+      "name": "update-page",
+      "description": "Update page properties and/or archive state. Returns the curated updated page { id, url, title, properties, icon, cover, archived, lastEditedTime }. Idempotent per-field — retries are safe.",
+      "params": {
+        "pageId": "Page UUID.",
+        "properties": "Notion properties object to update (depends on database schema). Used as-is.",
+        "propertiesSimple": "Agent-friendly flat map: `{ Status: 'Done' }`. Schema is resolved automatically. Database rows only. If both `properties` and `propertiesSimple` are passed, raw `properties` wins.",
+        "archived": "Move to trash (true) or restore (false). Sent as `in_trash` per API 2026-03-11. Optional.",
+        "fields": "Override default whitelist on the returned page.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "update-page-markdown": {
+      "name": "update-page-markdown",
+      "description": "Edit a page using markdown ops. Modes: 'replace' (default — overwrites the whole body with `markdown`), 'append' (adds `markdown` at the end, optional `afterBlockId`), 'edit' (apply per-string edits via `edits: [{oldStr, newStr, replaceAll?}]`). Returns { pageId, mode }. `replace` is destructive — not retryable.",
+      "params": {
+        "pageId": "Page UUID.",
+        "mode": "'replace' (default) | 'append' | 'edit'.",
+        "markdown": "Markdown body for replace/append modes. Headings #/##/###/####, lists, code, callouts, tables supported.",
+        "afterBlockId": "Append mode only — block UUID after which to insert. Default: end of page.",
+        "edits": "Edit mode only — array of [{ oldStr, newStr, replaceAll? }] applied in order against the page's current markdown.",
+        "allowDeletingContent": "Replace/edit modes — must be true to allow shrinking the page. Default true."
+      }
+    },
+    "set-page-icon": {
+      "name": "set-page-icon",
+      "description": "Set a page's icon (emoji or external URL). Returns curated { id, url, title, icon, lastEditedTime }. Idempotent.",
+      "params": {
+        "pageId": "Page UUID.",
+        "iconType": "'emoji' or 'external'.",
+        "icon": "Emoji character or image URL depending on iconType.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "set-page-cover": {
+      "name": "set-page-cover",
+      "description": "Set a page's cover image from an external URL. Returns curated { id, url, title, cover, lastEditedTime }. Idempotent.",
+      "params": {
+        "pageId": "Page UUID.",
+        "coverUrl": "HTTPS URL of the cover image.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "duplicate-page": {
+      "name": "duplicate-page",
+      "description": "Duplicate a page including icon/cover/properties/children blocks. Returns { sourcePage, duplicate } with curated shapes. Not retryable — creates new pages each call.",
+      "params": {
+        "pageId": "Source page UUID.",
+        "newTitle": "New title. Default: 'Copy of <original title>'.",
+        "targetParentId": "Target parent UUID. Default: same parent as source.",
+        "fields": "Override default whitelist on both pages.",
+        "includeRaw": "Return raw Notion objects. Default false."
+      }
+    },
+    "get-database": {
+      "name": "get-database",
+      "description": "Retrieve a database. Returns curated { id, url, title, description, icon, cover, schema, createdTime, lastEditedTime, parentType, parentId, archived }. Params: databaseId, fields?, includeRaw.",
+      "params": {
+        "databaseId": "Database UUID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion database object. Default false."
+      }
+    },
+    "query-database": {
+      "name": "query-database",
+      "description": "Query database rows with filter + sorts. Returns curated rows { id, url, title, icon, properties, lastEditedTime }. `properties` whitelist controls which columns travel (default: title only). Pass `dataSourceId` directly for multi-source DBs; otherwise the first data source is used. Filter accepts the standard Notion shape: { property, <type>: { <op>: <value> } } — single-value ops only (Notion v5 does NOT support equals_any). To match any of N values, compose with `or`: { or: [ { property: 'Status', status: { equals: 'Done' } }, { property: 'Status', status: { equals: 'In review' } } ] }. Params: databaseId | dataSourceId, filter?, sorts?, propertyNames?, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "databaseId": "Database UUID. The first data source under it is queried unless `dataSourceId` is set.",
+        "dataSourceId": "Specific data source UUID to query. Use for multi-source DBs (wikis, linked DBs).",
+        "filter": "Notion filter object. Compose multi-value via `or`/`and` arrays — Notion does not have equals_any.",
+        "sorts": "Array of sort objects.",
+        "propertyNames": "Whitelist of property names to include in each row. Default: only the title. Pass ['*'] to include all.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Notion pagination cursor.",
+        "fields": "Override default whitelist on each row envelope.",
+        "includeRaw": "Return raw Notion API response. Default false."
+      }
+    },
+    "create-database": {
+      "name": "create-database",
+      "description": "Create a new database as a child of a page. Returns curated { id, url, title, schema, icon, cover, createdTime, parentType, parentId }. Not retryable (no idempotency key).",
+      "params": {
+        "parentPageId": "Parent page UUID.",
+        "title": "Database title.",
+        "properties": "Notion schema. Ex: { Name: { title: {} }, Status: { select: { options: [...] } } }.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion database object. Default false."
+      }
+    },
+    "update-database-schema": {
+      "name": "update-database-schema",
+      "description": "Add/modify/remove database columns and optionally rename. Schema mutations target the data source (Notion API 2025-09-03 split). Pass `dataSourceId` for multi-source DBs; otherwise the first one is used. Set a property value to `null` to remove it. Returns the curated updated database { id, schema, title, description, lastEditedTime }. Idempotent per-field.",
+      "params": {
+        "databaseId": "Database UUID.",
+        "dataSourceId": "Specific data source UUID for multi-source DBs.",
+        "properties": "Properties to add/modify. Set value to null to remove.",
+        "title": "New title. Optional. Sent on the data source.",
+        "description": "New description. Optional. Sent on the data source.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion database object. Default false."
+      }
+    },
+    "create-database-item": {
+      "name": "create-database-item",
+      "description": "Insert a new row (record) into a Notion database. Add to table, create table item, append database row. Pass `properties` as a flat agent-friendly map: `{ Title: \"Spec\", Status: \"In review\", Tags: [\"urgent\"], Assignee: [\"<user-uuid>\"], DueDate: \"2026-05-06\" }`. The handler resolves the schema and serialises each value into Notion's verbose shape automatically. Returns the curated created page. Multi-source DBs: pass `dataSourceId` to target a specific source.",
+      "params": {
+        "databaseId": "Database UUID.",
+        "dataSourceId": "Specific data source UUID for multi-source DBs.",
+        "properties": "Flat map of column name → simple value. Schema is resolved automatically.",
+        "fields": "Override default whitelist on the returned page.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "update-database-item": {
+      "name": "update-database-item",
+      "description": "Update an existing row (record) in a Notion database. Update row, modify record, change relation, set assignee, mark as done. Pass `pageId` and `properties` as a flat agent-friendly map: `{ Status: \"Done\", Assignee: [\"<uuid>\"] }`. The handler resolves the schema from the parent database and serialises each value automatically. Pass `archived: true` to move to trash. Idempotent — safe to retry. For multi-source DBs the `databaseId` of the row is read off the page parent.",
+      "params": {
+        "pageId": "Database row (page) UUID.",
+        "properties": "Flat map of column name → simple value to update.",
+        "archived": "Move to Notion trash (true) or restore (false). Sent as `in_trash`.",
+        "fields": "Override default whitelist on the returned page.",
+        "includeRaw": "Return raw Notion page object. Default false."
+      }
+    },
+    "get-block": {
+      "name": "get-block",
+      "description": "Retrieve a block. Returns curated { id, type, plainText, hasChildren, checked, language, caption, url, createdTime, lastEditedTime }. Params: blockId, fields?, includeRaw.",
+      "params": {
+        "blockId": "Block UUID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion block object. Default false."
+      }
+    },
+    "get-block-children": {
+      "name": "get-block-children",
+      "description": "DEPRECATED — prefer `get-page-content` (markdown) or `get-blocks` (paginated raw). Kept for back-compat: returns { textContent } as recursive markdown. Pass includeBlockIds=true to embed `<!-- block: id -->` comments before each top-level block.",
+      "params": {
+        "blockId": "Block or page UUID.",
+        "includeBlockIds": "Embed `<!-- block: id -->` comments in the markdown. Default false.",
+        "includeRaw": "Return raw API response. Default false."
+      }
+    },
+    "get-blocks": {
+      "name": "get-blocks",
+      "description": "List direct children of a page/block with pagination. Returns curated { id, type, plainText, hasChildren, ... }. Use when you need block IDs + structure. For rendered markdown use `get-block-children` or `get-page-content`. Params: blockId, limit (1-100, def 25), cursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "Page or parent block UUID.",
+        "limit": "Blocks per page. Min 1, max 100, default 25.",
+        "cursor": "Notion pagination cursor from a previous nextCursor.",
+        "fields": "Override default whitelist per block.",
+        "includeRaw": "Return raw Notion block objects (trimmed to maxDepth=2, maxChars=10_000). Default false."
+      }
+    },
+    "append-blocks": {
+      "name": "append-blocks",
+      "description": "Append blocks as children of a page or block. Supports paragraph/heading_1..heading_4 (H4 added in v5.16) and paragraph blocks accept an `icon` for inline emoji/external/file icons. `position` chooses placement: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' (default) }. Returns curated { blocks, appendedCount, parentId }. Not retryable (no idempotency key — creates duplicates on retry).",
+      "params": {
+        "blockId": "Parent page or block UUID.",
+        "blocks": "Array of Notion block objects in the standard shape `{ object: 'block', type: 'paragraph'|'heading_1'|...|'heading_4', <type>: { rich_text: [...] } }`. heading_4 added in v5.16. paragraph `icon` (v5.16) ONLY works when the paragraph is a direct child of a tab block — appending icon under a regular page returns 'Cannot set icon on a paragraph block that is not a direct child of a tab block'. Other types: bulleted_list_item, numbered_list_item, to_do, toggle, quote, callout, code, divider, image, video, file, pdf, bookmark, embed, equation, link_to_page, table, table_row, meeting_notes, synced_block.",
+        "position": "Optional placement. Default end. Shape: { type: 'after_block', after_block: { id } } | { type: 'start' } | { type: 'end' }.",
+        "fields": "Override default whitelist per returned block.",
+        "includeRaw": "Return raw Notion blocks. Default false."
+      }
+    },
+    "update-block": {
+      "name": "update-block",
+      "description": "Replace `oldText` with `newText` in a block's text. Reads the block, verifies `oldText` exists (exact match), then updates preserving annotations. Errors with 'Text not found in block. No changes made.' when oldText doesn't match. Returns the curated block { id, type, plainText, lastEditedTime }.",
+      "params": {
+        "blockId": "Block UUID.",
+        "oldText": "Exact text currently in the block that should be replaced.",
+        "newText": "Replacement text.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion block. Default false."
+      }
+    },
+    "delete-block": {
+      "name": "delete-block",
+      "description": "Delete (archive) a block. Returns the curated archived block { id, type, archived, lastEditedTime }. Idempotent — retries are safe.",
+      "params": {
+        "blockId": "Block UUID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion block. Default false."
+      }
+    },
+    "create-column-layout": {
+      "name": "create-column-layout",
+      "description": "Create a column_list with N columns on a page. `columns` is an array of arrays of Notion block objects (one inner array per column). Not retryable.",
+      "params": {
+        "pageId": "Page UUID to append the column layout to.",
+        "columns": "Array of arrays. Each inner array is the blocks for one column.",
+        "fields": "Override default whitelist on the returned column_list blocks.",
+        "includeRaw": "Return raw Notion blocks. Default false."
+      }
+    },
+    "create-advanced-blocks": {
+      "name": "create-advanced-blocks",
+      "description": "Create an advanced block. Supported types: 'callout' (icon + colour), 'toggle' (children), 'synced_block', 'meeting_notes' (summary + transcript), 'paragraph' (with optional `icon` per v5.16). `content` must match the Notion shape for the given `blockType`. Not retryable.",
+      "params": {
+        "pageId": "Target page UUID.",
+        "blockType": "'callout' | 'toggle' | 'synced_block' | 'meeting_notes' | 'paragraph'.",
+        "content": "Notion block body (rich_text, children, icon, ...). For 'paragraph' you may include an `icon: { type: 'emoji'|'external'|'file', ... }` (v5.16+).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion blocks. Default false."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "List workspace users. Returns curated rows { id, name, type, avatarUrl, email, bot }. Params: limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Notion pagination cursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Notion response. Default false.",
+        "cursor": "Pagination cursor from previous response."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Retrieve a user by ID. Returns curated { id, name, type, avatarUrl, email, bot }. Params: userId, fields?, includeRaw.",
+      "params": {
+        "userId": "User UUID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion user. Default false."
+      }
+    },
+    "get-me": {
+      "name": "get-me",
+      "description": "Return the bot user (this integration). Returns curated { id, name, type, avatarUrl, email, bot }. Params: fields?, includeRaw.",
+      "params": {
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion user. Default false."
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "List comments on a page/block. Returns curated rows { id, pageId, parentBlockId, discussionId, authorId, plainText, createdTime }. Params: blockId, limit (1-100, def 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "blockId": "Block or page UUID.",
+        "limit": "Results per page. Min 1, max 100, default 50.",
+        "startCursor": "Notion pagination cursor.",
+        "fields": "Override default whitelist per row.",
+        "includeRaw": "Return raw Notion response. Default false.",
+        "cursor": "Pagination cursor from previous response."
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Post a comment on a page (pass pageId) or reply to a discussion (pass discussionId). Returns the curated comment { id, pageId, parentBlockId, authorId, plainText, createdTime }. Not retryable.",
+      "params": {
+        "pageId": "Page UUID. Mutually exclusive with discussionId.",
+        "discussionId": "Discussion UUID to reply to. Mutually exclusive with pageId.",
+        "text": "Comment text (plain).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion comment. Default false."
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "Edit an existing comment. Pass plain `text` for a simple string body, or `richText` for full Notion rich-text formatting. Returns the curated updated comment { id, plainText, lastEditedTime, ... }. Idempotent — safe to retry.",
+      "params": {
+        "commentId": "Comment UUID.",
+        "text": "Plain text body. Mutually exclusive with richText.",
+        "richText": "Notion rich text array. Mutually exclusive with text.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Notion comment object. Default false."
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Delete a comment by id. Returns { id, deleted: true }. Destructive: a deleted comment cannot be recovered. Idempotent — re-deleting an already-deleted comment is a no-op from the agent perspective (Notion 404s, we coerce to deleted=true).",
+      "params": {
+        "commentId": "Comment UUID."
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Upload a file to Notion. Three-step lifecycle: create → send → complete (handled internally). Provide either `dataUrl` (base64 inline) or `filePath` (server-side path). Returns { fileUploadId, status, name, contentType }. The id can be embedded in subsequent block creates as { type: 'file_upload', file_upload: { id } }. Hard cap 20 MB.",
+      "params": {
+        "pageId": "Page UUID owning the upload (required).",
+        "name": "Filename including extension (e.g. 'spec.pdf', 'cover.png').",
+        "contentType": "MIME type (e.g. 'application/pdf', 'image/png').",
+        "dataUrl": "Data URI scheme — exact format `data:<mime>;base64,<base64Payload>`. NOT a raw base64 string. Either this or filePath is required.",
+        "filePath": "Absolute path to a server-side file. Either this or dataUrl is required."
+      }
+    }
+  },
+  "name": "Notion",
+  "description": "Notion workspace - pages, databases, blocks, search, comments",
+  "changelog": [
+    {
+      "notes": "Search, create and edit pages, manage databases and rows, blocks, comments and file uploads across your Notion workspace"
+    }
+  ]
+}

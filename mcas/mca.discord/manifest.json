@@ -1,0 +1,70 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "description": "Full Discord integration: guilds, channels, messages, members, roles, webhooks, threads, reactions, and moderation. Uses Discord REST API with OAuth 2.0 / Bot Token.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "discord",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"],
+      "authorizeUrl": "https://discord.com/oauth2/authorize",
+      "tokenUrl": "https://discord.com/api/oauth2/token",
+      "scopes": [
+        "identify",
+        "guilds",
+        "guilds.members.read",
+        "bot",
+        "messages.read",
+        "applications.commands"
+      ],
+      "pkce": false,
+      "extraFields": [
+        {
+          "name": "BOT_TOKEN",
+          "label": "Bot Token",
+          "type": "password",
+          "required": false,
+          "placeholder": "Bot token from Discord Developer Portal",
+          "hint": "Optional. Enables full guild access (channels, members, moderation). Without it, only user-scoped operations are available."
+        }
+      ]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["discord", "messaging", "chat", "guild", "server", "community", "voice", "moderation"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-22",
+      "notes": "Initial release — send and read messages, manage servers, channels, roles, members and webhooks, react, and moderate"
+    }
+  ]
+}

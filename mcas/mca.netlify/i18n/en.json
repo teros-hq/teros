@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the Netlify Personal Access Token via GET /user."
+    },
+    "deploy-site": {
+      "name": "deploy-site",
+      "description": "Deploy a static site (HTML/CSS/JS) from a workspace directory to Netlify and return the public URL. WARNING: every file under `dir` becomes PUBLICLY readable on the internet — never deploy a directory that contains secrets (.env), credentials, or private data. Pass siteId or siteName to deploy to an existing site; omit both to create a new site. Deploying the whole workspace root is refused unless allowWorkspaceRoot is true. Returns { url, deployId, state, siteId }.",
+      "params": {
+        "dir": "Directory to deploy, relative to /workspace (e.g. \"site\" or \"build\"). Must contain an index.html. Its entire contents become PUBLIC — point it at a build output dir, not the workspace root.",
+        "siteId": "Existing Netlify site id to deploy to. Takes precedence over siteName.",
+        "siteName": "Netlify site name. Deploys to the matching site if it exists, otherwise creates it.",
+        "draft": "If true, create a draft deploy (preview URL) instead of publishing to production. Default false.",
+        "allowWorkspaceRoot": "Safety confirmation. Deploying `dir: \".\"` (the whole workspace root) is refused by default because the root usually holds private files. Set true only when the user explicitly wants the entire workspace public. Default false."
+      }
+    },
+    "list-sites": {
+      "name": "list-sites",
+      "description": "List the Netlify sites reachable with the configured token. Returns { sites: [{ id, name, url, ssl_url }] }."
+    },
+    "get-deploy-status": {
+      "name": "get-deploy-status",
+      "description": "Get the current state of a Netlify deploy. Returns { state, url, errorMessage? }.",
+      "params": {
+        "siteId": "The Netlify site id the deploy belongs to.",
+        "deployId": "The deploy id to check."
+      }
+    }
+  },
+  "name": "Netlify",
+  "description": "Deploy static sites (HTML/CSS/JS) from the workspace to Netlify and return the public URL. Uses the file-digest REST API with a per-user Personal Access Token."
+}

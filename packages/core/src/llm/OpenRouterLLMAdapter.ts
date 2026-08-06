@@ -25,9 +25,19 @@
 
 import OpenAI from "openai"
 import { LLMError } from "../errors/AgentError"
+import { extractReasoningDelta } from "./reasoningDelta"
 import { createLogger, log } from "../logger"
-import type { MessageWithParts } from "../session/types"
+import type { FilePart, MessageWithParts, ToolStateCompleted } from "../session/types"
+import {
+  collectEmbeddedImages,
+  DocumentExtractor,
+  formatDocumentsAsText,
+} from "./DocumentExtractor"
+import { isContextLengthExceeded } from "./context-length-error"
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from "./ILLMClient"
+import { ImagePipeline, type ProcessedImage } from "./ImagePipeline"
+import { populateRateLimitContext } from "./rate-limit-context"
+import { uncachedInputTokens } from "./usage-normalize"
 
 export interface OpenRouterConfig {
   apiKey: string
@@ -67,6 +77,8 @@ export class OpenRouterLLMAdapter implements ILLMClient {
   private defaultMaxTokens: number
   private config: OpenRouterConfig
   private logger = createLogger("OpenRouterLLM")
+  private imagePipeline = new ImagePipeline()
+  private documentExtractor = new DocumentExtractor()
 
   constructor(config: OpenRouterConfig) {
     if (!config.model) {
@@ -136,11 +148,12 @@ export class OpenRouterLLMAdapter implements ILLMClient {
     const supportsCache = this.shouldUseAnthropicCaching(requestedModel)
 
     // Convert messages to OpenAI format (with cache support if applicable)
-    const openaiMessages = this.convertMessages(
+    const openaiMessages = await this.convertMessages(
       messages,
       systemPrompt,
       supportsCache ? cacheBreakpointIndex : undefined,
       supportsCache,
+      requestedModel,
     )
 
     // Convert tools to OpenAI format (with cache support if applicable)
@@ -258,6 +271,14 @@ export class OpenRouterLLMAdapter implements ILLMClient {
           await callbacks?.onText?.(delta.content)
         }
 
+        // Reasoning stream (OpenRouter surfaces `reasoning` for thinking models)
+        // → onThinking so the turn's stall watchdog counts a silent reasoning
+        // block as progress, not a frozen socket (TER-650).
+        const reasoningChunk = extractReasoningDelta(delta)
+        if (reasoningChunk) {
+          await callbacks?.onThinking?.(reasoningChunk)
+        }
+
         // Handle tool calls (streamed incrementally)
         if (delta.tool_calls) {
           for (const toolCallDelta of delta.tool_calls) {
@@ -282,6 +303,9 @@ export class OpenRouterLLMAdapter implements ILLMClient {
             if (toolCallDelta.function?.arguments) {
               toolCall.arguments += toolCallDelta.function.arguments
             }
+            // Heartbeat: onToolCall only fires once the stream ends, so this is
+            // the only progress signal while large tool args stream (TER-650).
+            await callbacks?.onToolInputDelta?.(toolCallDelta.function?.arguments ?? "")
           }
         }
 
@@ -340,7 +364,11 @@ export class OpenRouterLLMAdapter implements ILLMClient {
       }
 
       const usage = {
-        inputTokens: totalInputTokens,
+        // OpenRouter normalizes to the OpenAI shape where `prompt_tokens`
+        // includes `cached_tokens` — subtract only the cache-READ tokens (a
+        // subset of prompt_tokens); cache-write is billed separately and is not
+        // part of prompt_tokens (A2.1).
+        inputTokens: uncachedInputTokens(totalInputTokens, cacheReadTokens),
         outputTokens: totalOutputTokens,
         cacheReadInputTokens: cacheReadTokens || undefined,
         cacheCreationInputTokens: cacheWriteTokens || undefined,
@@ -407,12 +435,13 @@ export class OpenRouterLLMAdapter implements ILLMClient {
    * - System prompt gets cache_control marker
    * - Message at cacheBreakpointIndex gets cache_control marker
    */
-  private convertMessages(
+  private async convertMessages(
     messages: MessageWithParts[],
     systemPrompt?: string,
     cacheBreakpointIndex?: number,
     useCache: boolean = false,
-  ): OpenAI.ChatCompletionMessageParam[] {
+    requestedModel?: string,
+  ): Promise<OpenAI.ChatCompletionMessageParam[]> {
     const openaiMessages: OpenAI.ChatCompletionMessageParam[] = []
 
     // Add system prompt if provided
@@ -441,6 +470,10 @@ export class OpenRouterLLMAdapter implements ILLMClient {
     // Track current index for cache breakpoint
     let currentMessageIndex = 0
 
+    // Determine if the model supports vision
+    const modelString = requestedModel || this.defaultModel
+    const supportsVision = this.imagePipeline.supportsVision(modelString)
+
     for (const msg of messages) {
       const role = msg.info.role === "user" ? "user" : "assistant"
       const shouldCache =
@@ -451,7 +484,69 @@ export class OpenRouterLLMAdapter implements ILLMClient {
       // Collect text content
       const textParts: string[] = []
       const toolCalls: OpenAI.ChatCompletionMessageToolCall[] = []
-      const toolResults: { tool_call_id: string; content: string }[] = []
+      // Tool results may have image attachments - track them for post-processing
+      const toolResults: {
+        tool_call_id: string
+        content: string
+        imageAttachments?: FilePart[]
+      }[] = []
+      // Collect image parts for processing (user messages only)
+      const imageParts = msg.parts.filter(
+        (p): p is FilePart => p.type === "file" && p.mime?.startsWith("image/") && role === "user",
+      )
+
+      // Process images if vision is supported by the model
+      let processedImages: Map<string, ProcessedImage> = new Map()
+      if (imageParts.length > 0 && supportsVision) {
+        try {
+          // Use 'openai' format for OpenRouter since it accepts OpenAI-compatible image_url
+          processedImages = await this.imagePipeline.processImages(imageParts, "openai")
+        } catch (error: any) {
+          log.error("OpenRouterLLM", "Failed to process images for message", undefined, {
+            reason: error.message,
+          })
+        }
+      }
+
+      // Extract text + embedded images from non-image documents (PPTX/DOCX/XLSX/ODT/PDF/RTF/plain text)
+      const documentParts = msg.parts.filter(
+        (p): p is FilePart =>
+          p.type === "file" &&
+          !p.mime?.startsWith("image/") &&
+          DocumentExtractor.supportsDocument(p.mime) &&
+          role === "user",
+      )
+      let extractedDocumentText: string | null = null
+      const documentEmbeddedImages: ProcessedImage[] = []
+      if (documentParts.length > 0) {
+        try {
+          const extracted = await this.documentExtractor.extractDocuments(documentParts)
+          extractedDocumentText = formatDocumentsAsText(extracted)
+          const flat = collectEmbeddedImages(extracted)
+          if (flat.length > 0 && supportsVision) {
+            for (const img of flat) {
+              const processed = await this.imagePipeline.processBuffer(
+                img.buffer,
+                img.mimeType,
+                "openai",
+              )
+              if (processed) documentEmbeddedImages.push(processed)
+            }
+          } else if (flat.length > 0) {
+            log.warn(
+              "OpenRouterLLM",
+              `Model ${this.defaultModel} not vision-capable — skipping ${flat.length} embedded image(s) from document(s)`,
+            )
+          }
+        } catch (error: any) {
+          log.error("OpenRouterLLM", "Failed to extract documents for message", undefined, {
+            reason: error.message,
+          })
+        }
+      }
+
+      // Collect image attachments from tool results for batch processing
+      const toolResultImageParts: FilePart[] = []
 
       // Convert each part
       for (const part of msg.parts) {
@@ -462,7 +557,12 @@ export class OpenRouterLLMAdapter implements ILLMClient {
             role === "assistant" &&
             (part.state.status === "completed" || part.state.status === "error")
           ) {
-            // Add tool call to assistant message
+            // Add tool call to assistant message. Historical tool-call args
+            // are bounded upstream by the TER-707/CTX-016 elision at
+            // TurnDriver.loadProjectedMessages — every adapter (this one
+            // included) sees an already-projected `state.input` here, so
+            // this stays a plain stringify like the other OpenAI-family
+            // adapters. See packages/core/src/prompts/tool-arg-eviction.ts.
             toolCalls.push({
               id: part.callID,
               type: "function",
@@ -474,9 +574,17 @@ export class OpenRouterLLMAdapter implements ILLMClient {
 
             // Add tool result
             if (part.state.status === "completed") {
+              const attachments = (part.state as ToolStateCompleted).attachments
+              const imageAttachments = attachments?.filter(
+                (a): a is FilePart => a.type === "file" && a.mime?.startsWith("image/"),
+              )
+              if (imageAttachments && imageAttachments.length > 0) {
+                toolResultImageParts.push(...imageAttachments)
+              }
               toolResults.push({
                 tool_call_id: part.callID,
                 content: part.state.output || "",
+                imageAttachments,
               })
             } else {
               toolResults.push({
@@ -487,9 +595,17 @@ export class OpenRouterLLMAdapter implements ILLMClient {
           } else if (role === "user") {
             // User messages with tool results
             if (part.state.status === "completed") {
+              const attachments = (part.state as ToolStateCompleted).attachments
+              const imageAttachments = attachments?.filter(
+                (a): a is FilePart => a.type === "file" && a.mime?.startsWith("image/"),
+              )
+              if (imageAttachments && imageAttachments.length > 0) {
+                toolResultImageParts.push(...imageAttachments)
+              }
               toolResults.push({
                 tool_call_id: part.callID,
                 content: part.state.output || "",
+                imageAttachments,
               })
             } else if (part.state.status === "error") {
               toolResults.push({
@@ -500,7 +616,22 @@ export class OpenRouterLLMAdapter implements ILLMClient {
           }
           // Skip pending/running tools - they don't have results yet
         }
-        // Other part types (file, reasoning, etc.) are handled differently or skipped
+        // Image parts are handled separately below
+      }
+
+      // Process tool result images through the pipeline
+      let processedToolResultImages: Map<string, ProcessedImage> = new Map()
+      if (toolResultImageParts.length > 0 && supportsVision) {
+        try {
+          processedToolResultImages = await this.imagePipeline.processImages(
+            toolResultImageParts,
+            "openai",
+          )
+        } catch (error: any) {
+          log.error("OpenRouterLLM", "Failed to process tool result images", undefined, {
+            reason: error.message,
+          })
+        }
       }
 
       // Add the main message
@@ -520,6 +651,25 @@ export class OpenRouterLLMAdapter implements ILLMClient {
               tool_call_id: result.tool_call_id,
               content: result.content,
             })
+            // If tool result has image attachments, add a user message with the images
+            if (result.imageAttachments && result.imageAttachments.length > 0) {
+              const imageContentParts: any[] = []
+              for (const img of result.imageAttachments) {
+                const processed = processedToolResultImages.get(img.url)
+                if (processed) {
+                  imageContentParts.push({
+                    type: "image_url",
+                    image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+                  })
+                }
+              }
+              if (imageContentParts.length > 0) {
+                openaiMessages.push({
+                  role: "user",
+                  content: imageContentParts,
+                })
+              }
+            }
           }
         } else if (textParts.length > 0) {
           // Simple text message
@@ -543,34 +693,88 @@ export class OpenRouterLLMAdapter implements ILLMClient {
           }
         }
       } else {
-        // User message
-        if (toolResults.length > 0) {
-          // User message with tool results (shouldn't normally happen, but handle it)
-          for (const result of toolResults) {
-            openaiMessages.push({
-              role: "tool",
-              tool_call_id: result.tool_call_id,
-              content: result.content,
-            })
+        // User message - may include text, images, and tool results
+        // Add tool results as separate messages first
+        for (const result of toolResults) {
+          openaiMessages.push({
+            role: "tool",
+            tool_call_id: result.tool_call_id,
+            content: result.content,
+          })
+          // If tool result has image attachments, add a user message with the images
+          if (result.imageAttachments && result.imageAttachments.length > 0) {
+            const imageContentParts: any[] = []
+            for (const img of result.imageAttachments) {
+              const processed = processedToolResultImages.get(img.url)
+              if (processed) {
+                imageContentParts.push({
+                  type: "image_url",
+                  image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+                })
+              }
+            }
+            if (imageContentParts.length > 0) {
+              openaiMessages.push({
+                role: "user",
+                content: imageContentParts,
+              })
+            }
           }
         }
+
+        // Build content array with text and images
+        // Documents (PPTX/DOCX/...) are prepended as a separate text block before user prose.
+        // Images embedded inside those documents follow the text.
+        const contentParts: any[] = []
+
+        if (extractedDocumentText) {
+          contentParts.push({ type: "text", text: extractedDocumentText })
+        }
+
+        for (const processed of documentEmbeddedImages) {
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:${processed.mimeType};base64,${processed.base64}` },
+          })
+        }
+
         if (textParts.length > 0) {
+          contentParts.push({
+            type: "text",
+            text: textParts.join("\n"),
+          })
+        }
+
+        // Add images as image_url parts with data URI (OpenAI format, compatible with OpenRouter)
+        if (supportsVision) {
+          for (const part of imageParts) {
+            const processed = processedImages.get(part.url)
+            if (processed) {
+              contentParts.push({
+                type: "image_url",
+                image_url: {
+                  url: `data:${processed.mimeType};base64,${processed.base64}`,
+                },
+              })
+            }
+          }
+        }
+
+        if (contentParts.length > 0) {
           if (shouldCache && useCache) {
-            // Use multipart format with cache_control
+            // Use multipart format with cache_control on last text part
+            const lastPart = contentParts[contentParts.length - 1]
+            if (lastPart && lastPart.type === "text") {
+              lastPart.cache_control = { type: "ephemeral" as const }
+            }
             openaiMessages.push({
               role: "user",
-              content: [
-                {
-                  type: "text" as const,
-                  text: textParts.join("\n"),
-                  cache_control: { type: "ephemeral" as const },
-                } as any,
-              ],
+              content: contentParts,
             })
           } else {
             openaiMessages.push({
               role: "user",
-              content: textParts.join("\n"),
+              content: contentParts,
             })
           }
         }
@@ -627,10 +831,15 @@ export class OpenRouterLLMAdapter implements ILLMClient {
       }
 
       if (status === 429) {
+        // Populate rate-limit context so the frontend RateLimitWidget can render
+        // a countdown. OpenRouter uses the OpenAI SDK, so `error.headers` is a
+        // native Headers instance and the helper reads `retry-after` via
+        // `.get()` — see TER-512.
+        const rateLimit = populateRateLimitContext(error.headers, "OpenRouter")
         return new LLMError(
           "The service is too busy. Try again in a few seconds.",
           `OpenRouter rate limit exceeded: ${error.message}`,
-          enrichedContext,
+          { ...enrichedContext, ...rateLimit },
           error,
         )
       }
@@ -668,6 +877,37 @@ export class OpenRouterLLMAdapter implements ILLMClient {
           error,
         )
       }
+
+      // status === undefined: APIConnectionError / APIConnectionTimeoutError
+      // These are thrown by the OpenAI SDK when the TCP/SSE connection is dropped before a
+      // proper HTTP response is received. OpenRouter sends a SSE error event with
+      // "Network connection lost" when the request payload is too large to process.
+      // We detect this and treat it as a context-length issue so compaction is triggered,
+      // instead of surfacing a confusing "Cannot connect" message to the user.
+      if (status === undefined) {
+        const msg = (error.message || "").toLowerCase()
+        const isPayloadError =
+          msg.includes("network connection lost") ||
+          msg.includes("request too large") ||
+          msg.includes("payload too large")
+
+        if (isPayloadError) {
+          return new LLMError(
+            "The conversation is too long. Attempting to summarize...",
+            `OpenRouter error: ${error.message}`,
+            { ...enrichedContext, isContextLengthError: true },
+            error,
+          )
+        }
+
+        // Other connection errors (transient network failures, timeouts)
+        return new LLMError(
+          "Cannot connect to OpenRouter. Try again in a few seconds.",
+          `OpenRouter connection error: ${error.message}`,
+          enrichedContext,
+          error,
+        )
+      }
     }
 
     // Generic error
@@ -680,27 +920,15 @@ export class OpenRouterLLMAdapter implements ILLMClient {
   }
 
   /**
-   * Check if the error is related to context length being exceeded
+   * Check if the error is related to context length being exceeded.
+   *
+   * Delegates to the shared, provider-agnostic detector so every adapter uses
+   * the same canonical pattern set (CTX-007). The shared list is a superset of
+   * the patterns this adapter used to inline, so behaviour is preserved. Status
+   * is handled by the caller's explicit 400/413 branches, so pass `undefined`.
    */
   private isContextLengthError(message: string, rawError: any): boolean {
-    const errorStr = typeof rawError === "string" ? rawError : JSON.stringify(rawError || "")
-    const combinedText = `${message} ${errorStr}`.toLowerCase()
-
-    // Common patterns for context length errors across providers
-    const contextLengthPatterns = [
-      "context_length_exceeded",
-      "context length",
-      "token limit",
-      "tokens >",
-      "prompt is too long",
-      "maximum context",
-      "max_tokens",
-      "exceeds the model",
-      "input too long",
-      "request too large",
-    ]
-
-    return contextLengthPatterns.some((pattern) => combinedText.includes(pattern))
+    return isContextLengthExceeded(undefined, message, rawError)
   }
 
   getProviderInfo() {
@@ -711,6 +939,7 @@ export class OpenRouterLLMAdapter implements ILLMClient {
         streaming: true,
         tools: true,
         thinking: false,
+        vision: this.imagePipeline.supportsVision(this.defaultModel),
         autoRouting: this.defaultModel === "openrouter/auto",
       },
       routingStrategy: this.config.routingStrategy,

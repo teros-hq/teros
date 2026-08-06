@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Perplexity API 키와 연결성을 확인합니다."
+    },
+    "perplexity-search": {
+      "name": "perplexity-search",
+      "description": "실시간 정보를 사용하여 Perplexity AI로 웹을 검색합니다. 출처와 함께 포괄적인 답변을 반환합니다.",
+      "params": {
+        "query": "Perplexity AI에 요청할 검색 쿼리 또는 질문",
+        "model": "사용할 모델 (기본값: sonar)"
+      }
+    },
+    "perplexity-chat": {
+      "name": "perplexity-chat",
+      "description": "Perplexity AI와 다중 턴 대화를 나눕니다. 메시지 간의 맥락을 유지할 수 있습니다.",
+      "params": {
+        "messages": "역할(시스템/사용자/어시스턴트)과 내용이 포함된 메시지 객체 배열",
+        "model": "사용할 모델 (기본값: sonar)"
+      }
+    }
+  },
+  "name": "Perplexity AI",
+  "description": "Perplexity API를 사용하여 실시간 정보를 제공하는 AI 기반 웹 검색. 출처와 함께 포괄적인 답변을 제공합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 출처와 함께 최신 답변을 검색하고 다중 턴 AI 대화를 진행합니다."
+    }
+  ]
+}

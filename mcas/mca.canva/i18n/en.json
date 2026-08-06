@@ -1,0 +1,362 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Canva."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Get the authenticated Canva user. Returns curated { userId, teamId }. Params: fields?, includeRaw.",
+      "params": {
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva /users/me response. Default false."
+      }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "Get the authenticated user's profile. Returns curated { displayName }. Params: fields?, includeRaw.",
+      "params": {
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva profile response. Default false."
+      }
+    },
+    "get-user-capabilities": {
+      "name": "get-user-capabilities",
+      "description": "Get the authenticated user capabilities (Canva plan + role gating). Returns curated { capabilities: string[] }. Use to decide whether features like brand templates or autofill are available before calling them. Params: fields?, includeRaw.",
+      "params": {
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva capabilities response. Default false."
+      }
+    },
+    "list-designs": {
+      "name": "list-designs",
+      "description": "List designs in the user's account with search/sort/pagination. Returns curated rows with thumbnail URL for inline preview. Params: query?, ownership? (any|owned|shared), sortBy?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "Search term to filter designs.",
+        "ownership": "Filter by ownership.",
+        "limit": "Max results. Min 1, max 100, default 25.",
+        "continuation": "Pagination token from previous response.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "get-design": {
+      "name": "get-design",
+      "description": "Get a Canva design by ID. Returns curated detail (id, title, ownerUserId/teamId, thumbnail*, edit/view URLs, pageCount, dates). Params: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva design response. Default false."
+      }
+    },
+    "create-design": {
+      "name": "create-design",
+      "description": "Create a new Canva design. Use designType=custom with width+height for a custom canvas, or one of the preset names (doc, whiteboard, presentation, email). Returns curated design. Not retryable. Params: designType, title?, width?, height?, assetId?, fields?, includeRaw.",
+      "params": {
+        "designType": "Preset name or \"custom\" with width+height.",
+        "title": "Optional name for the new design.",
+        "width": "Canvas width in pixels (custom only).",
+        "height": "Canvas height in pixels (custom only).",
+        "assetId": "Optional asset ID to insert into the new design.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "get-design-pages": {
+      "name": "get-design-pages",
+      "description": "Get pages of a Canva design with thumbnails (returns dimensions for bounded designs). Returns curated { pages: [{ index, thumbnailUrl, width, height }] }. Params: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva pages response. Default false."
+      }
+    },
+    "get-design-export-formats": {
+      "name": "get-design-export-formats",
+      "description": "List the export formats supported by a specific design. Use this before export-design to avoid 400 errors on unsupported formats. Returns curated { formats: string[] }. Params: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva formats response. Default false."
+      }
+    },
+    "export-design": {
+      "name": "export-design",
+      "description": "Start an export job for a design. Returns curated job (poll get-export-job by id). Formats: pdf, png, jpg, gif, pptx, mp4, html_bundle, html_standalone. transparentBackground only for png. Not retryable. Params: designId, format, quality?, width?, height?, pages?, transparentBackground?, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "quality": "JPEG quality 1-100 (jpg only).",
+        "width": "Export width in pixels (png/jpg).",
+        "height": "Export height in pixels (png/jpg).",
+        "pages": "Pages to export (1-indexed).",
+        "transparentBackground": "PNG only — keep canvas transparent. Default false.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-export-job": {
+      "name": "get-export-job",
+      "description": "Get an export job status/result. Returns curated job { id, status, error, result.urls? }. Params: exportId, fields?, includeRaw.",
+      "params": {
+        "exportId": "Export job ID returned by export-design.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "create-resize-job": {
+      "name": "create-resize-job",
+      "description": "Resize a design to a new size (preset or custom). Async — returns curated job (poll get-resize-job). Use designType=\"custom\" with width+height OR a preset name. Output is a NEW design at top level. Not retryable. Params: designId, designType, width?, height?, fields?, includeRaw.",
+      "params": {
+        "designId": "Source Canva design ID.",
+        "designType": "Preset name or \"custom\" with width+height.",
+        "width": "New width in pixels (custom only).",
+        "height": "New height in pixels (custom only).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-resize-job": {
+      "name": "get-resize-job",
+      "description": "Get a resize job status/result. Returns curated job { id, status, error, result: design? }. Params: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "Job ID returned by create-resize-job.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "import-design": {
+      "name": "import-design",
+      "description": "Import an external file (e.g. PDF, PPTX, DOCX) as a new Canva design. Async — returns curated job (poll get-import-job by id). url must be http/https. Not retryable. Params: title, url, mimeType?, fields?, includeRaw.",
+      "params": {
+        "title": "Title for the imported design.",
+        "url": "Publicly accessible http/https URL of the source file.",
+        "mimeType": "Optional MIME type override.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-import-job": {
+      "name": "get-import-job",
+      "description": "Get a URL design import job status/result. Returns curated job { id, status, error, result.designId? }. Params: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "Job ID returned by import-design.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "List items in a folder (designs, sub-folders, images, videos). Use folderId=\"root\" for top level. Returns curated rows with thumbnail URL. Params: folderId, itemTypes?, sortBy?, pinStatus? (pinned|unpinned), limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "folderId": "Folder ID ('root' for top-level).",
+        "itemTypes": "Filter by type (e.g. [\"design\", \"image\", \"video\", \"folder\"]).",
+        "sortBy": "e.g. modified_descending, title_ascending.",
+        "pinStatus": "Filter pinned items.",
+        "limit": "Max results. Min 1, max 100, default 50.",
+        "continuation": "Pagination token.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "get-folder": {
+      "name": "get-folder",
+      "description": "Get folder metadata. Returns curated { id, name, thumbnailUrl, dates }. Params: folderId, fields?, includeRaw.",
+      "params": {
+        "folderId": "Canva folder ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva folder response. Default false."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Create a new folder under a parent. Use parentFolderId=\"root\" for top level. Returns curated folder. Not retryable. Params: name, parentFolderId, fields?, includeRaw.",
+      "params": {
+        "name": "Folder name.",
+        "parentFolderId": "Parent folder ID (\"root\" for top level).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva folder response. Default false."
+      }
+    },
+    "update-folder": {
+      "name": "update-folder",
+      "description": "Rename a folder. Idempotent. Returns curated folder. Params: folderId, name, fields?, includeRaw.",
+      "params": {
+        "folderId": "Canva folder ID.",
+        "name": "New folder name.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva folder response. Default false."
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "Delete a folder. Items in the folder are moved to the parent. Idempotent — repeated deletes return 404. Returns { folderId, deleted: true }. Params: folderId.",
+      "params": {
+        "folderId": "Canva folder ID."
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "Move an item (design / folder / asset) to another folder. Idempotent if target unchanged. Returns { itemId, toFolderId, moved: true }. Params: itemId, toFolderId.",
+      "params": {
+        "itemId": "ID of the item to move.",
+        "toFolderId": "Destination folder ID (use \"root\" for top level)."
+      }
+    },
+    "upload-asset": {
+      "name": "upload-asset",
+      "description": "Upload an asset (image, video, audio) to the user library from a public URL. Async — returns curated job (poll get-asset-upload-job by id). url must be http/https. Not retryable. Params: name, url, fields?, includeRaw.",
+      "params": {
+        "name": "Display name for the new asset.",
+        "url": "Publicly accessible http/https URL of the file.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-asset-upload-job": {
+      "name": "get-asset-upload-job",
+      "description": "Get an asset URL upload job status/result. Returns curated job { id, status, error, result: {asset shape with thumbnailUrl}? }. Params: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "Job ID returned by upload-asset.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-asset": {
+      "name": "get-asset",
+      "description": "Get asset metadata. Returns curated { id, name, type, thumbnail*, tags, metadata, dates }. Params: assetId, fields?, includeRaw.",
+      "params": {
+        "assetId": "Canva asset ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva asset response. Default false."
+      }
+    },
+    "update-asset": {
+      "name": "update-asset",
+      "description": "Update asset metadata (rename, retag). Idempotent — same payload yields same final state. Returns curated asset. Params: assetId, name?, tags?, fields?, includeRaw.",
+      "params": {
+        "assetId": "Canva asset ID.",
+        "name": "New display name.",
+        "tags": "Replace tags wholesale (Canva PATCH semantics).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva asset response. Default false."
+      }
+    },
+    "delete-asset": {
+      "name": "delete-asset",
+      "description": "Delete an asset (moved to trash). Idempotent — repeated deletes return 404 (already deleted). Returns { assetId, deleted: true }. Params: assetId.",
+      "params": {
+        "assetId": "Canva asset ID."
+      }
+    },
+    "list-brand-templates": {
+      "name": "list-brand-templates",
+      "description": "List brand templates the user can access (requires Canva Enterprise). Returns curated rows with thumbnail URL. Params: query?, ownership?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "Search term to filter templates.",
+        "ownership": "Filter by ownership.",
+        "limit": "Max results. Min 1, max 100, default 25.",
+        "continuation": "Pagination token.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "get-brand-template": {
+      "name": "get-brand-template",
+      "description": "Get brand template metadata. Returns curated detail (id, title, thumbnailUrl, viewUrl, createUrl, dates). Params: brandTemplateId, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "Canva brand template ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "get-brand-template-dataset": {
+      "name": "get-brand-template-dataset",
+      "description": "Get the autofill dataset (named fields like {title}, {body}, {image}) for a brand template. Returned shape mirrors Canva — useful before calling autofill-design. Params: brandTemplateId.",
+      "params": {
+        "brandTemplateId": "Canva brand template ID."
+      }
+    },
+    "autofill-design": {
+      "name": "autofill-design",
+      "description": "Create a design by autofilling a brand template with named fields. data keys must match the template dataset (call get-brand-template-dataset first). columnConfigs: optional chart-data field definitions. Async — returns curated job (poll get-autofill-job). Not retryable. Params: brandTemplateId, data, title?, columnConfigs?, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "Canva brand template ID.",
+        "title": "Title for the new design.",
+        "data": "Field name → value object matching the template dataset.",
+        "columnConfigs": "Optional column configurations for chart fields (added 2026-03). Map field name → { type, ... }.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "get-autofill-job": {
+      "name": "get-autofill-job",
+      "description": "Get an autofill job status/result. Returns curated job { id, status, error, result: design? }. Params: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "Job ID returned by autofill-design.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva job response. Default false."
+      }
+    },
+    "create-thread": {
+      "name": "create-thread",
+      "description": "Create a comment thread on a design. message ≤ 2048 chars. Returns curated thread. Not retryable. Params: designId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "message": "Comment body (plain text, max 2048 characters).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva thread response. Default false."
+      }
+    },
+    "get-thread": {
+      "name": "get-thread",
+      "description": "Get a comment thread by ID. Returns curated thread. Params: designId, threadId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID the thread belongs to.",
+        "threadId": "Comment thread ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva thread response. Default false."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "List replies to a comment thread. Returns curated rows. Params: designId, threadId, limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID the thread belongs to.",
+        "threadId": "Comment thread ID.",
+        "limit": "Max results. Min 1, max 100, default 50.",
+        "continuation": "Pagination token.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva response. Default false."
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "Reply to a comment thread. message ≤ 2048 chars. Returns curated reply. Not retryable. Params: designId, threadId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID the thread belongs to.",
+        "threadId": "Comment thread ID.",
+        "message": "Reply body (plain text, max 2048 characters).",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva reply response. Default false."
+      }
+    },
+    "get-reply": {
+      "name": "get-reply",
+      "description": "Get a single reply within a comment thread. Returns curated reply. Params: designId, threadId, replyId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva design ID.",
+        "threadId": "Comment thread ID.",
+        "replyId": "Reply ID.",
+        "fields": "Override default whitelist.",
+        "includeRaw": "Return raw Canva reply response. Default false."
+      }
+    }
+  },
+  "name": "Canva",
+  "description": "Canva design management — designs, exports, resizes, folders, assets, brand templates, autofill, and comments via the Canva Connect API.",
+  "changelog": [
+    {
+      "notes": "Create, export, resize and import designs, organize folders and assets, autofill brand templates, and manage comments"
+    }
+  ]
+}

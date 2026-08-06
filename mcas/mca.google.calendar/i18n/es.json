@@ -1,0 +1,197 @@
+{
+  "name": "Google Calendar",
+  "description": "Gestiona Google Calendar: descubre calendarios, lista/busca eventos, crea/actualiza/elimina eventos con recurrencia + Meet + recordatorios + confirmaciones de asistencia, consulta disponibilidad",
+  "changelog": [
+    {
+      "notes": "Explorar calendarios, crear y gestionar eventos con recurrencia y Meet, confirmar asistencia y consultar disponibilidad"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de Google y la conectividad con la API de Calendar."
+    },
+    "calendar-list-calendars": {
+      "name": "calendar-list-calendars",
+      "description": "Lista los calendarios del usuario (principal, secundarios, compartidos). Devuelve filas curadas { id, summary, timeZone, primary, accessRole, backgroundColor, ... }.",
+      "params": {
+        "limit": "Máximo de calendarios por página. Mín 1, máximo 250, por defecto 100.",
+        "cursor": "Cursor de paginación (calendarList nextPageToken de Google).",
+        "showHidden": "Incluir calendarios ocultos. Por defecto false.",
+        "fields": "Sobrescribir la lista de campos por fila.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-list-events": {
+      "name": "calendar-list-events",
+      "description": "Lista eventos en un rango de fechas. Devuelve filas curadas con responseStatus de asistentes, organizador, colorId, htmlLink, hangoutLink, recurrencia.",
+      "params": {
+        "startDate": "Límite inferior (inclusivo) ISO 8601, ej. \"2026-04-28T00:00:00Z\".",
+        "endDate": "Límite superior (exclusivo) ISO 8601, ej. \"2026-04-29T00:00:00Z\".",
+        "calendarId": "ID del calendario. Por defecto \"primary\".",
+        "limit": "Máximo de eventos por página. Mín 1, máximo 2500, por defecto 25.",
+        "cursor": "Cursor de paginación (events nextPageToken de Google).",
+        "timeZone": "Zona horaria IANA (ej. \"Europe/Madrid\"). Por defecto: la del calendario.",
+        "fields": "Sobrescribir la lista de campos por fila.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-get-event": {
+      "name": "calendar-get-event",
+      "description": "Recupera un único evento por ID con todos los detalles (organizador, asistentes con responseStatus, regla de recurrencia + frase parseada, conferenceData, hangoutLink, htmlLink).",
+      "params": {
+        "eventId": "El ID del evento de Google.",
+        "calendarId": "ID del calendario. Por defecto \"primary\".",
+        "fields": "Sobrescribir la lista de campos.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-search-events": {
+      "name": "calendar-search-events",
+      "description": "Busca eventos por texto libre (coincide con título, descripción, ubicación, asistentes). Devuelve filas curadas con todos los detalles de asistentes/organizador/recurrencia/Meet.",
+      "params": {
+        "query": "Consulta de texto libre.",
+        "calendarId": "ID del calendario. Por defecto \"primary\".",
+        "startDate": "Límite inferior opcional (inclusivo) ISO 8601.",
+        "endDate": "Límite superior opcional (exclusivo) ISO 8601.",
+        "limit": "Máximo de eventos por página. Mín 1, máximo 2500, por defecto 25.",
+        "cursor": "Cursor de paginación (events nextPageToken de Google).",
+        "fields": "Sobrescribir la lista de campos por fila.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-create-event": {
+      "name": "calendar-create-event",
+      "description": "Crea un evento de calendario. Soporta recurrencia (RRULE), Google Meet vía addConference, notificaciones a asistentes vía sendUpdates, recordatorios personalizados y color por evento. Devuelve el evento curado con hangoutLink + htmlLink.",
+      "params": {
+        "summary": "Título del evento.",
+        "start": "Inicio ISO 8601. Usa offset de zona horaria completo para evitar ambigüedad (ej. \"2026-04-29T14:00:00+02:00\").",
+        "end": "Fin ISO 8601 con offset de zona horaria.",
+        "timeZone": "Nombre de zona horaria IANA (ej. \"Europe/Madrid\"). Sobrescritura opcional. Si se omite en eventos recurrentes, se resuelve automáticamente desde la configuración de Calendar del usuario.",
+        "calendarId": "ID del calendario. Por defecto \"primary\".",
+        "description": "Cuerpo del evento. Puede contener HTML.",
+        "attendees": "Emails de asistentes (opcional).",
+        "recurrence": "Cadenas RRULE (ej. [\"RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR\"]).",
+        "addConference": "Generar automáticamente un enlace de Google Meet. Por defecto false.",
+        "sendUpdates": "Notificar asistentes: \"all\" notifica a todos, \"externalOnly\" omite usuarios del mismo dominio, \"none\" silencioso. Por defecto \"none\".",
+        "reminders": "Recordatorios personalizados. {overrides:[{method:\"popup\"|\"email\", minutes}], useDefault:false}. Si useDefault=true, se usan los del calendario.",
+        "colorId": "ID de color de Google Calendar (1-11) para el evento.",
+        "attachments": "Archivos de Drive para adjuntar. Cada item: { fileUrl: requerido, title?, mimeType?, iconLink?, fileId? }. fileUrl debe ser el `alternateLink` de Drive (o webViewLink).",
+        "fields": "Sobrescribir la lista de campos del evento devuelto.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-update-event": {
+      "name": "calendar-update-event",
+      "description": "Modifica un evento existente. Los cambios de asistentes son explícitos: addAttendees / removeAttendees se fusionan con la lista existente, replaceAttendees la sobrescribe (destructivo). Soporta actualizar recurrencia, recordatorios, color y sendUpdates.",
+      "params": {
+        "calendarId": "Por defecto \"primary\".",
+        "start": "ISO 8601 con offset de zona horaria.",
+        "end": "ISO 8601 con offset de zona horaria.",
+        "timeZone": "Nombre de zona horaria IANA (ej. \"Europe/Madrid\"). Sobrescritura opcional.",
+        "recurrence": "Cadenas RRULE. Pasa un array vacío para limpiar la recurrencia.",
+        "addAttendees": "Emails a añadir (asistentes existentes se conservan).",
+        "removeAttendees": "Emails a eliminar (asistentes existentes se conservan).",
+        "replaceAttendees": "Destructivo: reemplaza toda la lista de asistentes. Usar con cuidado — elimina a todos los que no estén en esta lista.",
+        "sendUpdates": "Notificar asistentes del cambio. Por defecto \"none\".",
+        "reminders": "Recordatorios personalizados {overrides, useDefault}.",
+        "colorId": "ID de color de Google Calendar (1-11).",
+        "attachments": "REEMPLAZAR la lista de adjuntos con este conjunto de archivos de Drive. Pasa un array vacío para limpiar."
+      }
+    },
+    "calendar-delete-event": {
+      "name": "calendar-delete-event",
+      "description": "Elimina un evento por ID. El parámetro opcional sendUpdates controla si los asistentes reciben notificación de cancelación.",
+      "params": {
+        "calendarId": "Por defecto \"primary\".",
+        "sendUpdates": "Enviar notificación de cancelación a asistentes. Por defecto \"none\"."
+      }
+    },
+    "calendar-get-free-busy": {
+      "name": "calendar-get-free-busy",
+      "description": "Consulta disponibilidad (libre/ocupado) en uno o más calendarios. Devuelve filas curadas [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}].",
+      "params": {
+        "startDate": "Límite inferior (inclusivo) ISO 8601.",
+        "endDate": "Límite superior (exclusivo) ISO 8601.",
+        "calendarIds": "IDs de calendarios a consultar. Por defecto [\"primary\"].",
+        "timeZone": "Zona horaria IANA para los slots de respuesta. Por defecto: la del calendario del solicitante.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-respond-to-event": {
+      "name": "calendar-respond-to-event",
+      "description": "Confirma asistencia a un evento de calendario como usuario conectado. Lee la lista de asistentes, localiza al usuario y actualiza su responseStatus a \"accepted\" / \"declined\" / \"tentative\" (opcionalmente con un comentario). Si el usuario no está en la lista, se le añade.",
+      "params": {
+        "response": "Nuevo responseStatus para el usuario conectado.",
+        "comment": "Comentario opcional mostrado junto a la confirmación.",
+        "calendarId": "Por defecto \"primary\".",
+        "sendUpdates": "Notificar al organizador y demás asistentes. Por defecto \"none\"."
+      }
+    },
+    "calendar-quick-add-event": {
+      "name": "calendar-quick-add-event",
+      "description": "Crea un evento desde lenguaje natural (\"Café con Antonio mañana 10am\"). Google parsea el texto en título + fecha/hora. Útil para agendar rápido. Nota: solo se infieren el título y la hora — para asistentes, recurrencia, ubicación o Meet, usa create-event.",
+      "params": {
+        "text": "Descripción en lenguaje libre (ej. \"comida con Ana mañana 1pm\").",
+        "calendarId": "Por defecto \"primary\".",
+        "sendUpdates": "Notificar posibles asistentes parseados del texto. Por defecto \"none\".",
+        "fields": "Sobrescribir la lista de campos del evento devuelto.",
+        "includeRaw": "Devolver la respuesta cruda de Google. Por defecto false."
+      }
+    },
+    "calendar-create-focus-time": {
+      "name": "calendar-create-focus-time",
+      "description": "Bloquea tiempo de concentración en el calendario del usuario. Se crea con eventType: \"focusTime\" + transparency: \"opaque\". Opcionalmente rechaza invitaciones en conflicto y pone el estado de Chat en \"doNotDisturb\".",
+      "params": {
+        "start": "Inicio ISO 8601 con offset de zona horaria.",
+        "end": "Fin ISO 8601 con offset de zona horaria.",
+        "summary": "Título. Por defecto \"Focus time\".",
+        "autoDeclineMode": "Cómo manejar invitaciones en conflicto durante el tiempo de concentración. Por defecto \"declineNone\".",
+        "chatStatus": "Estado de Chat durante el tiempo de concentración. Por defecto \"doNotDisturb\".",
+        "calendarId": "Por defecto \"primary\"."
+      }
+    },
+    "calendar-create-out-of-office": {
+      "name": "calendar-create-out-of-office",
+      "description": "Marca al usuario como fuera de la oficina. Se crea con eventType: \"outOfOffice\" + transparency: \"opaque\". Por defecto rechaza todas las invitaciones en conflicto con el mensaje proporcionado. No es de día completo; requiere timestamps ISO completos.",
+      "params": {
+        "start": "Inicio ISO 8601 con offset de zona horaria.",
+        "end": "Fin ISO 8601 con offset de zona horaria.",
+        "summary": "Título. Por defecto \"Out of office\".",
+        "autoDeclineMode": "Por defecto \"declineAllConflictingInvitations\"."
+      }
+    },
+    "calendar-set-working-location": {
+      "name": "calendar-set-working-location",
+      "description": "Marca la ubicación de trabajo del usuario para un rango de fechas. Se crea con eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\" para no bloquear disponibilidad. Puede ser de día completo (solo un día) o con horario.",
+      "params": {
+        "type": "Determina qué sub-propiedades se respetan.",
+        "officeLocation": "Cuando type=officeLocation: { buildingId?, deskId?, floorId?, floorSectionId?, label? }.",
+        "customLocation": "Cuando type=customLocation: { label? } — ubicación en texto libre."
+      }
+    },
+    "calendar-get-settings": {
+      "name": "calendar-get-settings",
+      "description": "Lee las preferencias de Calendar del usuario (timezone, locale, weekStart, dateFieldOrder, autoAddHangouts, useKeyboardShortcuts, ...). Si se pasa `setting` devuelve ese valor; si no, devuelve el mapa completo.",
+      "params": {
+        "setting": "ID opcional de un ajuste concreto (ej. \"timezone\", \"locale\", \"weekStart\")."
+      }
+    },
+    "calendar-get-colors": {
+      "name": "calendar-get-colors",
+      "description": "Devuelve la paleta de colores oficial de Google Calendar: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. Úsalo para validar colorIds de eventos (1..11) en runtime."
+    },
+    "calendar-move-event": {
+      "name": "calendar-move-event",
+      "description": "Mueve un evento de un calendario a otro. RESTRICCIÓN: solo `eventType: \"default\"` es movible — los eventos birthday/focusTime/outOfOffice/workingLocation/fromGmail devuelven error."
+    },
+    "calendar-import-event": {
+      "name": "calendar-import-event",
+      "description": "Importa un evento externo (con iCalUID) a un calendario. Crea una copia privada — distinto de create-event porque preserva el UID original para reconciliación entre sistemas. Úsalo cuando el agente recibe un archivo `.ics` o una referencia de evento de otro sistema."
+    },
+    "calendar-list-instances": {
+      "name": "calendar-list-instances",
+      "description": "Lista instancias de un evento recurrente con sus metadatos de sobrescritura. Devuelve filas con `originalStartTime` para marcar instancias movidas/modificadas vs. la regla recurrente."
+    }
+  }
+}

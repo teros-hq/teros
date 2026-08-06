@@ -5,8 +5,10 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService, CreateTaskInput } from '../../../services/board-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface BatchCreateTasksData {
   projectId: string
@@ -16,19 +18,9 @@ interface BatchCreateTasksData {
 export function createBatchCreateTasksHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function batchCreateTasks(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as BatchCreateTasksData
     const { projectId, tasks: taskInputs } = data
@@ -49,7 +41,29 @@ export function createBatchCreateTasksHandler(
 
     const tasks = await boardService.batchCreateTasks(project.boardId, ctx.userId, taskInputs)
 
-    broadcastBoardEvent(project.boardId, { type: 'board_tasks_batch_created', tasks })
+    pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_tasks_batch_created', tasks })
+
+    // Emit board.task_created for each created task
+    if (boardSubscriptionService && tasks.length > 0) {
+      const board = await boardService.getBoard(project.boardId)
+      for (const task of tasks) {
+        const column = board?.columns.find((c) => c.columnId === task.columnId)
+        const payload = {
+          taskId: task.taskId,
+          taskTitle: task.title,
+          assignedAgentId: task.assignedAgentId,
+          tags: task.tags,
+          columnId: task.columnId,
+          columnName: column?.name,
+        }
+        boardSubscriptionService.notifySubscribers(project.boardId, {
+          eventType: 'board.task_created',
+          boardId: project.boardId,
+          formattedMessage: BSS.formatEventMessage({ eventType: 'board.task_created', boardId: project.boardId, payload }),
+          payload,
+        })
+      }
+    }
 
     return { projectId, tasks, count: tasks.length }
   }

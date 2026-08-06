@@ -1,6 +1,8 @@
 import type { ToolConfig } from '@teros/mca-sdk';
+import { validateAgentId } from './utils';
 
 export const accessRevoke: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: "Revoke an agent's access to an app.",
   parameters: {
     type: 'object',
@@ -17,6 +19,8 @@ export const accessRevoke: ToolConfig = {
     required: ['agentId', 'appId'],
   },
   handler: async (args, context) => {
-    return context.accessRevoke(args.agentId as string, args.appId as string);
+    const agentId = args.agentId as string;
+    await validateAgentId(agentId, context);
+    return context.accessRevoke(agentId, args.appId as string);
   },
 };

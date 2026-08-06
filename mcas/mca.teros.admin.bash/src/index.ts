@@ -27,6 +27,7 @@ const server = new McaServer({
 
 // Define bash tool
 server.tool('bash', {
+  annotations: { readOnlyHint: false },
   description:
     'Execute a bash command with timeout and working directory support. Returns stdout, stderr, and exit code.',
   parameters: {

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import Svg, { Circle, Line } from 'react-native-svg';
+import { colors } from './mca/primitives/colors';
 
 interface TerosLogoProps {
   size?: number;
@@ -15,7 +16,7 @@ interface Particle {
   progress: number;
 }
 
-export function TerosLogo({ size = 32, color = '#06B6D4', animated = true }: TerosLogoProps) {
+export function TerosLogo({ size = 32, color = colors.indigo, animated = true }: TerosLogoProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const [pulsingPoints, setPulsingPoints] = useState<Set<number>>(new Set());
 

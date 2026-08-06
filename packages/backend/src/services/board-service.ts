@@ -13,9 +13,11 @@ import {
   generateBoardId,
   generateColumnId,
   generateProjectId,
-  generateTaskId,
+  RandomIdGenerator,
+  type IdGenerator,
 } from '@teros/core';
 import type { Collection, Db } from 'mongodb';
+import { buildAvatarUrl } from '../lib/avatar-url';
 import type {
   Board,
   BoardColumn,
@@ -25,7 +27,6 @@ import type {
   TaskActivityEntry,
   TaskActivityEventType,
   TaskPriority,
-  TaskStatus,
 } from '../types/database';
 
 // ============================================================================
@@ -36,6 +37,7 @@ const DEFAULT_COLUMNS: Array<{ name: string; slug: string }> = [
   { name: 'Backlog', slug: 'backlog' },
   { name: 'To Do', slug: 'todo' },
   { name: 'In Progress', slug: 'in_progress' },
+  { name: 'Blocked', slug: 'blocked' },
   { name: 'Review', slug: 'review' },
   { name: 'Done', slug: 'done' },
 ];
@@ -52,6 +54,7 @@ export interface CreateProjectInput {
 export interface CreateTaskInput {
   title: string;
   description?: string;
+  instructions?: string;
   priority?: TaskPriority;
   tags?: string[];
   assignedAgentId?: string;
@@ -64,6 +67,7 @@ export interface CreateTaskInput {
 export interface UpdateTaskInput {
   title?: string;
   description?: string;
+  instructions?: string;
   priority?: TaskPriority;
   tags?: string[];
   assignedAgentId?: string | null;
@@ -76,6 +80,7 @@ export interface ListTasksFilter {
   assignedAgentId?: string;
   priority?: TaskPriority;
   tags?: string[];
+  archived?: boolean;
 }
 
 // ============================================================================
@@ -86,11 +91,19 @@ export class BoardService {
   private projects: Collection<Project>;
   private boards: Collection<Board>;
   private tasks: Collection<Task>;
+  /** taskId sembrable: en modo determinista (TEROS_DETERMINISTIC) el board runner inyecta el
+   * taskId en el prompt del agente (getBoardTaskPrompt), así que un id aleatorio rompía el hash
+   * del replay LLM. Con SeededIdGenerator es estable; en prod es RandomIdGenerator. TER-563. */
+  private readonly taskIds: IdGenerator;
 
-  constructor(private db: Db) {
+  constructor(
+    private db: Db,
+    idGenerator: IdGenerator = new RandomIdGenerator(),
+  ) {
     this.projects = db.collection<Project>('projects');
     this.boards = db.collection<Board>('boards');
     this.tasks = db.collection<Task>('tasks');
+    this.taskIds = idGenerator.fork('task');
   }
 
   // ==========================================================================
@@ -169,11 +182,17 @@ export class BoardService {
   }
 
   /**
-   * List all active projects in a workspace
+   * List projects in a workspace.
+   * By default only active projects are returned.
+   * Pass includeArchived=true to also include archived projects.
    */
-  async listProjects(workspaceId: string): Promise<Project[]> {
+  async listProjects(workspaceId: string, includeArchived?: boolean): Promise<Project[]> {
+    const query: Record<string, unknown> = { workspaceId };
+    if (!includeArchived) {
+      query.status = 'active';
+    }
     return this.projects
-      .find({ workspaceId, status: 'active' })
+      .find(query)
       .sort({ createdAt: -1 })
       .toArray();
   }
@@ -192,11 +211,67 @@ export class BoardService {
     projectId: string,
     update: { name?: string; description?: string; context?: string },
   ): Promise<Project | null> {
+    // Strip undefined values — MongoDB $set treats undefined as field deletion (TER-313)
+    const filtered = Object.fromEntries(
+      Object.entries(update).filter(([, v]) => v !== undefined),
+    );
     const result = await this.projects.findOneAndUpdate(
       { projectId },
-      { $set: { ...update, updatedAt: new Date().toISOString() } },
+      { $set: { ...filtered, updatedAt: new Date().toISOString() } },
       { returnDocument: 'after' },
     );
+    return result ?? null;
+  }
+
+  /**
+   * Archive a project (soft-delete) and all its non-archived tasks.
+   * Idempotent — if already archived, just returns the project.
+   */
+  async archiveProject(
+    projectId: string,
+    actor: string,
+    archiveNote?: string,
+  ): Promise<Project | null> {
+    const project = await this.projects.findOne({ projectId });
+    if (!project) return null;
+
+    // Idempotent: if already archived, return as-is
+    if (project.status === 'archived') {
+      return project;
+    }
+
+    const now = new Date().toISOString();
+    const $set: Record<string, unknown> = {
+      status: 'archived',
+      updatedAt: now,
+    };
+    if (archiveNote) {
+      $set.archiveNote = archiveNote;
+    }
+
+    // Archive all non-archived tasks belonging to the project's board
+    await this.tasks.updateMany(
+      { boardId: project.boardId, archived: { $ne: true } },
+      {
+        $set: { archived: true, updatedAt: now },
+        $push: {
+          activity: {
+            eventType: 'status_changed',
+            actor,
+            timestamp: now,
+            details: { fromStatus: 'active', toStatus: 'archived' },
+          },
+        },
+      },
+    );
+
+    const result = await this.projects.findOneAndUpdate(
+      { projectId },
+      { $set },
+      { returnDocument: 'after' },
+    );
+
+    console.log(`[BoardService] Archived project ${projectId} and all associated tasks`);
     return result ?? null;
   }
 
@@ -326,18 +401,15 @@ export class BoardService {
 
     const now = new Date().toISOString();
 
-    // Derive initial taskStatus from context
-    const initialStatus: TaskStatus = input.assignedAgentId ? 'assigned' : 'idle';
-
     const task: Task = {
-      taskId: generateTaskId(),
+      taskId: `task_${this.taskIds.hex16()}`,
       boardId,
       columnId,
       position,
       title: input.title,
       description: input.description,
       priority: input.priority ?? 'medium',
-      taskStatus: initialStatus,
+      archived: false,
       tags: input.tags ?? [],
       assignedAgentId: input.assignedAgentId,
       running: false,
@@ -436,14 +508,14 @@ export class BoardService {
           : undefined;
 
       tasks.push({
-        taskId: generateTaskId(),
+        taskId: `task_${this.taskIds.hex16()}`,
         boardId,
         columnId,
         position,
         title: input.title.trim(),
         description: input.description,
         priority: input.priority ?? 'medium',
-        taskStatus: input.assignedAgentId ? 'assigned' : 'idle',
+        archived: false,
         tags: input.tags ?? [],
         assignedAgentId: input.assignedAgentId,
         running: false,
@@ -488,6 +560,12 @@ export class BoardService {
     if (filter?.tags && filter.tags.length > 0) {
       query.tags = { $in: filter.tags };
     }
+    if (filter?.archived !== undefined) {
+      query.archived = filter.archived;
+    } else {
+      // Default: exclude archived tasks from board views
+      query.archived = false;
+    }
 
     return this.tasks
       .find(query)
@@ -501,6 +579,7 @@ export class BoardService {
   async getTasksByAgent(
     workspaceId: string,
     agentId: string,
+    tags?: string[],
   ): Promise<Array<Task & { projectName: string }>> {
     // Get all projects in workspace
     const projects = await this.projects
@@ -512,8 +591,13 @@ export class BoardService {
     const boardIds = projects.map((p) => p.boardId);
     const projectByBoard = new Map(projects.map((p) => [p.boardId, p]));
 
+    const query: Record<string, any> = { boardId: { $in: boardIds }, assignedAgentId: agentId };
+    if (tags && tags.length > 0) {
+      query.tags = { $all: tags };
+    }
+
     const tasks = await this.tasks
-      .find({ boardId: { $in: boardIds }, assignedAgentId: agentId })
+      .find(query)
       .sort({ priority: 1, createdAt: -1 })
       .toArray();
 
@@ -545,6 +629,10 @@ export class BoardService {
     if (input.description !== undefined) {
       $set.description = input.description;
       activityEntries.push({ eventType: 'updated', actor, timestamp: now, details: { field: 'description' } });
+    }
+    if (input.instructions !== undefined) {
+      $set.instructions = input.instructions;
+      activityEntries.push({ eventType: 'updated', actor, timestamp: now, details: { field: 'instructions' } });
     }
     if (input.priority !== undefined && input.priority !== task.priority) {
       $set.priority = input.priority;
@@ -703,6 +791,9 @@ export class BoardService {
           columnId: targetColumnId,
           position: newPosition,
           updatedAt: now,
+          // Real progress (a column move) → reset the autoplay stuck counter
+          // (TER-650/G2). NOT reset on the per-turn `running` toggle.
+          autoWakeCount: 0,
         },
         $push: { activity: activityEntry },
       },
@@ -741,22 +832,13 @@ export class BoardService {
       };
     }
 
-    // Derive taskStatus: if assigning → 'assigned', if unassigning → 'idle'
-    // Only change if task isn't already in a more advanced state (working/review/done)
-    const statusUpdate: Partial<Task> = {};
-    if (agentId && (task.taskStatus === 'idle' || !task.taskStatus)) {
-      statusUpdate.taskStatus = 'assigned';
-    } else if (!agentId && (task.taskStatus === 'assigned' || task.taskStatus === 'idle')) {
-      statusUpdate.taskStatus = 'idle';
-    }
-
+    // archived is NOT mutated by assign/unassign — assignedAgentId carries that info
     const result = await this.tasks.findOneAndUpdate(
       { taskId },
       {
         $set: {
           assignedAgentId: agentId ?? undefined,
           updatedAt: now,
-          ...statusUpdate,
         },
         $push: { activity: activityEntry },
       },
@@ -833,7 +915,6 @@ export class BoardService {
           assignedAgentId: agentId,
           columnId: inProgressCol.columnId,
           position,
-          taskStatus: 'working' as const,
           updatedAt: now,
         },
         $push: { activity: { $each: activityEntries } },
@@ -875,63 +956,29 @@ export class BoardService {
   }
 
   /**
-   * Update task semantic status.
-   *
-   * Auto-moves to matching column when appropriate:
-   * - 'review' → moves to review column
-   * - 'done' → moves to done column
-   *
-   * Returns the updated task and the previous status (for event emission).
+   * Archive a task (manager action).
+   * Sets archived=true on the task. Archived tasks are out of the active board.
    */
-  async updateTaskStatus(
+  async archiveTask(
     taskId: string,
-    status: TaskStatus,
     actor: string,
-  ): Promise<{ task: Task; previousStatus: TaskStatus } | null> {
-    const task = await this.tasks.findOne({ taskId });
-    if (!task) return null;
-
-    const previousStatus = task.taskStatus ?? 'idle';
-    if (previousStatus === status) {
-      return { task, previousStatus };
-    }
-
+    archiveNote?: string,
+  ): Promise<Task | null> {
     const now = new Date().toISOString();
     const $set: Record<string, unknown> = {
-      taskStatus: status,
+      archived: true,
       updatedAt: now,
     };
 
-    // Auto-move to matching column
-    const board = await this.boards.findOne({ boardId: task.boardId });
-    if (board) {
-      const targetSlug =
-        status === 'review'
-          ? 'review'
-          : status === 'done'
-            ? 'done'
-            : null;
-
-      if (targetSlug) {
-        const targetCol = board.columns.find((c) => c.slug === targetSlug);
-        if (targetCol && task.columnId !== targetCol.columnId) {
-          // Get next position in target column
-          const lastInCol = await this.tasks
-            .find({ boardId: task.boardId, columnId: targetCol.columnId })
-            .sort({ position: -1 })
-            .limit(1)
-            .toArray();
-          $set.columnId = targetCol.columnId;
-          $set.position = lastInCol.length > 0 ? lastInCol[0].position + 1 : 0;
-        }
-      }
+    if (archiveNote) {
+      $set.archiveNote = archiveNote;
     }
 
     const activityEntry: TaskActivityEntry = {
       eventType: 'status_changed',
       actor,
       timestamp: now,
-      details: { fromStatus: previousStatus, toStatus: status },
+      details: { fromStatus: 'active', toStatus: 'archived' },
     };
 
     const result = await this.tasks.findOneAndUpdate(
@@ -940,8 +987,36 @@ export class BoardService {
       { returnDocument: 'after' },
     );
 
-    if (!result) return null;
-    return { task: result, previousStatus };
+    return result ?? null;
+  }
+
+  /**
+   * Unarchive a task (manager action).
+   * Sets archived=false, making it active again on the board.
+   */
+  async unarchiveTask(
+    taskId: string,
+    actor: string,
+  ): Promise<Task | null> {
+    const now = new Date().toISOString();
+
+    const activityEntry: TaskActivityEntry = {
+      eventType: 'status_changed',
+      actor,
+      timestamp: now,
+      details: { fromStatus: 'archived', toStatus: 'active' },
+    };
+
+    const result = await this.tasks.findOneAndUpdate(
+      { taskId },
+      {
+        $set: { archived: false, updatedAt: now },
+        $push: { activity: activityEntry },
+      },
+      { returnDocument: 'after' },
+    );
+
+    return result ?? null;
   }
 
   /**
@@ -969,7 +1044,9 @@ export class BoardService {
     const result = await this.tasks.findOneAndUpdate(
       { taskId },
       {
-        $set: { updatedAt: now },
+        // A progress note is real progress → reset the autoplay stuck counter
+        // (TER-650/G2).
+        $set: { updatedAt: now, autoWakeCount: 0 },
         $push: {
           progressNotes: note,
           activity: activityEntry,
@@ -978,6 +1055,17 @@ export class BoardService {
       { returnDocument: 'after' },
     );
     return result ?? null;
+  }
+
+  /**
+   * Get all active tasks in a board that depend on the given task.
+   * Used when cancelling a task to find tasks that will be left orphaned.
+   * Only returns non-archived tasks (archived dependents don't need notification).
+   */
+  async getDependentTasks(taskId: string, boardId: string): Promise<Task[]> {
+    return this.tasks
+      .find({ boardId, dependencies: taskId, archived: { $ne: true } })
+      .toArray();
   }
 
   /**
@@ -1007,10 +1095,12 @@ export class BoardService {
 
     const now = new Date().toISOString();
 
+    const $set: Record<string, unknown> = { running, updatedAt: now };
+
     const result = await this.tasks.findOneAndUpdate(
       { taskId },
       {
-        $set: { running, updatedAt: now },
+        $set,
         $push: {
           activity: {
             eventType: 'running_changed' as const,
@@ -1023,6 +1113,34 @@ export class BoardService {
       { returnDocument: 'after' },
     );
 
+    return result ?? null;
+  }
+
+  /**
+   * Clear the cooperative stop flags (stopRequested, stopRequestedAt, stopRequestedBy).
+   *
+   * Called when a task transitions out of a state where the stop signal is
+   * meaningful — e.g. complete-my-task (task is now in Review, the stop is
+   * resolved) or cancel-my-task (task archived, stop no longer applies).
+   *
+   * Returns the updated task, or null if the task was not found / had no
+   * stop flag set (no-op).
+   */
+  async clearStopRequest(taskId: string): Promise<Task | null> {
+    const task = await this.tasks.findOne({ taskId });
+    if (!task) return null;
+    // No-op if no stop was requested.
+    if (!task.stopRequested) return task;
+
+    const now = new Date().toISOString();
+    const result = await this.tasks.findOneAndUpdate(
+      { taskId },
+      {
+        $set: { updatedAt: now },
+        $unset: { stopRequested: '', stopRequestedAt: '', stopRequestedBy: '' },
+      },
+      { returnDocument: 'after' },
+    );
     return result ?? null;
   }
 
@@ -1099,7 +1217,10 @@ export class BoardService {
       map[a.agentId] = {
         name: a.name || a.agentId,
         fullName: a.fullName || a.name || a.agentId,
-        avatarUrl: a.avatarUrl,
+        // resolveAgents es un resolver de PRESENTACIÓN (lo consumen ~8 boundaries
+        // de salida: board-commands, get-board, get-task, list-tasks, queries
+        // board-read). Resolver aquí cubre todos de raíz y elimina la asimetría.
+        avatarUrl: buildAvatarUrl(a.avatarUrl),
       };
     }
     return map;
@@ -1221,25 +1342,9 @@ export class BoardService {
 
     if (cyclePath.length > 0) {
       const cycleDescription = cyclePath.join(' → ');
-      const now = new Date().toISOString();
 
-      // Mark all tasks in the cycle as circular_dependency
-      const cycleTaskIds = [...new Set(cyclePath)];
-      await this.tasks.updateMany(
-        { taskId: { $in: cycleTaskIds } },
-        {
-          $set: { taskStatus: 'circular_dependency' as const, updatedAt: now },
-          $push: {
-            activity: {
-              eventType: 'circular_dependency_detected' as const,
-              actor,
-              timestamp: now,
-              details: { note: `Circular dependency detected: ${cycleDescription}` },
-            },
-          },
-        },
-      );
-
+      // Circular dependency is a technical error — do NOT mutate archived status.
+      // Just log and throw so the caller can surface the error to the user.
       console.warn(
         `[BoardService] Circular dependency detected on board ${task.boardId}: ${cycleDescription}`,
       );
@@ -1274,10 +1379,7 @@ export class BoardService {
 
   /**
    * Remove a dependency: taskId no longer depends on dependsOnTaskId.
-   *
-   * If either task had status `circular_dependency` due to this edge,
-   * the status is NOT automatically cleared — that requires a separate
-   * review since other cycles may still exist.
+   * This operation is idempotent — if the dependency does not exist, the task is returned unchanged.
    */
   async removeDependency(
     taskId: string,
@@ -1349,16 +1451,27 @@ export class BoardService {
 /**
  * Build the initial message sent to an agent when a task is started.
  */
+/**
+ * Unified initial message builder for board tasks — used by both the manual
+ * start-task handler and the autoplay service. The agent receives this as a
+ * regular user message in its conversation channel.
+ */
 export function buildTaskInitialMessage(task: {
   taskId: string;
   title: string;
   description?: string;
+  instructions?: string;
   priority?: string;
   tags?: string[];
 }, customPrompt?: string, boardRunnerAppName: string = 'boards'): string {
-  if (customPrompt) return customPrompt;
+  // This instruction is always appended — even to custom prompts — to enforce
+  // the no-delegation rule for all board task execution contexts.
+  const noDelegationNote =
+    `\n\n> **Board task execution context:** Do NOT use \`conversations_delegate-task\` or any delegation tool. Execute all work directly in this conversation.`;
 
-  const taskDescription = task.description || 'No description provided.';
+  if (customPrompt) return customPrompt + noDelegationNote;
+
+  const taskDescription = task.instructions || task.description || 'No description provided.';
   return [
     `You have been assigned a task. Execute it autonomously.`,
     ``,
@@ -1371,8 +1484,10 @@ export function buildTaskInitialMessage(task: {
     ``,
     `## Instructions`,
     `- Work autonomously. If tools require user approval, the user will be notified.`,
-    `- Use the \`${boardRunnerAppName}_add-progress-note\` tool (taskId: \`${task.taskId}\`) to report progress and any issues.`,
-    `- When you finish, use \`${boardRunnerAppName}_update-my-task-status\` (taskId: \`${task.taskId}\`, status: \`done\`) to mark the task as complete.`,
+    `- **After each significant step, add a progress note** with \`${boardRunnerAppName}_add-progress-note\` (taskId: \`${task.taskId}\`). Write notes in clear, accessible language — the same tone as the task description. Explain what you did, what you found, and what comes next. These notes are how the operator follows your work, so they are essential.`,
+    `- When you finish, move this task to the Review or Done column using \`${boardRunnerAppName}_move-my-task\`.`,
     `- If you cannot complete the task, set status to \`blocked\` and add a progress note explaining why.`,
+    `- If you hit the execution limit (tool calls blocked), add a progress note summarizing what you accomplished and what remains. This resets your execution counter so you can continue working.`,
+    `- **Do NOT use \`conversations_delegate-task\` or any delegation tool.** Execute all work directly in this conversation.`,
   ].join('\n');
 }

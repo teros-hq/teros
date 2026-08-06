@@ -3,6 +3,7 @@ import { createGraphClient, buildRecipients, processEmailBody } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const updateDraft: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Update an existing draft email by replacing its content.',
   parameters: {
     type: 'object',

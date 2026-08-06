@@ -11,6 +11,7 @@ import { STORAGE_KEYS, storage } from '../services/storage';
 export interface NavbarAgent {
   agentId: string;
   name: string;
+  role?: string;
   avatarUrl?: string;
   coreId?: string;
   workspaceId?: string;
@@ -37,6 +38,8 @@ export interface NavbarWorkspace {
     color?: string;
     icon?: string;
   };
+  /** Workspace type — 'private' is the user's personal workspace and cannot be deleted/archived */
+  type?: 'private' | 'shared';
 }
 
 interface NavbarState {
@@ -55,10 +58,16 @@ interface NavbarState {
   // Actions
   setAgents: (agents: NavbarAgent[]) => void;
   addAgent: (agent: NavbarAgent) => void;
+  updateAgent: (agentId: string, patch: Partial<NavbarAgent>) => void;
   removeAgent: (agentId: string) => void;
   setApps: (apps: NavbarApp[]) => void;
+  addApp: (app: NavbarApp) => void;
+  updateApp: (appId: string, patch: Partial<NavbarApp>) => void;
+  removeApp: (appId: string) => void;
   setWorkspaces: (workspaces: NavbarWorkspace[]) => void;
   addWorkspace: (workspace: NavbarWorkspace) => void;
+  updateWorkspace: (workspaceId: string, patch: Partial<NavbarWorkspace>) => void;
+  removeWorkspace: (workspaceId: string) => void;
   setLoading: (loading: boolean) => void;
   setLoaded: (loaded: boolean) => void;
   setExpanded: (expanded: boolean) => void;
@@ -83,7 +92,20 @@ export const useNavbarStore = create<NavbarState>((set) => ({
   // Actions
   setAgents: (agents) => set({ agents }),
 
-  addAgent: (agent) => set((state) => ({ agents: [...state.agents, agent] })),
+  // Idempotent upsert by agentId — guards against double-insert when a session
+  // both performs an optimistic local update AND receives the WS event with the
+  // same id. If the agent already exists, return the state unchanged.
+  addAgent: (agent) =>
+    set((state) =>
+      state.agents.some((a) => a.agentId === agent.agentId)
+        ? state
+        : { agents: [...state.agents, agent] },
+    ),
+
+  updateAgent: (agentId, patch) =>
+    set((state) => ({
+      agents: state.agents.map((a) => (a.agentId === agentId ? { ...a, ...patch } : a)),
+    })),
 
   removeAgent: (agentId) =>
     set((state) => ({
@@ -92,9 +114,43 @@ export const useNavbarStore = create<NavbarState>((set) => ({
 
   setApps: (apps) => set({ apps }),
 
+  addApp: (app) =>
+    set((state) =>
+      state.apps.some((a) => a.appId === app.appId)
+        ? state
+        : { apps: [...state.apps, app] },
+    ),
+
+  updateApp: (appId, patch) =>
+    set((state) => ({
+      apps: state.apps.map((a) => (a.appId === appId ? { ...a, ...patch } : a)),
+    })),
+
+  removeApp: (appId) =>
+    set((state) => ({
+      apps: state.apps.filter((a) => a.appId !== appId),
+    })),
+
   setWorkspaces: (workspaces) => set({ workspaces }),
 
-  addWorkspace: (workspace) => set((state) => ({ workspaces: [...state.workspaces, workspace] })),
+  addWorkspace: (workspace) =>
+    set((state) =>
+      state.workspaces.some((w) => w.workspaceId === workspace.workspaceId)
+        ? state
+        : { workspaces: [...state.workspaces, workspace] },
+    ),
+
+  updateWorkspace: (workspaceId, patch) =>
+    set((state) => ({
+      workspaces: state.workspaces.map((w) =>
+        w.workspaceId === workspaceId ? { ...w, ...patch } : w,
+      ),
+    })),
+
+  removeWorkspace: (workspaceId) =>
+    set((state) => ({
+      workspaces: state.workspaces.filter((w) => w.workspaceId !== workspaceId),
+    })),
 
   setLoading: (isLoading) => set({ isLoading }),
 
@@ -107,17 +163,16 @@ export const useNavbarStore = create<NavbarState>((set) => ({
   setExpanded: (isExpanded) => {
     set({ isExpanded });
     // Persist to storage
-    storage.setItem(STORAGE_KEYS.NAVBAR_EXPANDED, JSON.stringify(isExpanded)).catch(console.error);
+    storage.set(STORAGE_KEYS.NAVBAR_EXPANDED, isExpanded).catch(console.error);
   },
 
   setMobileMenuOpen: (isMobileMenuOpen) => set({ isMobileMenuOpen }),
 
   loadExpandedState: async () => {
     try {
-      const saved = await storage.getItem(STORAGE_KEYS.NAVBAR_EXPANDED);
+      const saved = await storage.get<boolean>(STORAGE_KEYS.NAVBAR_EXPANDED);
       if (saved !== null) {
-        const isExpanded = JSON.parse(saved);
-        set({ isExpanded });
+        set({ isExpanded: saved });
       }
     } catch (error) {
       console.error('[NavbarStore] Failed to load expanded state:', error);
@@ -134,3 +189,16 @@ export const useNavbarStore = create<NavbarState>((set) => ({
       lastFetchedAt: null,
     }),
 }));
+
+// ── Session lifecycle registration ──────────────────────────────────────────
+// @todo nira - 2026-05-20: migrate to createSessionStore once circular deps resolved
+
+import { storeRegistry } from './session/StoreRegistry'
+
+storeRegistry.register('navbar', {
+  resetSession: async () => {
+    const state = useNavbarStore.getState()
+    state.reset()
+    await storage.remove(STORAGE_KEYS.NAVBAR_EXPANDED)
+  },
+})

@@ -5,9 +5,10 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ToolPermission } from '../../../types/database'
+import type { McaManager } from '../../../services/mca-manager'
 import type { McaService } from '../../../services/mca-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import { getPermissionsSummary, isPrivateTool } from '../../../types/permissions'
+import { buildAppPermissionsView } from './_permissions-view'
 
 interface SetAllToolPermissionsData {
   appId: string
@@ -30,6 +31,7 @@ async function canManageApp(
 
 export function createSetAllToolPermissionsHandler(
   mcaService: McaService,
+  mcaManager: McaManager | null,
   workspaceService?: WorkspaceService,
 ) {
   return async function setAllToolPermissions(ctx: WsHandlerContext, rawData: unknown) {
@@ -61,8 +63,7 @@ export function createSetAllToolPermissionsHandler(
     }
 
     const mca = await mcaService.getMcaFromCatalog(app.mcaId)
-    const publicTools = (mca?.tools || []).filter((name) => !isPrivateTool(name))
-    const summary = getPermissionsSummary(updated.permissions, publicTools)
+    const { summary } = await buildAppPermissionsView(mcaManager, updated, appId, mca?.tools || [])
 
     console.log(`[app.set-all-tool-permissions] Set all tools to ${permission} for ${appId}`)
 

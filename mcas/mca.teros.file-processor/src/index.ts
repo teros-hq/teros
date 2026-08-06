@@ -19,13 +19,30 @@ import { OpenAI } from 'openai';
 import { join } from 'path';
 import { JobManager } from './job-manager.js';
 import { JobWorker } from './job-worker.js';
-import { detectFileType } from './processors/base.js';
-import { PDFProcessor } from './processors/pdf.js';
+import { createProcessor } from './processors/factory.js';
 import type { FileProcessorOptions } from './types.js';
 
 // =============================================================================
 // CONFIGURATION
 // =============================================================================
+
+/**
+ * Read ANTHROPIC_API_KEY if configured, otherwise ''. `getSystemSecrets()`
+ * THROWS ("No system secrets available") when the platform has no system
+ * secrets at all. Local extraction (PDF text via unpdf, DOCX via mammoth)
+ * needs no key, so a missing key must never block conversion — it only
+ * disables the scanned-PDF LLM/OCR fallback.
+ */
+async function getAnthropicKeyOptional(context: {
+  getSystemSecrets: () => Promise<Record<string, string>>;
+}): Promise<string> {
+  try {
+    const secrets = await context.getSystemSecrets();
+    return secrets?.ANTHROPIC_API_KEY ?? '';
+  } catch {
+    return '';
+  }
+}
 
 const JOBS_DIR = process.env.JOBS_DIR || join(process.cwd(), '../../workspace/.file-processor');
 
@@ -64,44 +81,17 @@ server.tool('-health-check', {
     type: 'object',
     properties: {},
   },
-  handler: async (_args, context) => {
-    const builder = new HealthCheckBuilder().setVersion('2.2.0');
-
-    try {
-      const secrets = await context.getSystemSecrets();
-      const hasOpenAI = !!secrets.OPENAI_API_KEY;
-      const hasAnthropic = !!secrets.ANTHROPIC_API_KEY;
-
-      if (!hasOpenAI) {
-        builder.addIssue(
-          'CONFIG_MISSING',
-          'OpenAI API key not configured (needed for audio transcription)',
-          {
-            type: 'admin_action',
-            description: 'Configure OPENAI_API_KEY in system secrets',
-          },
-        );
-      }
-
-      if (!hasAnthropic) {
-        builder.addIssue(
-          'CONFIG_MISSING',
-          'Anthropic API key not configured (needed for PDF processing)',
-          {
-            type: 'admin_action',
-            description: 'Configure ANTHROPIC_API_KEY in system secrets',
-          },
-        );
-      }
-
-      return builder.build();
-    } catch (error: any) {
-      builder.addIssue('SECRETS_ERROR', `Failed to get secrets: ${error.message}`, {
-        type: 'admin_action',
-        description: 'Check backend connectivity and secrets configuration',
-      });
-      return builder.build();
-    }
+  handler: async (_args, _context) => {
+    // The core capabilities — PDF (text layer) and Word .docx → Markdown — are
+    // extracted locally and need NO secrets, so the MCA is always operational.
+    // System keys are optional enhancements only: ANTHROPIC_API_KEY for OCR of
+    // scanned PDFs, OPENAI_API_KEY for audio transcription. Their absence does
+    // not degrade core function, so it must not produce a blocking health issue
+    // (any non-auto_retry issue would flip the MCA to not_ready).
+    return new HealthCheckBuilder()
+      .setVersion('2.2.0')
+      .setUptime(Math.floor(process.uptime()))
+      .build();
   },
 });
 
@@ -110,8 +100,9 @@ server.tool('-health-check', {
 // =============================================================================
 
 server.tool('file-to-markdown', {
+  annotations: { readOnlyHint: false },
   description:
-    'Convert files to Markdown using AI (synchronous). Supports PDF (with intelligent chunking for large files). Use file-to-markdown-async for long-running jobs.',
+    'Convert a file to text/Markdown (synchronous). PDF and Word .docx are extracted locally; scanned PDFs fall back to LLM OCR if a system key is set. Use file-to-markdown-async for long-running jobs.',
   parameters: {
     type: 'object',
     properties: {
@@ -156,23 +147,7 @@ server.tool('file-to-markdown', {
       throw new Error(`File not found: ${inputPath}`);
     }
 
-    const secrets = await context.getSystemSecrets();
-    const anthropicKey = secrets.ANTHROPIC_API_KEY;
-
-    if (!anthropicKey) {
-      throw new Error(
-        'Anthropic API key not configured. Please configure ANTHROPIC_API_KEY in system secrets.',
-      );
-    }
-
-    const processor = new PDFProcessor(anthropicKey);
-
-    const fileType = detectFileType(inputPath);
-    if (!fileType) {
-      throw new Error(
-        `Unsupported file type. Supported: PDF, images (PNG/JPG/GIF/WebP), documents (DOCX/XLSX/PPTX), text (TXT/MD/CSV)`,
-      );
-    }
+    const anthropicKey = await getAnthropicKeyOptional(context);
 
     const options: FileProcessorOptions = {
       chunkSize,
@@ -180,18 +155,15 @@ server.tool('file-to-markdown', {
       timeout,
     };
 
-    if (fileType === 'pdf') {
-      const result = await processor.process(inputPath, options);
-      return {
-        success: true,
-        outputPath: result.outputPath,
-        metadata: result.metadata,
-      };
-    } else {
-      throw new Error(
-        `File type "${fileType}" is not yet implemented. Currently only PDF is supported.`,
-      );
-    }
+    // The factory routes by extension (PDF → Claude, DOCX → mammoth) and
+    // throws an actionable error for recognized-but-unsupported formats.
+    const processor = createProcessor(inputPath, anthropicKey);
+    const result = await processor.process(inputPath, options);
+    return {
+      success: true,
+      outputPath: result.outputPath,
+      metadata: result.metadata,
+    };
   },
 });
 
@@ -200,8 +172,9 @@ server.tool('file-to-markdown', {
 // =============================================================================
 
 server.tool('file-to-markdown-async', {
+  annotations: { readOnlyHint: false },
   description:
-    'Convert files to Markdown asynchronously (non-blocking). Returns a job ID immediately. Use get-job-status to check progress.',
+    'Convert a file to Markdown asynchronously (non-blocking). Supports PDF and Word .docx. Returns a job ID immediately. Use get-job-status to check progress.',
   parameters: {
     type: 'object',
     properties: {
@@ -245,19 +218,11 @@ server.tool('file-to-markdown-async', {
       throw new Error(`File not found: ${inputPath}`);
     }
 
-    const secrets = await context.getSystemSecrets();
-    const anthropicKey = secrets.ANTHROPIC_API_KEY;
+    const anthropicKey = await getAnthropicKeyOptional(context);
 
-    if (!anthropicKey) {
-      throw new Error(
-        'Anthropic API key not configured. Please configure ANTHROPIC_API_KEY in system secrets.',
-      );
-    }
-
-    const fileType = detectFileType(inputPath);
-    if (!fileType) {
-      throw new Error(`Unsupported file type. Supported: PDF, images, documents, text`);
-    }
+    // Validate up-front so unsupported formats (and PDF without a key) fail
+    // fast here instead of creating a job that the worker would reject.
+    createProcessor(inputPath, anthropicKey);
 
     const options: FileProcessorOptions = {
       chunkSize,
@@ -289,6 +254,7 @@ server.tool('file-to-markdown-async', {
 // =============================================================================
 
 server.tool('get-job-status', {
+  annotations: { readOnlyHint: true },
   description:
     'Get the status of an async job. Returns current progress, status, and results when completed.',
   parameters: {
@@ -323,6 +289,7 @@ server.tool('get-job-status', {
 // =============================================================================
 
 server.tool('list-jobs', {
+  annotations: { readOnlyHint: true },
   description:
     'List all jobs with optional filters. Useful for checking active jobs or recent completions.',
   parameters: {
@@ -363,6 +330,7 @@ server.tool('list-jobs', {
 // =============================================================================
 
 server.tool('cancel-job', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Cancel a queued or processing job. Cannot cancel completed/failed jobs.',
   parameters: {
     type: 'object',
@@ -399,6 +367,7 @@ server.tool('cancel-job', {
 // =============================================================================
 
 server.tool('audio-to-text', {
+  annotations: { readOnlyHint: false },
   description:
     'Transcribe audio files to text using OpenAI Whisper API. Supports .m4a, .mp3, .wav, .ogg, .webm, .opus and other audio formats.',
   parameters: {
@@ -466,6 +435,7 @@ server.tool('audio-to-text', {
 // =============================================================================
 
 server.tool('svg-to-png', {
+  annotations: { readOnlyHint: false },
   description: 'Convert SVG files to PNG with optional width/height constraints',
   parameters: {
     type: 'object',

@@ -1,0 +1,106 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba el token de la API de Intercom y la conectividad."
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "Obtiene información del espacio de trabajo de Intercom conectado: nombre, región, zona horaria y el administrador autenticado."
+    },
+    "search-conversations": {
+      "name": "search-conversations",
+      "description": "Busca conversaciones en Intercom con filtros por estado, rango de fechas, etiquetas y asignado. Devuelve resultados paginados con metadatos de las conversaciones.",
+      "params": {
+        "state": "Filtrar por estado de conversación",
+        "createdAfter": "Marca de tiempo Unix — solo conversaciones creadas después de este momento",
+        "createdBefore": "Marca de tiempo Unix — solo conversaciones creadas antes de este momento",
+        "assigneeId": "Filtrar por ID de administrador asignado",
+        "teamId": "Filtrar por ID de equipo asignado",
+        "perPage": "Resultados por página (por defecto: 20, máx: 50)",
+        "startingAfter": "Cursor de paginación de la respuesta anterior"
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "Obtiene los detalles completos de una conversación específica de Intercom por su ID, incluyendo todos los mensajes, notas, etiquetas y asignado.",
+      "params": {
+        "conversationId": "El ID de la conversación de Intercom"
+      }
+    },
+    "reply-conversation": {
+      "name": "reply-conversation",
+      "description": "Responde a una conversación de Intercom como administrador. Puede enviar una respuesta pública al cliente o añadir una nota interna privada.",
+      "params": {
+        "conversationId": "El ID de la conversación de Intercom",
+        "body": "El texto de respuesta (texto plano o HTML)",
+        "type": "\"comment\" envía una respuesta pública al cliente; \"note\" añade una nota interna privada visible solo para el equipo (por defecto: comment)",
+        "adminId": "El ID del administrador que responderá. Si se omite, usa el propietario del token."
+      }
+    },
+    "assign-conversation": {
+      "name": "assign-conversation",
+      "description": "Asigna una conversación de Intercom a un administrador o equipo específico. También se puede desasignar omitiendo ambos.",
+      "params": {
+        "conversationId": "El ID de la conversación de Intercom",
+        "adminId": "ID del administrador al que asignar la conversación",
+        "teamId": "ID del equipo al que asignar la conversación"
+      }
+    },
+    "update-conversation": {
+      "name": "update-conversation",
+      "description": "Actualiza el estado de una conversación (abrir, cerrar, posponer) o la prioridad en Intercom.",
+      "params": {
+        "conversationId": "El ID de la conversación de Intercom",
+        "state": "Nuevo estado para la conversación",
+        "priority": "Activar o desactivar el indicador de prioridad",
+        "snoozedUntil": "Marca de tiempo Unix — obligatorio cuando el estado es \"snoozed\""
+      }
+    },
+    "tag-conversation": {
+      "name": "tag-conversation",
+      "description": "Añade o elimina etiquetas de una conversación de Intercom.",
+      "params": {
+        "conversationId": "El ID de la conversación de Intercom",
+        "tagIds": "IDs de etiquetas a añadir a la conversación",
+        "removeTagIds": "IDs de etiquetas a eliminar de la conversación"
+      }
+    },
+    "list-admins": {
+      "name": "list-admins",
+      "description": "Lista todos los administradores (agentes) del espacio de trabajo de Intercom con sus IDs, nombres, correos electrónicos y estado de asiento."
+    },
+    "list-teams": {
+      "name": "list-teams",
+      "description": "Lista todos los equipos del espacio de trabajo de Intercom con sus IDs, nombres y recuentos de miembros."
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "Lista todas las etiquetas definidas en el espacio de trabajo de Intercom. Útil para encontrar IDs de etiquetas antes de etiquetar conversaciones."
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Obtiene los detalles de un contacto de Intercom (usuario o lead) por su ID de Intercom.",
+      "params": {
+        "contactId": "El ID del contacto de Intercom"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "Busca contactos de Intercom por correo electrónico, nombre o número de teléfono.",
+      "params": {
+        "email": "Filtrar por dirección de correo electrónico exacta",
+        "name": "Filtrar por nombre (coincidencia parcial)",
+        "phone": "Filtrar por número de teléfono",
+        "perPage": "Resultados por página (por defecto: 20, máx: 50)"
+      }
+    }
+  },
+  "name": "Intercom",
+  "description": "Integración de soporte al cliente de Intercom — gestiona conversaciones, tickets, contactos y equipos mediante la API de Intercom.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — buscar y responder a conversaciones de clientes, asignar, etiquetar, posponer y consultar contactos y compañeros de equipo"
+    }
+  ]
+}

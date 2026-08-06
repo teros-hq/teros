@@ -1,0 +1,61 @@
+# Build context exclusions for Dockerfile.test
+# Keeps the context small — none of these are needed to run tests.
+
+# Standard exclusions (same as .dockerignore)
+node_modules/
+.npm/
+.yarn/
+.pnp.*
+build/
+.expo/
+.expo-shared/
+.env
+.env.local
+.env.*.local
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+.editorconfig
+.git/
+.gitignore
+.gitattributes
+coverage/
+.nyc_output/
+*.md
+!README.md
+docs/
+Dockerfile
+docker-compose*.yml
+.dockerignore
+*.bak
+*.tmp
+.cache/
+temp/
+tmp/
+
+# Large runtime data and assets not needed for tests
+packages/backend/static/
+packages/backend/logs/
+packages/backend/uploads/
+packages/backend/media/
+packages/backend/public/
+backups/
+workspace/
+data/
+
+# App package — not needed for backend tests
+packages/app/
+
+# E2E package — has its own compose file
+packages/e2e/

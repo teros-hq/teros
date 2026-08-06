@@ -14,8 +14,10 @@ describe('StreamingState', () => {
 
       expect(state.currentTextMessageId).toBeNull();
       expect(state.currentTextContent).toBe('');
-      expect(state.currentToolMessageId).toBeNull();
-      expect(state.currentToolCall).toBeNull();
+      // Tool tracking is a Map keyed by toolCallId (was currentToolMessageId/currentToolCall).
+      expect(state.activeToolCalls).toBeInstanceOf(Map);
+      expect(state.activeToolCalls.size).toBe(0);
+      expect(state.pendingSeedId).toBeNull();
       expect(state.savedMessages).toEqual([]);
       expect(state.lastContentType).toBeNull();
     });
@@ -27,6 +29,7 @@ describe('StreamingState', () => {
     let saveMessageMock: ReturnType<typeof mock>;
     let createMessageIdMock: ReturnType<typeof mock>;
     let channelManagerMock: any;
+    let updateMessageContentMock: ReturnType<typeof mock>;
 
     const channelId = 'ch_test123';
     const agentId = 'agent_test456';
@@ -36,10 +39,13 @@ describe('StreamingState', () => {
       broadcastMock = mock(() => {});
       saveMessageMock = mock(() => Promise.resolve());
       createMessageIdMock = mock(() => `msg_${Date.now()}`);
+      updateMessageContentMock = mock(() => Promise.resolve());
 
       channelManagerMock = {
         saveMessage: saveMessageMock,
         createMessageId: createMessageIdMock,
+        // updateMessageContent: added in signature drift — used by completeToolMessage
+        updateMessageContent: updateMessageContentMock,
       };
     });
 
@@ -76,21 +82,26 @@ describe('StreamingState', () => {
     });
 
     describe('startToolMessage', () => {
-      it('should create new tool message with call info', () => {
+      it('should create new tool message with call info', async () => {
         const helpers = createHelpers();
 
         const toolCall = {
           toolCallId: 'call_123',
           toolName: 'test_tool',
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           input: { key: 'value' },
         };
 
-        const messageId = helpers.startToolMessage(toolCall);
+        // startToolMessage is now async — await it to get the messageId string
+        const messageId = await helpers.startToolMessage(toolCall);
 
         expect(messageId).toBeDefined();
-        expect(state.currentToolMessageId).toBe(messageId);
-        expect(state.currentToolCall).toEqual(toolCall);
+        const tracked = state.activeToolCalls.get('call_123');
+        expect(tracked?.messageId).toBe(messageId);
+        expect(tracked?.toolCallId).toBe('call_123');
+        expect(tracked?.toolName).toBe('test_tool');
+        expect(tracked?.mcaId).toBe('mca.test');
+        expect(tracked?.input).toEqual({ key: 'value' });
         expect(state.lastContentType).toBe('tool');
       });
     });
@@ -139,59 +150,68 @@ describe('StreamingState', () => {
       it('should save tool message with result', async () => {
         const helpers = createHelpers();
 
-        helpers.startToolMessage({
+        // startToolMessage is now async — saves a 'pending' message via saveMessage
+        await helpers.startToolMessage({
           toolCallId: 'call_123',
           toolName: 'test_tool',
           input: {},
         });
 
         await helpers.completeToolMessage({
+          toolCallId: 'call_123',
           status: 'completed',
           output: 'Tool output',
           duration: 100,
         });
 
-        expect(saveMessageMock).toHaveBeenCalledTimes(1);
-        const savedMessage = saveMessageMock.mock.calls[0][0];
-        expect(savedMessage.content.type).toBe('tool_execution');
-        expect(savedMessage.content.status).toBe('completed');
-        expect(savedMessage.content.output).toBe('Tool output');
+        // completeToolMessage updates the existing message via updateMessageContent, not saveMessage
+        expect(updateMessageContentMock).toHaveBeenCalledTimes(1);
+        const updatedContent = updateMessageContentMock.mock.calls[0][1];
+        expect(updatedContent.type).toBe('tool_execution');
+        expect(updatedContent.status).toBe('completed');
+        expect(updatedContent.output).toBe('Tool output');
       });
 
       it('should reset tool state after completion', async () => {
         const helpers = createHelpers();
 
-        helpers.startToolMessage({
+        // startToolMessage is now async
+        await helpers.startToolMessage({
           toolCallId: 'call_123',
           toolName: 'test_tool',
           input: {},
         });
 
         await helpers.completeToolMessage({
+          toolCallId: 'call_123',
           status: 'completed',
         });
 
-        expect(state.currentToolMessageId).toBeNull();
-        expect(state.currentToolCall).toBeNull();
+        // Map-based tracking: the completed tool is removed from activeToolCalls.
+        expect(state.activeToolCalls.has('call_123')).toBe(false);
+        expect(state.activeToolCalls.size).toBe(0);
       });
 
       it('should handle failed status', async () => {
         const helpers = createHelpers();
 
-        helpers.startToolMessage({
+        // startToolMessage is now async
+        await helpers.startToolMessage({
           toolCallId: 'call_123',
           toolName: 'test_tool',
           input: {},
         });
 
         await helpers.completeToolMessage({
+          toolCallId: 'call_123',
           status: 'failed',
           error: 'Something went wrong',
         });
 
-        const savedMessage = saveMessageMock.mock.calls[0][0];
-        expect(savedMessage.content.status).toBe('failed');
-        expect(savedMessage.content.error).toBe('Something went wrong');
+        // completeToolMessage updates via updateMessageContent, not saveMessage
+        const updatedContent = updateMessageContentMock.mock.calls[0][1];
+        expect(updatedContent.status).toBe('failed');
+        expect(updatedContent.error).toBe('Something went wrong');
       });
     });
 
@@ -231,5 +251,9 @@ describe('StreamingState', () => {
         expect(saveMessageMock).not.toHaveBeenCalled();
       });
     });
+
+    // bug tracker
+    // @todo alice - 2026-04-02: fix bug — audit all call sites of startToolMessage and add await; update type signatures to reflect the async return
+    it.todo('bug: startToolMessage changed from sync to async without updating call sites — any caller that does not await it will get a Promise instead of the messageId string');
   });
 });

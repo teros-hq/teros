@@ -1,0 +1,53 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.factorial",
+  "name": "Factorial",
+  "version": "1.0.0",
+  "description": "Factorial HR — manage employees, time off, attendance, payroll, documents, contracts and teams via Factorial API with OAuth2",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "factorial",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "TOKEN_TYPE", "USER_ID", "USER_EMAIL"],
+      "authorizeUrl": "https://api.factorialhr.com/oauth/authorize",
+      "tokenUrl": "https://api.factorialhr.com/oauth/token",
+      "scopes": ["employees", "time_off", "time_tracking", "documents", "contracts", "company_locations", "company_legal_entities"],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["factorial", "hr", "employees", "payroll", "time-off", "attendance", "contracts", "documents"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-19",
+      "notes": "Initial release — browse employees and teams, request and review time off, track attendance and overtime, and view documents, contracts and pay"
+    }
+  ]
+}

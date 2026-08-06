@@ -19,7 +19,9 @@
  */
 
 import type { ILLMClient } from '../llm/ILLMClient';
+import { countTokensForProvider } from '../llm/token-counter';
 import { log } from '../logger';
+import { projectToolInput } from '../prompts/tool-arg-eviction';
 import type { MessageWithParts, TextPart } from '../session/types';
 
 /**
@@ -48,6 +50,14 @@ export interface CompactionConfig {
   contextSize: number;
   /** Prune configuration (optional, defaults provided) */
   prune?: PruneConfig;
+  /**
+   * LLM provider string (e.g. "anthropic", "openai", "teros"). When set, all
+   * token counting routes through the provider-aware BPE tokenizer instead of
+   * the char heuristic (CTX-003) so the trigger and prune/compact math reflect
+   * the real prompt size. Undefined → legacy char estimate (tests, callers with
+   * no provider in scope).
+   */
+  provider?: string;
 }
 
 /**
@@ -58,6 +68,27 @@ export interface CompactionCheckResult {
   currentTokens: number;
   threshold: number;
   protectedTokens: number;
+}
+
+/**
+ * Fixed per-turn prompt overhead that is re-sent to the provider on every turn
+ * but was historically invisible to the compaction trigger (CTX-001): the
+ * system prompt, the tool schemas, and the injected memory context.
+ *
+ * The tool schemas alone are ~46-90K tokens for an agent with many MCAs, so a
+ * trigger that only counts the message history believes it is at ~75% while the
+ * real prompt can already overflow the context window.
+ *
+ * All fields are optional so callers can supply whatever they have in scope; an
+ * omitted component contributes 0.
+ */
+export interface StaticPromptComponents {
+  /** System prompt text (re-sent every turn). */
+  system?: string;
+  /** Tool schemas array (re-sent every turn); serialized to estimate its cost. */
+  tools?: unknown;
+  /** Memory context injected into the prompt, when present this turn. */
+  memory?: string;
 }
 
 /**
@@ -91,22 +122,29 @@ export interface CompactionResult {
 }
 
 /**
- * Token estimation - simple character-based estimation
+ * Token estimation.
+ *
+ * When a `provider` is given, routes to the provider-aware BPE tokenizer
+ * (`ai-tokenizer`: 97%+ accuracy for Claude / GPT-4/5, ~85-90% otherwise) so the
+ * compaction trigger and prune/compact math see the REAL prompt size instead of
+ * a char heuristic (CTX-003). Without a provider it falls back to the legacy
+ * char-based estimate:
  *
  * NOTE: Claude's actual ratio varies by content type:
  * - English prose: ~4 chars/token
  * - Code/JSON: ~2-3 chars/token
  * - Mixed content with tools: ~2.5 chars/token
  *
- * We use 2.5 as a conservative estimate since conversations
- * often include tool calls with JSON which tokenizes less efficiently.
- * Better to trigger compaction slightly early than too late.
+ * We use 2.5 as a conservative fallback since conversations often include tool
+ * calls with JSON which tokenizes less efficiently.
  */
-export function estimateTokens(text: string): number {
+export function estimateTokens(text: string, provider?: string): number {
+  if (provider) return countTokensForProvider(text, provider);
+
   const CHARS_PER_TOKEN = 2.5;
   const estimatedTokens = Math.max(0, Math.ceil((text || '').length / CHARS_PER_TOKEN));
 
-  // Debug log for token estimation
+  // Debug log for token estimation (char fallback path only)
   log.debug('Compaction', 'Token estimation calculated', {
     textLength: (text || '').length,
     charsPerToken: CHARS_PER_TOKEN,
@@ -120,13 +158,13 @@ export function estimateTokens(text: string): number {
 /**
  * Estimate tokens for a message with all its parts
  */
-export function estimateMessageTokens(message: MessageWithParts): number {
+export function estimateMessageTokens(message: MessageWithParts, provider?: string): number {
   let tokens = 0;
   const partDetails: any[] = [];
 
   for (const part of message.parts) {
     if (part.type === 'text') {
-      const textTokens = estimateTokens((part as TextPart).text);
+      const textTokens = estimateTokens((part as TextPart).text, provider);
       tokens += textTokens;
       partDetails.push({
         type: 'text',
@@ -136,9 +174,9 @@ export function estimateMessageTokens(message: MessageWithParts): number {
     } else if (part.type === 'tool') {
       // Tool calls include name, input, and output
       const toolPart = part as any;
-      const toolNameTokens = estimateTokens(toolPart.tool || '');
-      const inputTokens = estimateTokens(JSON.stringify(toolPart.state?.input || {}));
-      const outputTokens = estimateTokens(toolPart.state?.output || '');
+      const toolNameTokens = estimateTokens(toolPart.tool || '', provider);
+      const inputTokens = estimateTokens(JSON.stringify(toolPart.state?.input || {}), provider);
+      const outputTokens = estimateTokens(toolPart.state?.output || '', provider);
 
       tokens += toolNameTokens + inputTokens + outputTokens;
       partDetails.push({
@@ -174,8 +212,14 @@ export function estimateMessageTokens(message: MessageWithParts): number {
 /**
  * Estimate total tokens for a conversation
  */
-export function estimateConversationTokens(messages: MessageWithParts[]): number {
-  const totalTokens = messages.reduce((total, msg) => total + estimateMessageTokens(msg), 0);
+export function estimateConversationTokens(
+  messages: MessageWithParts[],
+  provider?: string,
+): number {
+  const totalTokens = messages.reduce(
+    (total, msg) => total + estimateMessageTokens(msg, provider),
+    0,
+  );
 
   // Debug log for conversation token estimation
   log.debug('Compaction', 'Conversation token estimation calculated', {
@@ -186,6 +230,34 @@ export function estimateConversationTokens(messages: MessageWithParts[]): number
   });
 
   return totalTokens;
+}
+
+/**
+ * Estimate the fixed per-turn overhead (system + tools + memory) that the
+ * compaction trigger must account for on top of the message history (CTX-001).
+ *
+ * Routes through the same estimator as the rest of the trigger — provider-aware
+ * BPE when `provider` is set (CTX-003), char fallback otherwise — so the static
+ * cost is on the same scale as the message count. Returns 0 when no components
+ * are provided, preserving the legacy behaviour for callers that pass none.
+ */
+export function estimateStaticPromptTokens(
+  components?: StaticPromptComponents,
+  provider?: string,
+): number {
+  if (!components) return 0;
+
+  let tokens = 0;
+  if (components.system) {
+    tokens += estimateTokens(components.system, provider);
+  }
+  if (components.tools !== undefined) {
+    tokens += estimateTokens(JSON.stringify(components.tools), provider);
+  }
+  if (components.memory) {
+    tokens += estimateTokens(components.memory, provider);
+  }
+  return tokens;
 }
 
 /**
@@ -298,21 +370,54 @@ export class CompactionService {
     this.pruneConfig = { ...DEFAULT_PRUNE_CONFIG, ...config.prune };
   }
 
+  // Provider-aware token counting (CTX-003). EVERY internal count goes through
+  // these wrappers so the whole service shares ONE scale — the provider's BPE
+  // tokenizer when `config.provider` is set, else the char fallback. Counting
+  // the trigger on one scale and the prune/compact math on another would
+  // silently desync them, which is the divergent-counter bug CTX-003 fixes.
+  private countTokens(text: string): number {
+    return estimateTokens(text, this.config.provider);
+  }
+
+  private countMessage(message: MessageWithParts): number {
+    return estimateMessageTokens(message, this.config.provider);
+  }
+
+  private countConversation(messages: MessageWithParts[]): number {
+    return estimateConversationTokens(messages, this.config.provider);
+  }
+
+  private countStatic(components?: StaticPromptComponents): number {
+    return estimateStaticPromptTokens(components, this.config.provider);
+  }
+
   /**
-   * Check if compaction is needed
+   * Check if compaction is needed.
    *
-   * NOTE: Currently uses estimation for performance.
-   * Use tokenCounter.countConversationTokens() for testing accuracy.
+   * `currentTokens` accounts for both the message history AND the fixed
+   * per-turn overhead (system + tools + memory) when `staticComponents` is
+   * supplied — the tool schemas alone are ~46-90K tokens re-sent every turn, so
+   * omitting them made the trigger blind to the real prompt size (CTX-001).
+   * When `staticComponents` is omitted the static cost is 0 and behaviour is
+   * identical to the message-only check.
+   *
+   * Token counts route through the provider-aware BPE tokenizer when
+   * `config.provider` is set (CTX-003), else the char fallback.
    */
-  checkNeedsCompaction(messages: MessageWithParts[]): CompactionCheckResult {
-    const currentTokens = estimateConversationTokens(messages);
+  checkNeedsCompaction(
+    messages: MessageWithParts[],
+    staticComponents?: StaticPromptComponents,
+  ): CompactionCheckResult {
+    const messageTokens = this.countConversation(messages);
+    const staticTokens = this.countStatic(staticComponents);
+    const currentTokens = messageTokens + staticTokens;
     const threshold = this.config.triggerAt;
 
     // Calculate protected tokens (recent messages)
     let protectedTokens = 0;
     let protectedMessageCount = 0;
     for (let i = messages.length - 1; i >= 0; i--) {
-      const msgTokens = estimateMessageTokens(messages[i]);
+      const msgTokens = this.countMessage(messages[i]);
       if (protectedTokens + msgTokens > this.config.protectRecent) break;
       protectedTokens += msgTokens;
       protectedMessageCount++;
@@ -328,6 +433,8 @@ export class CompactionService {
     // Debug log for compaction decision
     log.info('Compaction', 'Compaction check completed', {
       messageCount: messages.length,
+      messageTokens,
+      staticTokens,
       currentTokens,
       threshold,
       protectedTokens,
@@ -349,7 +456,7 @@ export class CompactionService {
     ratio: number;
     difference: number;
   }> {
-    const estimated = estimateConversationTokens(messages);
+    const estimated = this.countConversation(messages);
     const real = await this.tokenCounter.countConversationTokens(messages);
 
     return {
@@ -376,7 +483,7 @@ export class CompactionService {
    */
   prune(messages: MessageWithParts[]): { messages: MessageWithParts[]; result: PruneResult } {
     if (!this.pruneConfig.enabled) {
-      const tokens = estimateConversationTokens(messages);
+      const tokens = this.countConversation(messages);
       return {
         messages, // Return original, no changes needed
         result: {
@@ -389,7 +496,7 @@ export class CompactionService {
       };
     }
 
-    const tokensBefore = estimateConversationTokens(messages);
+    const tokensBefore = this.countConversation(messages);
 
     // First pass: identify what needs pruning (without modifying)
     let protectedToolTokens = 0;
@@ -411,7 +518,7 @@ export class CompactionService {
             continue;
           }
 
-          const outputTokens = estimateTokens(toolPart.state.output);
+          const outputTokens = this.countTokens(toolPart.state.output);
 
           // Protect recent tool outputs
           if (protectedToolTokens < this.pruneConfig.protectRecent) {
@@ -469,7 +576,7 @@ export class CompactionService {
       }),
     }));
 
-    const tokensAfter = estimateConversationTokens(prunedMessages);
+    const tokensAfter = this.countConversation(prunedMessages);
     const tokensSaved = tokensBefore - tokensAfter;
 
     log.info('Compaction', 'Prune completed', {
@@ -504,8 +611,11 @@ export class CompactionService {
    *
    * Returns the summary text and list of message IDs that were compacted
    */
-  async compact(messages: MessageWithParts[]): Promise<CompactionResult> {
-    const tokensBefore = estimateConversationTokens(messages);
+  async compact(
+    messages: MessageWithParts[],
+    opts?: { signal?: AbortSignal },
+  ): Promise<CompactionResult> {
+    const tokensBefore = this.countConversation(messages);
 
     log.info('Compaction', 'Starting compaction', {
       messageCount: messages.length,
@@ -551,11 +661,11 @@ export class CompactionService {
       }
 
       // Step 2: Generate summary of compacted messages
-      const summary = await this.generateSummary(toCompact);
+      const summary = await this.generateSummary(toCompact, opts?.signal);
 
       // Step 3: Calculate new token count
-      const summaryTokens = estimateTokens(summary);
-      const protectedTokens = estimateConversationTokens(toProtect);
+      const summaryTokens = this.countTokens(summary);
+      const protectedTokens = this.countConversation(toProtect);
       const tokensAfter = summaryTokens + protectedTokens;
 
       log.info('Compaction', 'Compaction complete', {
@@ -600,7 +710,7 @@ export class CompactionService {
     let protectFromIndex = messages.length;
 
     for (let i = messages.length - 1; i >= 0; i--) {
-      const msgTokens = estimateMessageTokens(messages[i]);
+      const msgTokens = this.countMessage(messages[i]);
       if (protectedTokens + msgTokens > this.config.protectRecent) {
         protectFromIndex = i + 1;
         break;
@@ -630,7 +740,10 @@ export class CompactionService {
   /**
    * Generate a summary of messages using the LLM
    */
-  private async generateSummary(messages: MessageWithParts[]): Promise<string> {
+  private async generateSummary(
+    messages: MessageWithParts[],
+    signal?: AbortSignal,
+  ): Promise<string> {
     // Format messages for summarization
     const conversationText = this.formatMessagesForSummary(messages);
 
@@ -664,6 +777,7 @@ SUMMARY:
     let summaryText = '';
 
     await this.llmClient.streamMessage({
+      signal,
       messages: [
         {
           info: {
@@ -695,7 +809,7 @@ SUMMARY:
 
     log.info('Compaction', 'Summary generated', {
       summaryLength: summaryText.length,
-      summaryTokens: estimateTokens(summaryText),
+      summaryTokens: this.countTokens(summaryText),
     });
 
     return summaryText;
@@ -720,7 +834,19 @@ SUMMARY:
           const toolPart = part as any;
           lines.push(`[Tool: ${toolPart.tool}]`);
           if (toolPart.state?.input) {
-            lines.push(`Input: ${JSON.stringify(toolPart.state.input, null, 2)}`);
+            // Bound EVERY tool input here, including ones the main history
+            // path exempts (error/Gemini-signed): neither the auto-correction
+            // nor the thoughtSignature round-trip contract apply to this
+            // one-shot summarization prompt, so eliding is safe — and
+            // necessary, or a handful of huge exempt parts (a retry-storm of
+            // failing writes, or thinking + signed args) can overflow this
+            // very prompt and take down the emergency-compaction backstop
+            // that those exemptions rely on (review-2 N3/F5, TER-707).
+            // Intentionally NOT gated by TurnDriverDeps.toolArgEviction — the
+            // kill-switch only controls the outbound LLM-history projection;
+            // this bound protects the summarizer's own prompt regardless.
+            const { input: boundedInput } = projectToolInput(toolPart.state.input);
+            lines.push(`Input: ${JSON.stringify(boundedInput, null, 2)}`);
           }
           if (toolPart.state?.output) {
             // Truncate very long outputs

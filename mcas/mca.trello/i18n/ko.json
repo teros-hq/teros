@@ -1,0 +1,178 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Trello 자격 증명 및 API 연결을 확인합니다."
+    },
+    "list-boards": {
+      "name": "list-boards",
+      "description": "인증된 사용자가 접근할 수 있는 모든 보드를 나열합니다.",
+      "params": {
+        "filter": "보드 필터: all, open, closed, members, organization, public, starred"
+      }
+    },
+    "create-board": {
+      "name": "create-board",
+      "description": "새로운 보드를 생성합니다.",
+      "params": {
+        "name": "보드 이름",
+        "desc": "보드 설명 (선택 사항)",
+        "defaultLists": "기본 목록 생성 여부 (To Do, Doing, Done). 기본값: true",
+        "prefs_background": "배경 색상 또는 이미지 (선택 사항, 예: \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "get-board": {
+      "name": "get-board",
+      "description": "특정 보드의 세부 정보를 가져옵니다.",
+      "params": {
+        "boardId": "보드의 ID 또는 짧은 URL"
+      }
+    },
+    "update-board": {
+      "name": "update-board",
+      "description": "보드 속성(이름, 설명, 배경 등)을 업데이트합니다.",
+      "params": {
+        "boardId": "업데이트할 보드의 ID",
+        "name": "보드의 새 이름 (선택 사항)",
+        "desc": "보드의 새 설명 (선택 사항)",
+        "prefs_background": "배경 색상 또는 이미지 (선택 사항, 예: \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "delete-board": {
+      "name": "delete-board",
+      "description": "보드를 영구적으로 삭제합니다.",
+      "params": {
+        "boardId": "삭제할 보드의 ID"
+      }
+    },
+    "list-board-lists": {
+      "name": "list-board-lists",
+      "description": "보드의 모든 목록을 가져옵니다.",
+      "params": {
+        "boardId": "보드의 ID 또는 짧은 URL"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "보드에 새 목록을 생성합니다.",
+      "params": {
+        "boardId": "보드의 ID",
+        "name": "목록 이름",
+        "pos": "위치: top, bottom 또는 양수 (선택 사항)"
+      }
+    },
+    "update-list": {
+      "name": "update-list",
+      "description": "목록을 업데이트합니다 (색상, 이름, 위치 변경 등).",
+      "params": {
+        "listId": "업데이트할 목록의 ID",
+        "name": "목록의 새 이름 (선택 사항)",
+        "color": "목록 색상 (선택 사항): pink, yellow, lime, blue, black, orange, red, purple, sky, green",
+        "pos": "새 위치: top, bottom 또는 양수 (선택 사항)",
+        "closed": "목록을 아카이브할지 여부 (선택 사항)"
+      }
+    },
+    "list-cards": {
+      "name": "list-cards",
+      "description": "목록의 모든 카드를 가져옵니다.",
+      "params": {
+        "listId": "목록의 ID"
+      }
+    },
+    "get-card": {
+      "name": "get-card",
+      "description": "특정 카드의 세부 정보를 가져옵니다.",
+      "params": {
+        "cardId": "카드의 ID 또는 짧은 URL"
+      }
+    },
+    "create-card": {
+      "name": "create-card",
+      "description": "목록에 새 카드를 생성합니다.",
+      "params": {
+        "listId": "카드를 생성할 목록의 ID",
+        "name": "카드의 이름/제목",
+        "desc": "카드의 설명 (선택 사항)",
+        "pos": "카드의 위치: top, bottom 또는 양수 (선택 사항)",
+        "due": "ISO 8601 형식의 마감일 (선택 사항)",
+        "labels": "쉼표로 구분된 레이블 ID 목록 (선택 사항)"
+      }
+    },
+    "update-card": {
+      "name": "update-card",
+      "description": "카드를 업데이트합니다 (다른 목록으로 이동, 이름, 설명 변경 등).",
+      "params": {
+        "cardId": "업데이트할 카드의 ID",
+        "name": "카드의 새 이름 (선택 사항)",
+        "desc": "카드의 새 설명 (선택 사항)",
+        "idList": "카드를 이동할 목록의 ID (선택 사항)",
+        "due": "ISO 8601 형식의 새 마감일 (선택 사항)",
+        "closed": "카드를 아카이브할지 여부 (선택 사항)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "카드에 댓글을 추가합니다.",
+      "params": {
+        "cardId": "카드의 ID",
+        "text": "댓글 텍스트"
+      }
+    },
+    "get-card-actions": {
+      "name": "get-card-actions",
+      "description": "카드의 활동/작업 이력을 가져옵니다.",
+      "params": {
+        "cardId": "카드의 ID",
+        "filter": "작업 필터: all, commentCard, updateCard, createCard 등"
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "보드의 모든 레이블을 나열합니다.",
+      "params": {
+        "boardId": "보드의 ID"
+      }
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "보드에 레이블을 생성합니다.",
+      "params": {
+        "boardId": "보드의 ID",
+        "name": "레이블 이름",
+        "color": "레이블 색상: yellow, purple, blue, red, green, orange, black, sky, pink, lime"
+      }
+    },
+    "add-label-to-card": {
+      "name": "add-label-to-card",
+      "description": "카드에 레이블을 추가합니다.",
+      "params": {
+        "cardId": "카드의 ID",
+        "labelId": "추가할 레이블의 ID"
+      }
+    },
+    "remove-label-from-card": {
+      "name": "remove-label-from-card",
+      "description": "카드에서 레이블을 제거합니다.",
+      "params": {
+        "cardId": "카드의 ID",
+        "labelId": "제거할 레이블의 ID"
+      }
+    },
+    "search": {
+      "name": "search",
+      "description": "모든 보드에서 카드를 검색합니다.",
+      "params": {
+        "query": "검색 쿼리",
+        "modelTypes": "쉼표로 구분된 목록: cards, boards, members (기본값: cards)",
+        "partial": "부분 단어 일치 여부 (기본값: false)"
+      }
+    }
+  },
+  "name": "Trello",
+  "description": "Trello 프로젝트 관리 - 보드, 목록, 카드, 레이블, 구성원",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 보드, 목록 및 카드를 관리하고, 댓글 및 레이블을 추가하며, Trello 작업 공간에서 검색합니다."
+    }
+  ]
+}

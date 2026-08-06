@@ -1,0 +1,88 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.guide",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the platform guide content is loaded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-guide-topics",
+      "description": "Index of the Teros platform guide (sections + one-line summaries). Teros UI, windows and exact steps are NOT in your training data — answering how-to questions about Teros from memory is usually wrong. Whenever the user asks how to do anything in Teros (create an agent, connect an app, set up a board, providers, files…), call this FIRST, then get-guide-section, and answer from the guide. Returns {topics:[{id,title,summary}], count}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "search-guide",
+      "description": "Search the Teros platform guide by free-text query and get the most relevant section(s) with a snippet — the fastest way to answer how-to questions about Teros. Teros specifics are NOT in your training data; search here instead of guessing. Returns {query, results:[{id,title,summary,score,snippet}], count}. Use get-guide-section for a result's full body.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Free-text query, e.g. \"how do I create an agent\" or \"connect gmail\"."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results to return (default 5, max 13)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get-guide-section",
+      "description": "Get one Teros platform-guide section by topic id (from list-guide-topics). Use this to answer how-to questions about Teros instead of guessing — Teros specifics are not in your training data. Returns {id,title,summary,body(markdown),related}. Read the body and walk the user through the real steps in their own language; do not paste it verbatim.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "Topic id to fetch. Must be one of the ids returned by `list-guide-topics`.",
+            "enum": [
+              "overview",
+              "getting-started",
+              "interface",
+              "chat-and-voice",
+              "agents",
+              "apps-and-providers",
+              "boards-and-autorun",
+              "workspaces",
+              "files",
+              "skills",
+              "reminders",
+              "profile",
+              "roles-and-troubleshooting"
+            ]
+          }
+        },
+        "required": [
+          "topic"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    }
+  ]
+}

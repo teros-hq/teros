@@ -6,6 +6,12 @@
 
 export { type User, useAuthStore } from './authStore';
 export {
+  type FloatingWindow,
+  type OpenWindowMode,
+  type OpenWindowOptions,
+  useWorkspaceStore,
+} from './workspaceStore';
+export {
   type Board,
   type BoardColumn,
   type Project,
@@ -16,6 +22,7 @@ export {
 } from './boardStore';
 export { type Channel, type Message, useChatStore } from './chatStore';
 export { useConnectionStore } from './connectionStore';
+export { type PendingAudio, useAudioStore, getPendingAudio } from './audioStore';
 
 export {
   type ContainerNode,
@@ -26,3 +33,10 @@ export {
   type TilingWindow,
   useTilingStore,
 } from './tilingStore';
+export {
+  type FeatureFlagsCache,
+  type ResolvedFlag,
+  getFlagDefault,
+  getResolvedFlag,
+  useFeatureFlagsStore,
+} from './featureFlagsStore';

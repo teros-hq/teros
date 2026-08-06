@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const replyConversation: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Reply to an Intercom conversation as an admin. Can send a public reply to the customer or add a private internal note.',
   parameters: {

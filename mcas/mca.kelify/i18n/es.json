@@ -1,0 +1,31 @@
+{
+  "tools": {
+    "kelify_create_conversation": {
+      "name": "kelify_create_conversation",
+      "description": "Crea una nueva sesión de conversación para búsqueda de propiedades. Cada conversación mantiene el contexto entre múltiples mensajes, permitiendo preguntas de seguimiento naturales."
+    },
+    "kelify_send_message": {
+      "name": "kelify_send_message",
+      "description": "Envía un mensaje de usuario a una conversación y recibe una respuesta de la IA con resultados de búsqueda de propiedades. Puede usar modo streaming o no streaming.",
+      "params": {
+        "conversation_id": "El UUID de la conversación a la que enviar el mensaje",
+        "message": "El mensaje del usuario para el asistente de IA de búsqueda de propiedades",
+        "stream": "Indica si se transmite la respuesta en streaming. El valor por defecto es true."
+      }
+    },
+    "kelify_get_conversation": {
+      "name": "kelify_get_conversation",
+      "description": "Recupera el historial completo de la conversación, incluyendo todos los mensajes, respuestas de la IA, resultados de búsqueda y estadísticas de uso.",
+      "params": {
+        "conversation_id": "El UUID de la conversación a recuperar"
+      }
+    }
+  },
+  "name": "Kelify AI Búsqueda de Propiedades",
+  "description": "API de búsqueda de propiedades conversacional potenciada por IA para anuncios inmobiliarios",
+  "changelog": [
+    {
+      "notes": "Versión inicial — busca anuncios inmobiliarios a través de conversaciones de IA, con preguntas de seguimiento e historial completo de chat"
+    }
+  ]
+}

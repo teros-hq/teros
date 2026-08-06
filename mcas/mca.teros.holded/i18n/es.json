@@ -1,0 +1,41 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta interna de verificación de estado. Comprueba la clave API de Holded y la conectividad realizando una petición ligera al endpoint de contactos."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Lista contactos del módulo de facturación de Holded. Devuelve una lista curada de contactos con id, nombre, email, teléfono y otros campos clave. Soporta paginación mediante page y limit.",
+      "params": {
+        "page": "Número de página para la paginación (por defecto: 1)",
+        "limit": "Número de resultados por página (por defecto: 25, máximo: 100)",
+        "type": "Filtrar por tipo de contacto (ej. cliente, proveedor, lead)"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Obtiene un único contacto de Holded por su ID. Devuelve los detalles completos del contacto incluyendo nombre, email, teléfono, dirección, número de CIF/NIF y campos personalizados.",
+      "params": {
+        "id": "El ID del contacto en Holded"
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "Lista facturas del módulo de facturación de Holded. Devuelve una lista curada de facturas con id, número, fecha, contacto, total, estado e información de pago. Soporta paginación.",
+      "params": {
+        "page": "Número de página para la paginación (por defecto: 1)",
+        "limit": "Número de resultados por página (por defecto: 25, máximo: 100)",
+        "status": "Filtrar por estado de la factura (ej. borrador, enviada, pagada)",
+        "contactId": "Filtrar facturas por ID de contacto"
+      }
+    }
+  },
+  "name": "Holded",
+  "description": "Integración de Holded para demo - gestiona contactos y facturas mediante la API REST v1 de Holded con autenticación por clave API",
+  "changelog": [
+    {
+      "notes": "Versión inicial — explora y busca tus clientes, proveedores y leads de Holded, y revisa facturas con estados y totales"
+    }
+  ]
+}

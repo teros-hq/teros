@@ -5,7 +5,8 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
+import type { McaToolAnnotations, ToolTestStatus } from '@teros/shared'
 
 // ============================================================================
 // Shared types
@@ -21,11 +22,14 @@ export interface AppData {
   color?: string
   category: string
   status: string
+  context?: string
 }
 
 export interface AppAuthInfo {
   status: 'ready' | 'needs_user_auth' | 'needs_config' | 'error'
-  authType: 'none' | 'oauth' | 'apikey'
+  // Runtime values from the backend: OAuth-family MCAs report `oauth2` (and
+  // GitHub uses `github-app`); only true API-key MCAs report `apikey`.
+  authType: 'none' | 'oauth' | 'oauth2' | 'apikey' | 'github-app'
   authUrl?: string
   message?: string
 }
@@ -39,6 +43,11 @@ export interface McaData {
   category: string
   tools: string[]
   status?: string
+  // Catalog presentation (TER-524) — light fields the card uses.
+  tagline?: string
+  image?: string
+  verified?: boolean
+  version?: string
   availability: {
     enabled: boolean
     multi: boolean
@@ -51,6 +60,56 @@ export interface McaData {
   auth?: unknown
 }
 
+/**
+ * Rich catalog detail for the pre-install detail view (app.get-catalog-mca).
+ * Nullable fields mirror the backend, which returns `null` when the manifest
+ * omits an optional field — the renderer hides the section when absent.
+ */
+export interface CatalogMcaDetail {
+  mcaId: string
+  name: string
+  description: string
+  tagline: string | null
+  version: string | null
+  author: { name: string; email?: string; url?: string } | null
+  homepage: string | null
+  category: string
+  icon: string | null
+  image: string | null
+  color: string | null
+  backgroundImage: string | null
+  screenshots: string[]
+  changelog: Array<{ version: string; date: string; notes: string }>
+  keywords: string[]
+  verified: boolean
+  tools: string[]
+  toolsDetailed: Array<{ name: string; description: string; group?: string }>
+  /** Brand colours extracted from the icon (TER-538) for the hero gradient. */
+  accentColors: string[]
+
+  /** MCA-level translations keyed by locale code (en, es, ko, …) */
+  i18n?: Record<string, {
+    name?: string
+    description?: string
+    tagline?: string
+    changelog?: Array<{ notes: string }>
+    tools?: Record<string, {
+      name?: string
+      description?: string
+      params?: Record<string, string>
+    }>
+  }>
+  permissions: Array<{ type: string; label: string; detail: string }>
+  authType: string
+  availability: {
+    enabled: boolean
+    multi: boolean
+    system: boolean
+    hidden: boolean
+    role: string
+  }
+}
+
 export interface ToolPermissionSummary {
   allow: number
   ask: number
@@ -58,11 +117,32 @@ export interface ToolPermissionSummary {
   total: number
 }
 
+/** A workspace agent and whether it currently has access to a given app. */
+export interface AgentAccess {
+  agentId: string
+  name: string
+  role?: string
+  avatarUrl?: string
+  hasAccess: boolean
+}
+
 export type ToolPermission = 'allow' | 'ask' | 'forbid'
 
 export interface AppToolData {
   name: string
   permission: ToolPermission
+  /**
+   * Informational manifest flag (`readOnlyHint`): the tool only reads state.
+   * Drives the "solo lectura" badge. The permission field alone decides
+   * whether it asks — permissions are seeded explicitly at install time.
+   */
+  readOnly?: boolean
+  /**
+   * Confirmation-locked by the manifest (`annotations.alwaysAsk`): the runtime
+   * clamps this tool to `ask` regardless of configuration. Drives the
+   * "siempre pregunta" badge and blocks selecting `allow` in the toggle.
+   */
+  alwaysAsk?: boolean
 }
 
 export interface AppToolsResponse {
@@ -100,11 +180,70 @@ export interface ToolResult {
 }
 
 // ============================================================================
+// MCA live-test / health wire shapes (Phase 8)
+// ============================================================================
+
+/** Result of an admin live tool run (app.test-mca-tool). */
+export interface McaTestResult {
+  mcaId: string
+  tool: string
+  appId: string
+  success: boolean
+  result: unknown
+  /**
+   * The tool's returned error text when `success` is false — the message
+   * previously trapped inside `result` (the backend forwards a failed tool's
+   * error via `result.isError`, never throwing; D-06). Undefined on success.
+   */
+  error?: string
+}
+
+/** Whether an MCA's tools can be run right now (app.get-mca-resolvability). */
+export interface McaResolvability {
+  runnable: boolean
+  reason?: string
+  appId?: string
+}
+
+/** A single tool's static input schema + whether it needs input (app.get-mca-tool-schemas). */
+export interface McaToolSchema {
+  tool: string
+  inputSchema: {
+    type: 'object'
+    properties: Record<string, unknown>
+    required?: string[]
+  }
+  requiresInput: boolean
+  /**
+   * The manifest-declared MCP hints (readOnlyHint / destructiveHint / irreversible),
+   * when present. Classifies the tool for the read-only-first whole-MCA run order.
+   * Absent when the manifest declares no annotations — the tool then classifies as
+   * destructive (annotations are explicit-only; the name heuristic was removed).
+   */
+  annotations?: McaToolAnnotations
+}
+
+/** A persisted tool-health record (app.get-mca-health). */
+export interface McaHealthRecord {
+  mcaId: string
+  tool: string
+  status: ToolTestStatus
+  /** ISO timestamp; omitted by the read for a malformed row missing its Date. */
+  testedAt?: string
+  error?: string
+}
+
+/** Outcome of a health batch write (app.record-mca-health). */
+export interface McaHealthWriteResult {
+  recorded: number
+}
+
+// ============================================================================
 // AppApi
 // ============================================================================
 
 export class AppApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   // --------------------------------------------------------------------------
   // App lifecycle
@@ -158,6 +297,11 @@ export class AppApi {
     return this.transport.request('app.revoke-access', { agentId, appId })
   }
 
+  /** List the workspace's agents and whether each has access to this app */
+  listAgentAccess(appId: string): Promise<{ appId: string; agents: AgentAccess[] }> {
+    return this.transport.request('app.list-agent-access', { appId })
+  }
+
   // --------------------------------------------------------------------------
   // Auth
   // --------------------------------------------------------------------------
@@ -189,6 +333,11 @@ export class AppApi {
   /** List available MCAs in the catalog (filtered by user role) */
   listCatalog(): Promise<{ catalog: McaData[] }> {
     return this.transport.request('app.list-catalog', {})
+  }
+
+  /** Full catalog detail for a single MCA (pre-install detail view) */
+  getCatalogMca(mcaId: string): Promise<{ mca: CatalogMcaDetail }> {
+    return this.transport.request('app.get-catalog-mca', { mcaId })
   }
 
   /** List ALL MCAs with full data (admin) */
@@ -229,6 +378,71 @@ export class AppApi {
       appId,
       ...(requestId ? { requestId } : {}),
     })
+  }
+
+  // --------------------------------------------------------------------------
+  // MCA live-test / health
+  // --------------------------------------------------------------------------
+
+  /**
+   * Run one MCA tool live against the admin's resolved app (admin-gated).
+   *
+   * Resolves `success: false` on a real tool failure (map to a fail row, D-06).
+   * Only throws typed errors — FORBIDDEN / NOT_INSTALLED / validation — which
+   * consumers map to the non-runnable / error path (D-13).
+   */
+  testMcaTool(
+    mcaId: string,
+    tool: string,
+    input?: Record<string, unknown>,
+  ): Promise<McaTestResult> {
+    // A live test runs the SAME backend path as a normal tool call
+    // (mcaManager.executeTool), which cold-starts the MCA container when it is
+    // on standby. The backend's container health-wait budget is up to 90s
+    // (MCA_HEALTH_TIMEOUT_MS; a source-mounted MCA cold start does a shadow
+    // node_modules copy + npm install + tsx compile before its HTTP server
+    // binds), plus the SDK's WS-connect wait and real tool execution on top. The
+    // default 10s WS request timeout — and even the prior 45s — sit BELOW that
+    // budget, so a cold test threw "WsTransport: request timeout —
+    // app.test-mca-tool" while the backend was still legitimately spawning.
+    // Override with 120s so the client deadline comfortably exceeds the backend
+    // spawn budget (the backend still enforces its own timeout underneath).
+    return this.transport.request(
+      'app.test-mca-tool',
+      {
+        mcaId,
+        tool,
+        ...(input ? { input } : {}),
+      },
+      { timeout: 120_000 },
+    )
+  }
+
+  /** Report whether an MCA's tools can be run right now (D-12). */
+  getMcaResolvability(mcaId: string): Promise<McaResolvability> {
+    return this.transport.request('app.get-mca-resolvability', { mcaId })
+  }
+
+  /** List the static input schemas for an MCA's tools (D-03/D-04). */
+  getMcaToolSchemas(mcaId: string): Promise<{ tools: McaToolSchema[] }> {
+    return this.transport.request('app.get-mca-tool-schemas', { mcaId })
+  }
+
+  /** Read all persisted MCA tool-health records (D-07/D-08). */
+  getMcaHealth(): Promise<{ health: McaHealthRecord[] }> {
+    return this.transport.request('app.get-mca-health', {})
+  }
+
+  /**
+   * Persist a batch of tool-health results (D-07).
+   *
+   * Batch is 1 element for a per-tool Retest, N for a whole-MCA Test. Payload
+   * carries only status + short error — never raw tool input/output (T-08-01).
+   */
+  recordMcaHealth(
+    results: Array<{ mcaId: string; tool: string; status: ToolTestStatus; error?: string }>,
+  ): Promise<McaHealthWriteResult> {
+    return this.transport.request('app.record-mca-health', { results })
   }
 
   // --------------------------------------------------------------------------
@@ -274,5 +488,17 @@ export class AppApi {
     granted: boolean,
   ): Promise<{ requestId: string; granted: boolean }> {
     return this.transport.request('app.tool-permission-response', { requestId, granted })
+  }
+
+  /**
+   * Respond to an inline form (request-user-input tool). On `accepted: false`
+   * the form stays pending server-side and `errors` carries the validation
+   * messages for the user to correct.
+   */
+  formResponse(
+    formRequestId: string,
+    payload: { values?: Record<string, string | number | boolean>; notes?: string; dismissed?: boolean },
+  ): Promise<{ formRequestId: string; accepted: boolean; errors?: string[]; idempotent?: boolean }> {
+    return this.transport.request('app.form-response', { formRequestId, ...payload })
   }
 }

@@ -22,7 +22,7 @@
           },
           "query": {
             "type": "string",
-            "description": "Optional: Search query to filter files"
+            "description": "Optional: filename match (Drive `name contains`: prefix/token, e.g. 'Hello' matches 'HelloWorld' but 'World' does not). NOT a raw Drive query — for owner/date/fullText filters use `driveQuery`."
           },
           "pageSize": {
             "type": "number",
@@ -32,8 +32,15 @@
           "mimeType": {
             "type": "string",
             "description": "Optional: Filter by MIME type (e.g., 'application/pdf', 'application/vnd.google-apps.folder')"
+          },
+          "driveQuery": {
+            "type": "string",
+            "description": "Optional advanced: a raw Google Drive API v3 query clause, AND-ed with the other filters. Use for filters `query` can't express, e.g. \"not 'me' in owners\", \"modifiedTime > '2024-01-01T00:00:00'\", \"fullText contains 'budget'\". Inside a literal, escape a single quote as \\' (Drive syntax, NOT '' ) — for a plain filename match prefer the `query` param, which escapes for you."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -50,6 +57,9 @@
         "required": [
           "fileId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -70,11 +80,14 @@
         "required": [
           "fileId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "upload-file",
-      "description": "Upload a local file to Google Drive.",
+      "description": "Upload a local file to Google Drive. By default the file is stored as-is with its real type. Pass convertTo to import it as a native Google file (e.g. an HTML/Word file → editable Google Doc).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -89,11 +102,60 @@
           "fileName": {
             "type": "string",
             "description": "Optional: Custom name for the file (default: original filename)"
+          },
+          "convertTo": {
+            "type": "string",
+            "enum": [
+              "document",
+              "spreadsheet",
+              "presentation"
+            ],
+            "description": "Optional: convert the upload into a native Google file. \"document\" (e.g. from HTML/Word/Markdown) → editable Google Doc; \"spreadsheet\" (from CSV/Excel) → Google Sheet; \"presentation\" (from PPTX) → Google Slides. Omit to keep the original format."
           }
         },
         "required": [
           "filePath"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "create-document",
+      "description": "Create a native, editable Google Doc from text content. Pass the body as HTML (default, best formatting), Markdown, or plain text — Drive converts it into a real Google Doc, NOT an .html file. Use this to author documents; use upload-file only for existing local files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title (file name) of the new Google Doc"
+          },
+          "content": {
+            "type": "string",
+            "description": "The document body. Interpreted according to contentType."
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "html",
+              "markdown",
+              "text"
+            ],
+            "description": "How to interpret content: \"html\" (default, richest formatting), \"markdown\", or \"text\" (plain). Drive converts it to a native Google Doc."
+          },
+          "parentFolderId": {
+            "type": "string",
+            "description": "Optional: ID of the folder to create the doc in (default: root)"
+          }
+        },
+        "required": [
+          "title",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -114,6 +176,9 @@
         "required": [
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -130,6 +195,10 @@
         "required": [
           "fileId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -161,6 +230,9 @@
           "fileId",
           "emailAddress"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -171,7 +243,7 @@
         "properties": {
           "searchTerm": {
             "type": "string",
-            "description": "Search term to find in file names"
+            "description": "Filename match (Drive `name contains`: prefix/token, not substring). For advanced filters (owners, dates, fullText) use the list-files `driveQuery` parameter."
           },
           "mimeType": {
             "type": "string",
@@ -185,6 +257,9 @@
         "required": [
           "searchTerm"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -206,6 +281,9 @@
           "fileId",
           "newParentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -230,11 +308,14 @@
         "required": [
           "fileId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "get-file-content",
-      "description": "Get the text content of a file (works for Google Docs, text files, etc.)",
+      "description": "Get the plain-text content of a Google Doc or text file. Does NOT extract text from binary files (PDF, Word, etc.) — for those, download the file and use the file-processor \"file-to-markdown\" tool.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -250,300 +331,9 @@
         "required": [
           "fileId"
         ]
-      }
-    },
-    {
-      "name": "read-spreadsheet",
-      "description": "Read data from a Google Sheet.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "spreadsheetId": {
-            "type": "string",
-            "description": "The ID of the spreadsheet"
-          },
-          "range": {
-            "type": "string",
-            "description": "The range to read (e.g., 'Sheet1!A1:D10', default: first sheet)",
-            "default": "A1:Z1000"
-          }
-        },
-        "required": [
-          "spreadsheetId"
-        ]
-      }
-    },
-    {
-      "name": "read-sheet-range",
-      "description": "Read a specific range from a Google Sheet. More efficient than reading the entire sheet.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileId": {
-            "type": "string",
-            "description": "ID of the Google Sheet file"
-          },
-          "range": {
-            "type": "string",
-            "description": "Range to read in A1 notation (e.g., 'Sheet1!A1:D10', 'Sheet2!A:A')"
-          },
-          "valueRenderOption": {
-            "type": "string",
-            "enum": [
-              "FORMATTED_VALUE",
-              "UNFORMATTED_VALUE",
-              "FORMULA"
-            ],
-            "description": "How to render values: FORMATTED_VALUE (default), UNFORMATTED_VALUE, or FORMULA"
-          }
-        },
-        "required": [
-          "fileId",
-          "range"
-        ]
-      }
-    },
-    {
-      "name": "list-sheet-tabs",
-      "description": "List all sheets (tabs) in a Google Spreadsheet with their metadata.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileId": {
-            "type": "string",
-            "description": "ID of the Google Sheet file"
-          }
-        },
-        "required": [
-          "fileId"
-        ]
-      }
-    },
-    {
-      "name": "export-sheet",
-      "description": "Export a Google Sheet to a specific format (CSV, XLSX, PDF, ODS, TSV). Downloads the exported file to local filesystem.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileId": {
-            "type": "string",
-            "description": "ID of the Google Sheet file to export"
-          },
-          "format": {
-            "type": "string",
-            "enum": [
-              "csv",
-              "xlsx",
-              "pdf",
-              "ods",
-              "tsv"
-            ],
-            "description": "Export format: csv, xlsx, pdf, ods, tsv (default: csv)"
-          },
-          "outputPath": {
-            "type": "string",
-            "description": "Optional: Local path where to save the exported file. Defaults to ~/Downloads/"
-          },
-          "sheetName": {
-            "type": "string",
-            "description": "Optional: Name of specific sheet to export (for CSV/TSV only). If not provided, exports first sheet."
-          }
-        },
-        "required": [
-          "fileId"
-        ]
-      }
-    },
-    {
-      "name": "read-presentation",
-      "description": "Read slide content from a Google Slides presentation.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "presentationId": {
-            "type": "string",
-            "description": "The ID of the presentation"
-          }
-        },
-        "required": [
-          "presentationId"
-        ]
-      }
-    },
-    {
-      "name": "read-slide",
-      "description": "Read a specific slide from a Google Slides presentation.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fileId": {
-            "type": "string",
-            "description": "ID of the Google Slides file"
-          },
-          "slideIndex": {
-            "type": "number",
-            "description": "0-based index of the slide to read (0 = first slide)"
-          }
-        },
-        "required": [
-          "fileId",
-          "slideIndex"
-        ]
-      }
-    },
-    {
-      "name": "read-document",
-      "description": "Read content from a Google Docs document.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "description": "The ID of the document"
-          }
-        },
-        "required": [
-          "documentId"
-        ]
-      }
-    },
-    {
-      "name": "update-document",
-      "description": "Replace all occurrences of a text string in a Google Doc. Useful for updating placeholders or specific content.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "description": "The ID of the document"
-          },
-          "findText": {
-            "type": "string",
-            "description": "Text to find and replace"
-          },
-          "replaceText": {
-            "type": "string",
-            "description": "Text to replace with"
-          },
-          "matchCase": {
-            "type": "boolean",
-            "description": "Whether to match case (default: true)"
-          }
-        },
-        "required": [
-          "documentId",
-          "findText",
-          "replaceText"
-        ]
-      }
-    },
-    {
-      "name": "insert-text",
-      "description": "Insert text at a specific position in a Google Doc. Index 1 is the start of the document.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "description": "The ID of the document"
-          },
-          "text": {
-            "type": "string",
-            "description": "Text to insert"
-          },
-          "index": {
-            "type": "number",
-            "description": "Position to insert at (1 = start of document). Use read-document to find positions."
-          }
-        },
-        "required": [
-          "documentId",
-          "text",
-          "index"
-        ]
-      }
-    },
-    {
-      "name": "append-text",
-      "description": "Append text to the end of a Google Doc.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "description": "The ID of the document"
-          },
-          "text": {
-            "type": "string",
-            "description": "Text to append"
-          }
-        },
-        "required": [
-          "documentId",
-          "text"
-        ]
-      }
-    },
-    {
-      "name": "batch-update-document",
-      "description": "Perform multiple operations on a Google Doc in a single atomic request. Supports insert, delete, and replace operations.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string",
-            "description": "The ID of the document"
-          },
-          "operations": {
-            "type": "array",
-            "description": "Array of operations to perform",
-            "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string",
-                  "enum": [
-                    "insert",
-                    "delete",
-                    "replace"
-                  ],
-                  "description": "Operation type"
-                },
-                "text": {
-                  "type": "string",
-                  "description": "Text to insert (for insert/replace)"
-                },
-                "index": {
-                  "type": "number",
-                  "description": "Position index (for insert/delete)"
-                },
-                "startIndex": {
-                  "type": "number",
-                  "description": "Start index for delete range"
-                },
-                "endIndex": {
-                  "type": "number",
-                  "description": "End index for delete range"
-                },
-                "findText": {
-                  "type": "string",
-                  "description": "Text to find (for replace)"
-                },
-                "replaceText": {
-                  "type": "string",
-                  "description": "Text to replace with (for replace)"
-                }
-              },
-              "required": [
-                "type"
-              ]
-            }
-          }
-        },
-        "required": [
-          "documentId",
-          "operations"
-        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -568,6 +358,9 @@
         "required": [
           "fileId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -589,6 +382,9 @@
           "fileId",
           "commentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -610,6 +406,9 @@
           "fileId",
           "content"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -636,6 +435,9 @@
           "commentId",
           "content"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -657,6 +459,10 @@
           "fileId",
           "commentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -691,6 +497,9 @@
           "commentId",
           "content"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -716,6 +525,9 @@
           "fileId",
           "commentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

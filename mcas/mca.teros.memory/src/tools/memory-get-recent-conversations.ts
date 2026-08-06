@@ -5,6 +5,7 @@ import { getRecentConversations } from '@teros/shared/memory/conversation';
 
 export const memoryGetRecentConversations: HttpToolConfig = {
   description: 'Get most recent conversations',
+  annotations: { version: '2.0.0', stability: 'stable', readOnlyHint: true },
   parameters: {
     type: 'object',
     properties: {

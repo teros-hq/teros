@@ -1,0 +1,21 @@
+{
+  "tools": {
+    "bash": {
+      "name": "bash",
+      "description": "Ejecuta un comando bash con soporte de timeout y directorio de trabajo. Devuelve stdout, stderr y código de salida.",
+      "params": {
+        "command": "El comando bash a ejecutar",
+        "description": "Una descripción de 5-10 palabras de lo que hace este comando",
+        "timeout": "Timeout en milisegundos (por defecto: 120000 / 2 minutos, máximo: 600000 / 10 minutos)",
+        "cwd": "Directorio de trabajo donde ejecutar el comando (opcional)"
+      }
+    }
+  },
+  "name": "Bash",
+  "description": "Ejecuta comandos bash en el sistema. Proporciona acceso shell para automatización y tareas del sistema.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — ejecuta comandos shell en el sistema, con timeouts y un directorio de trabajo seleccionado, y captura la salida"
+    }
+  ]
+}

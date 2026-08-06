@@ -3,6 +3,7 @@ import { createGraphClient } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const createFolder: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new mail folder.',
   parameters: {
     type: 'object',

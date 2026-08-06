@@ -1,0 +1,57 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave API y la conectividad con ElevenLabs."
+    },
+    "text-to-speech": {
+      "name": "text-to-speech",
+      "description": "Genera voz a partir de texto con ElevenLabs. Devuelve la ruta del archivo de audio. Usa la voz por defecto (no especifiques voiceId) salvo que el usuario solicite explícitamente una voz diferente.",
+      "params": {
+        "text": "El texto a convertir en voz",
+        "voiceId": "ID de la voz a usar. Usa list_voices para ver las voces disponibles. Por defecto: Marianne Muller (español)",
+        "modelId": "Modelo a usar: eleven_monolingual_v1, eleven_multilingual_v1, eleven_multilingual_v2, eleven_turbo_v2, eleven_turbo_v2_5, eleven_flash_v2_5 (por defecto)",
+        "stability": "Estabilidad de la voz (0.0 a 1.0, por defecto: 0.5). Más alto = más estable/consistente",
+        "similarityBoost": "Refuerzo de similitud (0.0 a 1.0, por defecto: 0.75). Más alto = más cercano a la voz original",
+        "style": "Exageración de estilo (0.0 a 1.0, por defecto: 0). Más alto = más expresivo",
+        "speakerBoost": "Activa el refuerzo de altavoz para mejor calidad (por defecto: true)",
+        "outputFormat": "Formato de salida: mp3_44100_128, mp3_44100_192, pcm_16000, pcm_22050, pcm_24000, pcm_44100",
+        "outputPath": "Ruta de salida personalizada para el archivo de audio (opcional). Por defecto: /workspace/tts-{timestamp}.mp3"
+      }
+    },
+    "list-voices": {
+      "name": "list-voices",
+      "description": "Lista las voces disponibles en la cuenta de ElevenLabs. Permite filtrar por nombre, categoría y limitar el número de resultados.",
+      "params": {
+        "search": "Término de búsqueda para filtrar voces por nombre (sin distinción de mayúsculas, opcional)",
+        "limit": "Número máximo de voces a devolver (opcional, por defecto: todas)",
+        "category": "Filtra por categoría de voz: premade, cloned, generated, professional (opcional)"
+      }
+    },
+    "get-voice": {
+      "name": "get-voice",
+      "description": "Obtiene información detallada sobre una voz específica, incluyendo ajustes y muestras.",
+      "params": {
+        "voiceId": "El ID de la voz sobre la que obtener información"
+      }
+    },
+    "generate-conversation": {
+      "name": "generate-conversation",
+      "description": "Genera una conversación con varios interlocutores a partir de un script YAML. Lee un archivo YAML con voces y diálogos, genera audio para cada línea y los combina en un único archivo de audio. Requiere ffmpeg instalado.",
+      "params": {
+        "scriptPath": "Ruta al archivo de script YAML (absoluta o relativa al directorio actual)"
+      }
+    },
+    "get-subscription": {
+      "name": "get-subscription",
+      "description": "Obtiene información sobre la suscripción actual de ElevenLabs, incluyendo uso de caracteres y límites."
+    }
+  },
+  "name": "ElevenLabs",
+  "description": "ElevenLabs Text-to-Speech — genera voz natural a partir de texto usando voces de IA",
+  "changelog": [
+    {
+      "notes": "Versión inicial — convierte texto en voz natural, explora e inspecciona voces de IA, crea conversaciones con varios interlocutores y consulta el uso del plan"
+    }
+  ]
+}

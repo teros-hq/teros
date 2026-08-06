@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const mergePull: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Merge a pull request',
   parameters: {
     type: 'object',

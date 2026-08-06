@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1.7-labs
+# Dockerfile.test
+#
+# Runs the real Teros backend server for testing (sanity/acceptance).
+# Copies the full monorepo so yarn can resolve all workspace package.json files,
+# then runs TypeScript directly with bun (no build step — faster CI iteration).
+
+FROM oven/bun:1.3.4-alpine
+
+RUN apk add --no-cache curl nodejs npm python3 make g++ && npm install -g yarn
+
+WORKDIR /app
+
+# Layer caching (TER-548): copiar SOLO los manifests del workspace → yarn install → código.
+# Así la capa (cara, ~12 min) del yarn install solo se invalida cuando cambian las deps, no en
+# cada cambio de código. `COPY --parents` (Dockerfile 1.7-labs) preserva la estructura de dirs
+# de los globs. yarn workspaces necesita TODOS los package.json (packages/* + mcas/*) para resolver.
+COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json ./
+
+# --ignore-engines: bun's bundled Node may be older than what some RN packages
+# declare as minimum. The backend never runs RN code, so this is safe.
+# yarn cache clean: el cache de DESCARGAS (~4.8GB) no hace falta en la imagen final — se
+# borra en el mismo layer → la imagen baja ~11GB→~6GB y el layer cacheable cabe en gha. TER-548.
+RUN --mount=type=secret,id=github_token \
+    GITHUB_TOKEN="$(cat /run/secrets/github_token 2>/dev/null || true)" \
+    yarn install --frozen-lockfile --ignore-engines --network-timeout 600000 && yarn cache clean
+
+# El código va DESPUÉS del install → un cambio de código no invalida la capa cacheada.
+COPY . .
+
+WORKDIR /app/packages/backend
+
+# Create minimal secrets required for the backend to start in CI.
+# These are test-only dummy values — no real credentials.
+RUN mkdir -p /app/.secrets/system && \
+    echo '{"masterKey":"0000000000000000000000000000000000000000000000000000000000000000"}' \
+      > /app/.secrets/system/encryption.json
+
+EXPOSE 3099
+
+CMD ["bun", "run", "src/index.ts"]

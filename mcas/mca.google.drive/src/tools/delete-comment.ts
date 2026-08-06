@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const deleteComment: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a comment.',
   parameters: {
     type: 'object',

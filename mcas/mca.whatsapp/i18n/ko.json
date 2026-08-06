@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "내부 건강 검사 도구. WAHA 연결을 확인하고 활성 세션을 나열합니다."
+    },
+    "session-status": {
+      "name": "session-status",
+      "description": "WhatsApp 세션의 상태를 가져옵니다. 상태는: WORKING, SCAN_QR_CODE, STARTING, STOPPED, FAILED일 수 있습니다. SCAN_QR_CODE는 세션이 연결 대기 중임을 의미합니다 — request-pairing-code를 사용하세요 (인증은 항상 페어링 코드로 수행되며, QR은 사용되지 않습니다).",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "start-session": {
+      "name": "start-session",
+      "description": "WhatsApp 세션을 시작합니다. 존재하지 않으면 생성합니다. 세션이 FAILED 상태인 경우, 자동으로 중지되고 다시 시작됩니다. 시작 후, request-pairing-code를 사용하여 장치를 연결하세요 — 인증은 항상 페어링 코드로 수행됩니다 (QR은 지원되지 않습니다).",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "stop-session": {
+      "name": "stop-session",
+      "description": "WhatsApp 세션을 삭제하지 않고 중지합니다. 세션은 나중에 start-session으로 다시 시작할 수 있습니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "request-pairing-code": {
+      "name": "request-pairing-code",
+      "description": "WhatsApp 세션을 연결하기 위한 숫자 페어링 코드를 요청합니다. 이는 Teros에서 세션을 인증/연결하는 유일한 지원 방법입니다. 세션은 SCAN_QR_CODE 상태여야 합니다 — WAHA의 \"연결 대기 중\" 상태 (그렇지 않으면 자동으로 중지되고 다시 시작됩니다). WhatsApp → 연결된 장치 → 전화번호로 연결하기 위해 입력할 8자리 코드 \"XXXX-YYYY\"를 반환합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "phoneNumber": "국가 코드가 포함된 전화번호, + 또는 공백 없이 (예: \"34612345678\")"
+      }
+    },
+    "send-text": {
+      "name": "send-text",
+      "description": "전화번호 또는 그룹에 WhatsApp 텍스트 메시지를 보냅니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "수신자 형식: 34612345678@c.us (개인) 또는 120363XXXXXX@g.us (그룹)",
+        "text": "보낼 메시지 텍스트"
+      }
+    },
+    "send-image": {
+      "name": "send-image",
+      "description": "공식 URL에서 WhatsApp 채팅으로 이미지를 보냅니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "수신자 채팅 ID (예: 34612345678@c.us)",
+        "url": "보낼 이미지의 공용 HTTPS URL",
+        "caption": "이미지에 대한 선택적 캡션",
+        "mimetype": "이미지의 선택적 MIME 유형 (예: \"image/jpeg\", \"image/png\")",
+        "filename": "이미지에 대한 선택적 파일 이름"
+      }
+    },
+    "send-document": {
+      "name": "send-document",
+      "description": "공식 URL 또는 로컬 /workspace/ 경로에서 WhatsApp 채팅으로 문서 또는 파일 (PDF, DOCX, XLSX 등)을 보냅니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "수신자 채팅 ID (예: 개인의 경우 34612345678@c.us, 그룹의 경우 120363XXXXXX@g.us)",
+        "url": "보낼 파일의 공용 HTTPS URL 또는 /workspace/로 시작하는 로컬 경로 (예: \"/workspace/report.pdf\")",
+        "filename": "수신자에게 표시될 파일 이름 (예: \"report.pdf\")",
+        "mimetype": "파일의 MIME 유형 (예: \"application/pdf\", \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\"). 기본값은 \"application/octet-stream\"입니다.",
+        "caption": "파일 아래에 표시될 선택적 캡션 텍스트"
+      }
+    },
+    "get-messages": {
+      "name": "get-messages",
+      "description": "WhatsApp 채팅에서 최근 메시지를 가져옵니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "채팅 ID (예: 34612345678@c.us)",
+        "limit": "반환할 최대 메시지 수 (기본값: 20, 최대: 100)",
+        "downloadMedia": "미디어 파일 다운로드 (기본값: false)",
+        "offset": "페이지 매김을 위한 건너뛸 메시지 수",
+        "filter.timestamp.lte": "타임스탬프가 이 값 이하인 메시지 필터링 (Unix 타임스탬프)",
+        "filter.timestamp.gte": "타임스탬프가 이 값 이상인 메시지 필터링 (Unix 타임스탬프)",
+        "filter.fromMe": "방향별 메시지 필터링: true = 내가 보낸 메시지, false = 받은 메시지",
+        "sortBy": "정렬할 필드 (예: \"timestamp\")",
+        "sortOrder": "정렬 순서: \"asc\" 또는 \"desc\""
+      }
+    },
+    "get-chats": {
+      "name": "get-chats",
+      "description": "세션 내의 모든 WhatsApp 채팅 (대화)을 나열합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "limit": "반환할 최대 채팅 수 (기본값: 20)",
+        "offset": "페이지 매김을 위한 건너뛸 채팅 수 (기본값: 0)"
+      }
+    },
+    "get-contacts": {
+      "name": "get-contacts",
+      "description": "WhatsApp 세션의 모든 연락처를 가져옵니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "limit": "반환할 최대 연락처 수 (기본값: 50, 최대: 200)",
+        "offset": "페이지 매김을 위한 건너뛸 연락처 수 (기본값: 0)"
+      }
+    },
+    "check-number": {
+      "name": "check-number",
+      "description": "전화번호가 WhatsApp을 사용하는지 확인하고 채팅 ID를 가져옵니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "phone": "국가 코드가 포함된 전화번호 (예: 34612345678)"
+      }
+    },
+    "get-labels": {
+      "name": "get-labels",
+      "description": "WhatsApp 비즈니스 세션에서 사용 가능한 모든 레이블을 나열합니다. 레이블은 채팅을 정리하는 데 사용됩니다. WhatsApp 비즈니스 계정에서만 사용 가능합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "get-chat-labels": {
+      "name": "get-chat-labels",
+      "description": "특정 WhatsApp 채팅에 할당된 모든 레이블을 가져옵니다. id, name, color 및 colorHex가 포함된 레이블 객체 배열을 반환합니다. WhatsApp 비즈니스 계정에서만 사용 가능합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "채팅 ID (예: 개인의 경우 34612345678@c.us, 그룹의 경우 120363XXXXXX@g.us)"
+      }
+    },
+    "put-chat-labels": {
+      "name": "put-chat-labels",
+      "description": "WhatsApp 채팅에 할당된 레이블을 설정 (교체)합니다. 할당할 레이블의 전체 목록을 제공해야 합니다 — 포함되지 않은 레이블은 제거됩니다. 모든 레이블을 제거하려면 빈 배열을 전달하세요. WhatsApp 비즈니스 계정에서만 사용 가능합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "채팅 ID (예: 개인의 경우 34612345678@c.us, 그룹의 경우 120363XXXXXX@g.us)",
+        "labels": "채팅에 할당할 레이블의 전체 목록. 각 항목은 \"id\" 필드를 가져야 합니다 (예: [{ \"id\": \"1\" }, { \"id\": \"2\" }]). 모든 레이블을 제거하려면 빈 배열 []을 전달하세요."
+      }
+    },
+    "search-chats": {
+      "name": "search-chats",
+      "description": "이름이나 전화번호로 WhatsApp 채팅을 검색합니다. 전체 채팅 목록에서 클라이언트 측 필터링을 수행합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "query": "채팅 이름 또는 채팅 ID에서 검색할 텍스트 (대소문자 구분 없음)",
+        "limit": "필터링 전에 가져올 최대 채팅 수 (기본값: 200)"
+      }
+    },
+    "download-media": {
+      "name": "download-media",
+      "description": "WhatsApp 메시지에서 미디어 (이미지, 오디오, 비디오, 문서)를 다운로드합니다. 메시지를 ID로 가져와 미디어 URL을 얻은 다음 파일을 다운로드하여 지정된 출력 경로에 저장합니다. 메시지에 hasMedia: true가 있어야 합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "messageId": "메시지 ID (예: \"true_34612345678@c.us_AAAAAAAAAAAAA\")",
+        "chatId": "메시지를 수신한 채팅 ID (예: \"34612345678@c.us\"). chatId가 알려지지 않은 경우 GOWS/NOWEB에 대해 \"all\"을 사용하세요.",
+        "outputPath": "파일이 저장될 로컬 경로 (예: \"/workspace/archivo.pdf\"). /workspace/는 모든 에이전트가 접근할 수 있는 공유 볼륨입니다."
+      }
+    },
+    "reaction": {
+      "name": "reaction",
+      "description": "WhatsApp 메시지에 반응 (이모지)를 보내거나 제거합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "messageId": "반응할 메시지의 ID",
+        "reaction": "반응할 이모지 (예: \"👍\"). 반응을 제거하려면 빈 문자열 \"\"을 전달하세요."
+      }
+    },
+    "read-messages": {
+      "name": "read-messages",
+      "description": "WhatsApp 채팅의 메시지를 읽음으로 표시합니다. 메시지 ID가 제공되지 않으면 채팅의 모든 메시지가 읽음으로 표시됩니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "채팅 ID (예: 개인의 경우 34612345678@c.us, 그룹의 경우 120363XXXXXX@g.us)",
+        "messages": "읽음으로 표시할 메시지 ID의 선택적 목록. 생략하면 채팅의 모든 메시지가 읽음으로 표시됩니다.",
+        "days": "메시지를 읽음으로 표시할 선택적 일수."
+      }
+    },
+    "mark-unread": {
+      "name": "mark-unread",
+      "description": "WhatsApp 채팅을 읽지 않음으로 표시합니다 (파란 점 표시).",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "chatId": "채팅 ID (예: 개인의 경우 34612345678@c.us, 그룹의 경우 120363XXXXXX@g.us)"
+      }
+    },
+    "get-profile": {
+      "name": "get-profile",
+      "description": "현재 WhatsApp 계정의 프로필을 가져옵니다 (이름, 사진 URL, 상태/소개 텍스트 등).",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "set-profile-name": {
+      "name": "set-profile-name",
+      "description": "현재 WhatsApp 프로필의 표시 이름을 변경합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "name": "설정할 새 표시 이름"
+      }
+    },
+    "set-profile-status": {
+      "name": "set-profile-status",
+      "description": "현재 WhatsApp 프로필의 \"소개\" 상태 텍스트를 변경합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "status": "설정할 새 소개/상태 텍스트"
+      }
+    },
+    "set-profile-picture": {
+      "name": "set-profile-picture",
+      "description": "공용 이미지 URL에서 현재 WhatsApp 계정의 프로필 사진을 설정합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "url": "프로필 사진으로 사용할 이미지의 공용 HTTPS URL"
+      }
+    },
+    "delete-profile-picture": {
+      "name": "delete-profile-picture",
+      "description": "현재 WhatsApp 계정의 프로필 사진을 삭제합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")"
+      }
+    },
+    "get-contact-profile-picture": {
+      "name": "get-contact-profile-picture",
+      "description": "WhatsApp 연락처의 프로필 사진 URL을 가져옵니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "contactId": "연락처 채팅 ID (예: 34612345678@c.us)",
+        "refresh": "캐시된 사진을 강제로 새로 고침합니다 (선택 사항)"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "이름이나 전화번호로 연락처를 검색합니다. 가장 최근 상호작용이 있는 순서로 일치하는 항목을 반환합니다 (상위 5개), 그 후 나머지 일치 항목을 최대 한도까지 반환합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "query": "연락처 이름, pushName 또는 전화번호에 대해 일치할 검색어 (예: \"antonio\" 또는 \"346123\")",
+        "limit": "반환할 최대 결과 수 (기본값: 20)"
+      }
+    },
+    "get-unread-chats": {
+      "name": "get-unread-chats",
+      "description": "읽지 않은 메시지가 있는 채팅을 반환하며, 읽지 않은 수에 따라 정렬됩니다 (내림차순). 페이지 매김을 지원합니다.",
+      "params": {
+        "session": "세션 이름 (기본값: \"default\")",
+        "limit": "페이지당 반환할 최대 채팅 수 (기본값: 20)",
+        "offset": "페이지 매김을 위한 건너뛸 채팅 수 (기본값: 0)"
+      }
+    }
+  },
+  "name": "WhatsApp",
+  "description": "WAHA (WhatsApp HTTP API)를 통해 WhatsApp 메시지를 보내고 받습니다. 세션을 관리하고, 텍스트/미디어를 전송하며, 수신 메시지를 처리합니다. 계정 연결은 항상 숫자 페어링 코드 (request-pairing-code)로 수행되며 — QR 인증은 지원되지 않습니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 메시지 전송 및 읽기, 이미지 및 파일 공유, 채팅 및 연락처 관리, 이모지로 반응"
+    }
+  ]
+}

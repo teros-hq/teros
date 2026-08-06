@@ -1,0 +1,50 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba el token de la API de Replicate y la conectividad."
+    },
+    "replicate-list-models": {
+      "name": "replicate-list-models",
+      "description": "Descubre los modelos disponibles en Replicate y sus parámetros de entrada exactos. Tres modos: (1) collection: lista modelos de una categoría (p. ej. \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\"). (2) query: busca modelos por nombre o descripción. (3) model: obtén el esquema completo de entrada/salida de un modelo concreto en formato \"owner/name\" (p. ej. \"google/veo-3.1\") — úsalo antes de replicate-run para saber exactamente qué parámetros pasar.",
+      "params": {
+        "collection": "Slug de colección a explorar. Ejemplos: \"video-generation\", \"image-to-video\", \"text-to-image\", \"image-to-image\", \"audio-generation\".",
+        "query": "Consulta de búsqueda en texto libre para encontrar modelos por nombre o descripción.",
+        "model": "Obtén el esquema completo de un modelo concreto en formato \"owner/name\" (p. ej. \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\"). Devuelve todos los parámetros de entrada con tipos, valores por defecto y descripciones."
+      }
+    },
+    "replicate-run": {
+      "name": "replicate-run",
+      "description": "Ejecuta cualquier modelo en Replicate. Siempre asíncrono — devuelve inmediatamente un ID de predicción y estado \"starting\". Luego usa replicate-get-prediction para consultar hasta que termine. Usa replicate-list-models primero para descubrir el ID del modelo y sus parámetros de entrada exactos.",
+      "params": {
+        "model": "Modelo en formato \"owner/name\" (p. ej. \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\", \"black-forest-labs/flux-kontext-pro\"). Usa replicate-list-models para encontrar modelos disponibles.",
+        "input": "Parámetros de entrada del modelo. Usa replicate-list-models con el campo model para obtener el esquema exacto."
+      }
+    },
+    "replicate-get-prediction": {
+      "name": "replicate-get-prediction",
+      "description": "Obtén el estado y resultado de una predicción por ID. Consulta esto después de replicate-run hasta que el estado sea \"succeeded\" o \"failed\". Cuando termina correctamente, el campo output contiene el resultado (URL de imagen, URL de vídeo, etc.).",
+      "params": {
+        "predictionId": "El ID de predicción devuelto por replicate-run"
+      }
+    },
+    "replicate-cancel-prediction": {
+      "name": "replicate-cancel-prediction",
+      "description": "Cancela una predicción en ejecución o en cola por ID.",
+      "params": {
+        "predictionId": "El ID de la predicción a cancelar"
+      }
+    },
+    "replicate-list-predictions": {
+      "name": "replicate-list-predictions",
+      "description": "Lista las predicciones recientes con su estado. Útil para seguir generaciones en curso o pasadas."
+    }
+  },
+  "name": "Replicate",
+  "description": "Ejecuta modelos de IA en Replicate - generación de imágenes con FLUX, vídeo con Minimax, vídeo con Veo y miles de otros modelos.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — explora modelos de IA, genera imágenes, vídeo y audio, y sigue o cancela cada generación"
+    }
+  ]
+}

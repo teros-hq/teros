@@ -1,0 +1,46 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.browserbase",
+  "name": "Browserbase",
+  "version": "0.1.0",
+  "description": "Cloud browser automation at scale. Anti-bot bypass, CAPTCHA solving, residential proxies, session recording, and parallel browsers. Includes Live View to watch the browser in real time.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "development",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": true,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["BROWSERBASE_API_KEY", "BROWSERBASE_PROJECT_ID"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "dockerImage": "teros/mca-runtime"
+  },
+  "keywords": ["browser", "browserbase", "automation", "scraping", "headless", "cloud", "stealth", "captcha"],
+  "changelog": [
+    {
+      "version": "0.1.0",
+      "date": "2026-03-15",
+      "notes": "Initial release — run cloud browsers with stealth and CAPTCHA solving, navigate pages, capture screenshots, click, type, and fill forms"
+    }
+  ]
+}

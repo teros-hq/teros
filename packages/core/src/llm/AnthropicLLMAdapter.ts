@@ -17,7 +17,19 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { LLMError } from '../errors/AgentError';
 import { createLogger, log } from '../logger';
-import type { MessageWithParts } from '../session/types';
+import type { FilePart, MessageWithParts, ToolStateCompleted } from '../session/types';
+import { collectEmbeddedImages, DocumentExtractor, formatDocumentsAsText } from './DocumentExtractor';
+import { ImagePipeline, type ProcessedImage } from './ImagePipeline';
+
+/**
+ * Sanitize a tool call ID so it matches Anthropic's required pattern: ^[a-zA-Z0-9_-]+$
+ * IDs stored in DB may come from other providers (e.g. OpenAI legacy format uses dots
+ * and colons like "functions.bash-admin_bash:37"). We translate at the adapter boundary
+ * so the DB remains provider-agnostic.
+ */
+function sanitizeToolId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
 
 export interface AnthropicConfig {
@@ -25,6 +37,10 @@ export interface AnthropicConfig {
   /** Model string is required - no defaults */
   model: string;
   defaultMaxTokens?: number;
+  /** Override base URL for Anthropic-compatible APIs (e.g., MiniMax) */
+  baseURL?: string;
+  /** Override provider name for logging/metadata (defaults to 'Anthropic') */
+  providerName?: string;
 }
 
 /**
@@ -37,14 +53,19 @@ export class AnthropicLLMAdapter implements ILLMClient {
   private client: Anthropic;
   private defaultModel: string;
   private defaultMaxTokens: number;
+  private providerName: string;
   private logger = createLogger('AnthropicLLM');
+  private imagePipeline = new ImagePipeline();
+  private documentExtractor = new DocumentExtractor();
 
   constructor(config: AnthropicConfig) {
     if (!config.model) {
       throw new Error('AnthropicLLMAdapter: model is required - no defaults allowed');
     }
+    this.providerName = config.providerName || 'Anthropic';
     this.client = new Anthropic({
       apiKey: config.apiKey,
+      ...(config.baseURL ? { baseURL: config.baseURL } : {}),
       defaultHeaders: {
         'anthropic-beta': 'prompt-caching-2024-07-31',
       },
@@ -75,7 +96,7 @@ export class AnthropicLLMAdapter implements ILLMClient {
 
     // Convert the previous implementation messages to Anthropic format
     // Pass cacheBreakpointIndex for optimal cache placement
-    const anthropicMessages = this.convertMessages(messages, cacheBreakpointIndex);
+    const anthropicMessages = await this.convertMessages(messages, cacheBreakpointIndex);
 
     // Convert tools to Anthropic format
     const anthropicTools = tools?.map((tool) => ({
@@ -160,8 +181,16 @@ export class AnthropicLLMAdapter implements ILLMClient {
             if (event.delta.type === 'text_delta') {
               // Text content streaming
               await callbacks?.onText?.(event.delta.text);
+            } else if (event.delta.type === 'thinking_delta') {
+              // Extended-thinking reasoning stream. Surfaced as progress so the
+              // turn's stall watchdog counts a long-but-productive reasoning
+              // block as activity, not a hang (TER-650).
+              await callbacks?.onThinking?.(event.delta.thinking);
             } else if (event.delta.type === 'input_json_delta') {
-              // Tool input streaming (we'll collect it and send on completion)
+              // Tool input streaming: the SDK accumulates it for finalMessage();
+              // surface it as a heartbeat so a long tool-args generation never
+              // reads as a frozen socket to the stall watchdog (TER-650).
+              await callbacks?.onToolInputDelta?.(event.delta.partial_json);
             }
             break;
 
@@ -235,7 +264,7 @@ export class AnthropicLLMAdapter implements ILLMClient {
         stopReason,
         usage,
         metadata: {
-          provider: 'anthropic',
+          provider: this.providerName.toLowerCase(),
           model: finalMessage.model,
           id: finalMessage.id,
           stopSequence: finalMessage.stop_sequence,
@@ -291,10 +320,10 @@ export class AnthropicLLMAdapter implements ILLMClient {
    *                               If provided, cache_control will be added at this position.
    *                               If not provided, falls back to caching all but last 5 messages.
    */
-  private convertMessages(
+  private async convertMessages(
     messages: MessageWithParts[],
     cacheBreakpointIndex?: number,
-  ): Anthropic.MessageParam[] {
+  ): Promise<Anthropic.MessageParam[]> {
     const anthropicMessages: Anthropic.MessageParam[] = [];
 
     // Track mapping from input message index to anthropic message indices
@@ -313,9 +342,9 @@ export class AnthropicLLMAdapter implements ILLMClient {
       // Each tool_use must be immediately followed by its tool_result
 
       if (role === 'assistant') {
-        this.convertAssistantMessage(msg, anthropicMessages);
+        await this.convertAssistantMessage(msg, anthropicMessages);
       } else {
-        this.convertUserMessage(msg, anthropicMessages);
+        await this.convertUserMessage(msg, anthropicMessages);
       }
     }
 
@@ -345,10 +374,10 @@ export class AnthropicLLMAdapter implements ILLMClient {
    *   - user: [tool_result₂]
    *   - assistant: [text₃]  (only if non-empty)
    */
-  private convertAssistantMessage(
+  private async convertAssistantMessage(
     msg: MessageWithParts,
     anthropicMessages: Anthropic.MessageParam[],
-  ): void {
+  ): Promise<void> {
     let currentTextBlocks: Anthropic.TextBlockParam[] = [];
 
     for (const part of msg.parts) {
@@ -361,26 +390,22 @@ export class AnthropicLLMAdapter implements ILLMClient {
           text: part.text,
         });
       } else if (part.type === 'tool') {
-        // Skip tools that aren't completed or error
+        // INV-1: orphan tool_use must be remediated upstream (see
+        // assertInvariantINV1 in PromptBuilder). Throw rather than skip —
+        // silent skips previously hid the bug from the LLM's view.
         if (part.state.status !== 'completed' && part.state.status !== 'error') {
-          log.warn('AnthropicLLM', 'Skipping tool with non-terminal status', {
-            tool: part.tool,
-            callID: part.callID,
-            status: part.state.status,
-          });
-          continue;
+          throw new Error(
+            `INV-1 violation reached AnthropicLLMAdapter: ToolPart ${part.callID} ` +
+              `(tool=${part.tool}) has status=${part.state.status}. ` +
+              `Expected 'completed' or 'error' — check assertInvariantINV1 in PromptBuilder.`,
+          );
         }
-
-        // Skip incomplete tools (no time.end means aborted/crashed)
-        // At this point we know state is completed or error, both have time
         const toolState = part.state as { time?: { end?: number } };
         if (!toolState.time?.end) {
-          log.warn('AnthropicLLM', 'Skipping incomplete tool (no time.end)', {
-            tool: part.tool,
-            callID: part.callID,
-            status: part.state.status,
-          });
-          continue;
+          throw new Error(
+            `INV-1 violation reached AnthropicLLMAdapter: ToolPart ${part.callID} ` +
+              `(tool=${part.tool}) has no time.end. Synthetic recovery missing.`,
+          );
         }
 
         // Flush accumulated text + this tool_use as assistant message
@@ -388,7 +413,7 @@ export class AnthropicLLMAdapter implements ILLMClient {
           ...currentTextBlocks,
           {
             type: 'tool_use',
-            id: part.callID,
+            id: sanitizeToolId(part.callID),
             name: part.tool,
             input: part.state.input || {},
           } as Anthropic.ToolUseBlockParam,
@@ -403,20 +428,62 @@ export class AnthropicLLMAdapter implements ILLMClient {
         currentTextBlocks = [];
 
         // Add tool_result as user message immediately after
-        const toolResult: Anthropic.ToolResultBlockParam =
-          part.state.status === 'completed'
-            ? {
-                type: 'tool_result',
-                tool_use_id: part.callID,
-                content: part.state.output ?? '',
-                is_error: false,
+        // Build content array that may include both text and image blocks
+        const toolResultContent: Array<
+          Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+        > = [];
+
+        if (part.state.status === 'completed') {
+          // Add text output
+          toolResultContent.push({
+            type: 'text',
+            text: part.state.output ?? '',
+          });
+
+          // Process image attachments from tool result
+          const attachments = (part.state as ToolStateCompleted).attachments;
+          if (attachments && attachments.length > 0) {
+            const imageAttachments = attachments.filter(
+              (a): a is FilePart => a.type === 'file' && a.mime?.startsWith('image/')
+            );
+            if (imageAttachments.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+              try {
+                const processedImages = await this.imagePipeline.processImages(
+                  imageAttachments,
+                  this.providerName.toLowerCase(),
+                );
+                for (const img of imageAttachments) {
+                  const processed = processedImages.get(img.url);
+                  if (processed) {
+                    toolResultContent.push({
+                      type: 'image',
+                      source: {
+                        type: 'base64',
+                        media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                        data: processed.base64,
+                      },
+                    } as Anthropic.ImageBlockParam);
+                  }
+                }
+              } catch (error: any) {
+                log.error('AnthropicLLM', 'Failed to process tool result images', undefined, { reason: error.message });
               }
-            : {
-                type: 'tool_result',
-                tool_use_id: part.callID,
-                content: part.state.error ?? 'Unknown error',
-                is_error: true,
-              };
+            }
+          }
+        } else {
+          // Error state
+          toolResultContent.push({
+            type: 'text',
+            text: part.state.error ?? 'Unknown error',
+          });
+        }
+
+        const toolResult: Anthropic.ToolResultBlockParam = {
+          type: 'tool_result',
+          tool_use_id: sanitizeToolId(part.callID),
+          content: toolResultContent,
+          is_error: part.state.status !== 'completed',
+        };
 
         anthropicMessages.push({
           role: 'user',
@@ -437,15 +504,78 @@ export class AnthropicLLMAdapter implements ILLMClient {
 
   /**
    * Convert a user message.
-   * User messages can contain text and tool_result blocks.
+   * User messages can contain text, image, and tool_result blocks.
    */
-  private convertUserMessage(
+  private async convertUserMessage(
     msg: MessageWithParts,
     anthropicMessages: Anthropic.MessageParam[],
-  ): void {
+  ): Promise<void> {
     const content: Array<
       Anthropic.TextBlockParam | Anthropic.ToolResultBlockParam | Anthropic.ImageBlockParam
     > = [];
+
+    // Collect image file parts for batch processing
+    const imageParts = msg.parts.filter(
+      (p): p is import('../session/types').FilePart => p.type === 'file' && p.mime?.startsWith('image/') && msg.info.role === 'user'
+    );
+
+    // Process images through the pipeline
+    let processedImages: Map<string, ProcessedImage> = new Map();
+    if (imageParts.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+      try {
+        processedImages = await this.imagePipeline.processImages(
+          imageParts,
+          this.providerName.toLowerCase(),
+        );
+      } catch (error: any) {
+        log.error('AnthropicLLM', 'Failed to process images for message', undefined, { reason: error.message });
+      }
+    }
+
+    // Extract text + embedded images from non-image documents (PPTX/DOCX/XLSX/ODT/PDF/RTF/plain text)
+    const documentParts = msg.parts.filter(
+      (p): p is import('../session/types').FilePart =>
+        p.type === 'file' &&
+        !p.mime?.startsWith('image/') &&
+        DocumentExtractor.supportsDocument(p.mime) &&
+        msg.info.role === 'user',
+    );
+    if (documentParts.length > 0) {
+      try {
+        const extracted = await this.documentExtractor.extractDocuments(documentParts);
+        const documentText = formatDocumentsAsText(extracted);
+        if (documentText) {
+          content.push({ type: 'text', text: documentText });
+        }
+        const flat = collectEmbeddedImages(extracted);
+        if (flat.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+          for (const img of flat) {
+            const processed = await this.imagePipeline.processBuffer(
+              img.buffer,
+              img.mimeType,
+              this.providerName.toLowerCase(),
+            );
+            if (processed) {
+              content.push({
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                  data: processed.base64,
+                },
+              } as Anthropic.ImageBlockParam);
+            }
+          }
+        } else if (flat.length > 0) {
+          log.warn(
+            'AnthropicLLM',
+            `Model ${this.defaultModel} not vision-capable — skipping ${flat.length} embedded image(s) from document(s)`,
+          );
+        }
+      } catch (error: any) {
+        log.error('AnthropicLLM', 'Failed to extract documents for message', undefined, { reason: error.message });
+      }
+    }
 
     for (const part of msg.parts) {
       if (part.type === 'text') {
@@ -458,25 +588,76 @@ export class AnthropicLLMAdapter implements ILLMClient {
         });
       } else if (part.type === 'tool') {
         // User messages can contain tool_result directly (from previous architecture)
+        const toolResultContent: Array<
+          Anthropic.TextBlockParam | Anthropic.ImageBlockParam
+        > = [];
+
         if (part.state.status === 'completed') {
+          toolResultContent.push({
+            type: 'text',
+            text: part.state.output ?? '',
+          });
+
+          // Process image attachments from tool result
+          const attachments = (part.state as ToolStateCompleted).attachments;
+          if (attachments && attachments.length > 0) {
+            const imageAttachments = attachments.filter(
+              (a): a is FilePart => a.type === 'file' && a.mime?.startsWith('image/')
+            );
+            if (imageAttachments.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+              try {
+                const processedImages = await this.imagePipeline.processImages(
+                  imageAttachments,
+                  this.providerName.toLowerCase(),
+                );
+                for (const img of imageAttachments) {
+                  const processed = processedImages.get(img.url);
+                  if (processed) {
+                    toolResultContent.push({
+                      type: 'image',
+                      source: {
+                        type: 'base64',
+                        media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                        data: processed.base64,
+                      },
+                    } as Anthropic.ImageBlockParam);
+                  }
+                }
+              } catch (error: any) {
+                log.error('AnthropicLLM', 'Failed to process tool result images in user message', undefined, { reason: error.message });
+              }
+            }
+          }
+
           content.push({
             type: 'tool_result',
-            tool_use_id: part.callID,
-            content: part.state.output ?? '',
+            tool_use_id: sanitizeToolId(part.callID),
+            content: toolResultContent,
             is_error: false,
           });
         } else if (part.state.status === 'error') {
           content.push({
             type: 'tool_result',
-            tool_use_id: part.callID,
+            tool_use_id: sanitizeToolId(part.callID),
             content: part.state.error ?? 'Unknown error',
             is_error: true,
           });
         }
         // Skip pending/running tools
-      } else if (part.type === 'file' && part.mime?.startsWith('image/')) {
-        // Image file - TODO: Convert file URL to base64 for Anthropic
-        // For now, skip images
+      } else if (part.type === 'file' && part.mime?.startsWith('image/') && msg.info.role === 'user') {
+        // Convert image file to Anthropic image block
+        const processed = processedImages.get(part.url);
+        if (processed) {
+          content.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: processed.mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+              data: processed.base64,
+            },
+          } as Anthropic.ImageBlockParam);
+        }
+        // If processing failed, skip silently (already logged by pipeline)
       }
     }
 
@@ -579,9 +760,11 @@ export class AnthropicLLMAdapter implements ILLMClient {
         totalMessages: messages.length,
       });
     } else {
-      // Fallback: cache all but last 5 messages
-      const MESSAGES_TO_KEEP_FRESH = 5;
-      anthropicCacheIndex = messages.length - MESSAGES_TO_KEEP_FRESH - 1;
+      // Fallback: mod-N strategy — snap to nearest lower multiple of BLOCK_SIZE.
+      // This prevents cache thrashing when cacheBreakpointIndex is not provided.
+      const BLOCK_SIZE = 20;
+      const snapped = Math.floor(messages.length / BLOCK_SIZE) * BLOCK_SIZE;
+      anthropicCacheIndex = snapped > 0 ? snapped - 1 : -1;
     }
 
     // Apply cache_control to the breakpoint message
@@ -601,12 +784,13 @@ export class AnthropicLLMAdapter implements ILLMClient {
 
   getProviderInfo() {
     return {
-      name: 'Anthropic',
+      name: this.providerName,
       model: this.defaultModel,
       capabilities: {
         streaming: true,
         tools: true,
         thinking: true,
+        vision: this.imagePipeline.supportsVision(this.defaultModel),
       },
     };
   }

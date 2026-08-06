@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. GET /user를 통해 Netlify 개인 액세스 토큰을 확인합니다."
+    },
+    "deploy-site": {
+      "name": "deploy-site",
+      "description": "작업 공간 디렉토리에서 Netlify로 정적 사이트(HTML/CSS/JS)를 배포하고 공개 URL을 반환합니다. 경고: `dir` 아래의 모든 파일은 인터넷에서 공개적으로 읽을 수 있습니다 — 비밀(.env), 자격 증명 또는 개인 데이터가 포함된 디렉토리는 절대 배포하지 마십시오. 기존 사이트에 배포하려면 siteId 또는 siteName을 전달하십시오; 새 사이트를 만들려면 둘 다 생략하십시오. allowWorkspaceRoot가 true가 아닌 경우 전체 작업 공간 루트를 배포하는 것은 거부됩니다. { url, deployId, state, siteId }를 반환합니다.",
+      "params": {
+        "dir": "배포할 디렉토리, /workspace에 상대적 (예: \"site\" 또는 \"build\"). index.html을 포함해야 합니다. 전체 내용이 공개됩니다 — 작업 공간 루트가 아닌 빌드 출력 디렉토리를 가리키십시오.",
+        "siteId": "배포할 기존 Netlify 사이트 ID. siteName보다 우선합니다.",
+        "siteName": "Netlify 사이트 이름. 존재하는 경우 일치하는 사이트에 배포하고, 그렇지 않으면 생성합니다.",
+        "draft": "true인 경우, 프로덕션에 게시하는 대신 초안 배포(미리보기 URL)를 생성합니다. 기본값은 false입니다.",
+        "allowWorkspaceRoot": "안전 확인. 기본적으로 `dir: \".\"` (전체 작업 공간 루트)를 배포하는 것은 거부됩니다. 루트는 일반적으로 개인 파일을 포함하고 있기 때문입니다. 사용자가 전체 작업 공간을 공개적으로 원할 때만 true로 설정하십시오. 기본값은 false입니다."
+      }
+    },
+    "list-sites": {
+      "name": "list-sites",
+      "description": "구성된 토큰으로 접근 가능한 Netlify 사이트 목록을 나열합니다. { sites: [{ id, name, url, ssl_url }] }를 반환합니다."
+    },
+    "get-deploy-status": {
+      "name": "get-deploy-status",
+      "description": "Netlify 배포의 현재 상태를 가져옵니다. { state, url, errorMessage? }를 반환합니다.",
+      "params": {
+        "siteId": "배포가 속한 Netlify 사이트 ID.",
+        "deployId": "확인할 배포 ID."
+      }
+    }
+  },
+  "name": "Netlify",
+  "description": "작업 공간에서 Netlify로 정적 사이트(HTML/CSS/JS)를 배포하고 공개 URL을 반환합니다. 사용자별 개인 액세스 토큰을 사용하여 파일 해시 REST API를 사용합니다."
+}

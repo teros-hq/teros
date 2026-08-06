@@ -6,10 +6,12 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import { enrichTasksAcrossBoards } from './_helpers'
 
 interface GetTasksByAgentData {
   workspaceId: string
   agentId: string
+  tags?: string[]
 }
 
 export function createGetTasksByAgentHandler(
@@ -18,7 +20,7 @@ export function createGetTasksByAgentHandler(
 ) {
   return async function getTasksByAgent(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as GetTasksByAgentData
-    const { workspaceId, agentId } = data
+    const { workspaceId, agentId, tags } = data
 
     if (!workspaceId || !agentId) {
       throw new HandlerError('MISSING_FIELDS', 'workspaceId and agentId are required')
@@ -29,8 +31,9 @@ export function createGetTasksByAgentHandler(
       throw new HandlerError('FORBIDDEN', 'No access')
     }
 
-    const tasks = await boardService.getTasksByAgent(workspaceId, agentId)
+    const tasks = await boardService.getTasksByAgent(workspaceId, agentId, tags)
+    const enriched = await enrichTasksAcrossBoards(tasks, boardService)
 
-    return { agentId, tasks }
+    return { agentId, tasks: enriched }
   }
 }

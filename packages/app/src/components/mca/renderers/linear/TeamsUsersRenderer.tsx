@@ -1,182 +1,158 @@
 /**
- * Linear Renderer - Teams & Users
+ * Linear Renderer — Teams & Users
  *
- * Handles: linear-list-teams, linear-list-users
+ * Handles: list-teams, list-users.
  */
 
-import { UserCircle } from '@tamagui/lucide-icons';
-import type React from 'react';
-import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import {
+  Avatar,
+  Empty,
+  EntityRow,
+  ErrorBlock,
+  IconChip,
+  parseOutput,
+} from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
-  Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
-  HeaderRow,
   type LinearTeam,
   type LinearUser,
-  parseOutput,
+  LinearToolShell,
+  shortId,
+  teamKeyChipProps,
+  unwrapList,
+  useLinearColors,
+  useScrollStyle,
 } from './shared';
 
 // ============================================================================
-// Content Blocks
+// ListTeamsRenderer
 // ============================================================================
 
-function TeamListBlock({ teams }: { teams: LinearTeam[] }) {
-  return (
-    <YStack backgroundColor={colors.bgInner} borderRadius={5} paddingVertical={4}>
-      {teams.map((team) => (
-        <XStack key={team.id} alignItems="center" gap={8} paddingVertical={4} paddingHorizontal={8}>
-          <Text color={colors.linearPurple} fontSize={10} fontFamily="$mono" fontWeight="600">
-            {team.key}
-          </Text>
-          <Text flex={1} color={colors.primary} fontSize={10}>
-            {team.name}
-          </Text>
-        </XStack>
-      ))}
-    </YStack>
-  );
-}
+export function ListTeamsRenderer({
+  toolName,
+  status,
+  output,
+  error,
+  duration,
+}: ToolCallRendererProps) {
+  const c = useLinearColors();
+  const scrollStyle = useScrollStyle(260);
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const { items: teams, nextCursor, total } = unwrapList<LinearTeam>(parsed, 'teams');
 
-function UserListBlock({ users }: { users: LinearUser[] }) {
   return (
-    <ScrollView
-      style={{ maxHeight: 200, backgroundColor: colors.bgInner, borderRadius: 5 }}
-      showsVerticalScrollIndicator={true}
+    <LinearToolShell
+      toolName={toolName}
+      status={status}
+      defaultExpanded={false}
     >
-      <YStack paddingVertical={4}>
-        {users.map((user) => (
-          <XStack
-            key={user.id}
-            alignItems="center"
-            gap={8}
-            paddingVertical={4}
-            paddingHorizontal={8}
-            opacity={user.active === false ? 0.5 : 1}
-          >
-            <UserCircle size={14} color={colors.linearPurple} />
-            <Text flex={1} color={colors.primary} fontSize={10}>
-              {user.name}
-            </Text>
-            {user.email && (
-              <Text color={colors.muted} fontSize={9}>
-                {user.email}
+      {error && <ErrorBlock error={error} />}
+      {!error && status === 'completed' && (
+        <>
+          {teams.length === 0 ? (
+            <Empty message="No teams" />
+          ) : (
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
+              <YStack>
+                {teams.map((t) => (
+                  <EntityRow
+                    key={t.id}
+                    leading={<IconChip {...teamKeyChipProps(t)} />}
+                    title={t.name}
+                    subtitle={t.description ? t.description.slice(0, 80) : undefined}
+                    badges={
+                      t.private ? (
+                        <IconChip text="private" accent={c.text3} outline />
+                      ) : null
+                    }
+                  />
+                ))}
+              </YStack>
+            </ScrollView>
+          )}
+          {(nextCursor || typeof total === 'number') && (
+            <XStack justifyContent="flex-end" paddingTop={2}>
+              <Text color={c.text3} fontSize={9} fontFamily="$mono">
+                {typeof total === 'number' ? `${total} shown` : ''}
+                {nextCursor ? ` · more · cursor ${shortId(nextCursor, 12)}` : ''}
               </Text>
-            )}
-            {user.active === false && <Badge text="inactive" variant="gray" />}
-          </XStack>
-        ))}
-      </YStack>
-    </ScrollView>
+            </XStack>
+          )}
+        </>
+      )}
+    </LinearToolShell>
   );
 }
 
 // ============================================================================
-// Renderers
+// ListUsersRenderer
 // ============================================================================
-
-export function ListTeamsRenderer({ status, output, error, duration }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-  const parsed = output
-    ? parseOutput<{ count?: number; teams?: LinearTeam[] } | LinearTeam[]>(output)
-    : null;
-
-  // Handle both { teams: [...] } and direct array formats
-  const teams =
-    parsed && typeof parsed === 'object' && 'teams' in parsed
-      ? (parsed as { teams: LinearTeam[] }).teams
-      : Array.isArray(parsed)
-        ? parsed
-        : null;
-  const isTeamArray = Array.isArray(teams) && teams.length > 0 && 'key' in teams[0];
-
-  const description = 'List teams';
-
-  let badge: React.ReactNode = null;
-  if (status === 'completed' && isTeamArray) {
-    badge = <Badge text={`${teams!.length} teams`} variant="gray" />;
-  } else if (status === 'failed') {
-    badge = <Badge text="failed" variant="error" />;
-  }
-
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
-
-  if (!expanded) return <HeaderRow {...headerProps} />;
-
-  return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
-        {isTeamArray && <TeamListBlock teams={teams!} />}
-        {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
-  );
-}
 
 export function ListUsersRenderer({
+  toolName,
   input,
   status,
   output,
   error,
   duration,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-  const parsed = output
-    ? parseOutput<{ count?: number; users?: LinearUser[] } | LinearUser[]>(output)
-    : null;
-
-  // Handle both { users: [...] } and direct array formats
-  const users =
-    parsed && typeof parsed === 'object' && 'users' in parsed
-      ? (parsed as { users: LinearUser[] }).users
-      : Array.isArray(parsed)
-        ? parsed
-        : null;
-  const isUserArray =
-    Array.isArray(users) && users.length > 0 && ('email' in users[0] || 'name' in users[0]);
-
-  let description = 'List users';
-  if (input?.teamId) description += ` (team)`;
-
-  let badge: React.ReactNode = null;
-  if (status === 'completed' && isUserArray) {
-    badge = <Badge text={`${users!.length} users`} variant="gray" />;
-  } else if (status === 'failed') {
-    badge = <Badge text="failed" variant="error" />;
-  }
-
-  const headerProps = {
-    status,
-    description,
-    duration,
-    badge,
-    expanded,
-    onToggle: () => setExpanded(!expanded),
-  };
-
-  if (!expanded) return <HeaderRow {...headerProps} />;
+  const c = useLinearColors();
+  const scrollStyle = useScrollStyle(320);
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const { items: users, nextCursor, total } = unwrapList<LinearUser>(parsed, 'users');
+  const description = input?.teamId
+    ? `Users (team ${shortId(String(input.teamId))})`
+    : undefined;
 
   return (
-    <ExpandedContainer>
-      <HeaderRow {...headerProps} isInContainer />
-      <ExpandedBody>
-        {isUserArray && <UserListBlock users={users!} />}
-        {error && <ErrorBlock error={error} />}
-      </ExpandedBody>
-    </ExpandedContainer>
+    <LinearToolShell
+      toolName={toolName}
+      status={status}
+      description={description}
+      defaultExpanded={false}
+    >
+      {error && <ErrorBlock error={error} />}
+      {!error && status === 'completed' && (
+        <>
+          {users.length === 0 ? (
+            <Empty message="No users" />
+          ) : (
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
+              <YStack>
+                {users.map((u) => (
+                  <EntityRow
+                    key={u.id}
+                    leading={
+                      <Avatar src={u.avatarUrl ?? undefined} name={u.displayName ?? u.name} size={24} />
+                    }
+                    title={u.displayName ?? u.name}
+                    subtitle={u.email}
+                    badges={
+                      <XStack gap={4}>
+                        {u.admin ? <IconChip text="admin" accent="#F2994A" outline /> : null}
+                        {u.active === false ? (
+                          <IconChip text="inactive" accent={c.text3} />
+                        ) : null}
+                      </XStack>
+                    }
+                  />
+                ))}
+              </YStack>
+            </ScrollView>
+          )}
+          {(nextCursor || typeof total === 'number') && (
+            <XStack justifyContent="flex-end" paddingTop={2}>
+              <Text color={c.text3} fontSize={9} fontFamily="$mono">
+                {typeof total === 'number' ? `${total} shown` : ''}
+                {nextCursor ? ` · more · cursor ${shortId(nextCursor, 12)}` : ''}
+              </Text>
+            </XStack>
+          )}
+        </>
+      )}
+    </LinearToolShell>
   );
 }

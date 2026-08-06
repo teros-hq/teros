@@ -4,13 +4,13 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface SubscribeBoardData {
   boardId: string
 }
 
-export function createSubscribeBoardHandler(sessionManager: SessionManager) {
+export function createSubscribeBoardHandler(pubSubService: PubSubService) {
   return async function subscribeBoard(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as SubscribeBoardData
     const { boardId } = data
@@ -23,7 +23,7 @@ export function createSubscribeBoardHandler(sessionManager: SessionManager) {
       throw new HandlerError('NO_SESSION', 'No active session')
     }
 
-    sessionManager.subscribeToBoard(ctx.sessionId, boardId)
+    pubSubService.subscribeSession(ctx.sessionId, `board:${boardId}`)
 
     return { boardId }
   }

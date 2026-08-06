@@ -46,22 +46,43 @@ export interface User {
   /** User role for access control */
   role: "user" | "admin" | "super"
 
+  /**
+   * User badges — special recognitions earned by the user.
+   * - "founding_partner": early access member, higher limits, special perks
+   * - "early_bird": one of the first users to join the platform
+   * Defaults to absent (equivalent to empty array).
+   */
+  badges?: Array<"founding_partner" | "early_bird">
+
   /** Whether the primary email has been verified */
   emailVerified: boolean
 
   /**
    * Whether the user has full platform access.
-   * Users need 3 invitations from different users to get access granted.
-   * Defaults to false for new users.
+   * Granted manually by a founder/admin via admin.grant-access.
+   * Defaults to false for new users (waitlist).
    */
   accessGranted: boolean
 
   /**
-   * Number of invitations the user can send.
-   * Managed by admins. Decrements when sending, increments when revoking.
-   * Users with 0 available invitations cannot invite others.
+   * ID of the user's Private Workspace.
+   * Auto-created on registration. Populated by the workspace migration script.
+   * Once set, never changes.
    */
-  availableInvitations: number
+  privateWorkspaceId?: string
+
+  /** When the user accepted the Terms of Service */
+  termsAcceptedAt?: Date
+
+  /** When the user completed the onboarding wizard */
+  onboardingCompletedAt?: Date
+
+  /**
+   * ID of the last changelog entry the user has seen.
+   * Used by the "What's New" modal to show only entries newer than this.
+   * Absent = user has never seen the changelog (all entries are "new").
+   */
+  lastChangelogSeen?: string
 
   /** Timestamps */
   createdAt: Date
@@ -70,25 +91,6 @@ export interface User {
 
   /** Soft delete timestamp */
   deletedAt?: Date
-}
-
-/**
- * Invitation - Tracks invitations between users
- *
- * A user needs to receive 3 invitations from 3 different users
- * to get accessGranted = true.
- */
-export interface Invitation {
-  _id: ObjectId
-
-  /** User who sent the invitation */
-  fromUserId: string
-
-  /** User who received the invitation */
-  toUserId: string
-
-  /** When the invitation was sent */
-  createdAt: Date
 }
 
 /**
@@ -210,6 +212,11 @@ export interface UserSession {
     deviceType?: "desktop" | "mobile" | "tablet" | "unknown"
     os?: string
     browser?: string
+    /** Impersonation fields — only present on impersonation sessions */
+    isImpersonating?: boolean
+    impersonatedBy?: string       // userId of the admin (e.g. "user:abc123")
+    impersonatedByName?: string   // display name of the admin
+    originalTokenHash?: string    // SHA-256 hash of the admin's original token
   }
 
   /** Session expiration (30 days from creation/refresh) */

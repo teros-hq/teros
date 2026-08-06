@@ -32,6 +32,9 @@
             "description": "Gmail search query"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -48,6 +51,9 @@
         "required": [
           "messageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -67,6 +73,10 @@
           "body": {
             "type": "string",
             "description": "Email body (plain text or HTML)"
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
           },
           "cc": {
             "type": "string",
@@ -99,16 +109,15 @@
                 "path"
               ]
             }
-          },
-          "bodyFile": {
-            "type": "string",
-            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
           }
         },
         "required": [
           "to",
           "subject"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -134,6 +143,9 @@
           "messageId",
           "body"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -154,6 +166,9 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -184,6 +199,9 @@
         "required": [
           "messageId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -197,6 +215,9 @@
             "description": "Maximum number of drafts to return (default: 10, max: 100)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -216,6 +237,10 @@
           "body": {
             "type": "string",
             "description": "Email body"
+          },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
           },
           "isHtml": {
             "type": "boolean",
@@ -237,16 +262,15 @@
                 "path"
               ]
             }
-          },
-          "bodyFile": {
-            "type": "string",
-            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
           }
         },
         "required": [
           "to",
           "subject"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -263,6 +287,10 @@
         "required": [
           "draftId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -287,6 +315,10 @@
             "type": "string",
             "description": "Email body"
           },
+          "bodyFile": {
+            "type": "string",
+            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
+          },
           "isHtml": {
             "type": "boolean",
             "description": "Whether body is HTML (default: false)"
@@ -307,10 +339,6 @@
                 "path"
               ]
             }
-          },
-          "bodyFile": {
-            "type": "string",
-            "description": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string."
           }
         },
         "required": [
@@ -318,6 +346,9 @@
           "to",
           "subject"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -343,6 +374,9 @@
           "messageId",
           "attachmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -368,6 +402,9 @@
           "messageId",
           "attachmentId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -376,6 +413,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -400,6 +440,9 @@
         "required": [
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -428,6 +471,9 @@
         "required": [
           "labelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -444,6 +490,10 @@
         "required": [
           "labelId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -452,6 +502,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -510,6 +563,9 @@
           "criteria",
           "action"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -526,6 +582,49 @@
         "required": [
           "filterId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      }
+    },
+    {
+      "name": "start-email-watcher",
+      "description": "Start a background polling loop that detects new unread emails and emits `gmail.email.received` events to the backend. The watcher polls the Gmail API at a configurable interval (default: 5 minutes). Only one watcher can be active per MCA process.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "intervalMinutes": {
+            "type": "number",
+            "description": "Polling interval in minutes (default: 5, minimum: 1). Lower values consume more Gmail API quota.",
+            "minimum": 1
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "stop-email-watcher",
+      "description": "Stop the background email polling loop. No more events will be emitted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-watcher-status",
+      "description": "Get the current status of the email watcher: whether it is active, when it last checked, how many message IDs are tracked, and the polling interval.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

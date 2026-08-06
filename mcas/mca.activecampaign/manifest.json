@@ -1,0 +1,48 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.activecampaign",
+  "name": "ActiveCampaign",
+  "version": "1.0.0",
+  "description": "ActiveCampaign CRM and email marketing — manage contacts, lists, campaigns, deals, and tags via the v3 API.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "activecampaign",
+    "crm",
+    "email-marketing",
+    "marketing-automation",
+    "contacts",
+    "campaigns",
+    "deals"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["ACTIVECAMPAIGN_BASE_URL", "ACTIVECAMPAIGN_API_TOKEN"]
+    },
+    "agent": false
+  }
+}

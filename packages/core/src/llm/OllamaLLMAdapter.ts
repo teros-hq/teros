@@ -18,13 +18,16 @@ import OpenAI from 'openai';
 import { LLMError } from '../errors/AgentError';
 import { createLogger, log } from '../logger';
 import type { MessageWithParts } from '../session/types';
+import { extractReasoningDelta } from "./reasoningDelta"
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
 
 export interface OllamaConfig {
-  /** Base URL for Ollama API (e.g., 'http://midgar:11434' or 'http://localhost:11434') */
+  /** Base URL for Ollama API (e.g., 'http://midgar:11434' or 'http://localhost:11434' or 'https://ollama.com') */
   baseUrl: string;
-  /** Model name (e.g., 'qwen2.5:7b-instruct', 'deepseek-r1:latest') */
+  /** Model name (e.g., 'qwen2.5:7b-instruct', 'deepseek-r1:latest', 'qwen3-coder:480b-cloud') */
   model: string;
+  /** API key — optional for local Ollama, required for Ollama Cloud */
+  apiKey?: string;
   /** Default max tokens for completion */
   defaultMaxTokens?: number;
 }
@@ -58,7 +61,8 @@ export class OllamaLLMAdapter implements ILLMClient {
       : `${config.baseUrl}/v1`;
 
     this.client = new OpenAI({
-      apiKey: 'ollama', // Ollama doesn't require a real API key, but the SDK requires something
+      // Use real API key for Ollama Cloud; fall back to placeholder for local Ollama
+      apiKey: config.apiKey || 'ollama',
       baseURL: apiBaseUrl,
     });
     
@@ -136,6 +140,14 @@ export class OllamaLLMAdapter implements ILLMClient {
           await callbacks?.onText?.(delta.content);
         }
 
+        // Reasoning stream (deepseek-r1 & co. via Ollama's OpenAI-compat) →
+        // onThinking so the turn's stall watchdog counts a silent reasoning
+        // block as progress, not a frozen socket (TER-650).
+        const reasoningChunk = extractReasoningDelta(delta);
+        if (reasoningChunk) {
+          await callbacks?.onThinking?.(reasoningChunk);
+        }
+
         // Handle tool calls (streamed incrementally)
         if (delta.tool_calls) {
           for (const toolCallDelta of delta.tool_calls) {
@@ -160,6 +172,9 @@ export class OllamaLLMAdapter implements ILLMClient {
             if (toolCallDelta.function?.arguments) {
               toolCall.arguments += toolCallDelta.function.arguments;
             }
+            // Heartbeat: onToolCall only fires once the stream ends, so this is
+            // the only progress signal while large tool args stream (TER-650).
+            await callbacks?.onToolInputDelta?.(toolCallDelta.function?.arguments ?? '');
           }
         }
 
@@ -451,6 +466,7 @@ export class OllamaLLMAdapter implements ILLMClient {
         streaming: true,
         tools: true, // Ollama supports tools with compatible models
         thinking: false,
+        vision: false,
       },
     };
   }

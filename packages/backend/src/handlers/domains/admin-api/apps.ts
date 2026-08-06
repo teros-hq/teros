@@ -81,7 +81,7 @@ export function createAppsCreateHandler(db: Db, mcaService: McaService) {
     if (!data.mcaId) throw new HandlerError('VALIDATION_ERROR', 'Missing required field: mcaId')
 
     const effectiveOwnerId = data.workspaceId || data.ownerId || 'system'
-    const ownerType = data.workspaceId ? 'workspace' : 'user'
+    const ownerType = 'workspace'
     const appName = data.name || (await mcaService.generateDefaultAppName(data.mcaId, effectiveOwnerId))
 
     const validation = mcaService.validateAppName(appName)

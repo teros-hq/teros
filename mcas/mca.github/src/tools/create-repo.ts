@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const createRepo: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new repository',
   parameters: {
     type: 'object',

@@ -9,7 +9,7 @@
 Build, run, and extend AI agents that actually get things done.
 
 [![GitHub Stars](https://img.shields.io/github/stars/teros-hq/teros?style=flat&logo=github&color=yellow)](https://github.com/teros-hq/teros/stargazers)
-[![License](https://img.shields.io/badge/license-FSL--1.1-blue.svg)](./LICENSE)
+[![License](https://img.shields.io/badge/license-FSL--1.1-blue.svg)](./LICENSE.md)
 [![GitHub Issues](https://img.shields.io/github/issues/teros-hq/teros?style=flat&logo=github)](https://github.com/teros-hq/teros/issues)
 [![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/zHxZrbkUhb)
 
@@ -163,13 +163,28 @@ Teros ships with 43 MCAs across several categories:
 git clone https://github.com/teros-hq/teros.git
 cd teros
 cp .env.example .env
-bash scripts/setup-secrets.sh
+
+# Seed the encryption master key — REQUIRED. The backend refuses to boot without it.
+# This writes a random 64-hex masterKey to .secrets/system/encryption.json.
+# (See .secrets/README.md for the other, optional system secrets.)
+node -e "const c=require('crypto');require('fs').writeFileSync('.secrets/system/encryption.json',JSON.stringify({masterKey:c.randomBytes(32).toString('hex')},null,2))"
+
+# Build the MCA runtime images (needed once, and again after mcas/*/package.json
+# or docker/mca-runtime*/Dockerfile changes) — `docker compose up` starts the
+# core services but does not build these, since the container-agent spawns
+# MCA containers straight from the Docker daemon.
+./scripts/build-mca-runtimes.sh
+
 docker compose up
 ```
 
 Open [http://localhost:10002](http://localhost:10002).
 
 ### Development setup
+
+Three processes: the backend has no direct Docker access — all container
+operations for MCAs go through a separate `container-agent` daemon (see
+`.env.example` — `CONTAINER_AGENT_TOKEN` is required by both sides).
 
 ```bash
 # Install dependencies
@@ -178,13 +193,23 @@ yarn install
 # Build all packages
 yarn build
 
-# Start MongoDB
-docker compose up -d mongodb
+# Seed secrets (same as Quick Start — required to boot). For local dev, also set
+# MCA_BASE_PATH in .env to an absolute host path to this repo's mcas/ directory.
 
-# Terminal 1 — backend (with hot reload)
+# Start MongoDB + Qdrant
+docker compose up -d mongodb qdrant
+
+# Seed the DB with the MCA catalog and models (fresh DB only; onboarding and agent
+# replies fail silently without it)
+yarn workspace @teros/backend sync
+
+# Terminal 1 — container agent (spawns/stops MCA containers)
+yarn dev:container-agent
+
+# Terminal 2 — backend (with hot reload)
 yarn dev:backend
 
-# Terminal 2 — frontend
+# Terminal 3 — frontend
 yarn dev:app
 ```
 
@@ -274,12 +299,12 @@ yarn dev:backend
 ```
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines, code style, and how to build and submit new MCAs.
-
+ 
 ---
 
 ## License
 
-[FSL-1.1-Apache-2.0](./LICENSE) — free for personal and non-commercial use. Converts to Apache 2.0 on the second anniversary of each release.
+[FSL-1.1-Apache-2.0](./LICENSE.md) — free for personal and non-commercial use. Converts to Apache 2.0 on the second anniversary of each release.
 
 ---
 

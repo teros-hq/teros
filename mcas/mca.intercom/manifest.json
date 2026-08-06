@@ -34,5 +34,12 @@
       "userSecrets": ["ACCESS_TOKEN"]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-03-07",
+      "notes": "Initial release — search and reply to customer conversations, assign, tag, snooze, and look up contacts and teammates"
+    }
+  ]
 }

@@ -1,0 +1,152 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales de la API de Browserbase y la conectividad."
+    },
+    "session-create": {
+      "name": "session-create",
+      "description": "Crea una nueva sesión de navegador en la nube de Browserbase. Devuelve un sessionId para usar con todas las demás herramientas, y abre una ventana de Live View para ver el navegador en tiempo real.",
+      "params": {
+        "proxies": "Activar proxies residenciales para modo oculto (por defecto: false)",
+        "proxyCountry": "Código de país ISO 3166-1 alfa-2 para geolocalización del proxy (ej. \"ES\" para España, \"US\" para EE. UU.). Solo se usa cuando proxies es true.",
+        "proxyCity": "Nombre de ciudad para geolocalización del proxy (ej. \"Madrid\", \"Nueva York\"). Solo se usa cuando proxies es true.",
+        "stealth": "Activar modo oculto para evadir la detección de bots (por defecto: false)",
+        "advancedStealth": "Activar modo oculto avanzado para una evasión de detección de bots más fuerte (por defecto: false)",
+        "blockAds": "Bloquear anuncios en el navegador (por defecto: false)",
+        "solveCaptchas": "Resolver CAPTCHAs automáticamente (por defecto: true)",
+        "os": "Sistema operativo a simular para el modo oculto",
+        "region": "Región del servidor donde se ejecuta la sesión (por defecto: us-west-2)",
+        "keepAlive": "Mantener la sesión activa tras desconexiones (requiere plan Hobby o superior)",
+        "timeout": "Tiempo de espera de la sesión en segundos (por defecto: 3600)",
+        "contextId": "Reutilizar un ID de contexto de navegador guardado (cookies, localStorage, etc.)",
+        "persistContext": "Conservar el contexto tras finalizar la sesión (por defecto: false). Solo se usa cuando se proporciona contextId."
+      }
+    },
+    "session-list": {
+      "name": "session-list",
+      "description": "Lista todas las sesiones activas de Browserbase en esta instancia."
+    },
+    "session-close": {
+      "name": "session-close",
+      "description": "Cierra una sesión de Browserbase y libera los recursos en la nube.",
+      "params": {
+        "sessionId": "ID de la sesión a cerrar"
+      }
+    },
+    "navigate": {
+      "name": "navigate",
+      "description": "Navega el navegador a una URL.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "url": "URL a la que navegar"
+      }
+    },
+    "navigate-back": {
+      "name": "navigate-back",
+      "description": "Vuelve a la página anterior.",
+      "params": {
+        "sessionId": "ID de sesión activa"
+      }
+    },
+    "snapshot": {
+      "name": "snapshot",
+      "description": "Captura una instantánea de accesibilidad de la página actual. Devuelve la estructura de la página con referencias de elementos para interacción.",
+      "params": {
+        "sessionId": "ID de sesión activa"
+      }
+    },
+    "get-content": {
+      "name": "get-content",
+      "description": "Obtiene el contenido HTML o texto plano de la página actual.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "format": "Devolver HTML completo o texto plano (por defecto: text)"
+      }
+    },
+    "take-screenshot": {
+      "name": "take-screenshot",
+      "description": "Captura una imagen de la página actual. Se guarda en /workspace/ en el volumen compartido.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "filename": "Nombre del archivo (ej. \"screenshot.png\"). Por defecto: screenshot-{timestamp}.png",
+        "fullPage": "Capturar la página completa con scroll",
+        "type": "Formato de imagen (por defecto: png)"
+      }
+    },
+    "network-requests": {
+      "name": "network-requests",
+      "description": "Lista las peticiones de red realizadas en la sesión actual.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "includeStatic": "Incluir recursos estáticos (imágenes, fuentes, scripts). Por defecto: false"
+      }
+    },
+    "click": {
+      "name": "click",
+      "description": "Hace clic en un elemento de la página.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "ref": "Referencia de elemento de la instantánea (ej. s1e3) o selector CSS",
+        "element": "Descripción legible del elemento",
+        "button": "Botón del ratón (por defecto: left)",
+        "doubleClick": "Realizar doble clic"
+      }
+    },
+    "type": {
+      "name": "type",
+      "description": "Escribe texto en un elemento editable.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "ref": "Referencia de elemento de la instantánea o selector CSS",
+        "element": "Descripción legible del elemento",
+        "text": "Texto a escribir",
+        "submit": "Pulsar Enter después de escribir",
+        "slowly": "Escribir carácter por carácter (activa los manejadores de teclado)"
+      }
+    },
+    "fill-form": {
+      "name": "fill-form",
+      "description": "Rellena múltiples campos de un formulario a la vez.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "fields": "Campos a rellenar"
+      }
+    },
+    "evaluate": {
+      "name": "evaluate",
+      "description": "Ejecuta JavaScript en el contexto de la página.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "function": "() => { /* código */ } o (element) => { /* código */ } cuando se proporciona ref",
+        "ref": "Referencia de elemento opcional para pasar como argumento",
+        "element": "Descripción legible del elemento (si se usa ref)"
+      }
+    },
+    "press-key": {
+      "name": "press-key",
+      "description": "Pulsa una tecla del teclado.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "key": "Nombre de tecla o carácter, ej. \"Enter\", \"ArrowDown\", \"a\""
+      }
+    },
+    "wait-for": {
+      "name": "wait-for",
+      "description": "Espera a que aparezca/desaparezca texto en la página, o espera una cantidad fija de tiempo.",
+      "params": {
+        "sessionId": "ID de sesión activa",
+        "time": "Segundos de espera",
+        "text": "Texto a esperar (que aparezca)",
+        "textGone": "Texto a esperar (que desaparezca)"
+      }
+    }
+  },
+  "name": "Browserbase",
+  "description": "Automatización de navegadores en la nube a escala. Evasión anti-bot, resolución de CAPTCHAs, proxies residenciales, grabación de sesiones y navegadores en paralelo. Incluye Live View para ver el navegador en tiempo real.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — ejecuta navegadores en la nube con modo oculto y resolución de CAPTCHAs, navega páginas, captura imágenes, haz clic, escribe y rellena formularios"
+    }
+  ]
+}

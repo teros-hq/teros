@@ -1,0 +1,51 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.make",
+  "name": "Make",
+  "version": "2.0.0",
+  "description": "Make.com automation — trigger scenarios via webhooks (no token needed) and manage scenarios via the account API: create, read, update, delete, clone, start, stop, list, run, and inspect blueprints.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "color": "#6D00CC",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "keywords": [
+    "make",
+    "make.com",
+    "integromat",
+    "automation",
+    "webhook",
+    "scenario",
+    "no-code",
+    "integration",
+    "blueprint"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["MAKE_API_TOKEN", "MAKE_REGION"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  }
+}

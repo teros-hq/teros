@@ -36,5 +36,12 @@
     "port": 3000,
     "healthCheck": "/health"
   },
-  "keywords": ["railway", "deploy", "paas", "hosting", "docker", "deployment", "staging", "production"]
+  "keywords": ["railway", "deploy", "paas", "hosting", "docker", "deployment", "staging", "production"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-29",
+      "notes": "Initial release — create and deploy projects, manage services, environments, variables, domains and volumes, and watch deployment logs"
+    }
+  ]
 }

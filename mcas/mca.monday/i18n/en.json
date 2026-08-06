@@ -1,0 +1,129 @@
+{
+  "tools": {
+    "monday_list_boards": {
+      "name": "monday_list_boards",
+      "description": "List all Monday.com boards",
+      "params": {
+        "limit": "Number of boards to return"
+      }
+    },
+    "monday_get_board": {
+      "name": "monday_get_board",
+      "description": "Get detailed board information",
+      "params": {
+        "boardId": "Board ID to retrieve"
+      }
+    },
+    "monday_create_board": {
+      "name": "monday_create_board",
+      "description": "Create a new board",
+      "params": {
+        "name": "Board name",
+        "description": "Board description",
+        "templateId": "Template ID to use"
+      }
+    },
+    "monday_list_items": {
+      "name": "monday_list_items",
+      "description": "List items in a board or group",
+      "params": {
+        "boardId": "Board ID",
+        "groupId": "Group ID (optional)",
+        "limit": "Number of items to return"
+      }
+    },
+    "monday_get_item": {
+      "name": "monday_get_item",
+      "description": "Get detailed item information",
+      "params": {
+        "itemId": "Item ID to retrieve",
+        "boardId": "Board ID"
+      }
+    },
+    "monday_create_item": {
+      "name": "monday_create_item",
+      "description": "Create a new item",
+      "params": {
+        "boardId": "Board ID",
+        "groupId": "Group ID",
+        "itemName": "Item name",
+        "values": "Column values (columnId: value)"
+      }
+    },
+    "monday_update_item": {
+      "name": "monday_update_item",
+      "description": "Update an existing item",
+      "params": {
+        "itemId": "Item ID to update",
+        "boardId": "Board ID",
+        "values": "Updated column values (columnId: value)"
+      }
+    },
+    "monday_delete_item": {
+      "name": "monday_delete_item",
+      "description": "Delete an item",
+      "params": {
+        "itemId": "Item ID to delete",
+        "boardId": "Board ID"
+      }
+    },
+    "monday_list_groups": {
+      "name": "monday_list_groups",
+      "description": "List groups in a board",
+      "params": {
+        "boardId": "Board ID"
+      }
+    },
+    "monday_create_group": {
+      "name": "monday_create_group",
+      "description": "Create a new group",
+      "params": {
+        "boardId": "Board ID",
+        "name": "Group name"
+      }
+    },
+    "monday_list_columns": {
+      "name": "monday_list_columns",
+      "description": "List columns in a board",
+      "params": {
+        "boardId": "Board ID"
+      }
+    },
+    "monday_add_update": {
+      "name": "monday_add_update",
+      "description": "Add update to an item",
+      "params": {
+        "itemId": "Item ID",
+        "updateValue": "Update text"
+      }
+    },
+    "monday_list_updates": {
+      "name": "monday_list_updates",
+      "description": "List updates for items",
+      "params": {
+        "itemId": "Item ID",
+        "limit": "Number of updates to return"
+      }
+    },
+    "monday_search_items": {
+      "name": "monday_search_items",
+      "description": "Search items across boards",
+      "params": {
+        "query": "Search query",
+        "boardId": "Board ID to search in",
+        "limit": "Number of results"
+      }
+    },
+    "monday_get_me": {
+      "name": "monday_get_me",
+      "description": "Get current user information"
+    }
+  },
+  "name": "Monday.com",
+  "description": "Monday.com work management - boards, items, groups, columns, updates",
+  "changelog": [
+    {
+      "notes": "Initial release — create and manage boards, items, groups and columns, post and read updates, and search across boards"
+    }
+  ]
+}

@@ -1,0 +1,124 @@
+# docker-compose.test.yml
+#
+# Mirror of docker-compose.yml for testing.
+# All data is ephemeral (tmpfs) — no persistent volumes.
+#
+# Services:
+#   mongodb   — ephemeral MongoDB
+#   qdrant    — ephemeral Qdrant
+#   backend   — real backend server (packages/backend/Dockerfile.test)
+#   frontend  — Expo web estático servido por nginx (TARGET_URL de la suite Playwright)
+#   browser   — Playwright + Cucumber e2e runner
+#
+# El frontend (TER-553) se sirve estático (build de producción → nginx); window.teros
+# se expone siempre (no dev-only), así que la suite Playwright navega contra él.
+#
+# Quick start:
+#   docker compose -f docker-compose.test.yml up -d --build
+#
+# Run unit tests:
+#   docker compose -f docker-compose.test.yml exec -T backend bun test packages/backend/tests/unit/
+#
+# Run integration tests:
+#   docker compose -f docker-compose.test.yml exec -T backend bun test packages/backend/tests/integration/
+#
+# Run sanity tests:
+#   docker compose -f docker-compose.test.yml exec -T browser yarn sanity
+#
+# Tear down:
+#   docker compose -f docker-compose.test.yml down -v
+
+services:
+
+  # ── Ephemeral MongoDB ─────────────────────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_DATABASE: teros_test
+    tmpfs:
+      - /data/db
+      - /data/configdb
+    networks:
+      - teros-test-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 5s
+
+  # ── Ephemeral Qdrant ──────────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    tmpfs:
+      - /qdrant/storage
+    networks:
+      - teros-test-network
+
+  # ── Backend: real HTTP/WS server ──────────────────────────────────────────────
+  backend:
+    image: teros-test-backend
+    build:
+      context: .
+      dockerfile: packages/backend/Dockerfile.test
+      secrets:
+        - github_token
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017
+      MONGODB_DATABASE: teros_test
+      SESSION_TOKEN_SECRET: test-secret-for-ci
+      PORT: "3099"
+      NODE_ENV: test
+      MCA_BASE_PATH: /app/mcas
+      CI: "true"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - teros-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3099/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 15s
+
+  # ── Browser: Playwright + Cucumber ───────────────────────────────────────────
+  # (el frontend, TARGET_URL de la suite, vive en docker-compose.e2e.yml — solo el job E2E)
+  browser:
+    image: teros-test-browser
+    build:
+      context: .
+      dockerfile: packages/e2e/Dockerfile.browser
+      secrets:
+        - github_token
+    environment:
+      E2E_WS_URL: ws://backend:3099/ws
+      E2E_HTTP_URL: http://backend:3099
+      E2E_MONGO_URI: mongodb://mongodb:27017
+      E2E_DB_NAME: teros_test
+      PLAYWRIGHT_BROWSERS_PATH: /ms-playwright
+      # Playwright smoke suite (TER-553): navega el frontend nginx, habla con el backend
+      # y siembra Mongo. Mismos endpoints que el harness espera por env (override de los
+      # defaults :8081/:10001).
+      TARGET_URL: http://frontend:80
+      BACKEND_URL: http://backend:3099
+      MONGO_URI: mongodb://mongodb:27017
+      MONGODB_DATABASE: teros_test
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - teros-test-network
+
+networks:
+  teros-test-network:
+    driver: bridge
+
+# Build secret (TER-553): GITHUB_TOKEN para los postinstall que descargan binarios de GitHub
+# (@vscode/ripgrep) sin chocar con el rate-limit anónimo (60→1000 req/h). Toma el valor del env
+# var GITHUB_TOKEN del runner; en local no hace falta (no hay rate-limit de CI). Los Dockerfiles
+# lo leen con `RUN --mount=type=secret,id=github_token` → no queda en ninguna capa.
+secrets:
+  github_token:
+    environment: GITHUB_TOKEN

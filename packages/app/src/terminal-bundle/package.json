@@ -1,0 +1,17 @@
+{
+  "name": "@teros/terminal-bundle",
+  "private": true,
+  "version": "1.0.0",
+  "description": "xterm.js terminal bundle for Teros — compiled to a self-contained HTML string",
+  "scripts": {
+    "build": "bun run build.ts"
+  },
+  "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/addon-web-links": "^0.11.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}

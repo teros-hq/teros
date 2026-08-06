@@ -108,6 +108,29 @@ export class MongoSessionStore extends SessionStore {
     });
   }
 
+  async updateUserMessageQueueState(
+    messageId: string,
+    state: 'pending' | 'running' | 'done',
+  ): Promise<void> {
+    await this.messages.updateOne(
+      { 'info.id': messageId, 'info.role': 'user' },
+      { $set: { 'info.meta.queueState': state } },
+    );
+  }
+
+  async listPendingQueueMessages(channelIds: string[]): Promise<MessageWithParts[]> {
+    if (channelIds.length === 0) return [];
+    const cursor = this.messages.find({
+      'info.role': 'user',
+      'info.sessionID': { $in: channelIds },
+      'info.meta.queueState': { $in: ['pending', 'running'] },
+    });
+    const stored = await cursor.toArray();
+    return stored
+      .sort((a, b) => (a.info.time?.created ?? 0) - (b.info.time?.created ?? 0))
+      .map((s) => ({ info: s.info, parts: s.parts ?? [] }));
+  }
+
   async writePart(part: Part): Promise<void> {
     const messageId = part.messageID;
     const partId = part.id;
@@ -255,6 +278,31 @@ export class MongoSessionStore extends SessionStore {
   }
 
   /**
+   * Resolve the compaction boundary: the ObjectId of the LAST message that was
+   * folded into the summary. `compactedMessageIds` are `info.id` strings.
+   *
+   * CTX-002: the boundary MUST be the last *compacted* message, not the
+   * session's last message. `getMessagesForLLM` returns messages with
+   * `_id > boundary`; if the boundary were the session's last message, the
+   * recent messages that compaction deliberately protected (and did NOT
+   * summarize) would be excluded from the reload AND absent from the summary,
+   * i.e. silently lost on the next turn. Verified against real data: a single
+   * compaction dropped 51 protected messages.
+   */
+  private async resolveCompactionBoundary(
+    sessionId: string,
+    compactedMessageIds: string[],
+  ): Promise<ObjectId | undefined> {
+    if (compactedMessageIds.length === 0) return undefined;
+    const lastCompactedInfoId = compactedMessageIds[compactedMessageIds.length - 1];
+    const boundaryDoc = await this.messages.findOne(
+      { sessionId, 'info.id': lastCompactedInfoId } as any,
+      { projection: { _id: 1 } },
+    );
+    return boundaryDoc?._id;
+  }
+
+  /**
    * Override base class method - no longer stores in session
    */
   async updateCompactionSummary(
@@ -262,17 +310,18 @@ export class MongoSessionStore extends SessionStore {
     summary: string,
     compactedMessageIds: string[],
   ): Promise<void> {
-    // Get the last message ObjectId as boundary
-    const lastMessageId = await this.getLastMessageObjectId(sessionId);
-    if (!lastMessageId) {
+    // Boundary = last COMPACTED message (CTX-002), NOT the session's last one.
+    const boundaryId = await this.resolveCompactionBoundary(sessionId, compactedMessageIds);
+    if (!boundaryId) {
       console.warn(
-        `[MongoSessionStore] No messages found for session ${sessionId}, skipping compaction`,
+        `[MongoSessionStore] Cannot resolve compaction boundary for session ${sessionId} ` +
+          `(compactedMessageIds=${compactedMessageIds.length}) — skipping compaction to avoid message loss`,
       );
       return;
     }
 
     // Create compaction record
-    await this.createCompaction(sessionId, summary, lastMessageId, {
+    await this.createCompaction(sessionId, summary, boundaryId, {
       messagesCompacted: compactedMessageIds.length,
       tokensBefore: 0, // Will be updated by caller if needed
       tokensAfter: 0,
@@ -294,21 +343,76 @@ export class MongoSessionStore extends SessionStore {
     const embeddedMessages = session.messages || [];
     if (embeddedMessages.length === 0) return false;
 
+    // Guard de pérdida de datos (TER-462): la migración es IRREVERSIBLE
+    // ($unset borra los embedded). Si algún mensaje no pasa el shape mínimo,
+    // abortar esta sesión SIN tocar nada — antes, los malformados se
+    // descartaban en silencio y el $unset los perdía para siempre.
+    const validMessages = embeddedMessages.filter(
+      (msg: any) => msg && msg.info && msg.info.role,
+    );
+    if (validMessages.length !== embeddedMessages.length) {
+      console.warn(
+        `[MongoSessionStore] Session ${sessionId} has ${
+          embeddedMessages.length - validMessages.length
+        } malformed embedded message(s) — skipping migration to avoid data loss. Inspect manually.`,
+      );
+      return false;
+    }
+
     // Check if already migrated (messages exist in collection)
     const existingCount = await this.messages.countDocuments({ sessionId });
     if (existingCount > 0) {
-      console.log(`[MongoSessionStore] Session ${sessionId} already migrated, skipping`);
+      // Resume tras un crash entre insertMany y $unset (TER-462): si la
+      // collection ya tiene EXACTAMENTE los mensajes de esta sesión, la
+      // pasada anterior murió a medias — completar la limpieza. Con counts
+      // distintos hay un conflicto real: no tocar nada.
+      if (existingCount === validMessages.length) {
+        // La pasada anterior insertó los mensajes pero murió antes del $unset.
+        // Pudo morir ANTES o DESPUÉS de migrar la compaction — completarla solo
+        // si está embedded y aún NO aterrizó en su colección. Sin esto, el
+        // $unset borraba la compaction embedded sin re-crearla → pérdida
+        // irreversible (la misma clase de bug que F1, desplazada al campo
+        // compaction). createCompaction es append-only, así que re-crear sin el
+        // guard de existencia la duplicaría.
+        if (session.compaction?.summary) {
+          const existingCompaction = await this.compactions.findOne({ sessionId });
+          if (!existingCompaction) {
+            // CTX-002: boundary = last compacted message, not the session's
+            // last. Fall back to the session's last message only for legacy
+            // records with no compactedMessageIds (can't do better for old data).
+            const compactedIds: string[] = session.compaction.compactedMessageIds ?? [];
+            const boundaryId =
+              (await this.resolveCompactionBoundary(sessionId, compactedIds)) ??
+              (await this.getLastMessageObjectId(sessionId));
+            if (boundaryId) {
+              await this.createCompaction(sessionId, session.compaction.summary, boundaryId, {
+                messagesCompacted: compactedIds.length,
+                tokensBefore: 0,
+                tokensAfter: 0,
+              });
+            }
+          }
+        }
+        await this.sessions.updateOne({ id: sessionId } as any, {
+          $unset: { messages: '', compaction: '' },
+        });
+        console.log(
+          `[MongoSessionStore] Session ${sessionId} was half-migrated (collection complete) — finished cleanup of embedded messages`,
+        );
+        return true;
+      }
+      console.warn(
+        `[MongoSessionStore] Session ${sessionId} has ${existingCount} messages in collection but ${validMessages.length} embedded — count mismatch, skipping. Inspect manually.`,
+      );
       return false;
     }
 
     // Insert messages into collection
-    const storedMessages: StoredMessage[] = embeddedMessages
-      .filter((msg: any) => msg && msg.info && msg.info.role)
-      .map((msg: any) => ({
-        sessionId,
-        info: msg.info,
-        parts: msg.parts || [],
-      }));
+    const storedMessages: StoredMessage[] = validMessages.map((msg: any) => ({
+      sessionId,
+      info: msg.info,
+      parts: msg.parts || [],
+    }));
 
     if (storedMessages.length > 0) {
       await this.messages.insertMany(storedMessages);

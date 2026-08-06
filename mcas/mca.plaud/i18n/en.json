@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies PLAUD OAuth configuration and makes a live MCP call to confirm connectivity."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "List PLAUD voice recordings. Returns metadata for each recording ordered by creation date (most recent first).",
+      "params": {
+        "limit": "Maximum number of recordings to return (default: 50, max: 200)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "Get full details for a PLAUD recording: transcript (concatenated), AI summary, and metadata.",
+      "params": {
+        "id": "The recording file ID (32-char hex string)"
+      }
+    },
+    "get-transcript": {
+      "name": "get-transcript",
+      "description": "Get raw transcript segments for a PLAUD recording. Returns each segment with text and optional timing. Use this instead of get-note when you only need the transcript and want to save token budget.",
+      "params": {
+        "id": "The recording file ID (32-char hex string)"
+      }
+    },
+    "search-notes": {
+      "name": "search-notes",
+      "description": "Search PLAUD recordings by keyword and/or date range. Filters are passed to the official Plaud MCP server; results are sorted by creation date (most recent first). At least one filter parameter is required.",
+      "params": {
+        "query": "Keyword to search in recording title and summary preview (case-insensitive)",
+        "date_from": "Start date (ISO 8601, inclusive). Example: \"2026-01-01\"",
+        "date_to": "End date (ISO 8601, inclusive). Example: \"2026-01-31\"",
+        "limit": "Maximum number of results to return (default: 50, max: 200)"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "List all tags and folders in your PLAUD library. Each tag includes its ID, name, and recording count if available."
+    },
+    "get-current-user": {
+      "name": "get-current-user",
+      "description": "Get the current PLAUD user profile (id, email, name). Useful for health checks and confirming OAuth connectivity."
+    },
+    "download-recording": {
+      "name": "download-recording",
+      "description": "Download a PLAUD recording audio file. Returns a public or presigned URL to the recording audio.",
+      "params": {
+        "id": "The recording file ID (32-char hex string)"
+      }
+    }
+  },
+  "name": "PLAUD",
+  "description": "Access your PLAUD voice recordings, transcripts, and AI summaries through the official Plaud MCP server. Search and retrieve notes from your PLAUD library.",
+  "changelog": [
+    {
+      "notes": "Initial release — browse, search, and open your PLAUD voice recordings with transcripts, AI summaries, tags, and folders"
+    }
+  ]
+}

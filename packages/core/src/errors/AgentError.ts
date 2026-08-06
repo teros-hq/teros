@@ -8,6 +8,8 @@
  * - Detailed context for logging
  */
 
+import { isContextLengthExceeded } from "../llm/context-length-error"
+
 export type ErrorType = "llm" | "tool" | "session" | "validation" | "network" | "unknown"
 
 export interface ErrorContext {
@@ -88,10 +90,13 @@ export class LLMError extends AgentError {
   }
 
   static fromAnthropicError(error: any, context: ErrorContext = {}): LLMError {
-    // Parse Anthropic error
+    // Parse Anthropic error. The SDK stores the FULL response body in
+    // `error.error` (envelope `{type:"error", error:{type, message}}`), so
+    // the specific type/message live one level deeper — keep the shallower
+    // fallbacks for legacy/plain shapes.
     const statusCode = error?.status || error?.statusCode
-    const errorType = error?.error?.type || error?.type
-    const errorMessage = error?.error?.message || error?.message || ""
+    const errorType = error?.error?.error?.type || error?.error?.type || error?.type
+    const errorMessage = error?.error?.error?.message || error?.error?.message || error?.message || ""
     const headers = error?.headers
 
     let userMessage = "Cannot connect to the AI model. Try again in a few seconds."
@@ -100,10 +105,15 @@ export class LLMError extends AgentError {
 
     // Customize based on error type
     if (statusCode === 429) {
-      // Rate limit error - extract retry-after info from headers
-      const retryAfterSecs = headers?.["retry-after"]
-        ? parseInt(headers["retry-after"], 10)
-        : undefined
+      // Rate limit error - extract retry-after info from headers.
+      // The SDK (≥0.30) passes a native `Headers` instance, where bracket
+      // access always returns undefined — read via .get() and keep the
+      // plain-object fallback for legacy callers. Non-numeric values
+      // (e.g. an HTTP-date Retry-After) are treated as absent.
+      const retryAfterRaw: string | null | undefined =
+        typeof headers?.get === "function" ? headers.get("retry-after") : headers?.["retry-after"]
+      const retryAfterParsed = retryAfterRaw ? parseInt(retryAfterRaw, 10) : Number.NaN
+      const retryAfterSecs = Number.isNaN(retryAfterParsed) ? undefined : retryAfterParsed
 
       // Calculate when service will be restored
       const retryAfterMs = retryAfterSecs ? retryAfterSecs * 1000 : undefined
@@ -136,18 +146,28 @@ export class LLMError extends AgentError {
     } else if (statusCode === 401) {
       userMessage = "Configuration error. Contact support."
       technicalMessage = "Anthropic API authentication failed (invalid API key)"
-    } else if (statusCode === 400) {
-      // Check if it's a "prompt too long" error
-      if (errorMessage.includes("prompt is too long") || errorMessage.includes("tokens >")) {
-        // Extract token counts if available
+    } else if (statusCode === 400 || statusCode === 413) {
+      // Overflow surfaces as 400 (Anthropic/Zhipu/MiniMax — wording varies) or
+      // 413. Route through the shared structural detector so a non-Anthropic
+      // wording (Zhipu/MiniMax) is still recognised and recovery fires, and
+      // flag it on the context so `TurnDriver.isPromptTooLongError` sees it
+      // structurally instead of by luck-of-wording. CTX-007.
+      if (isContextLengthExceeded(statusCode, errorMessage)) {
+        // Extract token counts if available (Anthropic wording)
         const match = errorMessage.match(/(\d+)\s+tokens\s+>\s+(\d+)\s+maximum/)
         const tokenInfo = match ? `(${match[1]} tokens, max ${match[2]})` : ""
 
         userMessage = `The conversation has grown too long ${tokenInfo}. Auto-compaction will be triggered automatically.`
         technicalMessage = `Anthropic API prompt too long: ${errorMessage}`
+        additionalContext.isContextLengthError = true
       } else {
+        // Preserve the raw upstream message instead of collapsing to a fixed
+        // "Anthropic API bad request" — the old behaviour discarded diagnostics
+        // and any overflow wording the detector doesn't yet know. CTX-007.
         userMessage = "There was a problem with your message. Try rephrasing it."
-        technicalMessage = "Anthropic API bad request"
+        technicalMessage = errorMessage
+          ? `Anthropic API bad request: ${errorMessage}`
+          : "Anthropic API bad request"
       }
     } else if (statusCode >= 500) {
       userMessage = "The AI service is temporarily unavailable. Try again later."

@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { adminRequest, isWsConnected } from '../lib';
 
 export const mcaCleanup: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Trigger cleanup of inactive MCA processes. Kills MCAs that have been idle for too long.',
   parameters: {

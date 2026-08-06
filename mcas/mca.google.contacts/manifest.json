@@ -6,7 +6,7 @@
   "description": "Manage Google Contacts - list, search, create, update, and delete contacts",
   "type": "integration",
   "icon": "icon.png",
-  "category": "productivity",
+  "category": "google",
   "entrypoint": "./src/index.ts",
   "runtime": {
     "transport": "http",
@@ -62,5 +62,12 @@
       "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN"]
     },
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — list, search, create, update and delete contacts, plus organize them into groups and labels"
+    }
+  ]
 }

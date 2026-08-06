@@ -1,0 +1,61 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la configuración OAuth de PLAUD y realiza una llamada MCP en vivo para confirmar la conectividad."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "Lista las grabaciones de voz de PLAUD. Devuelve los metadatos de cada grabación ordenados por fecha de creación (las más recientes primero).",
+      "params": {
+        "limit": "Número máximo de grabaciones a devolver (por defecto: 50, máx: 200)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "Obtiene los detalles completos de una grabación de PLAUD: transcripción (concatenada), resumen con IA y metadatos.",
+      "params": {
+        "id": "El ID del archivo de grabación (cadena hexadecimal de 32 caracteres)"
+      }
+    },
+    "get-transcript": {
+      "name": "get-transcript",
+      "description": "Obtiene los segmentos de transcripción en bruto de una grabación de PLAUD. Devuelve cada segmento con texto y temporización opcional. Úsalo en lugar de get-note cuando solo necesitas la transcripción y quieres ahorrar tokens.",
+      "params": {
+        "id": "El ID del archivo de grabación (cadena hexadecimal de 32 caracteres)"
+      }
+    },
+    "search-notes": {
+      "name": "search-notes",
+      "description": "Busca grabaciones de PLAUD por palabra clave y/o rango de fechas. Los filtros se pasan al servidor MCP oficial de Plaud; los resultados se ordenan por fecha de creación (los más recientes primero). Se requiere al menos un parámetro de filtro.",
+      "params": {
+        "query": "Palabra clave para buscar en el título de la grabación y la vista previa del resumen (sin distinción de mayúsculas)",
+        "date_from": "Fecha de inicio (ISO 8601, inclusive). Ejemplo: \"2026-01-01\"",
+        "date_to": "Fecha de fin (ISO 8601, inclusive). Ejemplo: \"2026-01-31\"",
+        "limit": "Número máximo de resultados a devolver (por defecto: 50, máx: 200)"
+      }
+    },
+    "list-tags": {
+      "name": "list-tags",
+      "description": "Lista todas las etiquetas y carpetas de tu biblioteca de PLAUD. Cada etiqueta incluye su ID, nombre y recuento de grabaciones si está disponible."
+    },
+    "get-current-user": {
+      "name": "get-current-user",
+      "description": "Obtiene el perfil de usuario actual de PLAUD (id, email, nombre). Útil para verificaciones de estado y confirmar la conectividad OAuth."
+    },
+    "download-recording": {
+      "name": "download-recording",
+      "description": "Descarga el archivo de audio de una grabación de PLAUD. Devuelve una URL pública o pre-firmada al audio de la grabación.",
+      "params": {
+        "id": "El ID del archivo de grabación (cadena hexadecimal de 32 caracteres)"
+      }
+    }
+  },
+  "name": "PLAUD",
+  "description": "Accede a tus grabaciones de voz de PLAUD, transcripciones y resúmenes con IA a través del servidor MCP oficial de Plaud. Busca y recupera notas de tu biblioteca de PLAUD.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — explora, busca y abre tus grabaciones de voz de PLAUD con transcripciones, resúmenes con IA, etiquetas y carpetas"
+    }
+  ]
+}

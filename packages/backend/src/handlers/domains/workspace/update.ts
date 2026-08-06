@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface UpdateWorkspaceData {
   workspaceId: string
@@ -14,7 +15,10 @@ interface UpdateWorkspaceData {
   appearance?: { color?: string; icon?: string }
 }
 
-export function createUpdateWorkspaceHandler(workspaceService: WorkspaceService) {
+export function createUpdateWorkspaceHandler(
+  workspaceService: WorkspaceService,
+  pubSubService?: PubSubService | null,
+) {
   return async function updateWorkspace(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateWorkspaceData
 
@@ -46,14 +50,21 @@ export function createUpdateWorkspaceHandler(workspaceService: WorkspaceService)
 
     console.log(`[workspace.update] Updated workspace ${data.workspaceId}`)
 
-    return {
-      workspace: {
-        workspaceId: workspace.workspaceId,
-        name: workspace.name,
-        description: workspace.description,
-        context: workspace.context,
-        appearance: workspace.appearance,
-      },
+    const workspacePayload = {
+      workspaceId: workspace.workspaceId,
+      name: workspace.name,
+      description: workspace.description,
+      context: workspace.context,
+      appearance: workspace.appearance,
     }
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(workspace.workspaceId, {
+        type: 'workspace.updated',
+        workspace: workspacePayload,
+      })
+    }
+
+    return { workspace: workspacePayload }
   }
 }

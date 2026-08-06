@@ -1,0 +1,52 @@
+{
+  "entries": [
+    {
+      "id": "v1.3.0-light-dark-theme",
+      "date": "2026-07-19",
+      "category": "improvement",
+      "description": "Teros now looks great in light and dark. Switch anytime from your profile settings.",
+      "title": {
+        "en": "Light & Dark Theme System",
+        "es": "Sistema de Temas Claro y Oscuro",
+        "ko": "라이트 & 다크 테마 시스템"
+      },
+      "content": {
+        "en": "Teros now looks great in **light and dark**. Switch anytime from the bottom of your sidebar — the app remembers your choice.\n\n### What changed\n\n- Full light mode across the entire app — chat, boards, conversations, settings\n- Redesigned tabs — smoother corners, cleaner look\n- Fixed contrast issues on mobile tab bar, chat header, and status bar",
+        "es": "Teros ahora se ve genial en **claro y oscuro**. Cambia cuando quieras desde la parte inferior de la barra lateral — la app recuerda tu elección.\n\n### Qué cambió\n\n- Modo claro completo en toda la app — chat, boards, conversaciones, ajustes\n- Pestañas rediseñadas — esquinas más suaves, aspecto más limpio\n- Arreglados los problemas de contraste en la barra de pestañas móvil, el header del chat y la barra de estado",
+        "ko": "Teros가 이제 **라이트와 다크** 모드에서 모두 완벽하게 보입니다. 사이드바 하단에서 언제든지 전환할 수 있으며, 앱이 선택을 기억합니다.\n\n### 변경 사항\n\n- 전체 앱에 걸친 라이트 모드 — 채팅, 보드, 대화, 설정\n- 재설계된 탭 — 더 부드러운 모서리, 더 깔끔한 디자인\n- 모바일 탭 바, 채팅 헤더, 상태 표시줄의 대비 문제 수정"
+      }
+    },
+    {
+      "id": "v1.3.0-board-tasks-deep-links",
+      "date": "2026-07-19",
+      "category": "improvement",
+      "description": "The board task panel is now tabbed and scrollable, and every window has a shareable URL.",
+      "title": {
+        "en": "Board, Tasks & Deep Links",
+        "es": "Board, Tareas y Deep Links",
+        "ko": "보드, 작업 & 딥 링크"
+      },
+      "content": {
+        "en": "The board task panel is now **tabbed and scrollable**, and every window in Teros has a **shareable URL**.\n\n### What changed\n\n- **Deep links for all 36 windows** — every window has a URL you can share, bookmark, or go back to\n- **Task detail panel redesigned** — tabs for Instructions, Progress, and Conversation\n- Title and tags stay visible while you scroll through task content\n- Progress notes now show avatars and relative timestamps\n- Tasks now have a separate **Instructions** field\n- File viewer content now adapts to window width",
+        "es": "El panel de tareas del board ahora tiene **pestañas y scroll**, y cada ventana de Teros tiene una **URL compartible**.\n\n### Qué cambió\n\n- **Deep links para las 36 ventanas** — cada ventana tiene una URL que puedes compartir, guardar o volver a visitar\n- **Panel de detalle de tarea rediseñado** — pestañas para Instrucciones, Progreso y Conversación\n- El título y los tags se quedan visibles mientras haces scroll por el contenido\n- Las notas de progreso ahora muestran avatares y timestamps relativos\n- Las tareas ahora tienen un campo de **Instrucciones** separado\n- El contenido del visor de archivos ahora se adapta al ancho de la ventana",
+        "ko": "보드 작업 패널이 이제 **탭과 스크롤**을 지원하며, Teros의 모든 창에 **공유 가능한 URL**이 있습니다.\n\n### 변경 사항\n\n- **모든 36개 창에 대한 딥 링크** — 각 창에는 공유, 북마크 또는 다시 방문할 수 있는 URL이 있습니다\n- **작업 상세 패널 재설계** — 지침, 진행 상황, 대화를 위한 탭\n- 작업 내용을 스크롤하는 동안 제목과 태그가 계속 보입니다\n- 진행 노트에 이제 아바타와 상대적 타임스탬프가 표시됩니다\n- 작업에 이제 별도의 **지침** 필드가 있습니다\n- 파일 뷰어 콘텐츠가 이제 창 너비에 맞게 조정됩니다"
+      }
+    },
+    {
+      "id": "v1.3.0-whats-new-modal",
+      "date": "2026-07-19",
+      "category": "feature",
+      "description": "Teros now shows you what's new every time we ship changes.",
+      "title": {
+        "en": "What's New",
+        "es": "Novedades",
+        "ko": "새로운 소식"
+      },
+      "content": {
+        "en": "Teros now shows you **what's new** every time we ship changes. This window appears automatically when there are updates you haven't seen yet — and only once per release.\n\n### Minor fixes\n\n- Consistent loading spinners across the app\n- Click outside the task panel to close it\n- Board columns scroll properly when a task is open\n- Unified agent selector with play/stop controls",
+        "es": "Teros ahora te muestra **las novedades** cada vez que lanzamos cambios. Esta ventana aparece automáticamente cuando hay actualizaciones que no has visto todavía — y solo una vez por release.\n\n### Arreglos menores\n\n- Spinners de carga consistentes en toda la app\n- Click fuera del panel de tareas para cerrarlo\n- Las columnas del board hacen scroll correctamente cuando hay una tarea abierta\n- Selector de agente unificado con controles de play/stop",
+        "ko": "Teros가 이제 변경 사항을 출시할 때마다 **새로운 소식**을 보여줍니다. 이 창은 보지 못한 업데이트가 있을 때 자동으로 나타나며, 각 릴리스마다 한 번만 표시됩니다.\n\n### 사소한 수정\n\n- 앱 전체에 일관된 로딩 스피너\n- 작업 패널 외부 클릭으로 닫기\n- 작업이 열려 있을 때 보드 열이 올바르게 스크롤됨\n- 재생/정지 컨트롤이 있는 통합 에이전트 선택기"
+      }
+    }
+  ]
+}

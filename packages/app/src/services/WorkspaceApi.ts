@@ -5,7 +5,7 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Shared types
@@ -21,6 +21,8 @@ export interface WorkspaceData {
   members?: any[]
   settings?: any
   appearance?: { color?: string; icon?: string }
+  /** Workspace type — 'private' is the user's personal workspace and cannot be deleted/archived */
+  type?: 'private' | 'shared'
   role?: string
   status: string
   createdAt: string
@@ -38,6 +40,10 @@ export interface WorkspaceAppData {
   category: string
   status: string
   volumes?: any[]
+  /** Per-app instructions injected into the agent prompt (may be empty). */
+  context?: string
+  /** Brand colours extracted from the icon (TER-538) for the AppWindow hero. */
+  accentColors?: string[]
 }
 
 // ============================================================================
@@ -45,7 +51,7 @@ export interface WorkspaceAppData {
 // ============================================================================
 
 export class WorkspaceApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   /** List workspaces for the current user */
   listWorkspaces(): Promise<{ workspaces: WorkspaceData[] }> {

@@ -6,7 +6,8 @@ Feature: Sending and receiving messages
   Background:
     Given the WebSocket server is available
     And I am authenticated as "user1@test.local" with password "user123"
-    And I have created a channel with the agent "agent_e2e_assistant"
+    And I have a workspace named "E2E Messaging"
+    And I have created a channel with the agent "agent:iria"
 
   @messaging @send
   Scenario: Send a message and receive confirmation
@@ -15,7 +16,7 @@ Feature: Sending and receiving messages
     And the confirmation should include a message ID
 
   @messaging @history
-  Scenario: Get message history from a new channel
+  Scenario: Get message history from a channel
     When I request the message history
     Then I should receive a response of type "messages_history"
     And the history should be a list

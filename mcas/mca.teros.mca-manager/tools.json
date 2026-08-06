@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "-health-check",
-      "description": "Internal health check tool. Verifies Admin API credentials and connectivity.",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -17,6 +17,9 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -33,6 +36,9 @@
         "required": [
           "appId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -42,6 +48,9 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -51,6 +60,9 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -60,6 +72,9 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -69,6 +84,9 @@
         "type": "object",
         "properties": {},
         "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

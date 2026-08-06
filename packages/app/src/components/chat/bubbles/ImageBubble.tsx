@@ -1,7 +1,11 @@
 import { Image as ImageIcon } from '@tamagui/lucide-icons';
 import { useState } from 'react';
+import { getDateLocale } from '../../../i18n';
 import { Image, Platform, useWindowDimensions } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack } from 'tamagui'
+import { useColors } from '../../mca/primitives/useColors'
+import { colors as semanticColors } from '../../mca/primitives/colors';
+import { QueuedIndicator, QueuedShimmer } from '../queuedDecorations';
 import { SelectableText } from './shared';
 
 /**
@@ -15,6 +19,7 @@ export function ImageBubble({
   timestamp,
   isUser = false,
   showTimestamp = true,
+  status,
 }: {
   url: string;
   caption?: string;
@@ -23,7 +28,9 @@ export function ImageBubble({
   timestamp: Date;
   isUser?: boolean;
   showTimestamp?: boolean;
+  status?: 'sending' | 'sent' | 'failed' | 'queued';
 }) {
+  const c = useColors()
   const { width: screenWidth } = useWindowDimensions();
   const maxWidth = screenWidth * 0.7;
   const [imageError, setImageError] = useState(false);
@@ -37,20 +44,33 @@ export function ImageBubble({
   const openModal = () => setIsModalOpen(true);
   const closeModal = () => setIsModalOpen(false);
 
+  const isQueued = status === 'queued';
+
   return (
-    <YStack maxWidth="85%" gap="$2" alignSelf={isUser ? 'flex-end' : 'flex-start'}>
-      <YStack borderRadius="$4" overflow="hidden" backgroundColor="rgba(255, 255, 255, 0.05)">
+    <YStack
+      maxWidth="85%"
+      gap="$2"
+      alignSelf={isUser ? 'flex-end' : 'flex-start'}
+      alignItems={isUser ? 'flex-end' : 'flex-start'}
+    >
+      <YStack
+        borderRadius="$4"
+        overflow="hidden"
+        backgroundColor={c.bgInner}
+        position={isQueued ? 'relative' : undefined}
+      >
+        {isQueued && <QueuedShimmer />}
         {imageError ? (
           <XStack
             width={displayWidth}
             height={150}
-            backgroundColor="rgba(255, 255, 255, 0.1)"
+            backgroundColor={c.border}
             alignItems="center"
             justifyContent="center"
             gap="$2"
           >
-            <ImageIcon size={24} color="rgba(255, 255, 255, 0.5)" />
-            <Text color="rgba(255, 255, 255, 0.5)" fontSize="$3">
+            <ImageIcon size={24} color={c.text3} />
+            <Text color={c.text3} fontSize="$3">
               Error loading image
             </Text>
           </XStack>
@@ -83,17 +103,22 @@ export function ImageBubble({
 
         {caption && (
           <YStack padding="$2" paddingTop="$1">
-            <SelectableText color="rgba(255, 255, 255, 0.8)" fontSize="$3" selectable>
+            <SelectableText color={c.text} fontSize="$3" selectable>
               {caption}
             </SelectableText>
           </YStack>
         )}
       </YStack>
 
-      {showTimestamp && (
-        <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-          {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-        </SelectableText>
+      {(showTimestamp || isQueued) && (
+        <XStack alignItems="center" gap="$2">
+          {isQueued && <QueuedIndicator />}
+          {showTimestamp && (
+            <SelectableText fontSize="$2" color={c.text3} selectable>
+              {timestamp.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })}
+            </SelectableText>
+          )}
+        </XStack>
       )}
 
       {/* Fullscreen modal for web */}
@@ -102,7 +127,7 @@ export function ImageBubble({
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.8)',
+            background: c.bgPage,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

@@ -276,6 +276,7 @@ export type {
   EncryptionSecret,
   GmailSecret,
   GoogleOAuthSecret,
+  LatitudeSecret,
   MCASecretsRegistry,
   OAuthConfigSecret,
   OpenAISecret,

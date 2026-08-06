@@ -1,0 +1,713 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de GitHub y la conectividad."
+    },
+    "list-repos": {
+      "name": "list-repos",
+      "description": "Lista los repositorios accesibles para el usuario actual a través de la GitHub App de Teros (en todas las instalaciones alcanzables). Pasa `owner` para filtrar por un usuario/organización específico.",
+      "params": {
+        "owner": "Filtro opcional — solo devuelve repos bajo este usuario u organización.",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100).",
+        "page": "Índice de página (basado en 1)."
+      }
+    },
+    "get-repo": {
+      "name": "get-repo",
+      "description": "Obtiene información detallada sobre un repositorio específico",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio"
+      }
+    },
+    "create-repo": {
+      "name": "create-repo",
+      "description": "Crea un nuevo repositorio",
+      "params": {
+        "name": "Nombre del repositorio",
+        "description": "Descripción del repositorio",
+        "private": "Crear como repositorio privado (por defecto: false)",
+        "auto_init": "Inicializar con README (por defecto: false)",
+        "gitignore_template": "Nombre de plantilla de gitignore (ej., \"Node\", \"Python\")",
+        "license_template": "Plantilla de licencia (ej., \"mit\", \"apache-2.0\")",
+        "org": "Nombre de organización. Si se proporciona, crea el repositorio bajo la organización."
+      }
+    },
+    "list-issues": {
+      "name": "list-issues",
+      "description": "Lista issues de un repositorio con filtros opcionales",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "state": "Filtrar por estado (por defecto: open)",
+        "labels": "Lista de nombres de etiquetas separados por comas",
+        "sort": "Ordenar por (por defecto: created)",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-issue": {
+      "name": "get-issue",
+      "description": "Obtiene los detalles de un issue específico",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "issue_number": "Número de issue"
+      }
+    },
+    "create-issue": {
+      "name": "create-issue",
+      "description": "Crea un nuevo issue en un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "title": "Título del issue",
+        "body": "Descripción del issue (soporta markdown)",
+        "labels": "Array de nombres de etiquetas",
+        "assignees": "Array de nombres de usuario de GitHub a asignar"
+      }
+    },
+    "update-issue": {
+      "name": "update-issue",
+      "description": "Actualiza un issue existente. Establecer `state: \"closed\"` lo cierra (usa `state_reason` para completed/not_planned). `labels` REEMPLAZA todo el conjunto de etiquetas — usa add-labels-to-issue para añadir.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "issue_number": "Número de issue",
+        "title": "Nuevo título",
+        "body": "Nuevo cuerpo",
+        "state": "Nuevo estado",
+        "state_reason": "Razón al cambiar de estado (por defecto: completed)",
+        "labels": "Nuevas etiquetas (reemplaza las existentes)"
+      }
+    },
+    "add-issue-comment": {
+      "name": "add-issue-comment",
+      "description": "Añade un comentario a un issue",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "issue_number": "Número de issue",
+        "body": "Texto del comentario (soporta markdown)"
+      }
+    },
+    "add-labels-to-issue": {
+      "name": "add-labels-to-issue",
+      "description": "Añade etiquetas a un issue o pull request (los PR son issues en la API). Devuelve el conjunto completo de etiquetas tras la adición.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "issue_number": "Número de issue o pull request",
+        "labels": "Nombres de etiquetas a añadir (sensible a mayúsculas). Las etiquetas existentes se conservan."
+      }
+    },
+    "search-issues": {
+      "name": "search-issues",
+      "description": "Busca issues y pull requests en todo GitHub. Usa la sintaxis de búsqueda de GitHub en `q` (ej. `repo:owner/name is:issue is:open label:bug`). Devuelve {total_count, incomplete_results, items[]}.",
+      "params": {
+        "q": "Consulta de búsqueda (sintaxis de búsqueda de GitHub). Soporta calificadores como `repo:`, `is:`, `label:`, `author:`, `assignee:`.",
+        "sort": "Campo de ordenación (por defecto: best-match)",
+        "order": "Dirección de ordenación (por defecto: desc)",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "list-pulls": {
+      "name": "list-pulls",
+      "description": "Lista pull requests de un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "state": "Filtrar por estado (por defecto: open)",
+        "sort": "Ordenar por (por defecto: created)",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-pull": {
+      "name": "get-pull",
+      "description": "Obtiene los detalles de un pull request específico",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request"
+      }
+    },
+    "create-pull": {
+      "name": "create-pull",
+      "description": "Crea un nuevo pull request",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "title": "Título del pull request",
+        "body": "Descripción del pull request",
+        "head": "Nombre de la rama que contiene los cambios",
+        "base": "Nombre de la rama de destino (por defecto: main)",
+        "draft": "Crear como PR borrador (por defecto: false)"
+      }
+    },
+    "merge-pull": {
+      "name": "merge-pull",
+      "description": "Fusiona un pull request",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "commit_title": "Título para el commit de fusión (opcional)",
+        "commit_message": "Mensaje para el commit de fusión (opcional)",
+        "merge_method": "Método de fusión (por defecto: merge)"
+      }
+    },
+    "list-pr-files": {
+      "name": "list-pr-files",
+      "description": "Lista los archivos modificados en un pull request. Cada archivo incluye {filename, status, additions, deletions, changes, patch?, sha, blob_url}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "list-pr-commits": {
+      "name": "list-pr-commits",
+      "description": "Lista los commits de un pull request. Cada commit incluye {sha, commit.message, author, html_url}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "list-pr-review-comments": {
+      "name": "list-pr-review-comments",
+      "description": "Lista los comentarios de revisión (comentarios en línea sobre el diff) de un pull request. Devuelve un array con {id, user, body, path, line, commit_id, created_at}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "sort": "Campo de ordenación (por defecto: created)",
+        "direction": "Dirección de ordenación (por defecto: asc)",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "request-reviewers": {
+      "name": "request-reviewers",
+      "description": "Solicita revisores en un pull request. Devuelve el PR con `requested_reviewers` y `requested_teams` poblados.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "reviewers": "Nombres de usuario de GitHub de los que solicitar revisión",
+        "team_reviewers": "Slugs de equipo (dentro de la organización) de los que solicitar revisión"
+      }
+    },
+    "create-pr-review": {
+      "name": "create-pr-review",
+      "description": "Crea una revisión de pull request. `event` controla el veredicto: APPROVE / REQUEST_CHANGES / COMMENT. Devuelve la revisión {id, state, user, submitted_at}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "pull_number": "Número de pull request",
+        "event": "Veredicto de la revisión",
+        "body": "Cuerpo de la revisión (markdown). Obligatorio para REQUEST_CHANGES y COMMENT, opcional para APPROVE.",
+        "commit_id": "SHA del commit al que se aplica la revisión (por defecto: el más reciente del PR)",
+        "comments": "Comentarios en línea. Cada elemento: {path, position O line, body}."
+      }
+    },
+    "list-branches": {
+      "name": "list-branches",
+      "description": "Lista las ramas de un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-branch": {
+      "name": "get-branch",
+      "description": "Obtiene información sobre una rama específica",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "branch": "Nombre de la rama"
+      }
+    },
+    "create-branch": {
+      "name": "create-branch",
+      "description": "Crea una nueva rama a partir de una referencia",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "branch": "Nombre de la nueva rama",
+        "from_branch": "Nombre de la rama de origen (por defecto: main)"
+      }
+    },
+    "list-commits": {
+      "name": "list-commits",
+      "description": "Lista los commits de un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "sha": "SHA o nombre de rama desde donde listar commits",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-commit": {
+      "name": "get-commit",
+      "description": "Obtiene los detalles de un commit específico",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "ref": "SHA del commit"
+      }
+    },
+    "compare-commits": {
+      "name": "compare-commits",
+      "description": "Compara dos commits o ramas. Formato `basehead` `BASE...HEAD` (ej. `main...feat/x`). Devuelve {status, ahead_by, behind_by, total_commits, commits[], files[].patch}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "basehead": "Rango de comparación, formato `BASE...HEAD`. Puede incluir cross-fork vía `owner:ref`.",
+        "per_page": "Archivos por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "list-workflows": {
+      "name": "list-workflows",
+      "description": "Lista los workflows de un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio"
+      }
+    },
+    "list-workflow-runs": {
+      "name": "list-workflow-runs",
+      "description": "Lista las ejecuciones de workflow de un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "workflow_id": "ID de workflow o nombre de archivo (opcional)",
+        "status": "Filtrar por estado",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-workflow-run": {
+      "name": "get-workflow-run",
+      "description": "Obtiene una ejecución de workflow. Devuelve {id, name, status, conclusion, run_number, head_branch, head_sha, html_url, created_at, updated_at, run_started_at}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "run_id": "ID de ejecución de workflow"
+      }
+    },
+    "list-workflow-run-jobs": {
+      "name": "list-workflow-run-jobs",
+      "description": "Lista los jobs de una ejecución de workflow. Cada job incluye {id, name, status, conclusion, started_at, completed_at, html_url, steps[]}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "run_id": "ID de ejecución de workflow",
+        "filter": "Filtrar por intento (por defecto: latest)",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "trigger-workflow": {
+      "name": "trigger-workflow",
+      "description": "Dispara un evento de workflow dispatch",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "workflow_id": "ID de workflow o nombre de archivo",
+        "ref": "Nombre de rama o etiqueta (por defecto: main)",
+        "inputs": "Parámetros de entrada para el workflow"
+      }
+    },
+    "rerun-workflow-run": {
+      "name": "rerun-workflow-run",
+      "description": "Re-ejecuta una ejecución de workflow. Por defecto re-ejecuta solo los jobs fallidos (más rápido y económico). Establece `mode: \"all\"` para re-ejecutar todos los jobs.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "run_id": "ID de ejecución de workflow",
+        "mode": "Qué jobs re-ejecutar (por defecto: failed)",
+        "enable_debug_logging": "Activar logging de depuración para la re-ejecución (por defecto: false)"
+      }
+    },
+    "cancel-workflow-run": {
+      "name": "cancel-workflow-run",
+      "description": "Cancela una ejecución de workflow en progreso. Devuelve {success: true} con 202 Accepted.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "run_id": "ID de ejecución de workflow"
+      }
+    },
+    "list-releases": {
+      "name": "list-releases",
+      "description": "Lista los releases de un repositorio, del más reciente al más antiguo. Cada release incluye {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)",
+        "page": "Índice de página (basado en 1)"
+      }
+    },
+    "create-release": {
+      "name": "create-release",
+      "description": "Crea un release de GitHub etiquetado en `tag_name`. Si se omite `target_commitish`, GitHub usa la rama por defecto. Devuelve {id, tag_name, name, html_url, draft, prerelease, published_at}.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "tag_name": "Etiqueta a la que apunta este release (se crea si no existe)",
+        "target_commitish": "Rama o SHA desde el que se crea la etiqueta (por defecto: rama por defecto del repositorio)",
+        "name": "Título del release (por defecto: tag_name)",
+        "body": "Notas del release (markdown)",
+        "draft": "Crear como borrador (por defecto: false)",
+        "prerelease": "Marcar como pre-release (por defecto: false)",
+        "generate_release_notes": "Generar notas del release automáticamente desde los commits (por defecto: false)"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Obtiene el contenido de un archivo en un repositorio",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "path": "Ruta del archivo en el repositorio",
+        "ref": "Rama, etiqueta o SHA de commit (por defecto: rama por defecto)"
+      }
+    },
+    "create-or-update-file": {
+      "name": "create-or-update-file",
+      "description": "Crea o actualiza un archivo en un repositorio. Pasa el `sha` del archivo existente al actualizar. La ruta no debe contener `..` ni empezar con `/`.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "path": "Ruta del archivo en el repositorio (sin `..`, sin `/` inicial)",
+        "message": "Mensaje del commit",
+        "content": "Contenido del archivo (se codificará en base64)",
+        "branch": "Nombre de la rama (por defecto: rama por defecto)",
+        "sha": "SHA del archivo a reemplazar (obligatorio para actualizaciones)"
+      }
+    },
+    "search-repos": {
+      "name": "search-repos",
+      "description": "Busca repositorios en GitHub",
+      "params": {
+        "query": "Consulta de búsqueda (ej., \"react language:javascript stars:>1000\")",
+        "sort": "Ordenar resultados por",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "search-code": {
+      "name": "search-code",
+      "description": "Busca código en repositorios de GitHub",
+      "params": {
+        "query": "Consulta de búsqueda (ej., \"addClass in:file language:js repo:jquery/jquery\")",
+        "per_page": "Resultados por página (por defecto: 30, máximo: 100)"
+      }
+    },
+    "get-installation-context": {
+      "name": "get-installation-context",
+      "description": "Lista las instalaciones de la GitHub App de Teros accesibles por el usuario actual, con repos accesibles, permisos concedidos y URLs de gestión/instalación."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Lista las instalaciones de la GitHub App de Teros accesibles por el usuario actual, con repos accesibles, permisos concedidos y URLs de gestión/instalación."
+    },
+    "create-check-run": {
+      "name": "create-check-run",
+      "description": "Crea un check run en un commit (exclusivo de GitHub Apps). El check aparece en la barra lateral del PR/commit. Usa status:in_progress mientras el check se ejecuta, luego actualiza con conclusion al terminar.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "name": "Nombre a mostrar del check (ej. \"Teros review\")",
+        "head_sha": "SHA del commit al que se aplica el check",
+        "status": "Estado (por defecto: queued)",
+        "conclusion": "Obligatorio cuando el estado es `completed`",
+        "output": "Salida enriquecida con título, resumen (markdown) y cuerpo de texto opcional",
+        "details_url": "URL opcional con más detalles (se muestra como enlace en el check)",
+        "external_id": "ID de referencia controlado por la App (idempotencia en el lado de la App)"
+      }
+    },
+    "update-check-run": {
+      "name": "update-check-run",
+      "description": "Actualiza un check run existente — típicamente para establecer status:completed + conclusion cuando termina el trabajo. Pasa solo los campos que quieres cambiar.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "check_run_id": "ID del check run (devuelto por create-check-run)",
+        "name": "Nuevo nombre a mostrar (opcional)",
+        "status": "Nuevo estado",
+        "conclusion": "Obligatorio cuando el estado es `completed`",
+        "output": "Salida actualizada"
+      }
+    },
+    "get-rate-limit": {
+      "name": "get-rate-limit",
+      "description": "Lee el presupuesto actual de límite de tasa de la API de GitHub para el token de instalación. Devuelve por bucket {limit, remaining, reset, used} — core, search, graphql, code_search."
+    },
+    "dispatch-event": {
+      "name": "dispatch-event",
+      "description": "Envía un evento `repository_dispatch` para disparar workflows configurados para escucharlo. Pasa `event_type` (string por el que filtra el workflow) y `client_payload` opcional.",
+      "params": {
+        "owner": "Propietario del repositorio",
+        "repo": "Nombre del repositorio",
+        "event_type": "Tipo de evento personalizado por el que filtra el workflow (ej. `deploy-staging`)",
+        "client_payload": "Payload opcional (máximo 10 propiedades, serializable a JSON). Disponible en el workflow como `github.event.client_payload`."
+      }
+    },
+    "clone-repo": {
+      "name": "clone-repo",
+      "description": "Clona un repositorio de GitHub al sistema de archivos local (usa el token de acceso del usuario actual desde la GitHub App de Teros). Devuelve {path, branch, sha, recentCommits[]}.",
+      "params": {
+        "owner": "Propietario del repositorio (usuario u organización)",
+        "repo": "Nombre del repositorio",
+        "destination": "Ruta local donde se clonará el repositorio (por defecto: /workspace/<repo>)",
+        "branch": "Rama a checkout tras clonar (por defecto: rama por defecto)"
+      }
+    },
+    "git-status": {
+      "name": "git-status",
+      "description": "Estado de git local: rama, ahead/behind respecto a upstream, y listas de archivos staged, modified, untracked y conflicted.",
+      "params": {
+        "repoPath": "Ruta absoluta al repositorio clonado. Si se omite, se resuelve como `<workspace>/<repo>`.",
+        "owner": "Propietario del repositorio (usado para resolver repoPath por defecto).",
+        "repo": "Nombre del repositorio (usado para resolver repoPath por defecto)."
+      }
+    },
+    "git-add": {
+      "name": "git-add",
+      "description": "Stagea cambios locales. Pasa un array de rutas para stagear selectivamente, u omite `paths` (por defecto `.`) para stagear todo.",
+      "params": {
+        "paths": "Rutas relativas a la raíz del repositorio. Por defecto [\".\"] (stagear todos los cambios).",
+        "update": "Si es true, solo stagea archivos ya trackeados (`git add -u`)."
+      }
+    },
+    "git-commit": {
+      "name": "git-commit",
+      "description": "Crea un commit con los cambios stageados. Devuelve `{ sha, branch, message }`. Usa `amend: true` para enmendar el commit anterior.",
+      "params": {
+        "message": "Mensaje del commit (asunto + cuerpo opcional separado por línea en blanco).",
+        "amend": "Enmendar el commit anterior en lugar de crear uno nuevo.",
+        "allowEmpty": "Permitir crear un commit sin cambios stageados.",
+        "author": "Sobrescribir el autor del commit (por defecto usa git config user.name/user.email)."
+      }
+    },
+    "git-push": {
+      "name": "git-push",
+      "description": "Sube commits al remoto. `force: true` usa `--force-with-lease`; `forceUnsafe: true` usa `--force` puro (destructivo).",
+      "params": {
+        "remote": "Nombre del remoto. Por defecto `origin`.",
+        "branch": "Rama local a subir. Por defecto la rama actual.",
+        "setUpstream": "Establecer tracking de upstream (`-u`).",
+        "force": "Usar `--force-with-lease` (force seguro).",
+        "forceUnsafe": "Usar `--force` puro (destructivo; reescribe el historial remoto).",
+        "tags": "Subir etiquetas junto con los commits."
+      }
+    },
+    "git-checkout": {
+      "name": "git-checkout",
+      "description": "Cambia de rama, crea una nueva rama, o restaura rutas específicas. Devuelve el nuevo ref HEAD. Usa `force: true` para descartar cambios locales (destructivo).",
+      "params": {
+        "target": "Rama, etiqueta, SHA de commit, o — con `paths` — fuente de restauración.",
+        "create": "Crear una nueva rama llamada `target` (`-b`).",
+        "paths": "Restaurar estas rutas específicas desde `target` (sin cambio de rama).",
+        "force": "Descartar cambios locales (`--force`). Destructivo."
+      }
+    },
+    "git-rm": {
+      "name": "git-rm",
+      "description": "Elimina archivos trackeados del árbol de trabajo y stagea la eliminación. Pasa `cached: true` para solo unstagear (sin eliminar del disco).",
+      "params": {
+        "paths": "Rutas a eliminar (relativas a la raíz del repositorio).",
+        "cached": "Solo stagear la eliminación; mantener el archivo en disco (`git rm --cached`).",
+        "recursive": "Recorrer directorios recursivamente (`-r`)."
+      }
+    },
+    "git-mv": {
+      "name": "git-mv",
+      "description": "Mueve o renombra un archivo/directorio trackeado preservando el historial de git. Tanto `from` como `to` son relativas a la raíz del repositorio.",
+      "params": {
+        "from": "Ruta de origen (relativa a la raíz del repositorio).",
+        "to": "Ruta de destino (relativa a la raíz del repositorio).",
+        "force": "Sobrescribir `to` si ya existe (`-f`)."
+      }
+    },
+    "git-read-file": {
+      "name": "git-read-file",
+      "description": "Lee un archivo del árbol de trabajo o desde una revisión de git específica. Pasa `ref` (commit/rama/etiqueta) para leer la versión en ese punto.",
+      "params": {
+        "path": "Ruta del archivo relativa a la raíz del repositorio.",
+        "ref": "Commit/rama/etiqueta opcional. Si se omite, lee del árbol de trabajo actual.",
+        "encoding": "Codificación de salida. Usa `base64` para archivos binarios."
+      }
+    },
+    "git-write-file": {
+      "name": "git-write-file",
+      "description": "Escribe contenido de archivo en el árbol de trabajo (crea directorios padre) y lo stagea. Usa `stage: false` para omitir el staging.",
+      "params": {
+        "path": "Ruta del archivo relativa a la raíz del repositorio.",
+        "content": "Contenido del archivo (utf8 por defecto, o base64 — ver `encoding`).",
+        "stage": "Stagear el cambio (`git add`)."
+      }
+    },
+    "git-list-files": {
+      "name": "git-list-files",
+      "description": "Lista archivos del repositorio, respetando `.gitignore`. Devuelve arrays `{ tracked, untracked, ignored }`. Filtra opcionalmente por `pattern` (glob, relativo a la raíz del repositorio).",
+      "params": {
+        "pattern": "Filtro glob opcional (ej. `src/**`).",
+        "includeIgnored": "Incluir la lista `ignored`."
+      }
+    },
+    "git-pull": {
+      "name": "git-pull",
+      "description": "Descarga commits del remoto a la rama actual. `rebase: true` para un historial lineal (sin commit de merge).",
+      "params": {
+        "branch": "Rama remota a descargar. Por defecto la de upstream.",
+        "rebase": "Usar `--rebase` en lugar de merge.",
+        "ff": "`only` = abortar si no es fast-forward; `no` = siempre commit de merge; `auto` = default de git."
+      }
+    },
+    "git-diff": {
+      "name": "git-diff",
+      "description": "Muestra diferencias como diff unificado + numstat. Por defecto árbol de trabajo vs HEAD. `from: staged` para index vs HEAD; pasa SHAs de commit `from`+`to` para diffs arbitrarios.",
+      "params": {
+        "from": "`working` (por defecto), `staged`, `HEAD`, o un SHA de commit/rama/etiqueta.",
+        "to": "Ref de destino cuando `from` es un commit. Por defecto `HEAD` cuando `from`=working/staged.",
+        "path": "Limitar el diff a una ruta específica.",
+        "contextLines": "Número de líneas de contexto alrededor de cada cambio."
+      }
+    },
+    "git-log": {
+      "name": "git-log",
+      "description": "Historial de commits local con entradas estructuradas. Por defecto los últimos 20 commits en la rama actual. Filtra por `ref`, `path`, `author`, `since`/`until`.",
+      "params": {
+        "ref": "Rama / etiqueta / commit desde donde empezar (por defecto HEAD).",
+        "path": "Limitar el historial a una ruta específica.",
+        "author": "Filtrar por autor (coincidencia de subcadena).",
+        "since": "Fecha ISO o relativo estilo git (ej. \"2 weeks ago\").",
+        "until": "Fecha ISO o relativo estilo git.",
+        "limit": "Número máximo de commits."
+      }
+    },
+    "git-batch-commit": {
+      "name": "git-batch-commit",
+      "description": "Aplica múltiples cambios de archivo (crear/actualizar/eliminar/renombrar) y crea UN commit atómico. Úsalo para refactors y cualquier cambio multi-archivo donde los estados intermedios no deban ser visibles en el historial de git.",
+      "params": {
+        "message": "Mensaje del commit."
+      }
+    },
+    "git-stash": {
+      "name": "git-stash",
+      "description": "Gestiona el stash. La acción por defecto `push` guarda los cambios sin commitear. Otras acciones: pop, apply, drop, list, clear.",
+      "params": {
+        "message": "Mensaje opcional para `push`.",
+        "index": "Índice de stash para `pop/apply/drop` (por defecto 0 = top).",
+        "includeUntracked": "Incluir archivos untracked al stashear (`-u`)."
+      }
+    },
+    "git-merge": {
+      "name": "git-merge",
+      "description": "Fusiona una rama/etiqueta/commit en la rama actual. En caso de conflicto, lanza `GIT_CONFLICT` y el agente debe resolver vía `git-status` + edit + `git-add`.",
+      "params": {
+        "target": "Rama/etiqueta/commit a fusionar en la rama actual.",
+        "message": "Mensaje del commit de fusión (usado cuando no es fast-forward).",
+        "noFf": "Crear siempre un commit de fusión (`--no-ff`).",
+        "ffOnly": "Abortar si no es fast-forward (`--ff-only`).",
+        "squash": "Comprimir todos los cambios en un único cambio stageado (NO commitea).",
+        "strategyOption": "Passthrough `-X<option>` (ej. `ours`, `theirs`, `patience`)."
+      }
+    },
+    "git-rebase": {
+      "name": "git-rebase",
+      "description": "Rebasa la rama actual sobre otro ref (historial lineal). O controla un rebase en progreso con `mode: continue/skip/abort`.",
+      "params": {
+        "onto": "Ref de destino sobre el que rebasar (obligatorio salvo que se proporcione `mode`).",
+        "autosquash": "Respetar commits `fixup!`/`squash!`.",
+        "strategyOption": "Passthrough `-X<option>` (ej. `theirs`)."
+      }
+    },
+    "git-reset": {
+      "name": "git-reset",
+      "description": "Reset HEAD a `target`. `mode: soft` mantiene el staging; `mode: mixed` (por defecto) mantiene el árbol de trabajo; `mode: hard` descarta todo (destructivo).",
+      "params": {
+        "target": "Ref a la que resetear (por defecto `HEAD`)."
+      }
+    },
+    "git-cherry-pick": {
+      "name": "git-cherry-pick",
+      "description": "Cherry-pick de commits sobre la rama actual. Pasa `commits: [\"sha\", ...]` o controla un pick en progreso con `mode: continue/skip/abort`.",
+      "params": {
+        "commits": "SHAs / refs a cherry-pick (en orden).",
+        "noCommit": "Stagear cambios pero no crear el commit.",
+        "mainline": "Para commits de merge: número de padre (basado en 1) a usar como mainline."
+      }
+    },
+    "git-config": {
+      "name": "git-config",
+      "description": "Lee o escribe la configuración de git (solo claves permitidas). El scope por defecto es `local` (el repositorio). Para identidad, prefiere `user.name` y `user.email`.",
+      "params": {
+        "key": "Clave de configuración (obligatorio para get/set/unset).",
+        "value": "Nuevo valor (obligatorio para set)."
+      }
+    },
+    "git-tag": {
+      "name": "git-tag",
+      "description": "Lista, crea o elimina etiquetas git locales. Pasa `message` al crear para una etiqueta anotada (en caso contrario lightweight).",
+      "params": {
+        "name": "Nombre de la etiqueta (obligatorio para create/delete).",
+        "ref": "Ref a etiquetar (por defecto `HEAD`). Usado por `create`.",
+        "message": "Si se establece, crea una etiqueta anotada con este mensaje.",
+        "pattern": "Filtro glob para `list`.",
+        "force": "Reemplazar etiqueta existente (`-f`)."
+      }
+    },
+    "git-remote": {
+      "name": "git-remote",
+      "description": "Lista, añade, elimina o actualiza remotos de git. `list` devuelve nombre + URLs de fetch/push.",
+      "params": {
+        "name": "Nombre del remoto (obligatorio para add/remove/set-url).",
+        "url": "URL del remoto (obligatorio para add/set-url)."
+      }
+    },
+    "git-blame": {
+      "name": "git-blame",
+      "description": "Atribución por línea de un archivo. Devuelve `[{ sha, author, date, lineNumber, content }]`. Restringe con `range: \"10,50\"` o `ref`.",
+      "params": {
+        "path": "Ruta del archivo relativa a la raíz del repositorio.",
+        "ref": "Blame en un ref específico (por defecto HEAD).",
+        "range": "Rango de líneas opcional `inicio,fin` (basado en 1, inclusivo)."
+      }
+    },
+    "git-bisect": {
+      "name": "git-bisect",
+      "description": "Búsqueda binaria del commit que introdujo un bug. Flujo: start → marcar cada paso good/bad → done. Usa `reset` para abortar.",
+      "params": {
+        "bad": "Commit malo (obligatorio para `start`).",
+        "good": "Commit bueno (opcional pero recomendado para `start`).",
+        "ref": "Commit a marcar para `good/bad/skip` (por defecto HEAD actual)."
+      }
+    },
+    "git-fetch": {
+      "name": "git-fetch",
+      "description": "Descarga refs del remoto sin fusionar. Usa `refspec` para descargar refs arbitrarias (ej. `pull/<n>/head:pr-<n>` para la cabeza de un PR, `refs/tags/v1.0.0:refs/tags/v1.0.0` para una etiqueta).",
+      "params": {
+        "refspec": "Refspec opcional — ej. `pull/<n>/head:pr-<n>` para traer la cabeza de un PR como rama local, o `refs/tags/<tag>` para descargar una sola etiqueta. Si se omite, descarga todas las ramas y etiquetas del remoto.",
+        "depth": "Limitar el historial a N commits (shallow fetch).",
+        "tags": "Descargar también etiquetas (por defecto true para fetch por defecto, false cuando se proporciona un refspec).",
+        "prune": "Eliminar refs locales cuyo equivalente remoto ha desaparecido (`--prune`)."
+      }
+    }
+  },
+  "name": "GitHub",
+  "description": "Gestión de repositorios de GitHub + entorno de desarrollo git local — repos, issues, pull requests, actions, commits, ramas, releases, más operaciones de git local en repos clonados (status/add/commit/push/checkout). Autenticación vía la GitHub App de Teros con OAuth user-to-server (cada usuario actúa con su propia identidad de GitHub).",
+  "changelog": [
+    {
+      "notes": "Gestiona repos, issues, pull requests y revisiones, ejecuta Actions y releases, más git local completo en repos clonados"
+    }
+  ]
+}

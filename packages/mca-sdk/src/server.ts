@@ -34,7 +34,7 @@
  * server.start();
  * ```
  *
- * @see docs/RFC-001-mca-protocol.md
+ *
  */
 
 import {
@@ -69,6 +69,39 @@ export type ToolHandler<TArgs = Record<string, unknown>, TResult = unknown> = (
 ) => Promise<TResult> | TResult;
 
 /**
+ * Optional metadata attached to a tool. Enables clients to handle
+ * versioning, deprecation and staged rollout.
+ */
+export interface ToolAnnotations {
+  /** Semver-like string (e.g. '1.0.0'). Informational. */
+  version?: string;
+  /** Stability signal. Clients MAY down-rank 'experimental' / 'deprecated'. */
+  stability?: 'experimental' | 'stable' | 'deprecated';
+  /** Explanation of the deprecation and suggested replacement. */
+  deprecationMessage?: string;
+  /** Teros — action cannot be undone (delete, send-with-no-unsend). Frontend shows a badge. */
+  irreversible?: boolean;
+  /** Teros policy — tool NEVER runs without human confirmation; user 'allow' config is ignored. */
+  alwaysAsk?: boolean;
+  /** MCP spec hint — tool only reads, never mutates state. Clients MAY auto-approve. */
+  readOnlyHint?: boolean;
+  /** MCP spec hint — tool may modify or delete state irreversibly. Clients SHOULD confirm. */
+  destructiveHint?: boolean;
+  /** MCP spec hint — repeating the call with the same args has no extra effect. */
+  idempotentHint?: boolean;
+  /** MCP spec hint — tool reaches outside the local environment (network, external services). */
+  openWorldHint?: boolean;
+  /**
+   * Catalog presentation (TER-538), author-curated. `summary` is a short
+   * human sentence and `group` a domain label (e.g. 'Pages') shown in the
+   * catalog detail. Optional — the sync falls back to a heuristic when absent.
+   * These never reach the LLM (the model reads `description`).
+   */
+  summary?: string;
+  group?: string;
+}
+
+/**
  * Tool configuration
  */
 export interface ToolConfig<TArgs = Record<string, unknown>, TResult = unknown> {
@@ -82,6 +115,12 @@ export interface ToolConfig<TArgs = Record<string, unknown>, TResult = unknown> 
   };
   /** Handler function */
   handler: ToolHandler<TArgs, TResult>;
+  /**
+   * Optional metadata for versioning and stability signals.
+   * Example: { version: '1.2.0', stability: 'stable' }
+   * When `stability: 'deprecated'`, consider adding `deprecationMessage`.
+   */
+  annotations?: ToolAnnotations;
 }
 
 /**
@@ -98,9 +137,27 @@ export interface ToolContext {
     workspaceId?: string;
     requestId?: string;
     callbackUrl?: string;
+    userDisplayName?: string;
+    userAvatarUrl?: string;
   };
   /** Backend client (if callbackUrl available) */
   backend: any;
+  /**
+   * AbortSignal that fires when the backend caller cancels the request.
+   * Handlers SHOULD honor this signal to avoid wasted work / leaked side
+   * effects on long-running operations.
+   *
+   * Transport semantics:
+   * - **HTTP transport**: fires on `req.on('close')` (client closed the HTTP
+   *   connection mid-call). Implemented in Phase 2.0.
+   * - **Stdio transport**: currently a never-aborts stub. Real cancellation
+   *   via MCP `notifications/cancelled` is roadmapped for Phase 2.6.
+   *
+   * Handlers that ignore this signal still work (the backend discards their
+   * result via `cancellation_applied` guard) but waste compute and may
+   * commit side effects after the cancel point.
+   */
+  signal: AbortSignal;
   /** Get system secrets */
   getSystemSecrets: () => Promise<Record<string, string>>;
   /** Get user secrets */
@@ -158,6 +215,7 @@ interface RegisteredTool {
     required?: string[];
   };
   handler: ToolHandler;
+  annotations?: ToolAnnotations;
 }
 
 // ============================================================================
@@ -192,6 +250,7 @@ export class McaServer {
       description: config.description,
       parameters: config.parameters,
       handler: config.handler as ToolHandler,
+      annotations: config.annotations,
     });
   }
 
@@ -271,6 +330,7 @@ export class McaServer {
         description: tool.description,
         parameters: tool.parameters,
         handler: tool.handler as any,
+        annotations: tool.annotations,
       });
     }
 
@@ -298,6 +358,7 @@ export class McaServer {
         description: tool.description,
         parameters: tool.parameters,
         handler: tool.handler as any,
+        annotations: tool.annotations,
       });
     }
 

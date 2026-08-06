@@ -18,7 +18,27 @@ export type AppCredentialStatus =
 /**
  * Tipo de autenticacion que requiere la MCA
  */
-export type McaAuthType = 'oauth2' | 'apikey' | 'none';
+export type McaAuthType = 'oauth2' | 'apikey' | 'none' | 'github-app' | 'agent';
+
+/**
+ * Información para auth `github-app` (server-to-server). El user instala
+ * la Teros App en sus repos y GitHub redirige al Setup URL con
+ * `installation_id`. Identidad: `Teros[bot]`.
+ */
+export interface GitHubAppInfo {
+  /** Si hay una installation activa para este user+app. */
+  installed: boolean;
+  /** Slug público de la App (`https://github.com/apps/<slug>`). */
+  appSlug: string;
+  /** ID de la installation (cuando connected). */
+  installationId?: string;
+  /** Cuenta donde está instalada (user/org login). */
+  account?: string;
+  /** Número de repos accesibles via la installation. */
+  repositoryCount?: number;
+  /** URL de gestión en github.com (revoke / change repos / change permissions). */
+  manageUrl?: string;
+}
 
 /**
  * Campo de configuracion para API key
@@ -36,6 +56,8 @@ export interface ApiKeyField {
   placeholder?: string;
   /** Hint/ayuda opcional */
   hint?: string;
+  /** Valor actual del campo (solo en extraFields de OAuth, poblado desde credenciales) */
+  value?: string;
 }
 
 /**
@@ -48,10 +70,22 @@ export interface OAuthInfo {
   connected: boolean;
   /** Email/cuenta conectada (si connected) */
   email?: string;
+  /**
+   * Login/handle del proveedor cuando aplica (e.g. GitHub `login`,
+   * Notion `name`). Para `github-app` con userOAuth, se prefiere mostrar
+   * `@${userLogin}` en la UI sobre el email.
+   */
+  userLogin?: string;
   /** Fecha de expiracion del token (ISO string) */
   expiresAt?: string;
   /** Scopes autorizados */
   scopes?: string[];
+  /**
+   * Campos extra configurables por el usuario en apps OAuth.
+   * Permiten añadir configuracion adicional (e.g., TEAM_ID en Figma)
+   * sin romper el flujo OAuth.
+   */
+  extraFields?: ApiKeyField[];
 }
 
 /**
@@ -76,6 +110,8 @@ export interface AppAuthInfo {
   oauth?: OAuthInfo;
   /** Info especifica para API key */
   apikey?: ApiKeyInfo;
+  /** Info especifica para GitHub App (server-to-server install). */
+  githubApp?: GitHubAppInfo;
   /** Mensaje legible para UI */
   message?: string;
   /** Detalles del error (si status es 'error') */

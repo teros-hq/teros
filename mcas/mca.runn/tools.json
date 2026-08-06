@@ -1,0 +1,884 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.runn",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies the Runn API key and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "runn-list-projects",
+      "description": "List Runn projects. Returns { items: [{ id, name, clientId, isArchived, isConfirmed, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: clientId?, isArchived?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "clientId": {
+            "type": "number",
+            "description": "Filter by client id."
+          },
+          "isArchived": {
+            "type": "boolean",
+            "description": "Filter by archived state."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn project objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-get-project",
+      "description": "Get a single Runn project by id. Returns curated detail { id, name, clientId, teamId, isArchived, isConfirmed, pricingModel, rateType, budget, expensesBudget, tags, references, ... }. Params: projectId (required), fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Runn project id."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn project object. Default false."
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-project",
+      "description": "Create a Runn project from scratch. Returns the curated created project. Not retryable (no idempotency key). Params: name, clientId (both required), isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel? (fp|tm|nb), rateType? (hours|days), rateCardId?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Project name."
+          },
+          "clientId": {
+            "type": "number",
+            "description": "Client id (required). Use runn-list-clients to find it."
+          },
+          "isConfirmed": {
+            "type": "boolean",
+            "description": "Confirmed (vs tentative) project. Default false."
+          },
+          "teamId": {
+            "type": "number",
+            "description": "Team id."
+          },
+          "budget": {
+            "type": "number",
+            "description": "Project budget (in the account currency)."
+          },
+          "expensesBudget": {
+            "type": "number",
+            "description": "Expenses budget."
+          },
+          "pricingModel": {
+            "type": "string",
+            "enum": [
+              "fp",
+              "tm",
+              "nb"
+            ],
+            "description": "fp = fixed price, tm = time & materials, nb = non-billable."
+          },
+          "rateType": {
+            "type": "string",
+            "enum": [
+              "hours",
+              "days"
+            ],
+            "description": "Rate unit."
+          },
+          "rateCardId": {
+            "type": "number",
+            "description": "Rate card id."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn project object. Default false."
+          }
+        },
+        "required": [
+          "name",
+          "clientId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-update-project",
+      "description": "Update a Runn project. Only the fields you pass are changed (PATCH semantics). Idempotent — safe to retry. Returns the curated updated project. Params: projectId (required), name?, clientId?, isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel?, rateType?, rateCardId?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "number",
+            "description": "Runn project id to update."
+          },
+          "name": {
+            "type": "string",
+            "description": "New project name."
+          },
+          "clientId": {
+            "type": "number",
+            "description": "New client id."
+          },
+          "isConfirmed": {
+            "type": "boolean",
+            "description": "Confirmed (vs tentative) project."
+          },
+          "teamId": {
+            "type": "number",
+            "description": "New team id."
+          },
+          "budget": {
+            "type": "number",
+            "description": "Project budget."
+          },
+          "expensesBudget": {
+            "type": "number",
+            "description": "Expenses budget."
+          },
+          "pricingModel": {
+            "type": "string",
+            "enum": [
+              "fp",
+              "tm",
+              "nb"
+            ],
+            "description": "fp | tm | nb."
+          },
+          "rateType": {
+            "type": "string",
+            "enum": [
+              "hours",
+              "days"
+            ],
+            "description": "hours | days."
+          },
+          "rateCardId": {
+            "type": "number",
+            "description": "Rate card id."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn project object. Default false."
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-people",
+      "description": "List Runn people. Returns { items: [{ id, firstName, lastName, email, isArchived, teamId, createdAt, updatedAt }], total, hasMore, nextCursor }. Note: a person's role lives in their contract, not on the person. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn person objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-get-person",
+      "description": "Get a single Runn person by id. Returns curated detail { id, firstName, lastName, email, isArchived, teamId, tags, references, holidaysGroupId, managers, ... }. Params: personId (required), fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "number",
+            "description": "Runn person id."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn person object. Default false."
+          }
+        },
+        "required": [
+          "personId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-person",
+      "description": "Create a Runn person. A first contract (role) is created with them. Returns the curated created person. Not retryable (no idempotency key). Params: firstName, lastName, roleId (all required), email?, teamId?, startDate? (YYYY-MM-DD), employmentType? (employee|contractor), costPerHour?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "firstName": {
+            "type": "string",
+            "description": "First name."
+          },
+          "lastName": {
+            "type": "string",
+            "description": "Last name."
+          },
+          "roleId": {
+            "type": "number",
+            "description": "Role id for the initial contract (required)."
+          },
+          "email": {
+            "type": "string",
+            "description": "Email address."
+          },
+          "teamId": {
+            "type": "number",
+            "description": "Team id."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Contract start date, YYYY-MM-DD. Defaults to today."
+          },
+          "employmentType": {
+            "type": "string",
+            "enum": [
+              "employee",
+              "contractor"
+            ],
+            "description": "Employment type. Default employee."
+          },
+          "costPerHour": {
+            "type": "number",
+            "description": "Cost per hour. Defaults to the role cost."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn person object. Default false."
+          }
+        },
+        "required": [
+          "firstName",
+          "lastName",
+          "roleId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-placeholders",
+      "description": "List Runn placeholders (unnamed role slots used for planning before a real person is assigned). Returns { items: [{ id, firstName, lastName, isArchived, tags, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn placeholder objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-placeholder",
+      "description": "Create a Runn placeholder (an unnamed role slot for planning before a real person is hired/assigned). Returns the curated created placeholder. Not retryable (no idempotency key). Params: roleId (required), teamId?, costPerHour?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "roleId": {
+            "type": "number",
+            "description": "Role id the placeholder stands in for (required)."
+          },
+          "teamId": {
+            "type": "number",
+            "description": "Team id."
+          },
+          "costPerHour": {
+            "type": "number",
+            "description": "Cost per hour. Defaults to the role cost."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn placeholder object. Default false."
+          }
+        },
+        "required": [
+          "roleId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-assignments",
+      "description": "List Runn assignments (a person/placeholder allocated to a project at a role over a date range). Returns { items: [{ id, personId, projectId, roleId, startDate, endDate, minutesPerDay, isBillable, isPlaceholder, ... }], total, hasMore, nextCursor }. Filter by personId OR projectId (not both). Params: personId?, projectId?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "number",
+            "description": "Scope to one person's assignments."
+          },
+          "projectId": {
+            "type": "number",
+            "description": "Scope to one project's assignments."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn assignment objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-assignment",
+      "description": "Allocate a person (or placeholder) to a project at a role over a date range. Returns the curated created assignment. Not retryable (no idempotency key). Params: personId, projectId, roleId, startDate, endDate (YYYY-MM-DD), minutesPerDay (all required), isBillable?, note?, phaseId?, workstreamId?, isNonWorkingDay?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "number",
+            "description": "Person OR placeholder id to assign."
+          },
+          "projectId": {
+            "type": "number",
+            "description": "Project id."
+          },
+          "roleId": {
+            "type": "number",
+            "description": "Role id the person works as on this assignment."
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date, YYYY-MM-DD."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date, YYYY-MM-DD (on or after startDate)."
+          },
+          "minutesPerDay": {
+            "type": "number",
+            "description": "Allocated minutes per day (>= 0)."
+          },
+          "isBillable": {
+            "type": "boolean",
+            "description": "Whether the assignment is billable. Default true."
+          },
+          "note": {
+            "type": "string",
+            "description": "Optional note."
+          },
+          "phaseId": {
+            "type": "number",
+            "description": "Optional project phase id."
+          },
+          "workstreamId": {
+            "type": "number",
+            "description": "Optional workstream id."
+          },
+          "isNonWorkingDay": {
+            "type": "boolean",
+            "description": "Whether it falls on a non-working day."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn assignment object. Default false."
+          }
+        },
+        "required": [
+          "personId",
+          "projectId",
+          "roleId",
+          "startDate",
+          "endDate",
+          "minutesPerDay"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-delete-assignment",
+      "description": "Delete a Runn assignment by id. Irreversible. Returns { success, assignmentId }. Params: assignmentId (required).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "assignmentId": {
+            "type": "number",
+            "description": "Runn assignment id to delete."
+          }
+        },
+        "required": [
+          "assignmentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-actuals",
+      "description": "List Runn actuals (logged timesheet hours by day). Returns { items: [{ id, date, personId, projectId, roleId, billableMinutes, nonbillableMinutes, ... }], total, hasMore, nextCursor }. Filter by personId OR projectId (not both). Params: personId?, projectId?, limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "personId": {
+            "type": "number",
+            "description": "Scope to one person's actuals."
+          },
+          "projectId": {
+            "type": "number",
+            "description": "Scope to one project's actuals."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn actual objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-actual",
+      "description": "Log a Runn actual (real hours worked on a day). The minutes overwrite any existing actual for the same day/person/project/role/workstream. Returns the curated actual. Params: date (YYYY-MM-DD), billableMinutes, nonbillableMinutes, personId, projectId, roleId (all required), billableNote?, nonbillableNote?, phaseId?, workstreamId?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Day the work was done, YYYY-MM-DD."
+          },
+          "billableMinutes": {
+            "type": "number",
+            "description": "Billable minutes (>= 0)."
+          },
+          "nonbillableMinutes": {
+            "type": "number",
+            "description": "Non-billable minutes (>= 0)."
+          },
+          "personId": {
+            "type": "number",
+            "description": "Person id."
+          },
+          "projectId": {
+            "type": "number",
+            "description": "Project id."
+          },
+          "roleId": {
+            "type": "number",
+            "description": "Role id."
+          },
+          "billableNote": {
+            "type": "string",
+            "description": "Optional note for the billable time."
+          },
+          "nonbillableNote": {
+            "type": "string",
+            "description": "Optional note for the non-billable time."
+          },
+          "phaseId": {
+            "type": "number",
+            "description": "Optional project phase id."
+          },
+          "workstreamId": {
+            "type": "number",
+            "description": "Optional workstream id."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn actual object. Default false."
+          }
+        },
+        "required": [
+          "date",
+          "billableMinutes",
+          "nonbillableMinutes",
+          "personId",
+          "projectId",
+          "roleId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-clients",
+      "description": "List Runn clients. Returns { items: [{ id, name, website, isArchived, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn client objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-create-client",
+      "description": "Create a Runn client. Returns the curated created client. Not retryable (no idempotency key). Params: name (required), website?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Client name."
+          },
+          "website": {
+            "type": "string",
+            "description": "Client website URL."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist on the result."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return the raw Runn client object. Default false."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-roles",
+      "description": "List Runn roles (job roles people and placeholders are assigned as). Returns { items: [{ id, name, isArchived, defaultHourCost, standardRate, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn role objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-teams",
+      "description": "List Runn teams. Returns { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn team objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-list-skills",
+      "description": "List Runn skills. Returns { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Params: limit (1-200, def 50), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 200, default 50."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn skill objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "runn-project-totals",
+      "description": "Get aggregated minute totals per project (billable, non-billable, total — from actuals when available, falling back to assignments). Returns { items: [{ id, billableMinutes, nonBillableMinutes, totalMinutes, assignments, actuals }], total, hasMore, nextCursor }. Params: includeArchived (default false), limit (1-10, def 10), cursor?, fields?, includeRaw.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived projects in the totals. Default false."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page. Min 1, max 10, default 10."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response.nextCursor."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Override default whitelist per row."
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Runn aggregate objects. Default false."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}

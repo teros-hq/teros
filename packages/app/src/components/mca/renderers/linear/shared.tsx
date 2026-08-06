@@ -1,479 +1,560 @@
 /**
- * Linear Renderer - Shared Components & Utilities
+ * Linear — constants, types, helpers, and a compose-only `LinearToolShell`.
+ *
+ * Zero components are defined here. The global primitives
+ * (`IconChip`, `IconTile`, `PillList`, `ResourceCard`, `EntityRow`,
+ * `ActionBadge`, `ToolCallCard`, `Avatar`, `KeyValueGrid`, ...) cover every
+ * Linear-specific UI case through props. What lives here:
+ *
+ *  - Constants: official Linear priority palette + brand accent + logo url.
+ *  - Types for curated + legacy Linear shapes (tolerant unions).
+ *  - Shape-agnostic getters (`getPriorityNumber`, `getAssigneeName`, …).
+ *  - **Prop factories** that feed the global primitives:
+ *      `priorityChipProps(p) → { icon, accent, text }` fed to `<IconChip/>`.
+ *      `workflowStateChipProps(state)`, `labelChipProps(label)`,
+ *      `teamKeyChipProps(team)`, `projectTileProps(project)`.
+ *  - Tiny JSX helper `identifierText(id)` (inline `<Text>` in Linear purple).
+ *  - Generic local helpers (`unwrap`, `unwrapList`, `diffFields`, …).
+ *  - `LinearToolShell` — compose-only wrapper over `ToolCallCard` that
+ *    pre-fills `iconUri={LINEAR_ICON}` and the description label.
  */
 
-import { ChevronRight, Circle, Zap } from '@tamagui/lucide-icons';
+import { Circle, Zap } from '../../primitives';
 import type React from 'react';
-import { useEffect, useRef } from 'react';
-import { Animated, Easing, Linking } from 'react-native';
-import { Image, Text, XStack, YStack } from 'tamagui';
-import { usePulseAnimation } from '../../../../hooks/usePulseAnimation';
+import { Text } from 'tamagui';
+import { Badge, type KeyValueRow, ToolCallCard, useColors, useMcaTheme } from '../../primitives';
+import type { ToolCallRendererProps } from '../../types';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const LINEAR_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/linear-icon.png`;
+export const LINEAR_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/linear-icon.png`;
 
-// ============================================================================
-// Colors
-// ============================================================================
+export const LINEAR_BRAND = {
+  /** Linear's official primary brand color. Used for `StatusDot running`,
+   * identifier pills, and as fallback accent when the backend does not
+   * provide one (e.g. labelIds array without the full label object). */
+  purple: '#5E6AD2',
+  blue: '#4EA8DE',
+} as const;
 
-export const colors = {
-  // Linear brand
-  linearPurple: '#5E6AD2',
-  linearBlue: '#4EA8DE',
+/**
+ * Linear renderer palette. Combines the official Linear brand colors (kept
+ * hardcoded per brand guidelines) with the Design System theme-adaptive surface
+ * tokens from `useColors()`. The web scrollbar color switches between dark and
+ * light variants so it remains visible on both card backgrounds.
+ */
+export function useLinearColors() {
+  const c = useColors();
+  const theme = useMcaTheme();
+  const isDark = theme === 'dark';
 
-  // Status dot
-  success: '#22c55e',
-  running: '#5E6AD2',
-  failed: '#ef4444',
+  return {
+    ...c,
+    theme,
+    isDark,
+    brand: LINEAR_BRAND,
+    // Scrollbar thumb must invert between themes to stay visible against the card surface.
+    scrollbarColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)',
+  };
+}
 
-  // Status glow
-  glowSuccess: 'rgba(34, 197, 94, 0.5)',
-  glowRunning: 'rgba(94, 106, 210, 0.5)',
-  glowFailed: 'rgba(239, 68, 68, 0.5)',
+/**
+ * Theme-aware scrollbar style hook. Returns a web-only CSS object suitable for
+ * `ScrollView style` on web. Must be called inside a component because it reads
+ * the active theme via `useLinearColors()`.
+ */
+export function useScrollStyle(maxHeight: number) {
+  const { scrollbarColor } = useLinearColors();
+  return {
+    maxHeight,
+    // biome-ignore lint/suspicious/noExplicitAny: CSS scrollbar props are web-only, not in RN ViewStyle
+    scrollbarWidth: 'thin',
+    // biome-ignore lint/suspicious/noExplicitAny: idem
+    scrollbarColor: `${scrollbarColor} transparent`,
+  } as any;
+}
 
-  // Icon
-  icon: '#5E6AD2',
+/**
+ * Linear's official priority palette. Matches the product UI (documented in
+ * community guides since Linear does not publish the palette publicly).
+ * IMPORTANT: medium is yellow, not blue — a common mistake when using
+ * Tailwind defaults.
+ *
+ * Enum contract: 0=none, 1=urgent, 2=high, 3=medium, 4=low (SDK graphql).
+ */
+export const PRIORITY_COLORS: Record<number, string> = {
+  0: '#6B7280', // None
+  1: '#EB5757', // Urgent
+  2: '#F2994A', // High
+  3: '#F2C94C', // Medium (yellow, not blue)
+  4: '#95A2B3', // Low
+};
 
-  // Badges
-  badgeSuccess: { text: '#86efac', bg: 'rgba(34,197,94,0.1)' },
-  badgeError: { text: '#fca5a5', bg: 'rgba(239,68,68,0.1)' },
-  badgeInfo: { text: '#a5b4fc', bg: 'rgba(94,106,210,0.1)' },
-  badgeWarning: { text: '#fcd34d', bg: 'rgba(251,191,36,0.1)' },
-  badgeGray: { text: '#a1a1aa', bg: 'rgba(255,255,255,0.06)' },
-
-  // Priority (Linear style: 1=urgent, 2=high, 3=medium, 4=low, 0=none)
-  priorityUrgent: '#ef4444',
-  priorityHigh: '#f59e0b',
-  priorityMedium: '#3b82f6',
-  priorityLow: '#6b7280',
-  priorityNone: '#52525b',
-
-  // Issue status
-  statusBacklog: '#6b7280',
-  statusTodo: '#9ca3af',
-  statusInProgress: '#5E6AD2',
-  statusDone: '#22c55e',
-  statusCanceled: '#ef4444',
-
-  // Text
-  primary: '#d4d4d8',
-  secondary: '#9ca3af',
-  muted: '#52525b',
-  bright: '#e4e4e7',
-
-  // Backgrounds
-  bgInner: 'rgba(0,0,0,0.2)',
-  bgDark: 'rgba(0,0,0,0.3)',
-  border: 'rgba(255,255,255,0.04)',
-
-  // Chevron
-  chevron: '#3f3f46',
+export const PRIORITY_LABELS: Record<number, string> = {
+  0: 'None',
+  1: 'Urgent',
+  2: 'High',
+  3: 'Medium',
+  4: 'Low',
 };
 
 // ============================================================================
-// Types
+// Types (tolerant to curated post-TER-280 + legacy shapes)
 // ============================================================================
+
+export interface LinearUserRef {
+  id: string;
+  name: string;
+  displayName?: string;
+  email?: string;
+  avatarUrl?: string | null;
+  active?: boolean;
+  admin?: boolean;
+}
+
+export interface LinearTeamRef {
+  id: string;
+  name: string;
+  key?: string;
+  icon?: string | null;
+  color?: string | null;
+  description?: string | null;
+  private?: boolean;
+}
+
+export interface LinearProjectRef {
+  id: string;
+  name: string;
+  state?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  description?: string | null;
+  progress?: number | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+  lead?: LinearUserRef | null;
+  teams?: Array<{ id: string; name: string }>;
+  url?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface LinearCycleRef {
+  id: string;
+  name?: string | null;
+  number?: number | null;
+}
+
+export interface LinearPriorityRef {
+  number: number;
+  name: string;
+}
 
 export interface LinearIssue {
   id: string;
   identifier: string;
   title: string;
   description?: string;
-  status?: string;
-  priority?: number;
-  assignee?: string;
-  team?: string;
+  status?: string | null;
+  priority?: number | LinearPriorityRef;
+  assignee?: string | LinearUserRef | null;
+  creator?: LinearUserRef | null;
+  team?: string | LinearTeamRef | null;
+  project?: LinearProjectRef | null;
+  cycle?: LinearCycleRef | null;
   labels?: string[];
+  parentId?: string | null;
+  dueDate?: string | null;
+  estimate?: number | null;
+  archivedAt?: string | null;
   url?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export interface LinearTeam {
-  id: string;
-  name: string;
-  key: string;
-}
-
-export interface LinearUser {
-  id: string;
-  name: string;
-  email?: string;
-  active?: boolean;
-}
-
-export interface LinearProject {
-  id: string;
-  name: string;
-  description?: string;
-  state?: string;
-  url?: string;
-  createdAt?: string;
-}
+export type LinearProject = LinearProjectRef;
+export type LinearUser = LinearUserRef;
+export type LinearTeam = LinearTeamRef;
 
 export interface LinearLabel {
   id: string;
   name: string;
-  color?: string;
-  description?: string;
+  color?: string | null;
+  description?: string | null;
+  isGroup?: boolean;
+  parentId?: string | null;
 }
 
 export interface LinearWorkflowState {
   id: string;
   name: string;
   type?: string;
-  color?: string;
+  color?: string | null;
   position?: number;
+  description?: string | null;
+}
+
+export interface LinearComment {
+  id: string;
+  body: string;
+  authorId?: string | null;
+  authorName?: string | null;
+  issueId?: string | null;
+  url?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 // ============================================================================
-// Utilities
+// Tool labels
 // ============================================================================
 
-export function formatDuration(ms?: number): string {
-  if (ms === undefined) return '';
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
+export const TOOL_LABELS: Record<string, string> = {
+  // Issues
+  'linear-list-issues': 'Issues',
+  'linear-get-issue': 'Issue details',
+  'linear-create-issue': 'Create issue',
+  'linear-update-issue': 'Update issue',
+  'linear-delete-issue': 'Delete issue',
+  'linear-archive-issue': 'Archive issue',
+  'linear-add-comment': 'Add comment',
+  // Projects
+  'linear-list-projects': 'Projects',
+  'linear-create-project': 'Create project',
+  'linear-add-issues-to-project': 'Attach issues to project',
+  'linear-remove-issues-from-project': 'Detach issues from project',
+  // Labels
+  'linear-list-labels': 'Labels',
+  'linear-create-label': 'Create label',
+  'linear-update-label': 'Update label',
+  'linear-delete-label': 'Delete label',
+  'linear-add-labels-to-issue': 'Add labels to issue',
+  'linear-remove-labels-from-issue': 'Remove labels from issue',
+  // Teams / Users / Workflow
+  'linear-list-teams': 'Teams',
+  'linear-list-users': 'Users',
+  'linear-list-workflow-states': 'Workflow states',
+};
 
 export function getShortToolName(toolName: string): string {
   const parts = toolName.split('_');
   return parts[parts.length - 1] || toolName;
 }
 
-export function parseOutput<T>(output: string): T | string | null {
-  try {
-    return JSON.parse(output) as T;
-  } catch {
-    return output;
-  }
+function humanize(name: string): string {
+  const cleaned = name.startsWith('linear-') ? name.slice('linear-'.length) : name;
+  const joined = cleaned.replace(/-/g, ' ');
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
-export function truncate(text: string, maxLength: number = 50): string {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + '...';
-}
-
-export function getPriorityLabel(priority?: number): string {
-  switch (priority) {
-    case 1:
-      return 'Urgent';
-    case 2:
-      return 'High';
-    case 3:
-      return 'Medium';
-    case 4:
-      return 'Low';
-    default:
-      return 'None';
-  }
-}
-
-export function getPriorityColor(priority?: number): string {
-  switch (priority) {
-    case 1:
-      return colors.priorityUrgent;
-    case 2:
-      return colors.priorityHigh;
-    case 3:
-      return colors.priorityMedium;
-    case 4:
-      return colors.priorityLow;
-    default:
-      return colors.priorityNone;
-  }
-}
-
-export function getStatusColor(status?: string): string {
-  if (!status) return colors.statusBacklog;
-  const lower = status.toLowerCase();
-  if (lower.includes('done') || lower.includes('complete')) return colors.statusDone;
-  if (lower.includes('progress') || lower.includes('started')) return colors.statusInProgress;
-  if (lower.includes('cancel')) return colors.statusCanceled;
-  if (lower.includes('todo')) return colors.statusTodo;
-  return colors.statusBacklog;
-}
-
-export function isSuccessMessage(parsed: unknown): boolean {
-  return (
-    typeof parsed === 'string' &&
-    (parsed.includes('✅') ||
-      parsed.includes('success') ||
-      parsed.includes('Success') ||
-      parsed.includes('deleted') ||
-      parsed.includes('archived') ||
-      parsed.includes('added'))
-  );
+export function getToolLabel(toolName: string): string {
+  const short = getShortToolName(toolName);
+  return TOOL_LABELS[short] ?? humanize(short);
 }
 
 // ============================================================================
-// Components
+// Shape-agnostic getters
 // ============================================================================
 
-export function LinearLogo({ size = 14 }: { size?: number }) {
-  return <Image source={{ uri: LINEAR_ICON }} width={size} height={size} borderRadius={2} />;
+export function getAssigneeName(
+  assignee: string | LinearUserRef | null | undefined,
+): string | null {
+  if (assignee == null) return null;
+  if (typeof assignee === 'string') return assignee || null;
+  return assignee.name || assignee.displayName || null;
 }
 
-interface StatusDotProps {
-  status: ToolStatusType;
+export function getAssigneeAvatarUrl(
+  assignee: string | LinearUserRef | null | undefined,
+): string | null {
+  if (assignee == null || typeof assignee === 'string') return null;
+  return assignee.avatarUrl ?? null;
 }
 
-export function StatusDot({ status }: StatusDotProps) {
-  const color =
-    status === 'running' || status === 'pending_permission'
-      ? colors.running
-      : status === 'completed'
-        ? colors.success
-        : colors.failed;
-
-  const glow =
-    status === 'running' || status === 'pending_permission'
-      ? colors.glowRunning
-      : status === 'completed'
-        ? colors.glowSuccess
-        : colors.glowFailed;
-
-  const pulseAnim = usePulseAnimation(status === 'running' || status === 'pending_permission');
-
-  return (
-    <Animated.View
-      style={{
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: color,
-        flexShrink: 0,
-        opacity: status === 'running' || status === 'pending_permission' ? pulseAnim : 1,
-        shadowColor: glow,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 1,
-        shadowRadius: 3,
-        elevation: 3,
-      }}
-    />
-  );
+export function getTeamName(team: string | LinearTeamRef | null | undefined): string | null {
+  if (team == null) return null;
+  if (typeof team === 'string') return team || null;
+  return team.name || team.key || null;
 }
 
-interface BadgeProps {
-  text: string;
-  variant: 'success' | 'error' | 'info' | 'warning' | 'gray';
+export function getTeamKey(team: string | LinearTeamRef | null | undefined): string | null {
+  if (team == null || typeof team === 'string') return null;
+  return team.key ?? null;
 }
 
-export function Badge({ text, variant }: BadgeProps) {
-  const styles = {
-    success: colors.badgeSuccess,
-    error: colors.badgeError,
-    info: colors.badgeInfo,
-    warning: colors.badgeWarning,
-    gray: colors.badgeGray,
+export function getTeamColor(team: string | LinearTeamRef | null | undefined): string | null {
+  if (team == null || typeof team === 'string') return null;
+  return team.color ?? null;
+}
+
+export function getPriorityNumber(priority?: number | LinearPriorityRef | null): number {
+  if (priority == null) return 0;
+  if (typeof priority === 'number') return priority;
+  return typeof priority.number === 'number' ? priority.number : 0;
+}
+
+export function getPriorityLabel(priority?: number | LinearPriorityRef | null): string {
+  if (priority && typeof priority !== 'number' && typeof priority.name === 'string') {
+    const capitalised = priority.name.charAt(0).toUpperCase() + priority.name.slice(1);
+    return capitalised;
+  }
+  return PRIORITY_LABELS[getPriorityNumber(priority)] ?? 'None';
+}
+
+export function getPriorityColor(priority?: number | LinearPriorityRef | null): string {
+  return PRIORITY_COLORS[getPriorityNumber(priority)] ?? PRIORITY_COLORS[0];
+}
+
+// ============================================================================
+// Prop factories for global primitives — no new components.
+// ============================================================================
+
+/**
+ * Returns props for an `<IconChip/>` showing the issue's priority.
+ * Callers render `{props && <IconChip {...props}/>}` — `null` means
+ * "priority is None, skip the chip".
+ */
+export function priorityChipProps(
+  priority?: number | LinearPriorityRef | null,
+): { icon: React.ReactNode; accent: string; text: string } | null {
+  const n = getPriorityNumber(priority);
+  if (n === 0) return null;
+  const color = PRIORITY_COLORS[n];
+  return {
+    icon: <Zap size={9} color={color} />,
+    accent: color,
+    text: PRIORITY_LABELS[n].toUpperCase(),
   };
-  const { text: textColor, bg } = styles[variant];
+}
 
+/**
+ * Returns props for an `<IconChip/>` showing a workflow state. The color
+ * comes from the backend (`state.color`) — we never hardcode.
+ * String fallback (legacy `issue.status: string`) uses the Linear purple
+ * as accent.
+ */
+export function workflowStateChipProps(
+  state: string | LinearWorkflowState | null | undefined,
+): { icon: React.ReactNode; accent: string; text: string } | null {
+  if (state == null) return null;
+  if (typeof state === 'string') {
+    if (!state) return null;
+    return {
+      icon: <Circle size={8} color={LINEAR_BRAND.purple} weight="fill" />,
+      accent: LINEAR_BRAND.purple,
+      text: state,
+    };
+  }
+  if (!state.name) return null;
+  const color = state.color ?? LINEAR_BRAND.purple;
+  return {
+    icon: <Circle size={8} color={color} weight="fill" />,
+    accent: color,
+    text: state.name,
+  };
+}
+
+/**
+ * Returns props for an `<IconChip/>` for a label. No icon — the chip's
+ * accent IS the label color.
+ */
+export function labelChipProps(
+  label: LinearLabel | { id?: string; name: string; color?: string | null },
+): { accent: string; text: string } {
+  return {
+    accent: label.color ?? LINEAR_BRAND.purple,
+    text: label.name,
+  };
+}
+
+/**
+ * Returns props for an `<IconChip/>` showing the team's key (TER, ENG, …)
+ * over the team's brand color.
+ */
+export function teamKeyChipProps(team: LinearTeamRef): { accent: string; text: string } {
+  return {
+    accent: team.color ?? LINEAR_BRAND.purple,
+    text: team.key ?? team.name ?? '?',
+  };
+}
+
+/**
+ * Returns props for an `<IconTile/>` representing a project. Uses the
+ * project's color as accent and the first character of the name as label.
+ */
+export function projectTileProps(project: LinearProjectRef): { accent: string; label: string } {
+  return {
+    accent: project.color ?? LINEAR_BRAND.purple,
+    label: (project.name?.[0] ?? '?').toUpperCase(),
+  };
+}
+
+// ============================================================================
+// Helper JSX (not a component — inline `<Text>` with Linear styling)
+// ============================================================================
+
+/**
+ * Renders an identifier like `TER-123` in monospace + Linear purple. Use
+ * where the identifier needs visual emphasis (EntityRow subtitle, detail
+ * header). NOT exported as a React component because there is nothing to
+ * customize — pure inline JSX.
+ */
+export function identifierText(id: string | null | undefined): React.ReactNode {
+  if (!id) return null;
   return (
-    <XStack backgroundColor={bg} paddingHorizontal={4} paddingVertical={1} borderRadius={3}>
-      <Text color={textColor} fontSize={9} fontFamily="$mono">
-        {text}
-      </Text>
-    </XStack>
+    <Text color={LINEAR_BRAND.purple} fontSize={9} fontFamily="$mono" fontWeight="600">
+      {id}
+    </Text>
   );
 }
 
-interface PriorityBadgeProps {
-  priority?: number;
+// ============================================================================
+// Generic helpers (local — do not pollute the primitives barrel)
+// ============================================================================
+
+export function formatDate(iso?: string | null): string {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toISOString().slice(0, 10);
+  } catch {
+    return iso;
+  }
 }
 
-export function PriorityBadge({ priority }: PriorityBadgeProps) {
-  const color = getPriorityColor(priority);
-  const label = getPriorityLabel(priority);
-
-  if (priority === 0 || priority === undefined) return null;
-
-  return (
-    <XStack
-      backgroundColor={`${color}15`}
-      paddingHorizontal={4}
-      paddingVertical={1}
-      borderRadius={3}
-      borderWidth={1}
-      borderColor={`${color}30`}
-      alignItems="center"
-      gap={3}
-    >
-      {priority === 1 && <Zap size={7} color={color} />}
-      <Text color={color} fontSize={8} fontFamily="$mono" textTransform="uppercase">
-        {label}
-      </Text>
-    </XStack>
-  );
+export function shortId(id: string | undefined | null, head = 8, tail = 4): string {
+  if (!id) return '—';
+  if (id.length <= head + tail + 1) return id;
+  return `${id.slice(0, head)}…${id.slice(-tail)}`;
 }
 
-interface IssueStatusBadgeProps {
-  status?: string;
+/** Extracts an object shape tolerant to `{ <key>: {...} }` or direct object. */
+export function unwrap<T extends object>(
+  parsed: unknown,
+  wrapperKey: string,
+  identifierField: keyof T,
+): T | null {
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as Record<string, unknown>;
+  const wrapped = obj[wrapperKey];
+  if (wrapped && typeof wrapped === 'object' && (identifierField as string) in wrapped) {
+    return wrapped as T;
+  }
+  if ((identifierField as string) in obj) return obj as T;
+  return null;
 }
 
-export function IssueStatusBadge({ status }: IssueStatusBadgeProps) {
-  const color = getStatusColor(status);
-
-  return (
-    <XStack
-      backgroundColor={`${color}15`}
-      paddingHorizontal={4}
-      paddingVertical={1}
-      borderRadius={3}
-      alignItems="center"
-      gap={3}
-    >
-      <Circle size={6} color={color} fill={color} />
-      <Text color={color} fontSize={8} fontFamily="$mono">
-        {status || 'Backlog'}
-      </Text>
-    </XStack>
-  );
+/** Extracts a list tolerant to `{ <key>: [...] }`, `{ <key>: [...], nextCursor }` or direct array. */
+export function unwrapList<T>(
+  parsed: unknown,
+  wrapperKey: string,
+): { items: T[]; nextCursor?: string | null; total?: number; hasMore?: boolean } {
+  if (!parsed) return { items: [] };
+  if (Array.isArray(parsed)) return { items: parsed as T[] };
+  if (typeof parsed !== 'object') return { items: [] };
+  const obj = parsed as Record<string, unknown>;
+  const list = obj[wrapperKey];
+  const items = Array.isArray(list) ? (list as T[]) : [];
+  const nextCursor = typeof obj.nextCursor === 'string' ? (obj.nextCursor as string) : null;
+  const total = typeof obj.total === 'number' ? (obj.total as number) : undefined;
+  const hasMore = typeof obj.hasMore === 'boolean' ? (obj.hasMore as boolean) : undefined;
+  return { items, nextCursor, total, hasMore };
 }
 
-export type ToolStatusType = 'running' | 'completed' | 'failed' | 'pending_permission';
+/**
+ * Derives a KeyValueGrid diff-like from the input arguments of an update.
+ * Skips undefined/null/empty; truncates long strings for display.
+ */
+export function diffFields(
+  input: Record<string, unknown> | undefined,
+  keys: string[],
+): KeyValueRow[] {
+  if (!input) return [];
+  const out: KeyValueRow[] = [];
+  for (const k of keys) {
+    const v = input[k];
+    if (v === undefined || v === null || v === '') continue;
+    const str =
+      typeof v === 'string'
+        ? v.length > 80
+          ? `${v.slice(0, 80)}…`
+          : v
+        : Array.isArray(v)
+          ? `(${v.length} item${v.length !== 1 ? 's' : ''})`
+          : typeof v === 'object'
+            ? '(updated)'
+            : String(v);
+    out.push({ key: k, value: str });
+  }
+  return out;
+}
 
-export interface HeaderRowProps {
-  status: ToolStatusType;
-  description: string;
+/**
+ * Adapts the parent's ToolCallRendererProps status (`pending | running |
+ * completed | failed | pending_permission`) to the primitives' McaStatusType
+ * (without `pending`).
+ */
+export function toolStatusForPrimitive(
+  status: ToolCallRendererProps['status'],
+): Exclude<ToolCallRendererProps['status'], 'pending'> {
+  if (status === 'pending') return 'running';
+  return status;
+}
+
+export function statusBadge(status: ToolCallRendererProps['status']): React.ReactNode {
+  if (status === 'completed') return <Badge text="done" variant="success" />;
+  if (status === 'failed') return <Badge text="failed" variant="error" />;
+  if (status === 'pending_permission') return <Badge text="awaiting" variant="warning" />;
+  if (status === 'running' || status === 'pending')
+    return <Badge text="running" variant="info" />;
+  return null;
+}
+
+// ============================================================================
+// LinearToolShell — compose-only wrapper (no duplication)
+// ============================================================================
+
+interface LinearToolShellProps {
+  toolName: string;
+  status: ToolCallRendererProps['status'];
   duration?: number;
+  /** Custom description; overrides the default TOOL_LABELS lookup. */
+  description?: string;
+  /** Rendered only when `status === 'completed'` and no error. */
+  children?: React.ReactNode;
+  /** Whether the card is expanded by default. */
+  defaultExpanded?: boolean;
+  /** Optional badge override (defaults to status-derived badge). */
   badge?: React.ReactNode;
-  expanded: boolean;
-  onToggle: () => void;
-  isInContainer?: boolean;
 }
 
-export function HeaderRow({
+/**
+ * Pre-fills `iconUri={LINEAR_ICON}`, the description label and the status
+ * badge on top of the global `<ToolCallCard/>`. No new styling here — the
+ * global primitive does the visual work; this wrapper just saves boilerplate.
+ */
+export function LinearToolShell({
+  toolName,
   status,
-  description,
   duration,
+  description,
+  children,
+  defaultExpanded,
   badge,
-  expanded,
-  onToggle,
-  isInContainer,
-}: HeaderRowProps) {
-  const rotateAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(rotateAnim, {
-      toValue: expanded ? 1 : 0,
-      duration: 150,
-      easing: Easing.inOut(Easing.ease),
-      useNativeDriver: true,
-    }).start();
-  }, [expanded, rotateAnim]);
-
-  const rotation = rotateAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '90deg'],
-  });
-
+}: LinearToolShellProps) {
   return (
-    <XStack
-      alignItems="center"
-      gap={8}
-      paddingVertical={6}
-      paddingHorizontal={10}
-      backgroundColor={isInContainer ? 'transparent' : 'rgba(39,39,42,0.6)'}
-      borderRadius={isInContainer ? 0 : 8}
-      borderWidth={isInContainer ? 0 : 1}
-      borderColor={isInContainer ? 'transparent' : colors.border}
-      borderBottomWidth={isInContainer ? 1 : 1}
-      borderBottomColor={colors.border}
-      width={isInContainer ? undefined : '100%'}
-      pressStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-      }}
-      hoverStyle={{
-        backgroundColor: isInContainer ? 'rgba(255,255,255,0.02)' : 'rgba(45,45,50,0.7)',
-        borderColor: isInContainer ? 'transparent' : 'rgba(255,255,255,0.08)',
-      }}
-      onPress={onToggle}
-      cursor="pointer"
-    >
-      <StatusDot status={status} />
-      <LinearLogo size={14} />
-
-      <Text flex={1} color={colors.primary} fontSize={11} fontWeight="500" numberOfLines={1}>
-        {description}
-      </Text>
-
-      {status === 'running' || status === 'pending_permission' ? (
-        <Text color={colors.running} fontSize={9} fontFamily="$mono">
-          {status === 'pending_permission' ? 'awaiting' : 'running'}
-        </Text>
-      ) : (
-        duration !== undefined && (
-          <Text color={colors.muted} fontSize={9} fontFamily="$mono">
-            {formatDuration(duration)}
-          </Text>
-        )
-      )}
-
-      {badge}
-
-      <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-        <ChevronRight size={10} color={colors.chevron} />
-      </Animated.View>
-    </XStack>
-  );
-}
-
-export function ExpandedContainer({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack
-      backgroundColor="rgba(39,39,42,0.6)"
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={colors.border}
-      overflow="hidden"
-      width="100%"
+    <ToolCallCard
+      status={toolStatusForPrimitive(status)}
+      description={description}
+      verb={getToolLabel(toolName)}
+      iconUri={LINEAR_ICON}
+      badge={badge ?? statusBadge(status)}
+      defaultExpanded={defaultExpanded}
     >
       {children}
-    </YStack>
-  );
-}
-
-export function ExpandedBody({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack padding={8} gap={6}>
-      {children}
-    </YStack>
-  );
-}
-
-export function ErrorBlock({ error }: { error: string }) {
-  return (
-    <YStack
-      backgroundColor="rgba(239,68,68,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-    >
-      <Text color={colors.badgeError.text} fontSize={10} fontFamily="$mono">
-        {error}
-      </Text>
-    </YStack>
-  );
-}
-
-export function SuccessBlock({ message }: { message: string }) {
-  return (
-    <XStack
-      backgroundColor="rgba(34,197,94,0.1)"
-      borderRadius={5}
-      paddingVertical={6}
-      paddingHorizontal={8}
-      alignItems="center"
-      gap={6}
-    >
-      <Circle size={12} color={colors.success} fill={colors.success} />
-      <Text color={colors.badgeSuccess.text} fontSize={10}>
-        {message}
-      </Text>
-    </XStack>
+    </ToolCallCard>
   );
 }

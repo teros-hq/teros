@@ -41,6 +41,26 @@ const server = new McaServer({
 // HEALTH CHECK
 // =============================================================================
 
+/**
+ * Fetch user secrets treating the backend's "no credentials stored" reply as
+ * an empty set: that just means the account is not connected, which the
+ * checks below report as AUTH_REQUIRED (user action). Without this, the
+ * throw fell through to the catch-all and surfaced as SYSTEM_CONFIG_MISSING
+ * (admin action), hiding the connect-account flow from the user
+ * (2026-07-06 Teros HQ incident). Real transport/config failures still throw.
+ */
+async function getUserSecretsOrEmpty(context: {
+  getUserSecrets: () => Promise<Record<string, string>>;
+}): Promise<Record<string, string>> {
+  try {
+    return await context.getUserSecrets();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (/no user credentials configured/i.test(message)) return {};
+    throw error;
+  }
+}
+
 server.tool('-health-check', {
   description: 'Internal health check tool. Verifies OAuth credentials and connectivity.',
   parameters: {
@@ -52,7 +72,7 @@ server.tool('-health-check', {
 
     try {
       const systemSecrets = await context.getSystemSecrets();
-      const userSecrets = await context.getUserSecrets();
+      const userSecrets = await getUserSecretsOrEmpty(context);
 
       if (!systemSecrets.CLIENT_ID) {
         builder.addIssue('SYSTEM_CONFIG_MISSING', 'Google OAuth Client ID not configured', {

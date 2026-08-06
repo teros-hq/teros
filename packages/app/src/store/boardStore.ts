@@ -29,8 +29,6 @@ export interface Board {
   updatedAt: string;
 }
 
-export type TaskStatus = 'idle' | 'assigned' | 'working' | 'blocked' | 'review' | 'done' | 'circular_dependency';
-
 export interface ProgressNote {
   text: string;
   actor: string;
@@ -44,14 +42,17 @@ export interface Task {
   position: number;
   title: string;
   description?: string;
+  instructions?: string;
   priority: 'urgent' | 'high' | 'medium' | 'low';
-  taskStatus: TaskStatus;
+  archived: boolean;
   running: boolean;
   tags: string[];
   assignedAgentId?: string;
   channelId?: string;
   originChannelId?: string;
   parentTaskId?: string;
+  /** True when a manager has requested the runner to stop this task cooperatively */
+  stopRequested?: boolean;
   /**
    * IDs of tasks that must be completed before this task can start.
    * Empty array means no dependencies (task is unblocked).
@@ -193,7 +194,11 @@ function createBoardStore() {
     setCreatingTask: (creating) => set({ isCreatingTask: creating }),
 
     addProject: (project) =>
-      set((state) => ({ projects: [...state.projects, project] })),
+      set((state) =>
+        state.projects.some((p) => p.projectId === project.projectId)
+          ? state
+          : { projects: [...state.projects, project] },
+      ),
 
     removeProject: (projectId) =>
       set((state) => ({
@@ -223,6 +228,16 @@ export function getBoardStore(windowId: string): BoardStoreInstance {
  */
 export function destroyBoardStore(windowId: string): void {
   storeRegistry.delete(windowId);
+}
+
+/**
+ * Reset ALL board store instances (used on logout).
+ * Iterates the registry and calls reset() on every active instance.
+ */
+export function resetAllBoardStores(): void {
+  for (const [, store] of storeRegistry) {
+    store.getState().reset();
+  }
 }
 
 /**
@@ -264,3 +279,16 @@ export const PRIORITY_CONFIG: Record<string, { label: string; color: string; bg:
   medium: { label: 'Media', color: '#EAB308', bg: 'rgba(234,179,8,0.15)', icon: '!!' },
   low: { label: 'Baja', color: '#22C55E', bg: 'rgba(34,197,94,0.15)', icon: '!' },
 };
+
+// ── Session lifecycle registration ──────────────────────────────────────────
+// @todo nira - 2026-05-20: migrate to createSessionStore once circular deps resolved
+
+import { storeRegistry as sessionStoreRegistry } from './session/StoreRegistry'
+
+sessionStoreRegistry.register('board', {
+  resetSession: () => {
+    resetAllBoardStores()
+    // Clear the internal instance registry so next session starts fresh
+    storeRegistry.clear()
+  },
+})

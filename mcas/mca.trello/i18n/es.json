@@ -1,0 +1,178 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales de Trello y la conectividad con la API."
+    },
+    "list-boards": {
+      "name": "list-boards",
+      "description": "Lista todos los tableros accesibles para el usuario autenticado",
+      "params": {
+        "filter": "Filtrar tableros: all, open, closed, members, organization, public, starred"
+      }
+    },
+    "create-board": {
+      "name": "create-board",
+      "description": "Crea un tablero nuevo",
+      "params": {
+        "name": "Nombre del tablero",
+        "desc": "Descripción del tablero (opcional)",
+        "defaultLists": "Si crear listas por defecto (To Do, Doing, Done). Por defecto: true",
+        "prefs_background": "Color o imagen de fondo (opcional, ej.: \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "get-board": {
+      "name": "get-board",
+      "description": "Obtiene los detalles de un tablero específico",
+      "params": {
+        "boardId": "El ID o URL corta del tablero"
+      }
+    },
+    "update-board": {
+      "name": "update-board",
+      "description": "Actualiza las propiedades del tablero (nombre, descripción, fondo, etc.)",
+      "params": {
+        "boardId": "El ID del tablero a actualizar",
+        "name": "Nuevo nombre del tablero (opcional)",
+        "desc": "Nueva descripción del tablero (opcional)",
+        "prefs_background": "Color o imagen de fondo (opcional, ej.: \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "delete-board": {
+      "name": "delete-board",
+      "description": "Elimina un tablero de forma permanente",
+      "params": {
+        "boardId": "El ID del tablero a eliminar"
+      }
+    },
+    "list-board-lists": {
+      "name": "list-board-lists",
+      "description": "Obtiene todas las listas de un tablero",
+      "params": {
+        "boardId": "El ID o URL corta del tablero"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Crea una lista nueva en un tablero",
+      "params": {
+        "boardId": "El ID del tablero",
+        "name": "Nombre de la lista",
+        "pos": "Posición: top, bottom, o un número positivo (opcional)"
+      }
+    },
+    "update-list": {
+      "name": "update-list",
+      "description": "Actualiza una lista (cambiar color, nombre, posición, etc.)",
+      "params": {
+        "listId": "El ID de la lista a actualizar",
+        "name": "Nuevo nombre de la lista (opcional)",
+        "color": "Color de la lista (opcional): pink, yellow, lime, blue, black, orange, red, purple, sky, green",
+        "pos": "Nueva posición: top, bottom, o un número positivo (opcional)",
+        "closed": "Si archivar la lista (opcional)"
+      }
+    },
+    "list-cards": {
+      "name": "list-cards",
+      "description": "Obtiene todas las tarjetas de una lista",
+      "params": {
+        "listId": "El ID de la lista"
+      }
+    },
+    "get-card": {
+      "name": "get-card",
+      "description": "Obtiene los detalles de una tarjeta específica",
+      "params": {
+        "cardId": "El ID o URL corta de la tarjeta"
+      }
+    },
+    "create-card": {
+      "name": "create-card",
+      "description": "Crea una tarjeta nueva en una lista",
+      "params": {
+        "listId": "El ID de la lista donde crear la tarjeta",
+        "name": "El nombre/título de la tarjeta",
+        "desc": "La descripción de la tarjeta (opcional)",
+        "pos": "Posición de la tarjeta: top, bottom, o un número positivo (opcional)",
+        "due": "Fecha de vencimiento en formato ISO 8601 (opcional)",
+        "labels": "Lista de IDs de etiquetas separados por comas (opcional)"
+      }
+    },
+    "update-card": {
+      "name": "update-card",
+      "description": "Actualiza una tarjeta (mover a otra lista, cambiar nombre, descripción, etc.)",
+      "params": {
+        "cardId": "El ID de la tarjeta a actualizar",
+        "name": "Nuevo nombre de la tarjeta (opcional)",
+        "desc": "Nueva descripción de la tarjeta (opcional)",
+        "idList": "ID de la lista a la que mover la tarjeta (opcional)",
+        "due": "Nueva fecha de vencimiento en formato ISO 8601 (opcional)",
+        "closed": "Si archivar la tarjeta (opcional)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "Añade un comentario a una tarjeta",
+      "params": {
+        "cardId": "El ID de la tarjeta",
+        "text": "El texto del comentario"
+      }
+    },
+    "get-card-actions": {
+      "name": "get-card-actions",
+      "description": "Obtiene el historial de acciones/actividad de una tarjeta",
+      "params": {
+        "cardId": "El ID de la tarjeta",
+        "filter": "Filtrar acciones: all, commentCard, updateCard, createCard, etc."
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "Lista todas las etiquetas de un tablero",
+      "params": {
+        "boardId": "El ID del tablero"
+      }
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "Crea una etiqueta en un tablero",
+      "params": {
+        "boardId": "El ID del tablero",
+        "name": "Nombre de la etiqueta",
+        "color": "Color de la etiqueta: yellow, purple, blue, red, green, orange, black, sky, pink, lime"
+      }
+    },
+    "add-label-to-card": {
+      "name": "add-label-to-card",
+      "description": "Añade una etiqueta a una tarjeta",
+      "params": {
+        "cardId": "El ID de la tarjeta",
+        "labelId": "El ID de la etiqueta a añadir"
+      }
+    },
+    "remove-label-from-card": {
+      "name": "remove-label-from-card",
+      "description": "Elimina una etiqueta de una tarjeta",
+      "params": {
+        "cardId": "El ID de la tarjeta",
+        "labelId": "El ID de la etiqueta a eliminar"
+      }
+    },
+    "search": {
+      "name": "search",
+      "description": "Busca tarjetas en todos los tableros",
+      "params": {
+        "query": "Consulta de búsqueda",
+        "modelTypes": "Lista separada por comas: cards, boards, members (por defecto: cards)",
+        "partial": "Si coincidir palabras parciales (por defecto: false)"
+      }
+    }
+  },
+  "name": "Trello",
+  "description": "Gestión de proyectos con Trello - tableros, listas, tarjetas, etiquetas, miembros",
+  "changelog": [
+    {
+      "notes": "Versión inicial — gestiona tableros, listas y tarjetas, añade comentarios y etiquetas, y busca en todo tu espacio de trabajo de Trello"
+    }
+  ]
+}

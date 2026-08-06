@@ -1,0 +1,55 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.hunter",
+  "name": "Hunter",
+  "version": "1.0.0",
+  "description": "Hunter.io email finder - find professional email addresses by domain, guess a person's email from their name, and verify email deliverability.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "data",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "systemSecrets": [],
+  "userSecrets": ["HUNTER_API_KEY"],
+  "auth": {
+    "type": "api-key",
+    "provider": "hunter"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["HUNTER_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "hunter",
+    "email",
+    "email-finder",
+    "email-verifier",
+    "domain-search",
+    "lead-generation",
+    "prospecting",
+    "data"
+  ]
+}

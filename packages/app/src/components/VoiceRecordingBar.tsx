@@ -6,10 +6,12 @@
  */
 
 import { Play, Square, X } from '@tamagui/lucide-icons';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated } from 'react-native';
 import { usePulseAnimation } from '../hooks/usePulseAnimation';
 import { Button, Text, View, XStack } from 'tamagui';
+import { useColors } from './mca/primitives/useColors';
+import { colors, indicators } from './mca/primitives/colors';
 
 // Total number of bars in the waveform
 const WAVEFORM_BARS = 40;
@@ -63,7 +65,7 @@ function PulsingDot() {
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: '#EF4444',
+        backgroundColor: colors.red,
         opacity,
       }}
     />
@@ -109,16 +111,16 @@ function Waveform({
         let backgroundColor: string;
         if (isEmptySlot) {
           // Empty slots (not yet recorded) - on the left during recording
-          backgroundColor = 'rgba(113, 113, 122, 0.3)';
+          backgroundColor = colors.border;
         } else if (isRecording) {
           // Recording mode - all filled bars are red
-          backgroundColor = '#EF4444';
+          backgroundColor = colors.red;
         } else if (progressBarIndex >= 0 && index <= progressBarIndex) {
-          // Playback mode - already played bars are cyan
-          backgroundColor = '#06B6D4';
+          // Playback mode - already played bars are indigo (Teros accent)
+          backgroundColor = colors.indigo;
         } else {
-          // Playback mode - not yet played bars are dimmed cyan
-          backgroundColor = 'rgba(6, 182, 212, 0.4)';
+          // Playback mode - not yet played bars are dimmed indigo
+          backgroundColor = colors.indigoGlow;
         }
 
         return (
@@ -191,6 +193,7 @@ export function VoiceRecordingBar({
   onPauseDetected,
 }: VoiceRecordingBarProps) {
   // Store already-normalized samples (0-1 values)
+  const c = useColors();
   const [samples, setSamples] = useState<number[]>([]);
   // Expanded samples for preview mode (fills entire waveform)
   const [expandedSamples, setExpandedSamples] = useState<number[]>([]);
@@ -306,8 +309,8 @@ export function VoiceRecordingBar({
       alignItems="center"
       gap="$3"
       borderBottomWidth={1}
-      borderBottomColor="rgba(63, 63, 70, 0.5)"
-      backgroundColor={isRecordingMode ? 'rgba(239, 68, 68, 0.1)' : 'transparent'}
+      borderBottomColor={c.borderStrong}
+      backgroundColor={isRecordingMode ? indicators.irreversible.bg : 'transparent'}
     >
       {/* Left: Pulsing dot (recording) or Play button (preview) */}
       {isRecordingMode ? (
@@ -318,12 +321,12 @@ export function VoiceRecordingBar({
           height={44}
           padding={0}
           borderRadius={10}
-          backgroundColor="rgba(6, 182, 212, 0.2)"
+          backgroundColor={colors.indigoGlow}
           borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.5)"
+          borderColor={c.badges.info.border}
           onPress={onTogglePlayback}
           icon={
-            isPlaying ? <Square size={20} color="#06B6D4" /> : <Play size={20} color="#06B6D4" />
+            isPlaying ? <Square size={20} color={colors.indigo} /> : <Play size={20} color={colors.indigo} />
           }
         />
       )}
@@ -337,7 +340,7 @@ export function VoiceRecordingBar({
 
       {/* Duration */}
       <XStack alignItems="center" gap="$2" minWidth={50} justifyContent="flex-end">
-        <Text fontSize={13} color={isRecordingMode ? '#EF4444' : '#06B6D4'}>
+        <Text fontSize={13} color={isRecordingMode ? colors.red : colors.indigo}>
           {formatDuration(duration)}
         </Text>
       </XStack>
@@ -348,11 +351,11 @@ export function VoiceRecordingBar({
         height={44}
         padding={0}
         borderRadius={10}
-        backgroundColor="rgba(39, 39, 42, 0.8)"
+        backgroundColor={c.bgCard}
         borderWidth={1}
-        borderColor="rgba(63, 63, 70, 0.5)"
+        borderColor={c.borderStrong}
         onPress={onDiscard}
-        icon={<X size={20} color="#71717A" />}
+        icon={<X size={20} color={c.text3} />}
       />
     </XStack>
   );

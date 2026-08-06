@@ -1,0 +1,57 @@
+# docker-compose.e2e.yml — override del job E2E (Playwright), SOLO encima del base.
+#
+# El base (docker-compose.test.yml) lo usa el job Tests por sí solo: backend + browser + mongo +
+# qdrant. Aquí va lo que ÚNICAMENTE el e2e necesita — el frontend (Expo→nginx), el replay de
+# cassettes y el volumen del secret del provider — para que el job Tests no construya el frontend
+# ni monte el secret (que de otro modo Docker crearía como directorio → EISDIR). TER-553.
+#
+#   docker compose -f docker-compose.test.yml -f docker-compose.e2e.yml up -d
+services:
+  backend:
+    environment:
+      # Replay determinista de respuestas LLM grabadas (cassettes) → los specs @llm corren sin
+      # llamar al provider real. El factory devuelve un MockLLMAdapter que reproduce
+      # scripts/playwright-smoke/recordings/llm.json. Re-grabar: override local con TEROS_LLM_RECORD.
+      TEROS_LLM_REPLAY: /app/scripts/playwright-smoke/recordings/llm.json
+      # Modo determinista (TER-563): congela el reloj y siembra los IDs (channelId) → el
+      # [Current Context] del prompt es estable y el hash del input coincide con la cassette.
+      # DEBE coincidir con los valores usados al GRABAR (mismo seed/epoch). Solo aquí (e2e),
+      # nunca en docker-compose.yml de producción.
+      TEROS_DETERMINISTIC: "1"
+      TEROS_TEST_SEED: teros-e2e
+      TEROS_TEST_EPOCH_MS: "1700000000000"
+    volumes:
+      # Key del provider (dummy en CI; el mock ignora el valor, pero el provider `teros` debe
+      # resolverse para no dar "No AI provider"). La escribe el job E2E antes del `up`.
+      - ./.secrets-ci/system/fireworks.json:/app/.secrets/system/fireworks.json:ro
+
+  # ── Frontend: Expo web estático (nginx) — TARGET_URL de la suite Playwright ──────────────
+  frontend:
+    image: teros-test-frontend
+    build:
+      context: .
+      dockerfile: packages/app/Dockerfile.test
+      args:
+        EXPO_PUBLIC_WS_URL: ws://backend:3099/ws
+        EXPO_PUBLIC_BACKEND_URL: http://backend:3099
+      secrets:
+        - github_token
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - teros-test-network
+    healthcheck:
+      # wget a 127.0.0.1 (IPv4): en Alpine `localhost` resuelve también a ::1 (IPv6) y nginx
+      # solo escucha en 0.0.0.0:80 → wget prueba ::1 y da "connection refused". TER-553.
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 24
+      start_period: 10s
+
+  # El browser (definido en el base) espera además al frontend (su TARGET_URL).
+  browser:
+    depends_on:
+      frontend:
+        condition: service_healthy

@@ -1,0 +1,393 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. HubSpot OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "search": {
+      "name": "search",
+      "description": "v3 검색 API를 사용하여 HubSpot CRM 객체(연락처, 회사, 거래)를 검색합니다. 선별된 결과를 반환합니다. 매개변수: query, objectType, limit?, after?, sorts?, filters?",
+      "params": {
+        "query": "검색 쿼리 문자열.",
+        "objectType": "검색할 객체 유형: 연락처, 회사 또는 거래.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "페이지 매김 오프셋(커서 번호).",
+        "sorts": "정렬 구성.",
+        "filters": "고급 검색을 위한 필터 그룹.",
+        "properties": "반환할 특정 속성."
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "새 HubSpot 연락처를 생성합니다. 선별된 연락처 형식을 반환합니다. 재시도할 수 없습니다(멱등성 키 없음). 매개변수: email, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "email": "연락처 이메일 주소(필수, 고유).",
+        "firstName": "이름.",
+        "lastName": "성.",
+        "phone": "전화번호.",
+        "company": "회사 이름.",
+        "jobTitle": "직책.",
+        "website": "웹사이트 URL.",
+        "lifecycleStage": "생애 주기 단계: subscriber, lead, marketingqualifiedlead, salesqualifiedlead, opportunity, customer, evangelist, other.",
+        "properties": "키-값 쌍으로 추가 HubSpot 연락처 속성."
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "ID 또는 이메일로 HubSpot 연락처를 검색합니다. 선별된 { id, email, firstName, lastName, phone, company, jobTitle, website, lifecycleStage, leadStatus, createdAt, updatedAt }를 반환합니다. 매개변수: contactId, idProperty?",
+      "params": {
+        "contactId": "연락처 ID(HubSpot ID) 또는 idProperty=email인 경우 이메일.",
+        "idProperty": "식별자 유형: 이메일 주소로 조회하기 위한 \"email\". 기본값은 HubSpot ID 사용.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "선택적 필터와 함께 HubSpot 연락처 목록을 나열합니다. 선별된 행 { id, email, firstName, lastName, phone, company, jobTitle, lifecycleStage, createdAt }를 반환합니다. 매개변수: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "이전 응답의 pagination cursor.paging.next.after.",
+        "properties": "포함할 추가 연락처 속성."
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "기존 HubSpot 연락처를 업데이트합니다. 필드별 멱등성 — 재시도해도 안전합니다. 매개변수: contactId, email?, firstName?, lastName?, phone?, company?, jobTitle?, website?, lifecycleStage?, properties?",
+      "params": {
+        "contactId": "HubSpot 연락처 ID.",
+        "email": "연락처 이메일 주소.",
+        "firstName": "이름.",
+        "lastName": "성.",
+        "phone": "전화번호.",
+        "company": "회사 이름.",
+        "jobTitle": "직책.",
+        "website": "웹사이트 URL.",
+        "lifecycleStage": "생애 주기 단계.",
+        "properties": "키-값 쌍으로 추가 HubSpot 연락처 속성."
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "HubSpot 연락처를 아카이브(소프트 삭제)합니다. API를 통해 되돌릴 수 없습니다. { success, contactId }를 반환합니다.",
+      "params": {
+        "contactId": "아카이브할 HubSpot 연락처 ID."
+      }
+    },
+    "create-company": {
+      "name": "create-company",
+      "description": "새 HubSpot 회사를 생성합니다. 선별된 회사 형식을 반환합니다. 재시도할 수 없습니다. 매개변수: name, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "name": "회사 이름(필수).",
+        "domain": "회사 도메인(예: \"example.com\").",
+        "industry": "산업.",
+        "type": "회사 유형.",
+        "phone": "전화번호.",
+        "website": "웹사이트 URL.",
+        "city": "도시.",
+        "state": "주/지역.",
+        "country": "국가.",
+        "numberOfEmployees": "직원 수.",
+        "annualRevenue": "연간 수익.",
+        "lifecycleStage": "생애 주기 단계.",
+        "properties": "키-값 쌍으로 추가 HubSpot 회사 속성."
+      }
+    },
+    "get-company": {
+      "name": "get-company",
+      "description": "ID 또는 도메인으로 HubSpot 회사를 검색합니다. 선별된 { id, name, domain, industry, type, phone, website, city, state, country, numberOfEmployees, annualRevenue, lifecycleStage, createdAt, updatedAt }를 반환합니다. 매개변수: companyId, idProperty?",
+      "params": {
+        "companyId": "회사 ID(HubSpot ID) 또는 idProperty=domain인 경우 도메인.",
+        "idProperty": "식별자 유형: 도메인 이름으로 조회하기 위한 \"domain\". 기본값은 HubSpot ID 사용.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "list-companies": {
+      "name": "list-companies",
+      "description": "선택적 필터와 함께 HubSpot 회사 목록을 나열합니다. 선별된 행 { id, name, domain, industry, type, phone, city, state, country, numberOfEmployees, lifecycleStage, createdAt }를 반환합니다. 매개변수: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "이전 응답의 pagination cursor.paging.next.after.",
+        "properties": "포함할 추가 회사 속성."
+      }
+    },
+    "update-company": {
+      "name": "update-company",
+      "description": "기존 HubSpot 회사를 업데이트합니다. 필드별 멱등성 — 재시도해도 안전합니다. 매개변수: companyId, name?, domain?, industry?, type?, phone?, website?, city?, state?, country?, numberOfEmployees?, annualRevenue?, lifecycleStage?, properties?",
+      "params": {
+        "companyId": "HubSpot 회사 ID.",
+        "name": "회사 이름.",
+        "domain": "회사 도메인.",
+        "industry": "산업.",
+        "type": "회사 유형.",
+        "phone": "전화번호.",
+        "website": "웹사이트 URL.",
+        "city": "도시.",
+        "state": "주/지역.",
+        "country": "국가.",
+        "numberOfEmployees": "직원 수.",
+        "annualRevenue": "연간 수익.",
+        "lifecycleStage": "생애 주기 단계.",
+        "properties": "키-값 쌍으로 추가 HubSpot 회사 속성."
+      }
+    },
+    "delete-company": {
+      "name": "delete-company",
+      "description": "HubSpot 회사를 아카이브(소프트 삭제)합니다. API를 통해 되돌릴 수 없습니다. { success, companyId }를 반환합니다.",
+      "params": {
+        "companyId": "아카이브할 HubSpot 회사 ID."
+      }
+    },
+    "create-deal": {
+      "name": "create-deal",
+      "description": "새 HubSpot 거래를 생성합니다. 선별된 거래 형식을 반환합니다. 재시도할 수 없습니다. 매개변수: name, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "name": "거래 이름(필수).",
+        "amount": "거래 금액.",
+        "stage": "거래 단계 ID.",
+        "pipeline": "파이프라인 ID.",
+        "type": "거래 유형: newbusiness 또는 existingbusiness.",
+        "closeDate": "예상 마감일(YYYY-MM-DD).",
+        "probability": "마감 확률(0-100).",
+        "description": "거래 설명.",
+        "properties": "키-값 쌍으로 추가 HubSpot 거래 속성."
+      }
+    },
+    "get-deal": {
+      "name": "get-deal",
+      "description": "ID로 HubSpot 거래를 검색합니다. 선별된 { id, name, amount, stage, pipeline, type, closeDate, probability, description, source, createdAt, updatedAt }를 반환합니다. 매개변수: dealId",
+      "params": {
+        "dealId": "HubSpot 거래 ID.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "list-deals": {
+      "name": "list-deals",
+      "description": "선택적 필터와 함께 HubSpot 거래 목록을 나열합니다. 선별된 행 { id, name, amount, stage, pipeline, type, closeDate, probability, description, createdAt }를 반환합니다. 매개변수: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "이전 응답의 pagination cursor.paging.next.after.",
+        "properties": "포함할 추가 거래 속성."
+      }
+    },
+    "update-deal": {
+      "name": "update-deal",
+      "description": "기존 HubSpot 거래를 업데이트합니다. 필드별 멱등성 — 재시도해도 안전합니다. 매개변수: dealId, name?, amount?, stage?, pipeline?, type?, closeDate?, probability?, description?, properties?",
+      "params": {
+        "dealId": "HubSpot 거래 ID.",
+        "name": "거래 이름.",
+        "amount": "거래 금액.",
+        "stage": "거래 단계 ID.",
+        "pipeline": "파이프라인 ID.",
+        "type": "거래 유형.",
+        "closeDate": "예상 마감일(YYYY-MM-DD).",
+        "probability": "마감 확률(0-100).",
+        "description": "거래 설명.",
+        "properties": "키-값 쌍으로 추가 HubSpot 거래 속성."
+      }
+    },
+    "delete-deal": {
+      "name": "delete-deal",
+      "description": "HubSpot 거래를 아카이브(소프트 삭제)합니다. API를 통해 되돌릴 수 없습니다. { success, dealId }를 반환합니다.",
+      "params": {
+        "dealId": "아카이브할 HubSpot 거래 ID."
+      }
+    },
+    "create-ticket": {
+      "name": "create-ticket",
+      "description": "새 HubSpot 티켓을 생성합니다. 선별된 티켓 형식을 반환합니다. 재시도할 수 없습니다. 매개변수: subject, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "subject": "티켓 제목(필수).",
+        "content": "티켓 설명/내용.",
+        "status": "티켓 상태.",
+        "priority": "티켓 우선 순위: LOW, MEDIUM, HIGH.",
+        "category": "티켓 카테고리.",
+        "pipeline": "파이프라인 ID.",
+        "stage": "파이프라인 단계 ID.",
+        "source": "티켓 소스 유형.",
+        "properties": "키-값 쌍으로 추가 HubSpot 티켓 속성."
+      }
+    },
+    "get-ticket": {
+      "name": "get-ticket",
+      "description": "ID로 HubSpot 티켓을 검색합니다. 선별된 { id, subject, content, status, priority, category, pipeline, stage, source, createdAt, updatedAt }를 반환합니다. 매개변수: ticketId",
+      "params": {
+        "ticketId": "HubSpot 티켓 ID.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "list-tickets": {
+      "name": "list-tickets",
+      "description": "선택적 필터와 함께 HubSpot 티켓 목록을 나열합니다. 선별된 행 { id, subject, content, status, priority, category, pipeline, createdAt }를 반환합니다. 매개변수: limit (1-100, def 50), after, properties?",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "이전 응답의 pagination cursor.paging.next.after.",
+        "properties": "포함할 추가 티켓 속성."
+      }
+    },
+    "update-ticket": {
+      "name": "update-ticket",
+      "description": "기존 HubSpot 티켓을 업데이트합니다. 필드별 멱등성 — 재시도해도 안전합니다. 매개변수: ticketId, subject?, content?, status?, priority?, category?, pipeline?, stage?, source?, properties?",
+      "params": {
+        "ticketId": "HubSpot 티켓 ID.",
+        "subject": "티켓 제목.",
+        "content": "티켓 내용.",
+        "status": "티켓 상태.",
+        "priority": "티켓 우선 순위.",
+        "category": "티켓 카테고리.",
+        "pipeline": "파이프라인 ID.",
+        "stage": "파이프라인 단계 ID.",
+        "source": "티켓 소스.",
+        "properties": "키-값 쌍으로 추가 HubSpot 티켓 속성."
+      }
+    },
+    "delete-ticket": {
+      "name": "delete-ticket",
+      "description": "HubSpot 티켓을 아카이브(소프트 삭제)합니다. API를 통해 되돌릴 수 없습니다. { success, ticketId }를 반환합니다.",
+      "params": {
+        "ticketId": "아카이브할 HubSpot 티켓 ID."
+      }
+    },
+    "create-association": {
+      "name": "create-association",
+      "description": "두 HubSpot CRM 객체(예: 연락처-회사, 거래-연락처) 간의 연관성을 생성합니다. v4 연관성 API를 사용합니다. 매개변수: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "소스 객체 유형: 연락처, 회사, 거래, 티켓.",
+        "fromObjectId": "소스 객체 HubSpot ID.",
+        "toObjectType": "대상 객체 유형: 연락처, 회사, 거래, 티켓.",
+        "toObjectId": "대상 객체 HubSpot ID.",
+        "associationType": "연관성 유형 ID 또는 레이블(예: \"contact_to_company\", \"deal_to_contact\"). 선택 사항 — 생략할 경우 HubSpot이 기본값을 사용합니다."
+      }
+    },
+    "delete-association": {
+      "name": "delete-association",
+      "description": "두 HubSpot CRM 객체 간의 연관성을 삭제합니다. 매개변수: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "params": {
+        "fromObjectType": "소스 객체 유형.",
+        "fromObjectId": "소스 객체 HubSpot ID.",
+        "toObjectType": "대상 객체 유형.",
+        "toObjectId": "대상 객체 HubSpot ID.",
+        "associationType": "연관성 유형 ID. 선택 사항."
+      }
+    },
+    "list-associations": {
+      "name": "list-associations",
+      "description": "HubSpot 객체에 대한 모든 연관성을 나열합니다. 매개변수: objectType, objectId, toObjectType, limit?",
+      "params": {
+        "objectType": "객체 유형.",
+        "objectId": "HubSpot 객체 ID.",
+        "toObjectType": "검색할 연관 객체 유형.",
+        "limit": "최대 결과. 기본값 100."
+      }
+    },
+    "list-pipelines": {
+      "name": "list-pipelines",
+      "description": "거래 또는 티켓에 대한 HubSpot 파이프라인을 나열합니다. 단계가 포함된 파이프라인 정의를 반환합니다. 매개변수: objectType (거래 또는 티켓), includeInactive?",
+      "params": {
+        "objectType": "파이프라인 객체 유형.",
+        "includeInactive": "비활성 파이프라인 포함. 기본값 false."
+      }
+    },
+    "get-pipeline": {
+      "name": "get-pipeline",
+      "description": "ID로 특정 HubSpot 파이프라인을 가져옵니다. 단계가 포함된 파이프라인을 반환합니다. 매개변수: objectType, pipelineId",
+      "params": {
+        "objectType": "파이프라인 객체 유형.",
+        "pipelineId": "파이프라인 ID."
+      }
+    },
+    "create-engagement": {
+      "name": "create-engagement",
+      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 생성합니다. v3 참여 API를 사용합니다. 매개변수: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "params": {
+        "type": "참여 유형.",
+        "subject": "참여의 제목 또는 제목.",
+        "body": "참여의 본문/내용.",
+        "status": "상태(예: \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
+        "direction": "방향: INBOUND 또는 OUTBOUND(전화/이메일의 경우).",
+        "startTime": "시작 시간 ISO 문자열(회의/전화의 경우).",
+        "duration": "밀리초 단위의 지속 시간(전화의 경우).",
+        "associatedObjectType": "연관된 객체 유형: 연락처, 회사, 거래, 티켓.",
+        "associatedObjectId": "연관된 객체의 HubSpot ID.",
+        "properties": "키-값 쌍으로 추가 참여 속성."
+      }
+    },
+    "get-engagement": {
+      "name": "get-engagement",
+      "description": "ID로 HubSpot 참여를 검색합니다. 매개변수: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "참여 유형.",
+        "engagementId": "HubSpot 참여 ID.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "list-engagements": {
+      "name": "list-engagements",
+      "description": "HubSpot 참여(전화, 이메일, 회의, 메모, 작업)를 나열합니다. 매개변수: type (call|email|meeting|note|task), limit?, after?",
+      "params": {
+        "type": "참여 유형.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본값 50.",
+        "after": "페이지 매김 커서.",
+        "properties": "포함할 추가 속성."
+      }
+    },
+    "delete-engagement": {
+      "name": "delete-engagement",
+      "description": "HubSpot 참여를 아카이브(소프트 삭제)합니다. 매개변수: type (call|email|meeting|note|task), engagementId",
+      "params": {
+        "type": "참여 유형.",
+        "engagementId": "아카이브할 HubSpot 참여 ID."
+      }
+    },
+    "list-lists": {
+      "name": "list-lists",
+      "description": "HubSpot 목록(CRM 목록 v3)을 나열합니다. 선별된 행 { id, name, processingType, dynamic, objectTypeId, createdAt, updatedAt, memberCount }를 반환합니다. 매개변수: limit?, offset?, processingType?",
+      "params": {
+        "limit": "페이지당 결과 수. 최대 500, 기본값 50.",
+        "offset": "페이지 매김 오프셋(기본값 0).",
+        "processingType": "처리 유형으로 필터링."
+      }
+    },
+    "get-list": {
+      "name": "get-list",
+      "description": "ID로 특정 HubSpot 목록(CRM 목록 v3)을 가져옵니다. 매개변수: listId",
+      "params": {
+        "listId": "HubSpot 목록 ID."
+      }
+    },
+    "list-conversations": {
+      "name": "list-conversations",
+      "description": "선택적 필터와 함께 HubSpot 대화(받은 편지함)를 나열합니다. 선별된 행을 반환합니다. 매개변수: limit?, after?, status?",
+      "params": {
+        "limit": "페이지당 결과 수. 최대 100, 기본값 50.",
+        "after": "페이지 매김 커서.",
+        "status": "상태로 필터링: OPEN, CLOSED, WAITING."
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "ID로 HubSpot 대화를 가져오고 메시지를 포함합니다. 매개변수: conversationId, includeMessages?",
+      "params": {
+        "conversationId": "HubSpot 대화 ID.",
+        "includeMessages": "응답에 메시지를 포함합니다. 기본값 true.",
+        "limit": "포함할 최대 메시지 수. 기본값 50."
+      }
+    },
+    "send-conversation-message": {
+      "name": "send-conversation-message",
+      "description": "HubSpot 대화에서 메시지를 보냅니다(받은 편지함 회신). 매개변수: conversationId, text, channelId?",
+      "params": {
+        "conversationId": "HubSpot 대화 ID.",
+        "text": "메시지 텍스트 내용.",
+        "channelId": "선택적 채널 ID 재정의.",
+        "attachments": "선택적 메시지 첨부파일."
+      }
+    }
+  },
+  "name": "HubSpot",
+  "description": "HubSpot CRM 통합 - HubSpot REST API v3를 통해 연락처, 회사, 거래, 티켓, 참여, 목록 및 대화를 관리합니다. OAuth2 사용.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 에이전트에서 직접 HubSpot 연락처, 회사, 거래, 티켓, 활동, 목록, 대화 및 웹후크를 관리합니다."
+    }
+  ]
+}

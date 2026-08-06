@@ -1,0 +1,85 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.hubspot",
+  "name": "HubSpot",
+  "version": "1.0.0",
+  "description": "HubSpot CRM integration - manage contacts, companies, deals, tickets, engagements, lists, and conversations via HubSpot REST API v3 with OAuth2",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "other",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": [
+    "hubspot",
+    "crm",
+    "contacts",
+    "deals",
+    "tickets",
+    "sales",
+    "marketing",
+    "engagements",
+    "pipelines"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "hubspot",
+      "systemSecrets": [
+        "CLIENT_ID",
+        "CLIENT_SECRET"
+      ],
+      "userSecrets": [
+        "ACCESS_TOKEN",
+        "REFRESH_TOKEN"
+      ],
+      "authorizeUrl": "https://app.hubspot.com/oauth/authorize",
+      "tokenUrl": "https://api.hubapi.com/oauth/v1/token",
+      "scopes": [
+        "oauth",
+        "crm.objects.contacts.read",
+        "crm.objects.contacts.write",
+        "crm.objects.companies.read",
+        "crm.objects.companies.write",
+        "crm.objects.deals.read",
+        "crm.objects.deals.write",
+        "crm.objects.owners.read"
+      ],
+      "optionalScopes": [
+        "tickets",
+        "crm.lists.read",
+        "crm.lists.write",
+        "conversations.read",
+        "conversations.write"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-25",
+      "notes": "Initial release — manage HubSpot contacts, companies, deals, tickets, activities, lists, conversations and webhooks straight from your agents"
+    }
+  ]
+}

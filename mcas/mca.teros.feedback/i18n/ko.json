@@ -1,0 +1,28 @@
+{
+  "tools": {
+    "report-bug": {
+      "name": "report-bug",
+      "description": "플랫폼의 버그 또는 기술 문제를 보고합니다.",
+      "params": {
+        "title": "버그에 대한 간단한 요약",
+        "description": "자세한 설명, 재현 단계, 예상 동작 vs 실제 동작",
+        "severity": "이 버그는 얼마나 심각합니까? (선택 사항)"
+      }
+    },
+    "report-suggestion": {
+      "name": "report-suggestion",
+      "description": "플랫폼 개선을 위한 제안 또는 기능 요청을 제출합니다.",
+      "params": {
+        "title": "한 문장으로 당신의 아이디어",
+        "description": "당신의 제안에 대한 자세한 설명"
+      }
+    }
+  },
+  "name": "피드백",
+  "description": "Teros를 개선하기 위해 버그와 제안을 보고합니다. 보고서의 상태를 추적하고 팀으로부터 업데이트를 받습니다.",
+  "changelog": [
+    {
+      "notes": "버그 및 기능 제안을 보고하고, 과거 보고서를 찾아보고, 팀 업데이트와 함께 상태를 추적합니다."
+    }
+  ]
+}

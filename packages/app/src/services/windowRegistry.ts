@@ -29,10 +29,10 @@ export interface WindowTypeDefinition<TProps = Record<string, any>> {
   getSubtitle?: (props: TProps) => string | undefined;
 
   // === BEHAVIOUR ===
-  singleton?: boolean; // Only one instance allowed (e.g. Profile)
   getKey?: (props: TProps) => string | undefined; // For deduplication (e.g. chat uses channelId)
   allowMultiple?: boolean; // Allow multiple instances without a key (default: true)
   isLauncher?: boolean; // Can be opened from the launcher without prior context
+  adminOnly?: boolean; // Only shown in the launcher to users with role 'admin' or 'super'
 
   // === LAYOUT ===
   defaultSize: WindowSize;
@@ -51,6 +51,13 @@ export interface WindowTypeDefinition<TProps = Record<string, any>> {
   onClose?: (windowId: string, props: TProps) => boolean | void; // return false to cancel
   onFocus?: (windowId: string, props: TProps) => void;
   onBlur?: (windowId: string, props: TProps) => void;
+
+  // === WINDOW CONTROLS ===
+  capabilities?: {
+    canMinimize?: boolean;
+    canMaximize?: boolean;
+    canClose?: boolean;
+  };
 }
 
 // ============================================

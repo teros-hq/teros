@@ -25,6 +25,8 @@ export interface CreateWorkspaceInput {
   name: string;
   description?: string;
   settings?: Workspace['settings'];
+  /** Workspace type — defaults to 'shared'. Use 'private' for auto-created user workspaces. */
+  type?: 'private' | 'shared';
 }
 
 export interface UpdateWorkspaceInput {
@@ -73,7 +75,7 @@ export class WorkspaceService {
    * Create a new workspace with its associated volume
    */
   async createWorkspace(ownerId: string, input: CreateWorkspaceInput): Promise<Workspace> {
-    const { name, description, settings } = input;
+    const { name, description, settings, type = 'shared' } = input;
 
     // Generate workspace ID
     const workspaceId = generateWorkspaceId();
@@ -86,6 +88,7 @@ export class WorkspaceService {
       workspaceId,
       name,
       description,
+      type,
       ownerId,
       volumeId: volume.volumeId,
       members: [], // Owner has implicit access, not listed here
@@ -97,10 +100,28 @@ export class WorkspaceService {
 
     await this.collection.insertOne(workspace);
     console.log(
-      `[WorkspaceService] Created workspace: ${workspaceId} with volume: ${volume.volumeId}`,
+      `[WorkspaceService] Created workspace: ${workspaceId} (type: ${type}) with volume: ${volume.volumeId}`,
     );
 
     return workspace;
+  }
+
+  /**
+   * Create the Private Workspace for a user (idempotent).
+   * Called automatically on user registration.
+   * Returns the existing one if already created.
+   */
+  async createPrivateWorkspace(ownerId: string): Promise<Workspace> {
+    // Idempotency: return existing if already created
+    const existing = await this.collection.findOne({ ownerId, type: 'private' });
+    if (existing) {
+      return existing;
+    }
+
+    return this.createWorkspace(ownerId, {
+      name: 'Private',
+      type: 'private',
+    });
   }
 
   /**

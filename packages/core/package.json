@@ -8,8 +8,15 @@
   "types": "./src/index.ts",
   "exports": {
     ".": {
+      "bun": "./src/index.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./util": {
+      "bun": "./src/util/index.ts",
+      "types": "./src/util/index.ts",
+      "import": "./dist/util/index.js"
     },
     "./src/*": "./src/*"
   },
@@ -19,17 +26,22 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.68.0",
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@google/genai": "^1.44.0",
     "@modelcontextprotocol/sdk": "^1.21.1",
     "@teros/shared": "*",
+    "ai-tokenizer": "^1.0.6",
     "mongodb": "^6.11.0",
+    "officeparser": "^7.1.0",
     "openai": "^4.77.0",
     "pino": "^10.1.0",
     "pino-pretty": "^13.1.2",
+    "sharp": "0.33.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
+    "fast-check": "^4.8.0",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   }

@@ -3,45 +3,39 @@
   "mcaId": "mca.github",
   "tools": [
     {
-      "name": "github-list-repos",
-      "description": "List repositories for a user or organization. Supports filtering and sorting.",
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies GitHub OAuth credentials and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-repos",
+      "description": "List repositories accessible to the current user via the Teros GitHub App (across every installation reachable). Pass `owner` to filter to a specific user/org.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "owner": {
             "type": "string",
-            "description": "GitHub username or organization (optional if GITHUB_DEFAULT_OWNER is set)"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "all",
-              "owner",
-              "member",
-              "public",
-              "private"
-            ],
-            "description": "Filter by repository type (default: all)"
-          },
-          "sort": {
-            "type": "string",
-            "enum": [
-              "created",
-              "updated",
-              "pushed",
-              "full_name"
-            ],
-            "description": "Sort repositories by (default: updated)"
+            "description": "Optional filter — only return repos under this user or organization."
           },
           "per_page": {
             "type": "number",
-            "description": "Results per page (default: 30, max: 100)"
+            "description": "Results per page (default: 30, max: 100)."
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-repo",
+      "name": "get-repo",
       "description": "Get detailed information about a specific repository",
       "inputSchema": {
         "type": "object",
@@ -59,10 +53,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-create-repo",
+      "name": "create-repo",
       "description": "Create a new repository",
       "inputSchema": {
         "type": "object",
@@ -90,15 +87,22 @@
           "license_template": {
             "type": "string",
             "description": "License template (e.g., \"mit\", \"apache-2.0\")"
+          },
+          "org": {
+            "type": "string",
+            "description": "Organization name. If provided, creates repo under the org."
           }
         },
         "required": [
           "name"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-list-issues",
+      "name": "list-issues",
       "description": "List issues for a repository with optional filters",
       "inputSchema": {
         "type": "object",
@@ -142,10 +146,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-issue",
+      "name": "get-issue",
       "description": "Get details of a specific issue",
       "inputSchema": {
         "type": "object",
@@ -168,10 +175,13 @@
           "repo",
           "issue_number"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-create-issue",
+      "name": "create-issue",
       "description": "Create a new issue in a repository",
       "inputSchema": {
         "type": "object",
@@ -212,11 +222,14 @@
           "repo",
           "title"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-update-issue",
-      "description": "Update an existing issue",
+      "name": "update-issue",
+      "description": "Update an existing issue. Setting `state: \"closed\"` closes it (use `state_reason` for completed/not_planned). `labels` REPLACES the entire label set — use add-labels-to-issue to append.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -248,6 +261,15 @@
             ],
             "description": "New state"
           },
+          "state_reason": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "not_planned",
+              "reopened"
+            ],
+            "description": "Reason when transitioning state (default: completed)"
+          },
           "labels": {
             "type": "array",
             "items": {
@@ -261,10 +283,13 @@
           "repo",
           "issue_number"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-add-issue-comment",
+      "name": "add-issue-comment",
       "description": "Add a comment to an issue",
       "inputSchema": {
         "type": "object",
@@ -292,10 +317,96 @@
           "issue_number",
           "body"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-list-pulls",
+      "name": "add-labels-to-issue",
+      "description": "Add labels to an issue or pull request (PRs are issues in the API). Returns the full label set after the addition.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "issue_number": {
+            "type": "number",
+            "description": "Issue or pull request number"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Label names to add (case sensitive). Existing labels are preserved."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "issue_number",
+          "labels"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "search-issues",
+      "description": "Search issues and pull requests across GitHub. Use GitHub search syntax in `q` (e.g. `repo:owner/name is:issue is:open label:bug`). Returns {total_count, incomplete_results, items[]}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "Search query (GitHub search syntax). Supports qualifiers like `repo:`, `is:`, `label:`, `author:`, `assignee:`."
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "comments",
+              "reactions",
+              "created",
+              "updated",
+              "best-match"
+            ],
+            "description": "Sort field (default: best-match)"
+          },
+          "order": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "Sort direction (default: desc)"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "q"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-pulls",
       "description": "List pull requests for a repository",
       "inputSchema": {
         "type": "object",
@@ -336,10 +447,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-pull",
+      "name": "get-pull",
       "description": "Get details of a specific pull request",
       "inputSchema": {
         "type": "object",
@@ -362,10 +476,13 @@
           "repo",
           "pull_number"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-create-pull",
+      "name": "create-pull",
       "description": "Create a new pull request",
       "inputSchema": {
         "type": "object",
@@ -406,10 +523,13 @@
           "head",
           "base"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-merge-pull",
+      "name": "merge-pull",
       "description": "Merge a pull request",
       "inputSchema": {
         "type": "object",
@@ -449,10 +569,260 @@
           "repo",
           "pull_number"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-list-branches",
+      "name": "list-pr-files",
+      "description": "List files changed in a pull request. Each file includes {filename, status, additions, deletions, changes, patch?, sha, blob_url}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "pull_number": {
+            "type": "number",
+            "description": "Pull request number"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-pr-commits",
+      "description": "List commits on a pull request. Each commit includes {sha, commit.message, author, html_url}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "pull_number": {
+            "type": "number",
+            "description": "Pull request number"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-pr-review-comments",
+      "description": "List review comments (inline comments on diff) of a pull request. Returns array with {id, user, body, path, line, commit_id, created_at}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "pull_number": {
+            "type": "number",
+            "description": "Pull request number"
+          },
+          "sort": {
+            "type": "string",
+            "enum": [
+              "created",
+              "updated",
+              "created_at"
+            ],
+            "description": "Sort field (default: created)"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "asc",
+              "desc"
+            ],
+            "description": "Sort direction (default: asc)"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "request-reviewers",
+      "description": "Request reviewers on a pull request. Returns the PR with `requested_reviewers` and `requested_teams` populated.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "pull_number": {
+            "type": "number",
+            "description": "Pull request number"
+          },
+          "reviewers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "GitHub usernames to request review from"
+          },
+          "team_reviewers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Team slugs (within the org) to request review from"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "create-pr-review",
+      "description": "Create a pull request review. `event` controls the verdict: APPROVE / REQUEST_CHANGES / COMMENT. Returns review {id, state, user, submitted_at}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "pull_number": {
+            "type": "number",
+            "description": "Pull request number"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "APPROVE",
+              "REQUEST_CHANGES",
+              "COMMENT"
+            ],
+            "description": "Verdict of the review"
+          },
+          "body": {
+            "type": "string",
+            "description": "Review body (markdown). Required for REQUEST_CHANGES and COMMENT, optional for APPROVE."
+          },
+          "commit_id": {
+            "type": "string",
+            "description": "SHA of the commit the review applies to (default: latest of the PR)"
+          },
+          "comments": {
+            "type": "array",
+            "description": "Inline comments. Each item: {path, position OR line, body}.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "Relative file path"
+                },
+                "position": {
+                  "type": "number",
+                  "description": "Position in the diff (deprecated; prefer `line`)"
+                },
+                "line": {
+                  "type": "number",
+                  "description": "Line in the file (1-based)"
+                },
+                "body": {
+                  "type": "string",
+                  "description": "Comment body (markdown)"
+                }
+              },
+              "required": [
+                "path",
+                "body"
+              ]
+            }
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "pull_number",
+          "event"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-branches",
       "description": "List branches in a repository",
       "inputSchema": {
         "type": "object",
@@ -474,10 +844,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-branch",
+      "name": "get-branch",
       "description": "Get information about a specific branch",
       "inputSchema": {
         "type": "object",
@@ -500,10 +873,13 @@
           "repo",
           "branch"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-create-branch",
+      "name": "create-branch",
       "description": "Create a new branch from a reference",
       "inputSchema": {
         "type": "object",
@@ -530,10 +906,13 @@
           "repo",
           "branch"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-list-commits",
+      "name": "list-commits",
       "description": "List commits in a repository",
       "inputSchema": {
         "type": "object",
@@ -559,10 +938,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-commit",
+      "name": "get-commit",
       "description": "Get details of a specific commit",
       "inputSchema": {
         "type": "object",
@@ -585,10 +967,50 @@
           "repo",
           "ref"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-list-workflows",
+      "name": "compare-commits",
+      "description": "Compare two commits or branches. `basehead` format `BASE...HEAD` (e.g. `main...feat/x`). Returns {status, ahead_by, behind_by, total_commits, commits[], files[].patch}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "basehead": {
+            "type": "string",
+            "description": "Comparison range, format `BASE...HEAD`. May include cross-fork via `owner:ref`."
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Files per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "basehead"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-workflows",
       "description": "List workflows in a repository",
       "inputSchema": {
         "type": "object",
@@ -606,10 +1028,13 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-list-workflow-runs",
+      "name": "list-workflow-runs",
       "description": "List workflow runs for a repository",
       "inputSchema": {
         "type": "object",
@@ -654,10 +1079,87 @@
           "owner",
           "repo"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-trigger-workflow",
+      "name": "get-workflow-run",
+      "description": "Get a workflow run. Returns {id, name, status, conclusion, run_number, head_branch, head_sha, html_url, created_at, updated_at, run_started_at}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "run_id": {
+            "type": "number",
+            "description": "Workflow run id"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "run_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-workflow-run-jobs",
+      "description": "List jobs of a workflow run. Each job includes {id, name, status, conclusion, started_at, completed_at, html_url, steps[]}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "run_id": {
+            "type": "number",
+            "description": "Workflow run id"
+          },
+          "filter": {
+            "type": "string",
+            "enum": [
+              "latest",
+              "all"
+            ],
+            "description": "Filter by attempt (default: latest)"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "run_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "trigger-workflow",
       "description": "Trigger a workflow dispatch event",
       "inputSchema": {
         "type": "object",
@@ -689,10 +1191,168 @@
           "workflow_id",
           "ref"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-get-file-content",
+      "name": "rerun-workflow-run",
+      "description": "Re-run a workflow run. By default re-runs only failed jobs (faster + cheaper). Set `mode: \"all\"` to re-run every job.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "run_id": {
+            "type": "number",
+            "description": "Workflow run id"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "all"
+            ],
+            "description": "Which jobs to re-run (default: failed)"
+          },
+          "enable_debug_logging": {
+            "type": "boolean",
+            "description": "Whether to enable debug logging for the re-run (default: false)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "run_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "cancel-workflow-run",
+      "description": "Cancel a workflow run that is in progress. Returns {success: true} on 202 Accepted.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "run_id": {
+            "type": "number",
+            "description": "Workflow run id"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "run_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-releases",
+      "description": "List releases of a repository, newest first. Each release includes {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "per_page": {
+            "type": "number",
+            "description": "Results per page (default: 30, max: 100)"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page index (1-based)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-release",
+      "description": "Create a GitHub release tagged at `tag_name`. If `target_commitish` omitted GitHub uses the default branch. Returns {id, tag_name, name, html_url, draft, prerelease, published_at}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "tag_name": {
+            "type": "string",
+            "description": "Tag this release points to (created if missing)"
+          },
+          "target_commitish": {
+            "type": "string",
+            "description": "Branch or SHA the tag is created from (default: repository default branch)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Release title (default: tag_name)"
+          },
+          "body": {
+            "type": "string",
+            "description": "Release notes (markdown)"
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "Create as draft (default: false)"
+          },
+          "prerelease": {
+            "type": "boolean",
+            "description": "Mark as prerelease (default: false)"
+          },
+          "generate_release_notes": {
+            "type": "boolean",
+            "description": "Auto-generate release notes from commits (default: false)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "tag_name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-file-content",
       "description": "Get the content of a file in a repository",
       "inputSchema": {
         "type": "object",
@@ -719,11 +1379,14 @@
           "repo",
           "path"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-create-or-update-file",
-      "description": "Create or update a file in a repository",
+      "name": "create-or-update-file",
+      "description": "Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -737,7 +1400,7 @@
           },
           "path": {
             "type": "string",
-            "description": "File path in repository"
+            "description": "File path in repository (no `..`, no leading `/`)"
           },
           "message": {
             "type": "string",
@@ -763,10 +1426,13 @@
           "message",
           "content"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
-      "name": "github-search-repos",
+      "name": "search-repos",
       "description": "Search for repositories on GitHub",
       "inputSchema": {
         "type": "object",
@@ -793,10 +1459,13 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-search-code",
+      "name": "search-code",
       "description": "Search for code across GitHub repositories",
       "inputSchema": {
         "type": "object",
@@ -813,19 +1482,1376 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
-      "name": "github-get-user",
-      "description": "Get information about the authenticated user or a specific user",
+      "name": "get-installation-context",
+      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-user",
+      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-check-run",
+      "description": "Create a check run on a commit (exclusive to GitHub Apps). The check appears in the PR/commit sidebar. Use status:in_progress while the check runs, then update with conclusion when done.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "username": {
+          "owner": {
             "type": "string",
-            "description": "GitHub username (omit for authenticated user)"
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the check (e.g. \"Teros review\")"
+          },
+          "head_sha": {
+            "type": "string",
+            "description": "Commit SHA the check applies to"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "in_progress",
+              "completed"
+            ],
+            "description": "Status (default: queued)"
+          },
+          "conclusion": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure",
+              "neutral",
+              "cancelled",
+              "skipped",
+              "timed_out",
+              "action_required"
+            ],
+            "description": "Required when status is `completed`"
+          },
+          "output": {
+            "type": "object",
+            "description": "Rich output with title, summary (markdown), optional text body",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "summary"
+            ]
+          },
+          "details_url": {
+            "type": "string",
+            "description": "Optional URL with more detail (shown as link in the check)"
+          },
+          "external_id": {
+            "type": "string",
+            "description": "Reference ID controlled by the App (idempotency on App side)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "name",
+          "head_sha"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-check-run",
+      "description": "Update an existing check run — typically to set status:completed + conclusion when work finishes. Pass only the fields you want to change.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "check_run_id": {
+            "type": "number",
+            "description": "Check run id (returned by create-check-run)"
+          },
+          "name": {
+            "type": "string",
+            "description": "New display name (optional)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "in_progress",
+              "completed"
+            ],
+            "description": "New status"
+          },
+          "conclusion": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure",
+              "neutral",
+              "cancelled",
+              "skipped",
+              "timed_out",
+              "action_required"
+            ],
+            "description": "Required when status is `completed`"
+          },
+          "output": {
+            "type": "object",
+            "description": "Updated output",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "summary"
+            ]
+          },
+          "details_url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "check_run_id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-rate-limit",
+      "description": "Read the current GitHub API rate-limit budget for the installation token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "dispatch-event",
+      "description": "Send a `repository_dispatch` event to trigger workflows configured to listen for it. Pass `event_type` (string the workflow filters on) and optional `client_payload`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "event_type": {
+            "type": "string",
+            "description": "Custom event type the workflow filters on (e.g. `deploy-staging`)"
+          },
+          "client_payload": {
+            "type": "object",
+            "description": "Optional payload (max 10 properties, JSON-serializable). Available to the workflow as `github.event.client_payload`."
+          }
+        },
+        "required": [
+          "owner",
+          "repo",
+          "event_type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "clone-repo",
+      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Returns {path, branch, sha, recentCommits[]}.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner (user or org)"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Local path where the repo will be cloned (default: /workspace/<repo>)"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Branch to checkout after cloning (default: default branch)"
+          }
+        },
+        "required": [
+          "owner",
+          "repo"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-status",
+      "description": "Local git status: branch, ahead/behind vs upstream, and lists of staged, modified, untracked, and conflicted files.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string",
+            "description": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<repo>`."
+          },
+          "owner": {
+            "type": "string",
+            "description": "Repository owner (used to resolve default repoPath)."
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name (used to resolve default repoPath)."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "git-add",
+      "description": "Stage local changes. Pass an array of paths to stage selectively, or omit `paths` (default `.`) to stage everything.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths relative to repo root. Defaults to [\".\"] (stage all changes)."
+          },
+          "update": {
+            "type": "boolean",
+            "description": "If true, only stage already-tracked files (`git add -u`).",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-commit",
+      "description": "Create a commit with the staged changes. Returns `{ sha, branch, message }`. Use `amend: true` to amend the previous commit instead.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message (subject + optional body separated by blank line)."
+          },
+          "amend": {
+            "type": "boolean",
+            "description": "Amend the previous commit instead of creating a new one.",
+            "default": false
+          },
+          "allowEmpty": {
+            "type": "boolean",
+            "description": "Allow creating a commit with no staged changes.",
+            "default": false
+          },
+          "author": {
+            "type": "object",
+            "description": "Override commit author (defaults to git config user.name/user.email).",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-push",
+      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "remote": {
+            "type": "string",
+            "description": "Remote name. Defaults to `origin`.",
+            "default": "origin"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Local branch to push. Defaults to current branch."
+          },
+          "setUpstream": {
+            "type": "boolean",
+            "description": "Set upstream tracking (`-u`).",
+            "default": true
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Use `--force-with-lease` (safer force).",
+            "default": false
+          },
+          "forceUnsafe": {
+            "type": "boolean",
+            "description": "Use raw `--force` (destructive; rewrites remote history).",
+            "default": false
+          },
+          "tags": {
+            "type": "boolean",
+            "description": "Push tags along with commits.",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "git-checkout",
+      "description": "Switch branches, create a new branch, or restore specific paths. Returns the new HEAD ref. Set `force: true` to discard local changes (destructive).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Branch, tag, commit SHA, or — with `paths` — restore source."
+          },
+          "create": {
+            "type": "boolean",
+            "description": "Create a new branch named `target` (`-b`).",
+            "default": false
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Restore these specific paths from `target` (no branch switch)."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Discard local changes (`--force`). Destructive.",
+            "default": false
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "git-rm",
+      "description": "Remove tracked files from the working tree and stage the deletion. Pass `cached: true` to only unstage (without deleting from disk).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths to remove (relative to repo root)."
+          },
+          "cached": {
+            "type": "boolean",
+            "description": "Only stage the deletion; keep the file on disk (`git rm --cached`).",
+            "default": false
+          },
+          "recursive": {
+            "type": "boolean",
+            "description": "Recurse into directories (`-r`).",
+            "default": false
+          }
+        },
+        "required": [
+          "paths"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-mv",
+      "description": "Move or rename a tracked file/directory while preserving git history. Both `from` and `to` are relative to repo root.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "Source path (relative to repo root)."
+          },
+          "to": {
+            "type": "string",
+            "description": "Destination path (relative to repo root)."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Overwrite `to` if it already exists (`-f`).",
+            "default": false
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-read-file",
+      "description": "Read a file from the working tree or from a specific git revision. Pass `ref` (commit/branch/tag) to read the version at that point.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to repo root."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Optional commit/branch/tag. If omitted, reads from the current working tree."
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf8",
+              "base64"
+            ],
+            "default": "utf8",
+            "description": "Output encoding. Use `base64` for binary files."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "git-write-file",
+      "description": "Write file content into the working tree (creates parent dirs) and stage it. Use `stage: false` to skip staging.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to repo root."
+          },
+          "content": {
+            "type": "string",
+            "description": "File content (utf8 by default, or base64 — see `encoding`)."
+          },
+          "encoding": {
+            "type": "string",
+            "enum": [
+              "utf8",
+              "base64"
+            ],
+            "default": "utf8"
+          },
+          "stage": {
+            "type": "boolean",
+            "description": "Stage the change (`git add`).",
+            "default": true
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-list-files",
+      "description": "List files in the repo, respecting `.gitignore`. Returns `{ tracked, untracked, ignored }` arrays. Optionally filter by `pattern` (glob, relative to repo root).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Optional glob filter (e.g. `src/**`)."
+          },
+          "includeIgnored": {
+            "type": "boolean",
+            "description": "Include the `ignored` list.",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "git-pull",
+      "description": "Pull commits from the remote into the current branch. `rebase: true` for a linear history (no merge commit).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "remote": {
+            "type": "string",
+            "default": "origin"
+          },
+          "branch": {
+            "type": "string",
+            "description": "Remote branch to pull. Defaults to upstream."
+          },
+          "rebase": {
+            "type": "boolean",
+            "description": "Use `--rebase` instead of merge.",
+            "default": false
+          },
+          "ff": {
+            "type": "string",
+            "enum": [
+              "only",
+              "no",
+              "auto"
+            ],
+            "default": "auto",
+            "description": "`only` = abort if not fast-forward; `no` = always merge commit; `auto` = git default."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-diff",
+      "description": "Show differences as unified diff + numstat. Defaults to working tree vs HEAD. `from: staged` for index vs HEAD; pass `from`+`to` commit SHAs for arbitrary diffs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string",
+            "description": "`working` (default), `staged`, `HEAD`, or a commit/branch/tag SHA.",
+            "default": "working"
+          },
+          "to": {
+            "type": "string",
+            "description": "Target ref when `from` is a commit. Default `HEAD` when `from`=working/staged."
+          },
+          "path": {
+            "type": "string",
+            "description": "Limit diff to a specific path."
+          },
+          "contextLines": {
+            "type": "number",
+            "description": "Number of context lines around each change.",
+            "default": 3
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-log",
+      "description": "Local commit history with structured entries. Defaults to last 20 commits on the current branch. Filter by `ref`, `path`, `author`, `since`/`until`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Branch / tag / commit to start from (defaults to HEAD)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Limit history to a specific path."
+          },
+          "author": {
+            "type": "string",
+            "description": "Filter by author (substring match)."
+          },
+          "since": {
+            "type": "string",
+            "description": "ISO date or git-style relative (e.g. \"2 weeks ago\")."
+          },
+          "until": {
+            "type": "string",
+            "description": "ISO date or git-style relative."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of commits.",
+            "default": 20
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-batch-commit",
+      "description": "Apply multiple file changes (create/update/delete/rename) and create ONE atomic commit. Use this for refactors and any multi-file change where the intermediate states should not be visible in git history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "description": "Commit message."
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "create",
+                    "update",
+                    "delete",
+                    "rename"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Destination path (always required)."
+                },
+                "content": {
+                  "type": "string",
+                  "description": "For create/update."
+                },
+                "fromPath": {
+                  "type": "string",
+                  "description": "For rename: source path."
+                },
+                "encoding": {
+                  "type": "string",
+                  "enum": [
+                    "utf8",
+                    "base64"
+                  ],
+                  "default": "utf8"
+                }
+              },
+              "required": [
+                "action",
+                "path"
+              ]
+            }
+          },
+          "author": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              }
+            }
+          },
+          "allowEmpty": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "required": [
+          "message",
+          "changes"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-stash",
+      "description": "Manage the stash. Default action `push` saves uncommitted changes. Other actions: pop, apply, drop, list, clear.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "push",
+              "pop",
+              "apply",
+              "drop",
+              "list",
+              "clear"
+            ],
+            "default": "push"
+          },
+          "message": {
+            "type": "string",
+            "description": "Optional message for `push`."
+          },
+          "index": {
+            "type": "number",
+            "description": "Stash index for `pop/apply/drop` (default 0 = top).",
+            "default": 0
+          },
+          "includeUntracked": {
+            "type": "boolean",
+            "description": "Include untracked files when stashing (`-u`).",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-merge",
+      "description": "Merge a branch/tag/commit into the current branch. On conflict, throws `GIT_CONFLICT` and the agent should resolve via `git-status` + edit + `git-add`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Branch/tag/commit to merge into current."
+          },
+          "message": {
+            "type": "string",
+            "description": "Merge commit message (used when not fast-forward)."
+          },
+          "noFf": {
+            "type": "boolean",
+            "description": "Always create a merge commit (`--no-ff`).",
+            "default": false
+          },
+          "ffOnly": {
+            "type": "boolean",
+            "description": "Abort if not fast-forward (`--ff-only`).",
+            "default": false
+          },
+          "squash": {
+            "type": "boolean",
+            "description": "Squash all changes into a single staged change (does NOT commit).",
+            "default": false
+          },
+          "strategyOption": {
+            "type": "string",
+            "description": "Pass-through `-X<option>` (e.g. `ours`, `theirs`, `patience`)."
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-rebase",
+      "description": "Rebase the current branch onto another ref (linear history). Or drive an in-progress rebase with `mode: continue/skip/abort`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "onto": {
+            "type": "string",
+            "description": "Target ref to rebase onto (required unless `mode` is given)."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "start",
+              "continue",
+              "skip",
+              "abort"
+            ],
+            "default": "start"
+          },
+          "autosquash": {
+            "type": "boolean",
+            "description": "Honor `fixup!`/`squash!` commits.",
+            "default": false
+          },
+          "strategyOption": {
+            "type": "string",
+            "description": "Pass-through `-X<option>` (e.g. `theirs`)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "git-reset",
+      "description": "Reset HEAD to `target`. `mode: soft` keeps staging; `mode: mixed` (default) keeps working tree; `mode: hard` discards everything (destructive).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "Ref to reset to (default `HEAD`).",
+            "default": "HEAD"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "soft",
+              "mixed",
+              "hard"
+            ],
+            "default": "mixed"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "git-cherry-pick",
+      "description": "Cherry-pick commits onto the current branch. Pass `commits: [\"sha\", ...]` or drive an in-progress pick with `mode: continue/skip/abort`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "commits": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "SHAs / refs to cherry-pick (in order)."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "start",
+              "continue",
+              "skip",
+              "abort"
+            ],
+            "default": "start"
+          },
+          "noCommit": {
+            "type": "boolean",
+            "description": "Stage changes but do not create the commit.",
+            "default": false
+          },
+          "mainline": {
+            "type": "number",
+            "description": "For merge commits: parent number (1-indexed) to use as mainline."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-config",
+      "description": "Read or write git config (whitelisted keys only). Default scope is `local` (the repo). For identity, prefer `user.name` and `user.email`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "get",
+              "set",
+              "unset",
+              "list"
+            ],
+            "default": "get"
+          },
+          "key": {
+            "type": "string",
+            "description": "Config key (required for get/set/unset)."
+          },
+          "value": {
+            "type": "string",
+            "description": "New value (required for set)."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "local",
+              "global"
+            ],
+            "default": "local"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-tag",
+      "description": "List, create, or delete local git tags. Pass `message` on create for an annotated tag (otherwise lightweight).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "create",
+              "delete"
+            ],
+            "default": "list"
+          },
+          "name": {
+            "type": "string",
+            "description": "Tag name (required for create/delete)."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Ref to tag (default `HEAD`). Used by `create`."
+          },
+          "message": {
+            "type": "string",
+            "description": "If set, create an annotated tag with this message."
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Glob filter for `list`."
+          },
+          "force": {
+            "type": "boolean",
+            "description": "Replace existing tag (`-f`).",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-remote",
+      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "list",
+              "add",
+              "remove",
+              "set-url"
+            ],
+            "default": "list"
+          },
+          "name": {
+            "type": "string",
+            "description": "Remote name (required for add/remove/set-url)."
+          },
+          "url": {
+            "type": "string",
+            "description": "Remote URL (required for add/set-url)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-blame",
+      "description": "Per-line attribution for a file. Returns `[{ sha, author, date, lineNumber, content }]`. Restrict with `range: \"10,50\"` or `ref`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "File path relative to repo root."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Blame at a specific ref (default HEAD)."
+          },
+          "range": {
+            "type": "string",
+            "description": "Optional line range `start,end` (1-indexed inclusive)."
+          }
+        },
+        "required": [
+          "path"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-bisect",
+      "description": "Binary search for the commit that introduced a bug. Workflow: start → mark each step good/bad → done. Use `reset` to abort.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "good",
+              "bad",
+              "skip",
+              "reset",
+              "log",
+              "view"
+            ],
+            "default": "view"
+          },
+          "bad": {
+            "type": "string",
+            "description": "Bad commit (required for `start`)."
+          },
+          "good": {
+            "type": "string",
+            "description": "Good commit (optional but recommended for `start`)."
+          },
+          "ref": {
+            "type": "string",
+            "description": "Commit to mark for `good/bad/skip` (default current HEAD)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "git-fetch",
+      "description": "Fetch refs from the remote without merging. Use `refspec` to fetch arbitrary refs (e.g. `pull/<n>/head:pr-<n>` for a PR head, `refs/tags/v1.0.0:refs/tags/v1.0.0` for a tag).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repoPath": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "remote": {
+            "type": "string",
+            "default": "origin"
+          },
+          "refspec": {
+            "type": "string",
+            "description": "Optional refspec — e.g. `pull/<n>/head:pr-<n>` to bring a PR head as a local branch, or `refs/tags/<tag>` to fetch a single tag. If omitted, fetches all branches and tags from the remote."
+          },
+          "depth": {
+            "type": "number",
+            "description": "Limit history to N commits (shallow fetch)."
+          },
+          "tags": {
+            "type": "boolean",
+            "description": "Also fetch tags (default true for default fetch, false when a refspec is provided)."
+          },
+          "prune": {
+            "type": "boolean",
+            "description": "Remove local refs whose remote counterpart is gone (`--prune`).",
+            "default": false
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     }
   ]

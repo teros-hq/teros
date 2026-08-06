@@ -1,0 +1,173 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba que las raíces del workspace son accesibles y que el binario de ripgrep está disponible."
+    },
+    "read": {
+      "name": "read",
+      "description": "Lee un archivo de texto con paginación opcional por líneas. Devuelve el contenido formateado como \"cat -n\" (líneas numeradas) más metadatos (nombre, tamaño, lineCount, kind). Usa offset+limit para rangos o head/tail para las primeras/últimas N líneas. Devuelve contenido de texto; los archivos binarios se rechazan.",
+      "params": {
+        "filePath": "Ruta absoluta o relativa al workspace",
+        "offset": "Desplazamiento de línea basado en 0 (por defecto 0)",
+        "limit": "Máximo de líneas a devolver (por defecto 2000, máximo 10000)",
+        "head": "Devolver solo las primeras N líneas (anula offset/limit)",
+        "tail": "Devolver solo las últimas N líneas (anula offset/limit)",
+        "includeRaw": "Si es true, incluye el contenido sin numerar además del formateado"
+      }
+    },
+    "read-batch": {
+      "name": "read-batch",
+      "description": "Lee múltiples archivos de texto en una sola llamada. Devuelve un array con una entrada por cada ruta solicitada (ok, contenido/error). Cada archivo se lee con los mismos límites por defecto que `read`; pasa perFileLimit para anularlo. Los errores en rutas individuales no abortan el lote.",
+      "params": {
+        "paths": "Rutas absolutas o relativas al workspace (máximo 50)",
+        "perFileLimit": "Máximo de líneas por archivo (por defecto 2000, máximo 10000)"
+      }
+    },
+    "write": {
+      "name": "write",
+      "description": "Escribe contenido en un archivo, sobrescribiéndolo si existe. Seguridad: un archivo existente debe haberse leído antes en esta sesión (usa `read` antes de sobrescribir). Para archivos nuevos, los directorios padre se crean automáticamente. Usa `edit` para modificaciones in situ y `append` para añadidos.",
+      "params": {
+        "filePath": "Ruta absoluta o relativa al workspace",
+        "content": "Contenido a escribir (UTF-8)"
+      }
+    },
+    "append": {
+      "name": "append",
+      "description": "Añade contenido al final de un archivo. Crea el archivo (y los directorios padre) si no existe. NO requiere una lectura previa (los añadidos no son destructivos para el contenido existente). Para reemplazar contenido, usa `write` (después de `read`) o `edit`.",
+      "params": {
+        "filePath": "Ruta absoluta o relativa al workspace",
+        "content": "Contenido a añadir (UTF-8)"
+      }
+    },
+    "edit": {
+      "name": "edit",
+      "description": "Reemplaza ocurrencias exactas de una cadena en un archivo. Por defecto falla si `oldString` aparece cero o múltiples veces — pasa `replaceAll: true` para reescribir todas las coincidencias. El reemplazo es literal (sin regex). Devuelve un diff unificado del cambio. Para hunks estructurados usa `patch`; para reescrituras grandes usa `write`.",
+      "params": {
+        "oldString": "Subcadena exacta a coincidir (sensible a espacios)",
+        "newString": "Texto de reemplazo",
+        "replaceAll": "Reemplazar todas las ocurrencias (por defecto false)",
+        "dryRun": "Previsualizar el cambio (devuelve el diff sin escribir). Por defecto false"
+      }
+    },
+    "patch": {
+      "name": "patch",
+      "description": "Aplica un diff unificado (formato patch) a un archivo de forma atómica. Útil para correcciones multi-hunk donde varios edits deben aplicarse juntos. Usa coincidencia difusa (fuzzFactor 2) para tolerar pequeñas desviaciones de contexto. Devuelve si todos los hunks se aplicaron. Para cambios de un solo punto prefiere `edit`.",
+      "params": {
+        "filePath": "Archivo destino a parchear",
+        "unifiedDiff": "Contenido del diff unificado (formato estándar diff -u)",
+        "fuzzFactor": "Tolerancia de espacios para líneas de contexto (por defecto 2)",
+        "dryRun": "Previsualizar el patch (devuelve el diff sin escribir). Por defecto false"
+      }
+    },
+    "list": {
+      "name": "list",
+      "description": "Lista las entradas de un directorio con metadatos (nombre, tipo, tamaño, mtime, kind). Opcionalmente recursivo vía `depth`. Respeta los patrones `ignore` (estilo glob) y `respectGitignore`. Pagina con `limit` + `cursor`. Para una vista jerárquica usa `tree`; para búsqueda por patrón usa `glob`.",
+      "params": {
+        "path": "Directorio a listar (por defecto: raíz del workspace)",
+        "depth": "Profundidad máxima de recursión (0 = solo directorio actual, por defecto 0, máximo 20)",
+        "ignore": "Patrones de ignorar adicionales (sintaxis gitignore)",
+        "respectGitignore": "Si es true, carga .gitignore desde la raíz y lo respeta. Requiere que la raíz sea un repositorio git (busca .git/); los archivos .gitignore independientes no se detectan",
+        "limit": "Máximo de entradas a devolver (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación de la respuesta anterior"
+      }
+    },
+    "tree": {
+      "name": "tree",
+      "description": "Devuelve un árbol JSON jerárquico de un directorio hasta `depth` niveles. Los archivos tienen tamaño y mtime; los directorios tienen hijos. Respeta los patrones `ignore` y `respectGitignore`. Limitado por maxNodes para evitar salidas excesivas. Usa `list` para paginación plana o `glob` para búsqueda por patrón.",
+      "params": {
+        "path": "Directorio raíz (por defecto: raíz del workspace)",
+        "depth": "Profundidad máxima de descenso (por defecto 3, máximo 20)",
+        "ignore": "Patrones de ignorar adicionales (sintaxis gitignore)",
+        "maxNodes": "Límite máximo de nodos totales (por defecto 500)"
+      }
+    },
+    "stat": {
+      "name": "stat",
+      "description": "Devuelve metadatos para una única ruta: exists, type (file/directory/symlink), size, mtime, permissions. NO lee el contenido. Prefiere esto sobre `read` cuando solo necesitas comprobar existencia o tamaño.",
+      "params": {
+        "path": "Ruta absoluta o relativa al workspace"
+      }
+    },
+    "glob": {
+      "name": "glob",
+      "description": "Encuentra archivos que coinciden con un patrón glob (ej. \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). Resultados ordenados por mtime (más recientemente modificados primero). Respeta los patrones `ignore` y `respectGitignore`. Usa `grep` para búsqueda de contenido y `list` para listado plano de directorios.",
+      "params": {
+        "pattern": "Patrón glob",
+        "path": "Directorio base (por defecto: raíz del workspace)",
+        "ignore": "Patrones de ignorar adicionales (sintaxis gitignore)",
+        "includeDirs": "Incluir directorios en los resultados",
+        "dot": "Coincidir archivos ocultos (por defecto false)",
+        "limit": "Máximo de resultados (por defecto 50, máximo 1000)"
+      }
+    },
+    "grep": {
+      "name": "grep",
+      "description": "Busca contenido de archivos por un patrón regex usando ripgrep. `output_mode` controla el formato: \"content\" devuelve objetos {file, line, match, context}; \"files\" devuelve una entrada por archivo coincidente con matchCount; \"count\" devuelve solo totales. Soporta líneas de contexto (-B/-A), include glob, insensible a mayúsculas, multilínea. Seguro contra inyección de shell (los argumentos no se interpolan). Para buscar archivos por nombre usa `glob`.",
+      "params": {
+        "pattern": "Patrón regex (sintaxis regex de Rust vía ripgrep)",
+        "path": "Directorio base o archivo (por defecto: raíz del workspace)",
+        "output_mode": "Formato del resultado (por defecto \"content\")",
+        "contextBefore": "Líneas de contexto antes de cada coincidencia",
+        "contextAfter": "Líneas de contexto después de cada coincidencia",
+        "include": "Glob para filtrar archivos (ej. \"*.ts\", \"**/*.md\")",
+        "type": "Filtro de tipo de archivo predefinido pasado a ripgrep --type (ej. js, py, rust, ts, go, md). Más rápido que `include` cuando se dirige a un lenguaje conocido",
+        "multiline": "Permitir que el patrón coincida entre líneas",
+        "respectGitignore": "Respetar .gitignore (por defecto false). Requiere que la raíz sea un repositorio git (busca .git/); los archivos .gitignore independientes no se detectan",
+        "limit": "Máximo de coincidencias o archivos a devolver (por defecto 50, máximo 100)"
+      }
+    },
+    "delete": {
+      "name": "delete",
+      "description": "Elimina un archivo o directorio. Establece `recursive: true` para directorios no vacíos. Idempotente: tiene éxito silenciosamente si la ruta no existe (reporta existed=false).",
+      "params": {
+        "recursive": "Requerido para directorios no vacíos"
+      }
+    },
+    "copy": {
+      "name": "copy",
+      "description": "Copia un archivo o directorio. Para directorios establece `recursive: true`. Falla si el destino existe a menos que `overwrite: true`. Los directorios padre del destino se crean automáticamente.",
+      "params": {
+        "recursive": "Requerido para copiar directorios",
+        "overwrite": "Sobrescribir el destino si existe"
+      }
+    },
+    "move": {
+      "name": "move",
+      "description": "Mueve o renombra un archivo o directorio. Falla si el destino existe a menos que `overwrite: true`. Los directorios padre del destino se crean automáticamente."
+    },
+    "mkdir": {
+      "name": "mkdir",
+      "description": "Crea un directorio. Por defecto crea los directorios padre según sea necesario (recursivo). Idempotente: devuelve created=false si el directorio ya existe.",
+      "params": {
+        "recursive": "Crear directorios padre según sea necesario (por defecto true)"
+      }
+    },
+    "list-roots": {
+      "name": "list-roots",
+      "description": "Lista las raíces del workspace a las que este MCA puede acceder. Devuelve {count, roots[{path, exists, type}]}. Útil para auditar el alcance cuando una ruta es rechazada por el sandbox."
+    },
+    "read-media": {
+      "name": "read-media",
+      "description": "Lee un archivo binario (imagen, PDF, audio, archivo, ...) y devuelve base64 + el tipo MIME detectado mediante magic bytes. Devuelve {file, name, size, mimeType, base64, mtime}. Límite máximo 10 MB; para texto usa `read`.",
+      "params": {
+        "filePath": "Ruta absoluta o relativa al workspace"
+      }
+    },
+    "hash": {
+      "name": "hash",
+      "description": "Calcula el hash criptográfico de un archivo (por defecto sha256). Procesa el archivo en flujo para funcionar con archivos grandes sin cargarlos en memoria. Devuelve {file, name, algorithm, hash, size}. Útil para verificaciones de integridad y detectar cambios entre lecturas.",
+      "params": {
+        "filePath": "Ruta absoluta o relativa al workspace",
+        "algorithm": "Algoritmo de hash (por defecto sha256)"
+      }
+    }
+  },
+  "name": "Filesystem (Admin)",
+  "description": "Operaciones de sistema de archivos en la máquina host. Solo administrador. Misma superficie que mca.teros.filesystem pero sin aislamiento del workspace.",
+  "changelog": [
+    {
+      "notes": "Leer, escribir, editar y parchear archivos, buscar por nombre y contenido, y gestionar carpetas en la máquina host"
+    }
+  ]
+}

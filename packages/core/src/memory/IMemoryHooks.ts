@@ -59,6 +59,15 @@ export interface ResponseMetadata {
  * - NoOpMemoryHooks (testing)
  * - CustomMemoryHooks (user-defined)
  */
+/**
+ * Options threaded into memory hooks. Currently just an abort signal so a hung
+ * Qdrant / memory-MCA call can be cancelled by the turn's stall watchdog or
+ * hook deadline (TER-650) instead of freezing the turn.
+ */
+export interface MemoryHookOptions {
+  signal?: AbortSignal;
+}
+
 export interface IMemoryHooks {
   /**
    * Called BEFORE generating a response
@@ -73,7 +82,7 @@ export interface IMemoryHooks {
    * @param userMessage - The user's message
    * @returns Context string to inject into system prompt (empty if none)
    */
-  beforeResponse(userMessage: string): Promise<string>;
+  beforeResponse(userMessage: string, opts?: MemoryHookOptions): Promise<string>;
 
   /**
    * Called AFTER generating a response
@@ -91,6 +100,7 @@ export interface IMemoryHooks {
     userMessage: string,
     assistantResponse: string,
     metadata?: ResponseMetadata,
+    opts?: MemoryHookOptions,
   ): Promise<void>;
 }
 
@@ -100,7 +110,7 @@ export interface IMemoryHooks {
  * Follows Null Object Pattern - safe to call without side effects
  */
 export class NoOpMemoryHooks implements IMemoryHooks {
-  async beforeResponse(_userMessage: string): Promise<string> {
+  async beforeResponse(_userMessage: string, _opts?: MemoryHookOptions): Promise<string> {
     return '';
   }
 
@@ -108,6 +118,7 @@ export class NoOpMemoryHooks implements IMemoryHooks {
     _userMessage: string,
     _assistantResponse: string,
     _metadata?: ResponseMetadata,
+    _opts?: MemoryHookOptions,
   ): Promise<void> {
     // No-op
   }

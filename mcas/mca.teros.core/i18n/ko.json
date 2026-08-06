@@ -1,0 +1,337 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 연결성을 확인합니다."
+    },
+    "list-agents": {
+      "name": "list-agents",
+      "description": "사용자 또는 사용자의 작업 공간에 소속된 에이전트를 나열합니다.",
+      "params": {
+        "workspaceId": "선택 사항: 작업 공간 ID로 에이전트를 필터링합니다. 제공되지 않으면 접근 가능한 모든 에이전트를 나열합니다."
+      }
+    },
+    "get-agent": {
+      "name": "get-agent",
+      "description": "특정 에이전트에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "agentId": "가져올 에이전트 ID"
+      }
+    },
+    "create-agent": {
+      "name": "create-agent",
+      "description": "새 에이전트 인스턴스를 생성합니다. 코어는 범위에 따라 자동으로 할당됩니다 (작업 공간 없음 → 슈퍼 에이전트; 작업 공간 → 에이전트).",
+      "params": {
+        "name": "에이전트의 짧은 이름 (예: 'Alice')",
+        "fullName": "에이전트의 전체 이름 (예: 'Alice Evergreen')",
+        "role": "역할 설명 (예: '개인 비서')",
+        "intro": "에이전트에 대한 소개 텍스트",
+        "workspaceId": "선택 사항: 에이전트를 생성할 작업 공간 ID. 제공되지 않으면 글로벌 에이전트를 생성합니다. null을 명시적으로 전달하여 슈퍼 에이전트를 생성합니다 (어떤 작업 공간에도 바인딩되지 않은 고급 기능을 가진 글로벌 에이전트)."
+      }
+    },
+    "update-agent": {
+      "name": "update-agent",
+      "description": "기존 에이전트의 속성을 업데이트합니다.",
+      "params": {
+        "agentId": "업데이트할 에이전트 ID",
+        "name": "새 짧은 이름",
+        "fullName": "새 전체 이름",
+        "role": "새 역할 설명",
+        "intro": "새 소개 텍스트",
+        "responseStyle": "응답 스타일 (예: '친근한', '전문적인', '간결한')",
+        "avatarUrl": "에이전트 아바타 이미지의 URL",
+        "context": "시스템 프롬프트에 주입되는 에이전트 특정 컨텍스트. 에이전트 특정 지침, 가이드라인 또는 지식을 제공하는 데 사용합니다. 마크다운을 지원합니다."
+      }
+    },
+    "delete-agent": {
+      "name": "delete-agent",
+      "description": "에이전트를 삭제합니다. 이로 인해 에이전트에 대한 모든 앱 접근 권한도 제거됩니다.",
+      "params": {
+        "agentId": "삭제할 에이전트 ID"
+      }
+    },
+    "list-agent-apps": {
+      "name": "list-agent-apps",
+      "description": "에이전트가 접근할 수 있는 모든 앱을 나열합니다.",
+      "params": {
+        "agentId": "에이전트 ID"
+      }
+    },
+    "get-agent-providers": {
+      "name": "get-agent-providers",
+      "description": "에이전트에 대한 LLM 공급자 구성을 가져옵니다. 에이전트의 사용 가능한 공급자, 선호 공급자 및 선택된 모델을 반환합니다.",
+      "params": {
+        "agentId": "쿼리할 에이전트 ID"
+      }
+    },
+    "set-agent-providers": {
+      "name": "set-agent-providers",
+      "description": "에이전트에 대한 사용 가능한 LLM 공급자를 설정합니다. 이는 에이전트가 사용할 수 있는 공급자를 결정합니다. 작업 공간 접근 또는 에이전트 소유권이 필요합니다.",
+      "params": {
+        "agentId": "구성할 에이전트 ID",
+        "providerIds": "이 에이전트에 사용할 수 있도록 할 공급자 ID 배열"
+      }
+    },
+    "set-agent-preferred-provider": {
+      "name": "set-agent-preferred-provider",
+      "description": "에이전트에 대한 선호 LLM 공급자를 설정합니다. 공급자는 에이전트의 사용 가능한 공급자 목록에 있어야 합니다. 선호도를 지우려면 null을 전달합니다.",
+      "params": {
+        "agentId": "구성할 에이전트 ID",
+        "providerId": "선호로 설정할 공급자 ID (사용 가능한 공급자에 있어야 함), 또는 지우려면 null"
+      }
+    },
+    "list-workspaces": {
+      "name": "list-workspaces",
+      "description": "사용자가 소유하거나 구성원인 작업 공간을 나열합니다."
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "특정 작업 공간에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "workspaceId": "가져올 작업 공간 ID"
+      }
+    },
+    "create-workspace": {
+      "name": "create-workspace",
+      "description": "자체 볼륨을 가진 새 작업 공간을 생성합니다.",
+      "params": {
+        "name": "작업 공간의 이름",
+        "description": "선택 사항 설명"
+      }
+    },
+    "update-workspace": {
+      "name": "update-workspace",
+      "description": "에이전트 시스템 프롬프트에 주입되는 컨텍스트를 포함하여 작업 공간 속성을 업데이트합니다.",
+      "params": {
+        "workspaceId": "업데이트할 작업 공간 ID",
+        "name": "새 이름",
+        "description": "새 설명",
+        "context": "에이전트 시스템 프롬프트에 주입되는 컨텍스트 텍스트. 프로젝트 특정 정보, 가이드라인, 코딩 표준 또는 에이전트가 알아야 할 기타 컨텍스트를 제공하는 데 사용합니다. 마크다운을 지원하며 길 수 있습니다 (여러 단락)."
+      }
+    },
+    "archive-workspace": {
+      "name": "archive-workspace",
+      "description": "작업 공간을 아카이브합니다 (소프트 삭제). 소유자만 아카이브할 수 있습니다.",
+      "params": {
+        "workspaceId": "아카이브할 작업 공간 ID"
+      }
+    },
+    "add-workspace-member": {
+      "name": "add-workspace-member",
+      "description": "작업 공간에 구성원을 추가합니다.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "추가할 사용자 ID",
+        "role": "구성원의 역할"
+      }
+    },
+    "remove-workspace-member": {
+      "name": "remove-workspace-member",
+      "description": "작업 공간에서 구성원을 제거합니다.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "제거할 사용자 ID"
+      }
+    },
+    "update-workspace-member-role": {
+      "name": "update-workspace-member-role",
+      "description": "작업 공간에서 구성원의 역할을 업데이트합니다.",
+      "params": {
+        "workspaceId": "작업 공간 ID",
+        "userId": "사용자 ID",
+        "role": "구성원에 대한 새 역할"
+      }
+    },
+    "list-apps": {
+      "name": "list-apps",
+      "description": "사용자가 소유한 앱을 나열합니다.",
+      "params": {
+        "workspaceId": "선택 사항: 작업 공간 ID로 앱을 필터링합니다. 제공되지 않으면 모든 작업 공간에서 사용자가 소유한 모든 앱을 나열합니다."
+      }
+    },
+    "get-app": {
+      "name": "get-app",
+      "description": "특정 앱에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "appId": "가져올 앱 ID"
+      }
+    },
+    "install-app": {
+      "name": "install-app",
+      "description": "카탈로그에서 MCA를 앱으로 설치합니다. 설치된 앱은 사용자의 슈퍼 에이전트에 자동으로 부여됩니다. 앱은 작업 공간에 범위가 지정됩니다: 해당 도구는 해당 작업 공간의 대화에서만 사용할 수 있습니다.",
+      "params": {
+        "mcaId": "설치할 MCA ID (예: 'mca.teros.bash')",
+        "name": "선택 사항: 앱의 사용자 정의 이름 (소문자-케밥-케이스). 제공되지 않으면 자동 생성됩니다.",
+        "workspaceId": "선택 사항: 앱을 설치할 작업 공간 ID. 기본적으로 사용자의 개인 작업 공간으로 설정됩니다. 현재 대화에서 앱의 도구를 사용하려면 대화의 작업 공간에 설치해야 합니다."
+      }
+    },
+    "uninstall-app": {
+      "name": "uninstall-app",
+      "description": "앱을 제거합니다. 이로 인해 모든 에이전트 접근 권한도 제거됩니다.",
+      "params": {
+        "appId": "제거할 앱 ID"
+      }
+    },
+    "rename-app": {
+      "name": "rename-app",
+      "description": "설치된 앱의 이름을 변경합니다.",
+      "params": {
+        "appId": "이름을 변경할 앱 ID",
+        "name": "앱의 새 이름 (소문자-케밥-케이스)"
+      }
+    },
+    "check-app-auth": {
+      "name": "check-app-auth",
+      "description": "앱의 인증 상태를 확인합니다 (연결됨, 만료됨, 자격 증명 누락, 필요 없음) 사용자가 아무것도 보지 않도록. 앱을 운영하기 전후에 인증을 확인하는 데 사용합니다. 상태가 손상된 경우 show-app-auth를 사용하여 사용자가 채팅에서 수정할 수 있도록 합니다 — 자격 증명을 직접 요청하지 마십시오.",
+      "params": {
+        "appId": "인증 상태를 확인할 앱"
+      }
+    },
+    "show-app-auth": {
+      "name": "show-app-auth",
+      "description": "앱의 인증 위젯을 사용자에게 표시하여 즉시 연결하거나 재인증할 수 있도록 합니다 (예: OAuth 세션이 만료되었을 때 Gmail 재연결). 인증 이유로 앱의 도구가 실패할 때 사용합니다 (세션 만료, 자격 증명 누락). 앱의 현재 인증 상태를 반환하여 사용자가 무엇을 수정해야 하는지 알 수 있습니다. 사용자에게 자격 증명을 직접 요청하지 마십시오 — 위젯은 사용자가 입력해야 하는 유일한 장소입니다.",
+      "params": {
+        "appId": "인증 섹션을 표시할 앱"
+      }
+    },
+    "list-app-access": {
+      "name": "list-app-access",
+      "description": "앱에 접근할 수 있는 모든 에이전트를 나열합니다.",
+      "params": {
+        "appId": "앱 ID"
+      }
+    },
+    "workspace-app-list": {
+      "name": "workspace-app-list",
+      "description": "작업 공간의 앱을 나열합니다.",
+      "params": {
+        "workspaceId": "앱을 나열할 작업 공간 ID"
+      }
+    },
+    "workspace-agent-list": {
+      "name": "workspace-agent-list",
+      "description": "작업 공간의 에이전트를 나열합니다.",
+      "params": {
+        "workspaceId": "에이전트를 나열할 작업 공간 ID"
+      }
+    },
+    "list-catalog": {
+      "name": "list-catalog",
+      "description": "카탈로그에서 사용 가능한 모든 MCA를 나열합니다.",
+      "params": {
+        "category": "선택 사항: 카테고리로 필터링",
+        "includeHidden": "숨겨진 MCA 포함 (기본값: false)"
+      }
+    },
+    "list-providers": {
+      "name": "list-providers",
+      "description": "사용자에게 제공되는 모든 LLM 공급자를 나열합니다. 공급자와 그들의 모델, 상태 및 구성을 반환합니다."
+    },
+    "grant-app-access": {
+      "name": "grant-app-access",
+      "description": "에이전트에게 앱 접근 권한을 부여합니다.",
+      "params": {
+        "agentId": "접근 권한을 부여할 에이전트",
+        "appId": "접근 권한을 부여할 앱"
+      }
+    },
+    "revoke-app-access": {
+      "name": "revoke-app-access",
+      "description": "에이전트의 앱 접근 권한을 철회합니다.",
+      "params": {
+        "agentId": "접근 권한을 철회할 에이전트",
+        "appId": "접근 권한을 철회할 앱"
+      }
+    },
+    "get-app-permissions": {
+      "name": "get-app-permissions",
+      "description": "앱의 도구 권한을 가져옵니다: 각 도구의 구성된 권한 ('allow'는 묻지 않고 실행, 'ask'는 사용자 확인 필요, 'forbid'는 차단됨), 매니페스트 플래그 (readOnly, alwaysAsk) 및 요약.",
+      "params": {
+        "appId": "권한을 읽을 앱"
+      }
+    },
+    "set-app-permissions": {
+      "name": "set-app-permissions",
+      "description": "앱의 도구 권한을 일괄 설정합니다. 값: 'allow' (묻지 않고 실행), 'ask' (사용자 확인 필요), 'forbid' (차단됨), 'default' (명시적 설정을 지워 앱 기본값으로 돌아갑니다). `tools`를 사용하여 도구별 변경 및/또는 `all`을 사용하여 모든 도구를 한 번에 변경합니다; `all: 'default'`는 전체 앱을 기본값으로 재설정합니다.",
+      "params": {
+        "appId": "권한을 변경할 앱",
+        "all": "앱의 모든 도구를 한 번에 설정; 'default'는 모든 도구를 앱 기본값으로 재설정합니다.",
+        "tools": "도구별 변경: 도구 이름에서 'allow' | 'ask' | 'forbid' | 'default'로의 맵. 둘 다 제공될 때 `all` 위에 적용됩니다."
+      }
+    },
+    "skill-list": {
+      "name": "skill-list",
+      "description": "작업 공간의 모든 기술을 나열합니다.",
+      "params": {
+        "workspaceId": "기술을 나열할 작업 공간 ID"
+      }
+    },
+    "skill-create": {
+      "name": "skill-create",
+      "description": "작업 공간에 새 기술을 생성합니다.",
+      "params": {
+        "workspaceId": "기술을 생성할 작업 공간 ID",
+        "name": "기술의 이름",
+        "description": "기술의 선택 사항 설명",
+        "content": "기술에 대한 마크다운 콘텐츠 / 지침"
+      }
+    },
+    "skill-update": {
+      "name": "skill-update",
+      "description": "기존 기술을 업데이트합니다.",
+      "params": {
+        "skillId": "업데이트할 기술 ID",
+        "name": "기술의 새 이름",
+        "description": "기술에 대한 새 설명",
+        "content": "기술에 대한 새 마크다운 콘텐츠 / 지침"
+      }
+    },
+    "skill-delete": {
+      "name": "skill-delete",
+      "description": "기술과 그 모든 에이전트 접근 항목을 삭제합니다.",
+      "params": {
+        "skillId": "삭제할 기술 ID"
+      }
+    },
+    "skill-grant-access": {
+      "name": "skill-grant-access",
+      "description": "기술을 에이전트에 할당합니다.",
+      "params": {
+        "agentId": "기술을 할당할 에이전트 ID",
+        "skillId": "할당할 기술 ID"
+      }
+    },
+    "skill-revoke-access": {
+      "name": "skill-revoke-access",
+      "description": "에이전트에서 기술 할당을 제거합니다.",
+      "params": {
+        "agentId": "기술을 제거할 에이전트 ID",
+        "skillId": "제거할 기술 ID"
+      }
+    },
+    "skill-set-enabled": {
+      "name": "skill-set-enabled",
+      "description": "특정 에이전트에 대해 기술을 활성화하거나 비활성화합니다.",
+      "params": {
+        "agentId": "에이전트 ID",
+        "skillId": "기술 ID",
+        "enabled": "에이전트에 대해 기술을 활성화할지 (true) 또는 비활성화할지 (false)"
+      }
+    },
+    "skill-get-agent-skills": {
+      "name": "skill-get-agent-skills",
+      "description": "에이전트에 할당된 모든 기술을 가져옵니다.",
+      "params": {
+        "agentId": "기술을 가져올 에이전트 ID"
+      }
+    }
+  },
+  "name": "Teros Core",
+  "description": "Teros 플랫폼 리소스를 관리합니다: 에이전트, 작업 공간, 앱 및 접근 제어. 플랫폼을 생성, 업데이트 및 구성하는 도구를 제공합니다.",
+  "tagline": "모든 Teros 리소스 — 에이전트, 작업 공간, 앱 및 접근을 한 곳에서 관리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 에이전트, 작업 공간, 앱 및 기술을 생성하고 관리하며, 구성원 역할 및 접근 제어를 포함합니다."
+    }
+  ]
+}

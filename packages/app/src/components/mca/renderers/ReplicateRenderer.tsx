@@ -14,13 +14,13 @@
 
 import type React from 'react';
 
+import { Badge, FallbackBody, ToolCallCard } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
 import { GenericRunRenderer, GetPredictionRenderer } from './replicate/GenericRenderer';
-
 // Import sub-renderers
 import { Flux2Renderer, FluxDevRenderer, FluxProRenderer } from './replicate/ImageRenderer';
-import { Badge, getShortToolName, HeaderRow } from './replicate/shared';
+import { getShortToolName, REPLICATE_ICON, replicateBadgeProps } from './replicate/shared';
 import { MinimaxVideoRenderer, VeoVideoRenderer } from './replicate/VideoRenderer';
 
 // ============================================================================
@@ -50,25 +50,25 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // Fallback Renderer
 // ============================================================================
 
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, input, status, output, error }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
-
-  let badge: { text: string; variant: 'success' | 'red' | 'gray' } | undefined;
-  if (status === 'completed') {
-    badge = { text: 'done', variant: 'success' };
-  } else if (status === 'failed') {
-    badge = { text: 'failed', variant: 'red' };
-  }
+  const badge =
+    status === 'completed'
+      ? <Badge {...replicateBadgeProps('done', 'success')} />
+      : status === 'failed'
+        ? <Badge {...replicateBadgeProps('failed', 'red')} />
+        : undefined;
 
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
-      description={shortName}
-      duration={duration}
+      verb={shortName.replace(/-/g, ' ')}
+      iconUri={REPLICATE_ICON}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
-    />
+      animateExpand
+    >
+      <FallbackBody status={status} input={input} output={output} error={error} />
+    </ToolCallCard>
   );
 }
 

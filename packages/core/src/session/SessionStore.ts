@@ -30,6 +30,20 @@ export abstract class SessionStore {
   abstract writeMessage(message: Message): Promise<void>;
   abstract getMessagesWithParts(sessionId: string): Promise<MessageWithParts[]>;
 
+  /** No-op if the message doesn't exist. */
+  abstract updateUserMessageQueueState(
+    messageId: string,
+    state: 'pending' | 'running' | 'done',
+  ): Promise<void>;
+
+  /**
+   * User messages with `queueState !== 'done'` across the given channels —
+   * used at boot to re-enqueue anything left mid-flight.
+   */
+  abstract listPendingQueueMessages(
+    channelIds: string[],
+  ): Promise<Array<MessageWithParts>>;
+
   // Part operations (for tool use/results) (matching berta-teros signatures)
   abstract writePart(part: Part): Promise<void>;
   abstract listParts(messageId: string): Promise<Part[]>;

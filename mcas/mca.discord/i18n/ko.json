@@ -1,0 +1,233 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. Discord OAuth 자격 증명 및 API 연결을 확인합니다."
+    },
+    "list-guilds": {
+      "name": "list-guilds",
+      "description": "봇/사용자가 소속된 길드(서버)를 나열합니다. 페이지 매김을 지원합니다.",
+      "params": {
+        "limit": "페이지당 최대 길드 수 (1-200). 기본값: 100",
+        "before": "이 길드 ID 이전의 길드를 가져옵니다 (페이지 매김용)",
+        "after": "이 길드 ID 이후의 길드를 가져옵니다 (페이지 매김용)",
+        "withCounts": "대략적인 멤버 및 존재 수를 포함합니다. 기본값: false"
+      }
+    },
+    "get-guild": {
+      "name": "get-guild",
+      "description": "특정 길드(서버)에 대한 자세한 정보를 ID로 가져옵니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "withCounts": "대략적인 멤버 및 존재 수를 포함합니다. 기본값: false"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "길드의 채널을 나열합니다. 텍스트, 음성, 카테고리 및 기타 채널 유형을 반환합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)"
+      }
+    },
+    "get-channel": {
+      "name": "get-channel",
+      "description": "특정 채널에 대한 자세한 정보를 ID로 가져옵니다.",
+      "params": {
+        "channelId": "채널 ID (눈송이)"
+      }
+    },
+    "create-channel": {
+      "name": "create-channel",
+      "description": "길드에 새로운 채널을 생성합니다. 텍스트, 음성, 카테고리, 공지 및 포럼 채널을 지원합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "name": "채널 이름 (1-100자)",
+        "type": "채널 유형. 기본값: 텍스트",
+        "topic": "채널 주제/설명 (텍스트의 경우 최대 1024자, 포럼의 경우 4096자)",
+        "parentId": "부모 카테고리 채널 ID",
+        "nsfw": "채널을 NSFW로 표시합니다. 기본값: false",
+        "rateLimitPerUser": "슬로우모드 시간 (초) (0-21600). 기본값: 0",
+        "bitrate": "음성 채널 비트레이트 (비트) (8000-96000/128000, 부스트된 길드의 경우)",
+        "userLimit": "음성 채널 사용자 제한 (0-99, 0 = 무제한). 기본값: 0",
+        "position": "채널의 정렬 위치"
+      }
+    },
+    "delete-channel": {
+      "name": "delete-channel",
+      "description": "채널을 삭제하거나 DM을 닫습니다. 길드 채널에 대해 채널 관리 권한이 필요합니다.",
+      "params": {
+        "channelId": "삭제할 채널 ID (눈송이)",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Discord 채널에 메시지를 보냅니다. 텍스트, 임베드, 멘션 및 답글을 지원합니다.",
+      "params": {
+        "channelId": "메시지를 보낼 채널 ID (눈송이)",
+        "content": "메시지 텍스트 내용 (최대 2000자, nitro의 경우 4000자)",
+        "embeds": "선택적 임베드 객체 배열의 JSON 문자열. buildEmbed 헬퍼를 사용하거나 원시 JSON을 전달합니다.",
+        "replyToMessageId": "답글을 달 메시지 ID (선택적)",
+        "mentionEveryone": "@everyone 및 @here 멘션을 허용합니다. 기본값: false",
+        "mentionRoles": "@role 멘션을 허용합니다. 기본값: true",
+        "mentionUsers": "@user 멘션을 허용합니다. 기본값: true",
+        "tts": "텍스트 음성 변환으로 보냅니다. 기본값: false"
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "채널의 메시지를 나열합니다. 이전/이후/주변 메시지 ID를 통한 페이지 매김을 지원합니다.",
+      "params": {
+        "channelId": "채널 ID (눈송이)",
+        "limit": "가져올 메시지 수 (1-100). 기본값: 50",
+        "before": "이 메시지 ID 이전의 메시지를 가져옵니다",
+        "after": "이 메시지 ID 이후의 메시지를 가져옵니다",
+        "around": "이 메시지 ID 주변의 메시지를 가져옵니다"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "채널에서 메시지를 삭제합니다. 메시지 작성자가 아닌 경우 메시지 관리 권한이 필요합니다.",
+      "params": {
+        "channelId": "채널 ID (눈송이)",
+        "messageId": "삭제할 메시지 ID (눈송이)",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "add-reaction": {
+      "name": "add-reaction",
+      "description": "메시지에 반응(이모지)을 추가합니다. 유니코드 이모지 또는 사용자 정의 이모지 형식 이름:id를 사용합니다.",
+      "params": {
+        "channelId": "채널 ID (눈송이)",
+        "messageId": "메시지 ID (눈송이)",
+        "emoji": "반응할 이모지. 유니코드 이모지 (예: 👍) 또는 사용자 정의 이모지 이름:id 형식"
+      }
+    },
+    "list-members": {
+      "name": "list-members",
+      "description": "길드의 멤버를 나열합니다. 제한 및 사용자 ID 이후를 통한 페이지 매김을 지원합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "limit": "가져올 최대 멤버 수 (1-1000). 기본값: 100",
+        "after": "페이지 매김을 위해 이 사용자 ID (눈송이) 이후의 멤버를 가져옵니다"
+      }
+    },
+    "get-member": {
+      "name": "get-member",
+      "description": "특정 길드 멤버를 사용자 ID로 가져옵니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "멤버의 사용자 ID (눈송이)"
+      }
+    },
+    "list-roles": {
+      "name": "list-roles",
+      "description": "길드의 모든 역할을 나열하며, 위치에 따라 정렬됩니다 (가장 높은 것부터).",
+      "params": {
+        "guildId": "길드 ID (눈송이)"
+      }
+    },
+    "create-role": {
+      "name": "create-role",
+      "description": "길드에 새로운 역할을 생성합니다. 역할 관리 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "name": "역할 이름 (최대 100자)",
+        "color": "역할 색상 (정수로, 0 = 색상 없음). RGB 정수 값을 사용합니다.",
+        "hoist": "온라인 목록에서 역할 멤버를 별도로 표시합니다. 기본값: false",
+        "icon": "Base64로 인코딩된 역할 아이콘 이미지 (PNG/JPEG, 최대 256x256)",
+        "unicodeEmoji": "역할 아이콘으로 사용할 유니코드 이모지",
+        "mentionable": "누구나 이 역할을 @멘션할 수 있도록 허용합니다. 기본값: false",
+        "permissions": "권한 비트필드 문자열. 기본값: '0'",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "assign-role": {
+      "name": "assign-role",
+      "description": "길드 멤버에게 역할을 추가합니다. 대상 역할보다 봇의 역할이 위에 있어야 역할 관리 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "역할을 부여할 사용자 ID (눈송이)",
+        "roleId": "부여할 역할 ID (눈송이)",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "remove-role": {
+      "name": "remove-role",
+      "description": "길드 멤버에게서 역할을 제거합니다. 역할 관리 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "역할을 제거할 사용자 ID (눈송이)",
+        "roleId": "제거할 역할 ID (눈송이)",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "list-webhooks": {
+      "name": "list-webhooks",
+      "description": "길드 또는 채널의 웹훅을 나열합니다. 웹훅 관리 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드의 모든 웹훅을 나열할 길드 ID (눈송이)",
+        "channelId": "특정 채널의 웹훅을 나열할 채널 ID (눈송이)"
+      }
+    },
+    "create-webhook": {
+      "name": "create-webhook",
+      "description": "채널에 새로운 웹훅을 생성합니다. 웹훅 관리 권한이 필요합니다. 메시지를 보내기 위한 웹훅 토큰을 반환합니다.",
+      "params": {
+        "channelId": "웹훅을 생성할 채널 ID (눈송이)",
+        "name": "웹훅 이름 (1-80자, 'clyde' 또는 'discord'를 포함할 수 없음)",
+        "avatar": "Base64로 인코딩된 아바타 이미지 (PNG/JPEG/GIF, 최대 128x128)",
+        "reason": "선택적 감사 로그 이유"
+      }
+    },
+    "send-webhook-message": {
+      "name": "send-webhook-message",
+      "description": "웹훅 URL을 사용하여 웹훅을 통해 메시지를 보냅니다. 텍스트, 임베드 및 사용자 이름을 지원합니다.",
+      "params": {
+        "webhookId": "웹훅 ID (눈송이)",
+        "webhookToken": "웹훅 토큰 (create-webhook 응답에서)",
+        "content": "메시지 텍스트 내용 (최대 2000자)",
+        "username": "웹훅의 기본 사용자 이름을 재정의합니다",
+        "avatarUrl": "웹훅의 기본 아바타 URL을 재정의합니다",
+        "embeds": "선택적 임베드 객체 배열의 JSON 문자열",
+        "threadId": "포럼 스레드에서 메시지를 보내기 위한 선택적 스레드 ID"
+      }
+    },
+    "kick-member": {
+      "name": "kick-member",
+      "description": "길드에서 멤버를 추방합니다. 멤버 추방 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "추방할 멤버의 사용자 ID (눈송이)",
+        "reason": "추방에 대한 선택적 감사 로그 이유"
+      }
+    },
+    "ban-member": {
+      "name": "ban-member",
+      "description": "길드에서 멤버를 금지합니다. 선택적으로 메시지 기록을 삭제합니다. 멤버 금지 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "금지할 멤버의 사용자 ID (눈송이)",
+        "deleteMessageSeconds": "메시지를 삭제할 시간 (초) (0-604800, 최대 7일). 기본값: 0",
+        "reason": "금지에 대한 선택적 감사 로그 이유"
+      }
+    },
+    "timeout-member": {
+      "name": "timeout-member",
+      "description": "지정된 기간 동안 길드 멤버를 타임아웃(음소거)합니다. 멤버 조정 권한이 필요합니다.",
+      "params": {
+        "guildId": "길드 ID (눈송이)",
+        "userId": "타임아웃할 멤버의 사용자 ID (눈송이)",
+        "durationMinutes": "타임아웃 기간 (분) (최대 40320 = 28일). 기본값: 60",
+        "reason": "선택적 감사 로그 이유"
+      }
+    }
+  },
+  "name": "Discord",
+  "description": "전체 Discord 통합: 길드, 채널, 메시지, 멤버, 역할, 웹훅, 스레드, 반응 및 조정. OAuth 2.0 / 봇 토큰을 사용하는 Discord REST API를 사용합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 메시지를 보내고 읽고, 서버, 채널, 역할, 멤버 및 웹훅을 관리하고, 반응하고, 조정합니다."
+    }
+  ]
+}

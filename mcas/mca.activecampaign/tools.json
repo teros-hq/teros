@@ -1,0 +1,422 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.activecampaign",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies ActiveCampaign API URL, token, and connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list-contacts",
+      "description": "List contacts. Returns { items[{id,email,firstName,lastName,phone}], total, nextOffset }. Filter by email, free-text search, or listId.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Exact email match"
+          },
+          "search": {
+            "type": "string",
+            "description": "Free-text search (name/email)"
+          },
+          "listId": {
+            "type": "string",
+            "description": "Only contacts subscribed to this list"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Pagination offset (default 0)"
+          },
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Include raw API response"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-contact",
+      "description": "Get a contact by id. Returns { contact: {id,email,firstName,lastName,phone,cdate,udate} }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Contact id"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-contact",
+      "description": "Create a contact. Email is required. Returns { contact } with the created record. ActiveCampaign upserts by email; if it exists you get the existing contact.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "Contact email (required)"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-contact",
+      "description": "Update a contact by id. Only provided fields are updated. Returns { contact }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Contact id"
+          },
+          "email": {
+            "type": "string"
+          },
+          "firstName": {
+            "type": "string"
+          },
+          "lastName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-contact",
+      "description": "Delete a contact by id. Permanent — no soft-delete in ActiveCampaign. Returns { id, deleted: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Contact id"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-lists",
+      "description": "List subscriber lists. Returns { items[{id,name,stringid,subscriberCount}], total, nextOffset }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "subscribe-contact-to-list",
+      "description": "Subscribe (or unsubscribe) a contact to a list. Returns { contactList: {id, contact, list, status} }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact id"
+          },
+          "listId": {
+            "type": "string",
+            "description": "List id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "subscribed",
+              "unsubscribed"
+            ],
+            "description": "Default subscribed"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contactId",
+          "listId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-campaigns",
+      "description": "List email campaigns. Returns { items[{id,name,type,status,subject,sendDate,totalRecipients,totalOpens,uniqueOpens}], total, nextOffset }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-campaign",
+      "description": "Get a campaign by id. Returns { campaign: {id,name,subject,status,sendDate,fromName,fromEmail,totalRecipients,opens,clicks} }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Campaign id"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-deals",
+      "description": "List deals (CRM pipeline records). Returns { items[{id,title,value,currency,status,contact,pipeline,stage}], total, nextOffset }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Search title/description"
+          },
+          "pipelineId": {
+            "type": "string",
+            "description": "Filter by pipeline id"
+          },
+          "stageId": {
+            "type": "string",
+            "description": "Filter by stage id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "won",
+              "lost"
+            ]
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-deal",
+      "description": "Get a deal by id. Returns { deal: {id,title,description,value,currency,status,contact,pipeline,stage,owner} }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Deal id"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-deal",
+      "description": "Create a deal. Required: title, value (in major units), pipelineId, stageId, ownerId. value is converted to cents internally. Returns { deal }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number",
+            "description": "Deal value in major units (e.g. 1500 for $1,500)"
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO currency code, lowercase (default usd)"
+          },
+          "contactId": {
+            "type": "string"
+          },
+          "pipelineId": {
+            "type": "string",
+            "description": "Pipeline (group) id"
+          },
+          "stageId": {
+            "type": "string"
+          },
+          "ownerId": {
+            "type": "string",
+            "description": "User id of deal owner"
+          },
+          "description": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "title",
+          "value",
+          "pipelineId",
+          "stageId",
+          "ownerId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-tags",
+      "description": "List tags. Returns { items[{id,name,description,tagType}], total, nextOffset }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Substring match on tag name"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 20, max 100)"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "add-tag-to-contact",
+      "description": "Assign a tag to a contact. Returns { contactTag: {id, contact, tag} }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string"
+          },
+          "tagId": {
+            "type": "string"
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "contactId",
+          "tagId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    }
+  ]
+}

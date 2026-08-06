@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 WebSocket 연결을 확인합니다.\n\n중요 — 협력 중지 프로토콜:\n각 턴의 시작 시, get-my-task를 호출하여 현재 작업의 stopRequested=true인지 확인합니다.\n활성 작업에서 stopRequested가 true인 경우:\n1. 현재 원자적 단계만 완료합니다(새 작업을 시작하지 마십시오).\n2. 중단한 위치를 설명하는 진행 노트를 추가합니다.\n3. 중단한 위치를 설명하는 이유와 함께 block-my-task를 호출합니다.\n4. 1-3단계를 완료한 후 추가 도구 호출을 계속하지 마십시오."
+    },
+    "get-my-tasks": {
+      "name": "get-my-tasks",
+      "description": "작업 공간의 모든 프로젝트에서 이 에이전트에 할당된 작업 목록을 반환합니다. 반환: { agentId, tasks: [{ taskId, title, columnName, columnSlug, priority, projectName, running, stopRequested }], nextCursor? }. 페이지 매김: 기본 50, 최대 200. 현재 대화에서 활성 작업에 대해서는 get-my-task를 사용하십시오.",
+      "params": {
+        "workspaceId": "작업 공간 ID(선택 사항, 기본값은 현재 작업 공간)",
+        "tags": "모든 태그가 있는 작업만 반환(선택 사항). 사이클/릴리스 범위에 유용합니다(예: [\"cycle:sesion-20260412\"]).",
+        "fields": "사용자 정의 필드 하위 집합",
+        "includeRaw": "전체 작업 문서 반환",
+        "limit": "최대 결과(기본 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    },
+    "get-my-task": {
+      "name": "get-my-task",
+      "description": "현재 대화에 연결된 작업을 가져옵니다(빠른 경로). 반환: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. 매 턴마다 stopRequested를 확인하십시오; true인 경우 현재 단계를 완료하고, 진행 노트를 추가하고, block-my-task를 호출하고, 중지합니다.",
+      "params": {
+        "fields": "사용자 정의 필드 하위 집합",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "complete-my-task": {
+      "name": "complete-my-task",
+      "description": "할당된 작업을 완료로 표시합니다. 검토(관리자 검토 준비)로 이동합니다. 차단된 모든 열에서 작동합니다. 실행 플래그를 지웁니다. 반환: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "block-my-task": {
+      "name": "block-my-task",
+      "description": "할당된 작업을 차단으로 표시합니다. 차단된 상태로 이동하고 이유와 함께 진행 노트를 추가합니다. 실행을 지웁니다. 종속성, 누락된 정보 또는 외부 차단기에 사용합니다. 반환: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: \"blocked\" } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "reason": "작업이 차단된 이유(진행 노트로 추가됨)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "cancel-my-task": {
+      "name": "cancel-my-task",
+      "description": "할당된 작업을 취소합니다. 제자리에 보관(열 이동 없음)하고 이유와 함께 진행 노트를 추가합니다. 실행을 지웁니다. 작업이 더 이상 필요하지 않거나 중복되거나 완료할 수 없을 때 사용합니다. 반환: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "reason": "작업이 취소된 이유(진행 노트로 추가됨)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "할당된 작업 중 하나에 진행 노트를 추가합니다. 노트는 작업 세부정보 및 보드에서 볼 수 있습니다. 관리자가 새로운 작업을 제안하기 위해 \"PROPUESTA: \"로 접두사를 붙입니다. 반환: { task: { ...TASK_WITH_PROGRESS_FIELDS } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "text": "진행 노트 텍스트",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    }
+  },
+  "name": "보드 러너",
+  "description": "작업자 에이전트를 위한 작업 실행 기능. 할당된 작업에만 접근할 수 있습니다 — 작업 세부정보 보기, 진행 업데이트, 작업을 워크플로우 단계로 이동 및 진행 노트 추가. 새로운 작업을 제안하거나 차단기를 에스컬레이션하려면 'PROPUESTA:' 접두사가 있는 노트 필드를 사용하여 감독자가 조치를 취할 수 있도록 합니다.",
+  "changelog": [
+    {
+      "notes": "할당된 작업을 보고, 진행 노트를 기록하고, 작업을 완료, 차단 또는 취소 단계로 이동합니다."
+    }
+  ]
+}

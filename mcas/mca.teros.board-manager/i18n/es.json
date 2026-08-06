@@ -1,0 +1,337 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Herramienta interna de verificación de salud. Verifica la conectividad de WebSocket con el backend."
+    },
+    "get-project": {
+      "name": "get-project",
+      "description": "Obtener detalles del proyecto + sus columnas de tablero. Devuelve: { project: { projectId, name, description, context, status, boardId, createdAt }, board: { boardId, columns: [{ columnId, slug, name, position }] } }. Usa list-tasks para enumerar tareas.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "fields": "Subconjunto personalizado para el proyecto",
+        "includeRaw": "Devolver proyecto completo + tablero"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "Listar proyectos en un espacio de trabajo. Devuelve: { workspaceId, projects: [{ projectId, name, description, status, boardId, taskCount, activeAgentCount, createdAt }], nextCursor? }. Paginado: por defecto 50, máximo 200. Usa get-project para obtener detalles completos + columnas de tablero.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo (opcional, por defecto al espacio de trabajo de ejecución)",
+        "fields": "Subconjunto personalizado de campos",
+        "includeArchived": "Incluir proyectos archivados (por defecto: falso)",
+        "includeRaw": "Devolver documentos completos del proyecto",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "Obtener detalles de la tarea + subtareas. Devuelve: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "fields": "Subconjunto personalizado de campos para tarea + subtareas",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "Listar tareas en un proyecto. Devuelve: { projectId, projectName, tasks: [{ taskId, title, columnName, columnSlug, priority, archived, tags, running, assigneeName, assigneeAvatarUrl }], agents, nextCursor? }. Paginado: por defecto 50, máximo 200. Para vista de agente de sus propias tareas, usa get-my-tasks (ejecutor MCA).",
+      "params": {
+        "projectId": "ID del proyecto",
+        "columnId": "Filtrar por columna (opcional)",
+        "assignedAgentId": "Filtrar por asignado (opcional)",
+        "tags": "Devolver solo tareas que tengan TODAS estas etiquetas (opcional)",
+        "archived": "true=solo archivadas, false=solo activas (por defecto: activas)",
+        "fields": "Subconjunto personalizado de campos a devolver (anula la lista blanca por defecto)",
+        "includeRaw": "Devolver documentos completos de la tarea",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación de la respuesta anterior"
+      }
+    },
+    "list-board-agents": {
+      "name": "list-board-agents",
+      "description": "Listar agentes en el espacio de trabajo con acceso a las aplicaciones de administrador de tablero o ejecutor de tablero. Devuelve: { agents: [{ agentId, name, fullName, role, avatarUrl, capabilities }], nextCursor? }. Paginado: por defecto 50, máximo 200.",
+      "params": {
+        "workspaceId": "Espacio de trabajo (opcional, por defecto al de ejecución)",
+        "fields": "Subconjunto personalizado de campos",
+        "includeRaw": "Devolver documentos completos de los agentes",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    },
+    "create-project": {
+      "name": "create-project",
+      "description": "Crear un proyecto con un tablero Kanban asociado en un espacio de trabajo. Devuelve: { project: { projectId, workspaceId, name, status, boardId }, board: { boardId, columns: [...] } }. Columnas por defecto: Backlog, Por Hacer, En Progreso, Bloqueado, Revisión, Hecho.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo (opcional, por defecto al espacio de trabajo de ejecución)",
+        "name": "Nombre del proyecto",
+        "description": "Descripción opcional del proyecto",
+        "includeRaw": "Devolver los documentos completos"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "Crear una tarea en un tablero de proyecto. Por defecto en la columna Backlog. Devuelve: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Usa batch-create-tasks para crear muchas de forma atómica.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "title": "Título de la tarea",
+        "description": "Descripción corta en texto plano (máx ~1000 caracteres)",
+        "instructions": "Instrucciones completas de la tarea (markdown — especificaciones detalladas, contexto, pasos)",
+        "priority": "Prioridad (por defecto: media)",
+        "tags": "Etiquetas para categorización",
+        "assignedAgentId": "Agente a asignar",
+        "columnId": "Columna objetivo (por defecto: backlog)",
+        "parentTaskId": "Tarea padre (para subtareas)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "batch-create-tasks": {
+      "name": "batch-create-tasks",
+      "description": "Crear múltiples tareas de forma atómica (todas tienen éxito o todas fallan). Máx 100 por llamada. Devuelve: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Usa create-task para una sola tarea.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "tasks": "Array de objetos de tarea (máx 100)",
+        "includeRaw": "Devolver documentos completos de la tarea"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "Actualización parcial de las propiedades de la tarea. Los campos omitidos permanecen sin cambios. Devuelve: { task: { ...TASK_FIELDS } }. Para mover una tarea entre columnas, usa move-task. Para asignar un agente, usa assign-task.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "title": "Nuevo título",
+        "description": "Nueva descripción corta (texto plano, máx ~1000 caracteres)",
+        "instructions": "Nuevas instrucciones (markdown — especificaciones detalladas, contexto, pasos)",
+        "priority": "Nueva prioridad",
+        "tags": "Nuevas etiquetas (reemplaza las existentes)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "archive-task": {
+      "name": "archive-task",
+      "description": "Archivar o restaurar una tarea (acción del gerente). archived=true saca la tarea del tablero activo (hecha / cancelada / desechada); archived=false la restaura y activa la reprogramación automática. Devuelve: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "archived": "true = archivar, false = restaurar al tablero activo",
+        "archiveNote": "Nota opcional que explica por qué se archivó la tarea",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "archive-project": {
+      "name": "archive-project",
+      "description": "Archivar un proyecto (eliminación suave) y todas sus tareas no archivadas. Solo el administrador/propietario puede archivar. Idempotente: si ya está archivado, devuelve el proyecto. Devuelve: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "ID del proyecto a archivar",
+        "archiveNote": "Nota opcional que explica por qué se archivó el proyecto",
+        "includeRaw": "Devolver documento completo del proyecto"
+      }
+    },
+    "update-project": {
+      "name": "update-project",
+      "description": "Actualización parcial de las propiedades del proyecto (nombre, descripción, contexto). El contexto se inyecta en los mensajes del sistema del agente al trabajar en este proyecto (se admite markdown). Devuelve: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "name": "Nuevo nombre",
+        "description": "Nueva descripción",
+        "context": "Contexto del proyecto inyectado en los mensajes del sistema del agente (notas de arquitectura, estándares de codificación, etc.). Se admite markdown.",
+        "includeRaw": "Devolver documento completo del proyecto"
+      }
+    },
+    "update-board-config": {
+      "name": "update-board-config",
+      "description": "Actualizar la configuración de ejecución del tablero para un proyecto. El objeto de configuración se pasa tal cual al tablero. Actualmente reservado para futuras configuraciones de auto-dispatcher. Devuelve: { projectId, config }.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "config": "Objeto de configuración del tablero (pasado tal cual al documento del tablero)"
+      }
+    },
+    "move-task": {
+      "name": "move-task",
+      "description": "Mover una tarea a una columna diferente en el tablero. Devuelve: { task: { ...TASK_FIELDS } } (incluye columnName + columnSlug después del movimiento). Usa list-board-subscriptions + subscribe-to-board para recibir notificaciones cuando las tareas se mueven.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "columnId": "ID de la columna objetivo",
+        "position": "Posición dentro de la columna (opcional, por defecto al final)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "assign-task": {
+      "name": "assign-task",
+      "description": "Asignar o desasignar un agente a una tarea. Pasa agentId para asignar, omite o null para desasignar. Devuelve: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "agentId": "ID del agente (omite o null para desasignar)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "start-task": {
+      "name": "start-task",
+      "description": "Iniciar una tarea: se mueve a en_progreso, crea una conversación sin cabeza con el agente asignado, envía la descripción de la tarea como el primer mensaje y vincula la conversación a la tarea. Devuelve: { task: { ...TASK_FIELDS, channelId }, channelId }. Anulación opcional de agente o mensaje.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "agentId": "Anulación opcional de agente. Reasigna la tarea antes de comenzar.",
+        "prompt": "Mensaje personalizado opcional. Anula la descripción de tarea por defecto como el primer mensaje.",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "link-conversation": {
+      "name": "link-conversation",
+      "description": "Vincular una conversación existente (canal) a una tarea. Reemplaza cualquier canal vinculado previamente. Devuelve: { task: { ...TASK_FIELDS, channelId } }. Usa start-task para vincular una nueva conversación sin cabeza en su lugar.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "channelId": "ID del canal a vincular",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "Publicar una nota de progreso en una tarea (acción del gerente). Las notas son visibles en los detalles de la tarea y en el tablero. Devuelve: { task: { ...TASK_WITH_PROGRESS_FIELDS } }. Los agentes ejecutores deben usar el add-progress-note del ejecutor de tablero en su lugar.",
+      "params": {
+        "taskId": "ID de la tarea",
+        "text": "Texto de la nota de progreso",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "Eliminar permanentemente una tarea. Las subtareas se convierten en tareas de nivel superior. Las conversaciones vinculadas NO se eliminan. Irreversible. Devuelve: { taskId, deleted: true }.",
+      "params": {
+        "taskId": "ID de la tarea a eliminar"
+      }
+    },
+    "delete-project": {
+      "name": "delete-project",
+      "description": "Eliminar permanentemente un proyecto y todas sus tareas y tablero. Solo el administrador/propietario del espacio de trabajo puede eliminar. Irreversible — preferir archive-project para eliminación suave. Devuelve: { projectId, deleted: true }.",
+      "params": {
+        "projectId": "ID del proyecto a eliminar"
+      }
+    },
+    "add-task-dependency": {
+      "name": "add-task-dependency",
+      "description": "Agregar una dependencia: después de esta llamada, taskId depende de dependsOnTaskId (dependsOnTaskId debe completarse primero). La detección de ciclos se ejecuta automáticamente; si agregar el borde crearía un ciclo, la llamada falla y las tareas afectadas se marcan como circular_dependency. Devuelve: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "Tarea que gana la nueva dependencia (la tarea dependiente)",
+        "dependsOnTaskId": "Tarea de la que taskId dependerá (debe completarse primero)",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "remove-task-dependency": {
+      "name": "remove-task-dependency",
+      "description": "Eliminar una dependencia entre dos tareas. Idempotente: si la dependencia no existe, la tarea se devuelve sin cambios. Devuelve: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "Tarea que actualmente tiene la dependencia",
+        "dependsOnTaskId": "Tarea a eliminar de las dependencias de taskId",
+        "includeRaw": "Devolver documento completo de la tarea"
+      }
+    },
+    "get-task-dependencies": {
+      "name": "get-task-dependencies",
+      "description": "Obtener dependencias de una tarea (tareas que deben completarse antes de que pueda comenzar). Devuelve: { taskId, dependencies: [{ taskId, title, columnSlug, priority, archived }], count, nextCursor? }. Paginado cuando es grande: por defecto 50, máximo 200.",
+      "params": {
+        "taskId": "ID de la tarea cuyas dependencias listar",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "Configurar slots de ejecución paralela para un agente en un proyecto. slots=0 desactiva la reproducción automática (también desactiva automáticamente playEnabled si estaba activado). slots≥1 habilita el botón de reproducción. Devuelve: { relationship: { agentId, projectId, slots, playEnabled, activeSlots } }. Usa set-agent-play para alternar la reproducción automática después de configurar los slots.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "agentId": "ID del agente",
+        "slots": "Slots de ejecución paralela (0 = desactivado, ≥1 = disponible)",
+        "includeRaw": "Devolver documento completo de la relación"
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "Alternar la reproducción automática para un agente en un proyecto. Cuando enabled=true, el agente selecciona automáticamente tareas elegibles Por Hacer hasta su límite de slots. Requiere slots≥1 (usa set-agent-slots primero). Desactivar NO cancela tareas que ya están en ejecución. Devuelve: { relationship: { agentId, projectId, slots, playEnabled } }.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "agentId": "ID del agente",
+        "enabled": "true = activar reproducción automática, false = desactivar",
+        "includeRaw": "Devolver documento completo de la relación"
+      }
+    },
+    "subscribe-to-board": {
+      "name": "subscribe-to-board",
+      "description": "Suscribir la conversación actual a eventos de tablero en tiempo real. Los eventos (movimientos de tareas, cambios de estado, notas de progreso, cambios de dependencia, alternaciones de reproducción automática) se entregan a la conversación a medida que ocurren. Usa filter para reducir eventos. Devuelve: { subscription: { subscriptionId, boardId, filter, createdAt } }. Usa unsubscribe-from-board para detener.",
+      "params": {
+        "boardId": "ID del tablero al que suscribirse",
+        "filter": "Filtro opcional para reducir los eventos entregados",
+        "includeRaw": "Devolver documento completo de la suscripción"
+      }
+    },
+    "unsubscribe-from-board": {
+      "name": "unsubscribe-from-board",
+      "description": "Cancelar la suscripción de esta conversación a eventos de tablero para un tablero específico. Idempotente: si no existe ninguna suscripción, devuelve { boardId, unsubscribed: true } sin cambios. Devuelve: { boardId, unsubscribed: true }.",
+      "params": {
+        "boardId": "ID del tablero del que desuscribirse"
+      }
+    },
+    "list-board-subscriptions": {
+      "name": "list-board-subscriptions",
+      "description": "Listar suscripciones activas de tablero para la conversación actual. Devuelve: { subscriptions: [{ subscriptionId, boardId, boardName, filter, createdAt }], nextCursor? }. Paginado: por defecto 50, máximo 200.",
+      "params": {
+        "fields": "Campos personalizados",
+        "includeRaw": "Devolver documentos completos de la suscripción",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    },
+    "get-board-status": {
+      "name": "get-board-status",
+      "description": "Estado operativo de un tablero: carga de trabajo por agente + resumen. Devuelve: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Usa para identificar cuellos de botella.",
+      "params": {
+        "boardId": "ID del tablero",
+        "fields": "Subconjunto personalizado para filas por agente",
+        "includeRaw": "Devolver la carga útil completa del backend"
+      }
+    },
+    "stop-task": {
+      "name": "stop-task",
+      "description": "Enviar señal de parada cooperativa a una tarea en ejecución (task.running=true). El agente ejecutor asignado termina su paso actual, luego mueve la tarea a Bloqueada. Cooperativa: la señal se procesa en el siguiente turno del ejecutor. Solo los gerentes deben llamar a esto. Devuelve: { taskId, stopRequested: true }.",
+      "params": {
+        "taskId": "ID de la tarea de una tarea en ejecución",
+        "reason": "Razón opcional legible por humanos entregada al ejecutor"
+      }
+    },
+    "subscribe-to-events": {
+      "name": "subscribe-to-events",
+      "description": "Suscribir la conversación actual a eventos MCA sobre un tema. Los eventos que coinciden con el tema se entregan a la conversación a medida que ocurren. Usa reglas para reducir eventos. Devuelve: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Usa unsubscribe-from-events para detener.",
+      "params": {
+        "topic": "Tema del evento al que suscribirse (por ejemplo, \"mca.teros.scheduler.reminder\")",
+        "channelId": "ID del canal para recibir eventos (por defecto a la conversación actual)",
+        "rules": "Reglas de filtro opcionales para reducir eventos entregados",
+        "mode": "Modo de entrega: notify = notificación silenciosa, wake = activar respuesta del agente. Por defecto: notify",
+        "includeRaw": "Devolver documento completo de la suscripción"
+      }
+    },
+    "unsubscribe-from-events": {
+      "name": "unsubscribe-from-events",
+      "description": "Eliminar una suscripción de evento de canal por ID. Devuelve: { deleted: true }.",
+      "params": {
+        "id": "ID de suscripción a eliminar"
+      }
+    },
+    "list-event-subscriptions": {
+      "name": "list-event-subscriptions",
+      "description": "Listar suscripciones de eventos activas para un canal. Devuelve: { subscriptions: [{ id, topic, channelId, rules, mode, createdAt, lastActivityAt }], nextCursor? }. Paginado: por defecto 50, máximo 200.",
+      "params": {
+        "channelId": "ID del canal para listar suscripciones (por defecto a la conversación actual)",
+        "fields": "Campos personalizados",
+        "includeRaw": "Devolver documentos completos de la suscripción",
+        "limit": "Máx resultados (por defecto 50, máximo 200)",
+        "cursor": "Cursor de paginación"
+      }
+    }
+  },
+  "name": "Administrador de Tablero",
+  "description": "Capacidades completas de gestión de tableros para agentes coordinadores y supervisores. Proporciona control total sobre proyectos, tableros y tareas, incluyendo la creación, asignación, actualización, movimiento y eliminación de tareas. Diseñado para agentes que orquestan el trabajo entre múltiples trabajadores, gestionan prioridades y supervisan todo el ciclo de vida de un tablero de proyecto.",
+  "changelog": [
+    {
+      "notes": "Crear y organizar proyectos y tableros Kanban, gestionar tareas y dependencias, asignar agentes y orquestar trabajo autónomo"
+    }
+  ]
+}

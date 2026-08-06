@@ -1,0 +1,235 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la disponibilidad del navegador Playwright."
+    },
+    "browser-close": {
+      "name": "browser-close",
+      "description": "Cierra la página"
+    },
+    "browser-resize": {
+      "name": "browser-resize",
+      "description": "Redimensiona la ventana del navegador",
+      "params": {
+        "width": "Ancho de la ventana del navegador",
+        "height": "Alto de la ventana del navegador"
+      }
+    },
+    "browser-console-messages": {
+      "name": "browser-console-messages",
+      "description": "Devuelve los mensajes de consola con opciones de filtrado",
+      "params": {
+        "level": "Nivel de los mensajes de consola a devolver. Cada nivel incluye los mensajes de niveles más severos. Por defecto: \"info\".",
+        "limit": "Número máximo de mensajes a devolver (por defecto: 50)",
+        "offset": "Saltar los primeros N mensajes (para paginación)",
+        "search": "Filtra los mensajes que contienen este texto (sin distinción de mayúsculas)",
+        "sinceTimestamp": "Solo mensajes posteriores a esta marca de tiempo (ms). Usa lastTimestamp de la respuesta anterior para iterar.",
+        "since": "Filtros predefinidos: todos, desde la última navegación, desde la última acción (clic/escritura/etc)"
+      }
+    },
+    "browser-console-errors": {
+      "name": "browser-console-errors",
+      "description": "Devuelve solo los mensajes de error (atajo para level=error)",
+      "params": {
+        "limit": "Número máximo de errores a devolver (por defecto: 20)",
+        "search": "Filtra los errores que contienen este texto (sin distinción de mayúsculas)",
+        "sinceTimestamp": "Solo errores posteriores a esta marca de tiempo (ms)",
+        "since": "Filtros predefinidos"
+      }
+    },
+    "browser-console-clear": {
+      "name": "browser-console-clear",
+      "description": "Borra todos los mensajes de consola capturados"
+    },
+    "browser-handle-dialog": {
+      "name": "browser-handle-dialog",
+      "description": "Gestiona un cuadro de diálogo",
+      "params": {
+        "accept": "Si se debe aceptar el cuadro de diálogo.",
+        "promptText": "El texto del prompt en caso de un cuadro de diálogo de tipo prompt."
+      }
+    },
+    "browser-evaluate": {
+      "name": "browser-evaluate",
+      "description": "Evalúa una expresión JavaScript en la página o en un elemento",
+      "params": {
+        "function": "() => { /* código */ } o (element) => { /* código */ } cuando se proporciona un elemento",
+        "element": "Descripción legible del elemento usada para obtener permiso para interactuar con el elemento",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página"
+      }
+    },
+    "browser-file-upload": {
+      "name": "browser-file-upload",
+      "description": "Sube uno o varios archivos",
+      "params": {
+        "paths": "Las rutas absolutas a los archivos a subir. Puede ser un solo archivo o varios. Si se omite, se cancela el selector de archivos."
+      }
+    },
+    "browser-fill-form": {
+      "name": "browser-fill-form",
+      "description": "Rellena múltiples campos de un formulario",
+      "params": {
+        "fields": "Campos a rellenar"
+      }
+    },
+    "browser-install": {
+      "name": "browser-install",
+      "description": "Instala el navegador especificado en la configuración. Llama a esto si obtienes un error sobre que el navegador no está instalado."
+    },
+    "browser-press-key": {
+      "name": "browser-press-key",
+      "description": "Pulsa una tecla en el teclado",
+      "params": {
+        "key": "Nombre de la tecla a pulsar o un carácter a generar, como `ArrowLeft` o `a`"
+      }
+    },
+    "browser-type": {
+      "name": "browser-type",
+      "description": "Escribe texto en un elemento editable",
+      "params": {
+        "element": "Descripción legible del elemento usada para obtener permiso para interactuar con el elemento",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página",
+        "text": "Texto a escribir en el elemento",
+        "submit": "Si se debe enviar el texto introducido (pulsar Enter después)",
+        "slowly": "Si se debe escribir un carácter a la vez. Útil para activar los manejadores de teclas en la página. Por defecto, todo el texto se rellena de una vez."
+      }
+    },
+    "browser-navigate": {
+      "name": "browser-navigate",
+      "description": "Navega a una URL",
+      "params": {
+        "url": "La URL a la que navegar",
+        "waitUntil": "Cuándo considerar que la navegación ha terminado: \"load\" (carga completa de la página), \"domcontentloaded\" (DOM listo, por defecto), \"networkidle\" (sin actividad de red durante 500ms). Usa \"networkidle\" para páginas que cargan contenido dinámicamente."
+      }
+    },
+    "browser-navigate-back": {
+      "name": "browser-navigate-back",
+      "description": "Vuelve a la página anterior"
+    },
+    "browser-network-requests": {
+      "name": "browser-network-requests",
+      "description": "Devuelve todas las peticiones de red desde la carga de la página",
+      "params": {
+        "includeStatic": "Si se deben incluir recursos estáticos correctos como imágenes, fuentes, scripts, etc. Por defecto: false."
+      }
+    },
+    "browser-run-code": {
+      "name": "browser-run-code",
+      "description": "Ejecuta un fragmento de código de Playwright",
+      "params": {
+        "code": "Una función JavaScript que contiene código de Playwright a ejecutar. Se invocará con un único argumento que contiene { page, context, browser }. Por ejemplo: `async ({ page, context, browser }) => { await page.getByRole(\"button\", { name: \"Submit\" }).click(); return await page.title(); }`"
+      }
+    },
+    "browser-take-screenshot": {
+      "name": "browser-take-screenshot",
+      "description": "Captura una pantalla de la página actual. No puedes realizar acciones basándote en la captura; usa browser-snapshot para acciones. Las capturas se guardan en /workspace/ (volumen compartido).",
+      "params": {
+        "type": "Formato de imagen para la captura. Por defecto: png.",
+        "filename": "Nombre del archivo para la captura (p. ej., \"screenshot.png\"). Se guarda en /workspace/. Por defecto: screenshot-{timestamp}.{png|jpeg}.",
+        "element": "Descripción legible del elemento usada para obtener permiso para capturar el elemento. Si no se proporciona, la captura será de la ventana visible. Si se proporciona element, también debe proporcionarse ref.",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página. Si no se proporciona, la captura será de la ventana visible. Si se proporciona ref, también debe proporcionarse element.",
+        "fullPage": "Cuando es true, captura toda la página desplazable, en lugar de la ventana visible actual. No se puede usar con capturas de elementos."
+      }
+    },
+    "browser-snapshot": {
+      "name": "browser-snapshot",
+      "description": "Captura una instantánea de accesibilidad de la página actual; es mejor que una captura de pantalla",
+      "params": {
+        "filename": "Guarda la instantánea en un archivo markdown en /workspace/ en lugar de devolverla en la respuesta (p. ej., \"snapshot.md\")."
+      }
+    },
+    "browser-click": {
+      "name": "browser-click",
+      "description": "Realiza un clic en una página web",
+      "params": {
+        "element": "Descripción legible del elemento usada para obtener permiso para interactuar con el elemento",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página",
+        "doubleClick": "Si se debe realizar un doble clic en lugar de un solo clic",
+        "button": "Botón a pulsar, por defecto: izquierdo",
+        "modifiers": "Teclas modificadoras a pulsar"
+      }
+    },
+    "browser-drag": {
+      "name": "browser-drag",
+      "description": "Realiza arrastrar y soltar entre dos elementos",
+      "params": {
+        "startElement": "Descripción legible del elemento de origen usada para obtener permiso para interactuar con el elemento",
+        "startRef": "Referencia exacta del elemento de origen desde la instantánea de la página",
+        "endElement": "Descripción legible del elemento de destino usada para obtener permiso para interactuar con el elemento",
+        "endRef": "Referencia exacta del elemento de destino desde la instantánea de la página"
+      }
+    },
+    "browser-hover": {
+      "name": "browser-hover",
+      "description": "Pasa el cursor sobre un elemento de la página",
+      "params": {
+        "element": "Descripción legible del elemento usada para obtener permiso para interactuar con el elemento",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página"
+      }
+    },
+    "browser-select-option": {
+      "name": "browser-select-option",
+      "description": "Selecciona una opción en un menú desplegable",
+      "params": {
+        "element": "Descripción legible del elemento usada para obtener permiso para interactuar con el elemento",
+        "ref": "Referencia exacta del elemento objetivo desde la instantánea de la página",
+        "values": "Array de valores a seleccionar en el menú desplegable. Puede ser un solo valor o múltiples valores."
+      }
+    },
+    "browser-tabs": {
+      "name": "browser-tabs",
+      "description": "Lista, crea, cierra o selecciona una pestaña del navegador.",
+      "params": {
+        "action": "Operación a realizar",
+        "index": "Índice de la pestaña, usado para cerrar/seleccionar. Si se omite al cerrar, se cierra la pestaña actual."
+      }
+    },
+    "browser-wait-for": {
+      "name": "browser-wait-for",
+      "description": "Espera a que aparezca o desaparezca texto, a que cargue una URL, a que la red esté inactiva, o a que pase un tiempo determinado",
+      "params": {
+        "time": "El tiempo a esperar en segundos",
+        "text": "El texto a esperar que aparezca",
+        "textGone": "El texto a esperar que desaparezca",
+        "url": "Espera a que la URL de la página contenga o coincida con esta cadena (coincidencia parcial). Útil para redirecciones OAuth.",
+        "networkIdle": "Espera hasta que no haya conexiones de red durante al menos 500ms. Útil para la carga de contenido en SPA."
+      }
+    },
+    "browser-start-recording": {
+      "name": "browser-start-recording",
+      "description": "Inicia la grabación de un vídeo del navegador. Crea un nuevo contexto de navegador con grabación de vídeo habilitada. Usa browser-stop-recording para finalizar y guardar el archivo de vídeo. Todas las herramientas de navegación e interacción se capturarán en la grabación.",
+      "params": {
+        "width": "Ancho del vídeo en píxeles (por defecto: 1280)",
+        "height": "Alto del vídeo en píxeles (por defecto: 720)",
+        "outputDir": "Directorio donde guardar el archivo de vídeo (por defecto: /workspace/videos)"
+      }
+    },
+    "browser-stop-recording": {
+      "name": "browser-stop-recording",
+      "description": "Detiene la grabación y guarda el archivo de vídeo. Cierra el contexto actual del navegador (lo que finaliza el vídeo) y devuelve la ruta al archivo .webm guardado. Se crea automáticamente un nuevo contexto sin grabación para que el navegador siga siendo utilizable.",
+      "params": {
+        "filename": "Nombre de archivo personalizado opcional para el vídeo (p. ej., \"gmail-tutorial.webm\"). Si no se proporciona, Playwright genera un nombre automáticamente. Se guarda en /workspace/."
+      }
+    },
+    "browser-emulate-device": {
+      "name": "browser-emulate-device",
+      "description": "Emula un dispositivo específico o una ventana personalizada. Recrea el contexto del navegador con los ajustes del dispositivo especificado. Útil para grabar tutoriales en vistas móvil vs escritorio.",
+      "params": {
+        "device": "Dispositivo predefinido a emular. Seleccionar un preajuste configura automáticamente la ventana, el user agent y los ajustes táctiles.",
+        "width": "Ancho personalizado de la ventana (se usa cuando no se especifica device)",
+        "height": "Alto personalizado de la ventana (se usa cuando no se especifica device)",
+        "userAgent": "Cadena personalizada de user agent (se usa cuando no se especifica device)",
+        "isMobile": "Si se debe emular un dispositivo móvil (se usa cuando no se especifica device)",
+        "hasTouch": "Si se deben habilitar los eventos táctiles (se usa cuando no se especifica device)"
+      }
+    }
+  },
+  "name": "Playwright",
+  "description": "Automatización de navegador y web scraping mediante Playwright. Navega, interactúa, captura pantallas y extrae datos de páginas web.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — navega por páginas, haz clic y rellena formularios, captura pantallas, ejecuta scripts y lee la actividad de consola y red"
+    }
+  ]
+}

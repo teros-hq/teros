@@ -1,0 +1,57 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.plaud",
+  "name": "PLAUD",
+  "version": "2.0.0",
+  "description": "Access your PLAUD voice recordings, transcripts, and AI summaries through the official Plaud MCP server. Search and retrieve notes from your PLAUD library.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "plaud",
+      "systemSecrets": ["CLIENT_ID"],
+      "userSecrets": [
+        "ACCESS_TOKEN",
+        "REFRESH_TOKEN",
+        "EXPIRY_DATE"
+      ],
+      "authorizeUrl": "https://mcp.plaud.ai/authorize",
+      "tokenUrl": "https://mcp.plaud.ai/token",
+      "scopes": ["recordings:read"],
+      "pkce": true
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["plaud", "voice", "recordings", "transcripts", "notes", "ai-summary", "productivity", "mcp"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-09",
+      "notes": "Initial release — browse, search, and open your PLAUD voice recordings with transcripts, AI summaries, tags, and folders"
+    }
+  ]
+}

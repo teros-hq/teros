@@ -1,0 +1,41 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. Holded API 키와 연결성을 확인하기 위해 연락처 엔드포인트에 경량 요청을 보냅니다."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Holded 청구 모듈에서 연락처를 나열합니다. ID, 이름, 이메일, 전화번호 및 기타 주요 필드가 포함된 선별된 연락처 목록을 반환합니다. 페이지 및 제한을 통해 페이지 매김을 지원합니다.",
+      "params": {
+        "page": "페이지 매김을 위한 페이지 번호 (기본값: 1)",
+        "limit": "페이지당 결과 수 (기본값: 25, 최대: 100)",
+        "type": "연락처 유형으로 필터링 (예: 클라이언트, 공급자, 리드)"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "ID로 Holded에서 단일 연락처를 가져옵니다. 이름, 이메일, 전화번호, 주소, VAT 번호 및 사용자 정의 필드를 포함한 전체 연락처 세부정보를 반환합니다.",
+      "params": {
+        "id": "Holded 연락처 ID"
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "Holded 청구 모듈에서 청구서를 나열합니다. ID, 번호, 날짜, 연락처, 총액, 상태 및 결제 정보가 포함된 선별된 청구서 목록을 반환합니다. 페이지 매김을 지원합니다.",
+      "params": {
+        "page": "페이지 매김을 위한 페이지 번호 (기본값: 1)",
+        "limit": "페이지당 결과 수 (기본값: 25, 최대: 100)",
+        "status": "청구서 상태로 필터링 (예: 초안, 발송, 지불됨)",
+        "contactId": "연락처 ID로 청구서 필터링"
+      }
+    }
+  },
+  "name": "Holded",
+  "description": "데모를 위한 Holded 통합 - API 키 인증을 통해 Holded REST API v1을 사용하여 연락처 및 청구서를 관리합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — Holded 클라이언트, 공급자 및 리드를 탐색하고 조회하며 상태 및 총액이 포함된 청구서를 검토합니다."
+    }
+  ]
+}

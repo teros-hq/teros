@@ -24,3 +24,10 @@ export {
 export { useTodoMca } from './useTodoMca';
 export { usePulseAnimation } from './usePulseAnimation';
 export type { PulseAnimationOptions } from './usePulseAnimation';
+export {
+  useFeatureFlag,
+  useFeatureFlagEntry,
+  useFeatureFlagsCache,
+  useFeatureFlagsLoading,
+} from './useFeatureFlag';
+export { useWakeLock } from './useWakeLock';

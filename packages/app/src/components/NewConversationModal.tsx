@@ -7,10 +7,14 @@
 
 import { User, X } from '@tamagui/lucide-icons';
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ScrollView } from 'react-native';
 import { Avatar, Button, Sheet, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../app/_layout';
+import { getTerosClient } from '../services/terosClientSingleton';
+import { useWorkspaceStore } from '../store/workspaceStore';
 import { AppSpinner } from '../components/ui';
+import { useColors } from './mca/primitives/useColors';
+import { colors as semanticColors } from './mca/primitives/colors';
 
 interface Agent {
   agentId: string;
@@ -32,7 +36,10 @@ export function NewConversationModal({
   onClose,
   onSelectAgent,
 }: NewConversationModalProps) {
+  const { t } = useTranslation();
+  const c = useColors();
   const client = getTerosClient();
+  const workspaceId = useWorkspaceStore((s) => s.activeWorkspaceId) ?? undefined;
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -43,7 +50,7 @@ export function NewConversationModal({
     if (visible && client) {
       loadAgents();
     }
-  }, [visible, client]);
+  }, [visible, client, workspaceId]);
 
   // Reset state when modal closes
   useEffect(() => {
@@ -59,7 +66,8 @@ export function NewConversationModal({
     setError(null);
 
     try {
-      const agentList = await client.agent.listAgents().then((r) => r.agents);
+      // listAgents(workspaceId) now returns workspace agents + superagents from backend
+      const agentList = await client.agent.listAgents(workspaceId).then((r) => r.agents);
       const mappedAgents = agentList.map((a: any) => ({
         agentId: a.agentId,
         name: a.name,
@@ -71,6 +79,7 @@ export function NewConversationModal({
 
       // If there's only one agent, select it automatically
       if (mappedAgents.length === 1) {
+        setLoading(false);
         handleSelectAgent(mappedAgents[0]);
         return;
       }
@@ -78,7 +87,7 @@ export function NewConversationModal({
       setAgents(mappedAgents);
     } catch (err) {
       console.error('Failed to load agents:', err);
-      setError('Failed to load agents');
+      setError(t("conversation.failedToLoadAgents"));
     } finally {
       setLoading(false);
     }
@@ -93,34 +102,35 @@ export function NewConversationModal({
     <Sheet
       modal
       open={visible}
-      onOpenChange={(open) => !open && onClose()}
+      onOpenChange={(open: boolean) => !open && onClose()}
       snapPoints={[60]}
       dismissOnSnapToBottom
       zIndex={100000}
     >
       <Sheet.Overlay
-        animation="lazy"
+        animation="medium"
         enterStyle={{ opacity: 0 }}
         exitStyle={{ opacity: 0 }}
-        backgroundColor="rgba(0, 0, 0, 0.7)"
+        backgroundColor={c.bgInner}
       />
       <Sheet.Frame
-        backgroundColor="#111"
+        animation="medium"
+        backgroundColor={c.bgCard}
         borderTopLeftRadius={12}
         borderTopRightRadius={12}
         padding={16}
       >
-        <Sheet.Handle backgroundColor="#333" />
+        <Sheet.Handle backgroundColor={c.borderStrong} />
 
         <XStack justifyContent="space-between" alignItems="center" marginBottom={16}>
-          <Text fontSize={16} fontWeight="600" color="#e4e4e7">
-            Nuevo chat
+          <Text fontSize={16} fontWeight="600" color={c.text}>
+            {t("conversation.newChat")}
           </Text>
           <Button
             circular
             size="$2"
             backgroundColor="transparent"
-            icon={<X size={16} color="#666" />}
+            icon={<X size={16} color={c.text3} />}
             onPress={onClose}
           />
         </XStack>
@@ -129,31 +139,31 @@ export function NewConversationModal({
           {loading ? (
             <YStack padding={32} alignItems="center">
               <AppSpinner size="lg" variant="brand" />
-              <Text fontSize={13} color="#71717A" marginTop={12}>
-                Cargando agentes...
+              <Text fontSize={13} color={c.text2} marginTop={12}>
+                {t("conversation.loadingAgents")}
               </Text>
             </YStack>
           ) : error ? (
             <YStack padding={24} alignItems="center">
-              <Text fontSize={13} color="#EF4444" marginBottom={12}>
+              <Text fontSize={13} color={semanticColors.red} marginBottom={12}>
                 {error}
               </Text>
               <Button
                 size="$2"
-                backgroundColor="rgba(6, 182, 212, 0.15)"
-                color="#06B6D4"
+                backgroundColor={semanticColors.indigoGlow}
+                color={semanticColors.indigo}
                 onPress={loadAgents}
               >
-                Reintentar
+                {t("common.retry")}
               </Button>
             </YStack>
           ) : agents.length === 0 ? (
             <YStack padding={24} alignItems="center">
-              <Text fontSize={14} color="#71717A" fontWeight="500">
-                No hay agentes disponibles
+              <Text fontSize={14} color={c.text2} fontWeight="500">
+                {t("conversation.noAgentsAvailable")}
               </Text>
-              <Text fontSize={12} color="#52525B" marginTop={4} textAlign="center">
-                Crea un agente primero para poder iniciar conversaciones
+              <Text fontSize={12} color={c.text3} marginTop={4} textAlign="center">
+                {t("conversation.createAgentFirst")}
               </Text>
             </YStack>
           ) : (
@@ -164,31 +174,31 @@ export function NewConversationModal({
                   padding={12}
                   gap={12}
                   alignItems="center"
-                  backgroundColor="#1a1a1a"
+                  backgroundColor={c.bgCardHover}
                   borderRadius={8}
                   cursor="pointer"
-                  hoverStyle={{ backgroundColor: '#222' }}
-                  pressStyle={{ backgroundColor: '#252525' }}
+                  hoverStyle={{ backgroundColor: c.bgCardHover }}
+                  pressStyle={{ backgroundColor: c.bgInner }}
                   onPress={() => handleSelectAgent(agent)}
                 >
                   <Avatar circular size={44}>
                     {agent.avatarUrl ? (
                       <Avatar.Image src={agent.avatarUrl} />
                     ) : (
-                      <Avatar.Fallback backgroundColor="#333">
-                        <User size={22} color="#666" />
+                      <Avatar.Fallback backgroundColor={c.borderStrong}>
+                        <User size={22} color={c.text3} />
                       </Avatar.Fallback>
                     )}
                   </Avatar>
                   <YStack flex={1}>
-                    <Text fontSize={14} fontWeight="600" color="#e4e4e7">
+                    <Text fontSize={14} fontWeight="600" color={c.text}>
                       {agent.fullName}
                     </Text>
-                    <Text fontSize={11} color="#06B6D4">
+                    <Text fontSize={11} color={semanticColors.indigo}>
                       {agent.role}
                     </Text>
                     {agent.intro && (
-                      <Text fontSize={11} color="#666" numberOfLines={2}>
+                      <Text fontSize={11} color={c.text3} numberOfLines={2}>
                         {agent.intro.split('\n')[0]}
                       </Text>
                     )}

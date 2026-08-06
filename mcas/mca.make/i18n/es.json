@@ -1,0 +1,105 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. El disparador de webhook no necesita credenciales; si hay un MAKE_API_TOKEN configurado, lo valida contra la API de la cuenta de Make. Para gestión completa de escenarios, el token debe tener los scopes: scenarios:read, scenarios:write, teams:read, organizations:read."
+    },
+    "trigger-webhook": {
+      "name": "trigger-webhook",
+      "description": "Dispara un escenario de Make.com enviando un payload JSON por POST a su URL de webhook. No requiere token de cuenta — el usuario proporciona la URL del webhook (https://hook.<region>.make.com/<token>). Devuelve { delivered, statusCode, webhookHost, region, responseType, response }.",
+      "params": {
+        "webhookUrl": "URL del webhook de Make.com (https://hook.<region>.make.com/<token>). Solo se aceptan hosts *.make.com sobre https.",
+        "payload": "Cuerpo enviado al webhook. Un objeto JSON se envía como application/json; una cadena se reenvía tal cual (cadena JSON → application/json, en caso contrario text/plain)."
+      }
+    },
+    "list-scenarios": {
+      "name": "list-scenarios",
+      "description": "Lista los escenarios de Make.com de la cuenta configurada (requiere MAKE_API_TOKEN en los secretos del usuario). Filtra opcionalmente por teamId y pagina con limit/offset. Devuelve { scenarios: [{ id, name, isActive, isPaused, teamId }], returned, total, offset, limit, hasMore, nextOffset, teamId, region }. Cuando hasMore es true, llama de nuevo con offset=nextOffset para obtener la siguiente página.",
+      "params": {
+        "teamId": "ID del equipo de Make para filtrar los escenarios (se encuentra en la URL del equipo). Requerido por la API de Make en la mayoría de cuentas.",
+        "limit": "Máximo de escenarios a devolver por página (1-100, por defecto 50).",
+        "offset": "Número de escenarios a omitir para paginación (por defecto 0). Pasa el `nextOffset` de una respuesta anterior para obtener la siguiente página.",
+        "includeRaw": "Incluir las filas de escenarios sin procesar bajo `raw` para depuración (por defecto false)."
+      }
+    },
+    "run-scenario": {
+      "name": "run-scenario",
+      "description": "Ejecuta un escenario de Make.com bajo demanda por id (requiere MAKE_API_TOKEN en los secretos del usuario). Pasa `data` opcional para las entradas de la ejecución y `responsive: true` para esperar y devolver sus salidas. Devuelve { scenarioId, executionId, status, responsive, outputs }.",
+      "params": {
+        "scenarioId": "ID del escenario a ejecutar (obtenido de list-scenarios).",
+        "data": "Datos de entrada opcionales pasados a la ejecución del escenario.",
+        "responsive": "Si es true, espera a que la ejecución termine y devuelve sus salidas (por defecto false)."
+      }
+    },
+    "create-scenario": {
+      "name": "create-scenario",
+      "description": "Crea un nuevo escenario de Make.com (requiere MAKE_API_TOKEN en los secretos del usuario). El `blueprint` se proporciona como objeto JSON y se serializa internamente. Devuelve { scenarioId, name, teamId, folderId, isActive, region, url }. Algunos planes de Make requieren una suscripción de pago para usar este endpoint.",
+      "params": {
+        "teamId": "ID del equipo de Make que será propietario del escenario.",
+        "name": "Nombre legible para el escenario.",
+        "blueprint": "Blueprint del escenario como objeto JSON (no una cadena escapada). Se serializará a una cadena antes de enviarlo a Make.",
+        "scheduling": "Configuración de programación. Por defecto { type: \"indefinitely\", interval: 60 }.",
+        "folderId": "ID de carpeta opcional donde colocar el escenario.",
+        "confirmed": "Si el escenario se confirma al crearlo (por defecto true).",
+        "basedon": "ID opcional de un escenario existente en el que basar este."
+      }
+    },
+    "get-scenario": {
+      "name": "get-scenario",
+      "description": "Obtiene un único escenario de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Devuelve el objeto del escenario tal como lo retorna Make.",
+      "params": {
+        "scenarioId": "ID del escenario a recuperar."
+      }
+    },
+    "get-scenario-blueprint": {
+      "name": "get-scenario-blueprint",
+      "description": "Obtiene el blueprint de un escenario de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Devuelve { scenarioId, blueprint } donde blueprint es un objeto JSON parseado cuando es posible.",
+      "params": {
+        "scenarioId": "ID del escenario cuyo blueprint se desea recuperar."
+      }
+    },
+    "update-scenario": {
+      "name": "update-scenario",
+      "description": "Actualiza un escenario existente de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Permite actualizar name, blueprint (como objeto JSON), scheduling y folderId. Devuelve el resumen del escenario actualizado.",
+      "params": {
+        "scenarioId": "ID del escenario a actualizar.",
+        "name": "Nuevo nombre para el escenario.",
+        "blueprint": "Nuevo blueprint del escenario como objeto JSON (no una cadena escapada). Se serializará a una cadena antes de enviarlo a Make.",
+        "scheduling": "Nueva configuración de programación.",
+        "folderId": "Nuevo ID de carpeta para el escenario."
+      }
+    },
+    "delete-scenario": {
+      "name": "delete-scenario",
+      "description": "Elimina un escenario de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Esta acción es irreversible. Devuelve { scenarioId, deleted, region }.",
+      "params": {
+        "scenarioId": "ID del escenario a eliminar."
+      }
+    },
+    "clone-scenario": {
+      "name": "clone-scenario",
+      "description": "Clona un escenario existente de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Permite establecer opcionalmente un nuevo nombre o carpeta. Devuelve el resumen del escenario clonado.",
+      "params": {
+        "scenarioId": "ID del escenario a clonar.",
+        "name": "Nuevo nombre opcional para el escenario clonado.",
+        "folderId": "ID de carpeta opcional para el escenario clonado."
+      }
+    },
+    "start-scenario": {
+      "name": "start-scenario",
+      "description": "Activa (inicia) un escenario de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Devuelve { scenarioId, isActive, region }.",
+      "params": {
+        "scenarioId": "ID del escenario a activar."
+      }
+    },
+    "stop-scenario": {
+      "name": "stop-scenario",
+      "description": "Pausa (detiene) un escenario de Make.com por id (requiere MAKE_API_TOKEN en los secretos del usuario). Devuelve { scenarioId, isActive, region }.",
+      "params": {
+        "scenarioId": "ID del escenario a pausar."
+      }
+    }
+  },
+  "name": "Make",
+  "description": "Automatización con Make.com — dispara escenarios vía webhooks (sin token necesario) y gestiona escenarios vía la API de la cuenta: crear, leer, actualizar, eliminar, clonar, iniciar, detener, listar, ejecutar e inspeccionar blueprints."
+}

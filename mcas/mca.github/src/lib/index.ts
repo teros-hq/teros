@@ -1,1 +1,1 @@
-export { githubRequest } from './github-client';
+export { githubRequest, GitHubApiError } from './github-client';

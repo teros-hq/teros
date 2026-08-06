@@ -73,7 +73,7 @@ ENV MCA_HTTP_PORT=3000
 ENV NODE_ENV=production
 ENV DOCKER_HOST=unix:///var/run/docker.sock
 ENV DOCKER_ENV_BASE_DIR=/tmp/teros-envs
-# DOCKER_ENV_DOMAIN must be set at runtime (e.g. envs.yourdomain.com)
+ENV DOCKER_ENV_DOMAIN=pre-os.teros.ai
 
 # Expose port
 EXPOSE 3000

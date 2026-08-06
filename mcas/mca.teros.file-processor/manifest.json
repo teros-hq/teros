@@ -7,7 +7,7 @@
   "type": "utility",
   "icon": "icon.png",
   "category": "utility",
-  "entrypoint": "mcp/src/index.ts",
+  "entrypoint": "src/index.ts",
   "author": {
     "name": "Alice Evergreen",
     "email": "alice@teros.ai"
@@ -19,7 +19,7 @@
     "hidden": true,
     "role": "user"
   },
-  "systemSecrets": ["OPENAI_API_KEY"],
+  "systemSecrets": ["ANTHROPIC_API_KEY", "OPENAI_API_KEY"],
   "runtime": {
     "transport": "http",
     "containerMode": "per-app"
@@ -32,5 +32,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-06-02",
+      "notes": "Initial release — convert documents to Markdown, transcribe audio to text, and turn SVGs into PNG images"
+    }
+  ]
 }

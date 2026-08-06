@@ -20,6 +20,7 @@ export function createListWorkspacesHandler(workspaceService: WorkspaceService) 
           context: workspace.context,
           volumeId: workspace.volumeId,
           appearance: workspace.appearance,
+          type: workspace.type,
           role,
           status: workspace.status,
           createdAt: workspace.createdAt,

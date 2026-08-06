@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { getCredentials, type SentryEvent, sentryRequest } from '../lib/index.js';
 
 export const listEvents: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List events (individual error occurrences) for an issue',
   parameters: {
     type: 'object',

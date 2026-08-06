@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const getSpaces: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get all spaces in a ClickUp workspace.',
   parameters: {
     type: 'object',

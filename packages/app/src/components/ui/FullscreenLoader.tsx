@@ -14,6 +14,7 @@
 
 import React from 'react';
 import { Text, YStack } from 'tamagui';
+import { useColors } from '../mca/primitives/useColors';
 import { AppSpinner, type SpinnerSize, type SpinnerVariant } from './AppSpinner';
 
 export interface FullscreenLoaderProps {
@@ -33,11 +34,13 @@ export function FullscreenLoader({
   color,
   label,
 }: FullscreenLoaderProps) {
+  const c = useColors();
+
   return (
     <YStack flex={1} justifyContent="center" alignItems="center" gap={12}>
       <AppSpinner size={size} variant={variant} color={color} />
       {label ? (
-        <Text color="#71717A" fontSize={13}>
+        <Text color={c.text3} fontSize={13}>
           {label}
         </Text>
       ) : null}

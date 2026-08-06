@@ -9,18 +9,22 @@
  * - Actions menu (⋮) with rename, view tokens, archive options
  */
 
-import { Activity, Archive, Check, Lock, MoreVertical, Pencil, X } from '@tamagui/lucide-icons';
+import { Activity, Archive, Check, Lock, Phone, MoreVertical, Pencil, X } from '@tamagui/lucide-icons';
+import { useTranslation } from 'react-i18next';
+import { FeatureFlag } from '../FeatureFlag';
 import type { TokenBudget } from '@teros/shared';
 import { LinearGradient } from 'expo-linear-gradient';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, TextInput, TouchableOpacity, View } from 'react-native';
 import { Sheet, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { useColors } from '../mca/primitives/useColors';
+import { colors as semanticColors, surface } from '../mca/primitives/colors';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { Avatar } from '../Avatar';
 import { TerosLoading } from '../TerosLoading';
 import { TokenBudgetDetails } from '../TokenBudgetDetails';
-import { WorkspaceIcon } from '../WorkspaceIcon';
+
 
 interface ChatHeaderProps {
   /** Conversation title/purpose */
@@ -29,13 +33,15 @@ interface ChatHeaderProps {
   agentName: string;
   /** Agent avatar URL */
   agentAvatarUrl?: string | null;
+  /** Agent role (e.g., 'Personal Assistant') */
+  agentRole?: string;
   /** Model string (e.g., 'anthropic/claude-opus-4.5') */
   modelString?: string;
   /** Model display name (e.g., 'Claude Sonnet 4.5 (OpenRouter)') */
   modelName?: string;
   /** Provider display name (e.g., 'OpenRouter', 'Claude Max') */
   providerName?: string;
-  /** Agent ID (needed to change model) */
+  /** Agent ID (needed to change model and start voice) */
   agentId?: string;
   /** Whether the agent is working (streaming, tool calls, etc.) */
   isWorking?: boolean;
@@ -55,12 +61,17 @@ interface ChatHeaderProps {
   onTitleChange?: (newTitle: string) => void;
   /** Callback when archiving */
   onArchive?: () => void;
+  /** Callback when user clicks the Mic button to start a voice session */
+  onStartVoice?: () => void;
+  /** Whether there is currently an active voice session for this agent */
+  isVoiceActive?: boolean;
 }
 
 export function ChatHeader({
   title,
   agentName,
   agentAvatarUrl,
+  agentRole,
   modelString,
   modelName,
   providerName,
@@ -72,7 +83,12 @@ export function ChatHeader({
   workspace,
   onTitleChange,
   onArchive,
+  onStartVoice,
+  isVoiceActive = false,
 }: ChatHeaderProps) {
+  const { t } = useTranslation()
+  const c = useColors()
+  const isDark = c.bgPage === surface.dark.bgPage
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(title);
   const [showMenu, setShowMenu] = useState(false);
@@ -117,9 +133,9 @@ export function ChatHeader({
     <>
       <View style={styles.headerContainer}>
         <YStack
-          backgroundColor="rgba(10, 10, 10, 0.95)"
+          backgroundColor={c.bgCard}
           borderBottomWidth={1}
-          borderBottomColor="rgba(255, 255, 255, 0.05)"
+          borderBottomColor={c.border}
         >
           {/* Main header row */}
           <XStack paddingHorizontal="$3" paddingVertical="$2" alignItems="center" gap="$3">
@@ -133,7 +149,7 @@ export function ChatHeader({
                 {isEditing ? (
                   <XStack alignItems="center" gap="$2" flex={1}>
                     <TextInput
-                      style={styles.titleInput}
+                      style={[styles.titleInput, { backgroundColor: semanticColors.indigoGlow, borderWidth: 1, borderColor: semanticColors.indigoGlow, color: c.text }]}
                       value={editedTitle}
                       onChangeText={setEditedTitle}
                       autoFocus
@@ -141,98 +157,104 @@ export function ChatHeader({
                       onSubmitEditing={handleSaveEdit}
                       onBlur={handleSaveEdit}
                     />
-                    <TouchableOpacity onPress={handleSaveEdit} style={styles.editButton}>
-                      <Check size={14} color="#06B6D4" />
+                    <TouchableOpacity onPress={handleSaveEdit} style={[styles.editButton, { backgroundColor: c.border }]}>
+                      <Check size={14} color={semanticColors.indigo} />
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={handleCancelEdit} style={styles.editButton}>
-                      <X size={14} color="#666" />
+                    <TouchableOpacity onPress={handleCancelEdit} style={[styles.editButton, { backgroundColor: c.border }]}>
+                      <X size={14} color={c.text3} />
                     </TouchableOpacity>
                   </XStack>
                 ) : (
-                  <>
-                    <TouchableOpacity
-                      onPress={handleStartEdit}
-                      disabled={isTitleLocked}
-                      style={{ flex: 1 }}
-                    >
-                      <XStack alignItems="center" gap="$1.5">
-                        {isPrivate && <Lock size={12} color="#06B6D4" />}
-                        <Text
-                          color="#e4e4e7"
-                          fontSize={14}
-                          fontWeight="500"
-                          numberOfLines={1}
-                          opacity={isTitleLocked ? 1 : 0.9}
-                        >
-                          {title}
-                        </Text>
-                      </XStack>
-                    </TouchableOpacity>
-                    {workspace && (
-                      <XStack
-                        alignItems="center"
-                        gap="$1.5"
-                        backgroundColor="rgba(255, 255, 255, 0.08)"
-                        paddingHorizontal="$2"
-                        paddingVertical={4}
-                        borderRadius={6}
+                  <TouchableOpacity
+                    onPress={handleStartEdit}
+                    disabled={isTitleLocked}
+                    style={{ flex: 1 }}
+                  >
+                    <XStack alignItems="center" gap="$1.5">
+                      {isPrivate && <Lock size={12} color={semanticColors.indigo} />}
+                      <Text
+                        color={c.text}
+                        fontSize={14}
+                        fontWeight="500"
+                        fontFamily="$body"
+                        numberOfLines={1}
+                        opacity={isTitleLocked ? 1 : 0.9}
                       >
-                        <WorkspaceIcon
-                          icon={workspace.icon}
-                          color={workspace.color}
-                          size={14}
-                          showBackground={false}
-                        />
-                        <Text color="#999" fontSize={12} fontWeight="500">
-                          {workspace.name}
-                        </Text>
-                      </XStack>
-                    )}
-                  </>
+                        {title}
+                      </Text>
+                    </XStack>
+                  </TouchableOpacity>
                 )}
               </XStack>
 
-              {/* Line 2: Agent + model + indicator */}
-              <XStack alignItems="center" gap="$1.5">
-                <Text color="#999" fontSize={13} fontWeight="500">
-                  {agentName}
-                </Text>
-                {(providerName || modelName || modelString) && (
-                  <>
-                    <Text color="#444" fontSize={11}>
-                      ·
-                    </Text>
-                    <XStack alignItems="center" gap="$1.5">
-                      {providerName && (
-                        <Text color="#888" fontSize={11} fontWeight="500">
-                          {providerName}
-                        </Text>
-                      )}
-                      {providerName && (modelName || modelString) && (
-                        <Text color="#444" fontSize={11}>
-                          ·
-                        </Text>
-                      )}
-                      <Text color="#666" fontSize={11}>
-                        {modelName || modelString}
+              {/* Line 2: Agent name + role (left) | model + provider (right) + indicator */}
+              <XStack alignItems="center" justifyContent="space-between">
+                {/* Left: agent name · role */}
+                <XStack alignItems="center" gap="$1.5" flex={1}>
+                  <Text color={c.text2} fontSize={13} fontWeight="500" fontFamily="$body" numberOfLines={1}>
+                    {agentName}
+                  </Text>
+                  {agentRole && (
+                    <>
+                      <Text color={c.text3} fontSize={11} fontFamily="$body">·</Text>
+                      <Text color={c.text3} fontSize={11} fontFamily="$body" numberOfLines={1}>
+                        {agentRole}
                       </Text>
-                    </XStack>
-                  </>
+                    </>
+                  )}
+                  {isWorking && <TerosLoading size={14} color={semanticColors.indigo} />}
+                </XStack>
+
+                {/* Right: provider · model */}
+                {(providerName || modelName || modelString) && (
+                  <XStack alignItems="center" gap="$1.5">
+                    {providerName && (
+                      <Text color={c.text3} fontSize={11} fontWeight="500" fontFamily="$body">
+                        {providerName}
+                      </Text>
+                    )}
+                    {providerName && (modelName || modelString) && (
+                      <Text color={c.text3} fontSize={11} fontFamily="$body">·</Text>
+                    )}
+                    <Text color={c.text3} fontSize={11} fontFamily="$body">
+                      {modelName || modelString}
+                    </Text>
+                  </XStack>
                 )}
-                {isWorking && <TerosLoading size={14} color="#06B6D4" />}
               </XStack>
             </YStack>
 
+            {/* Phone button — start/indicate voice session (feature-flagged) */}
+            {onStartVoice && (
+              <FeatureFlag flag="voice.enabled">
+                <View
+                  {...(Platform.OS === 'web'
+                    ? { title: isVoiceActive ? 'Voice active — press Esc to stop' : 'Start voice — or press Ctrl+M' } as any
+                    : {})}
+                >
+                  <TouchableOpacity
+                    onPress={onStartVoice}
+                    style={[
+                      styles.micButton,
+                      { backgroundColor: isVoiceActive ? semanticColors.violetGlow : c.bgInner },
+                    ]}
+                  >
+                    <Phone size={16} color={isVoiceActive ? semanticColors.green : c.text3} />
+                  </TouchableOpacity>
+                </View>
+              </FeatureFlag>
+            )}
+
             {/* Menu ⋮ */}
             <TouchableOpacity onPress={() => setShowMenu(true)} style={styles.menuButton}>
-              <MoreVertical size={18} color="#666" />
+              <MoreVertical size={18} color={c.text3} />
             </TouchableOpacity>
           </XStack>
         </YStack>
 
         {/* Gradient shadow below header */}
         <LinearGradient
-          colors={['rgba(10, 10, 10, 1)', 'rgba(10, 10, 10, 0)']}
+          colors={isDark ? [c.bgCard, 'transparent'] : [c.shadow, 'transparent']}
           style={styles.headerGradient}
           pointerEvents="none"
         />
@@ -248,40 +270,40 @@ export function ChatHeader({
         zIndex={100000}
       >
         <Sheet.Overlay
-          animation="lazy"
+          animation="medium"
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
-          backgroundColor="rgba(0, 0, 0, 0.5)"
+          backgroundColor={isDark ? 'rgba(0, 0, 0, 0.5)' : 'rgba(10, 10, 15, 0.35)'}
         />
         <Sheet.Frame
-          backgroundColor="#111"
+          backgroundColor={c.bgCard}
           borderTopLeftRadius={12}
           borderTopRightRadius={12}
           padding={8}
         >
-          <Sheet.Handle backgroundColor="#333" />
+          <Sheet.Handle backgroundColor={c.borderStrong} />
 
           <YStack gap={2} paddingTop={8}>
             {!isTitleLocked && (
               <MenuItem
-                icon={<Pencil size={18} color="#888" />}
-                label="Rename"
+                icon={<Pencil size={18} color={c.text3} />}
+                label={t('conversation.rename')}
                 onPress={handleRename}
               />
             )}
 
             {tokenBudget && (
               <MenuItem
-                icon={<Activity size={18} color="#888" />}
-                label="View token usage"
+                icon={<Activity size={18} color={c.text3} />}
+                label={t('conversation.viewTokenUsage')}
                 onPress={handleShowTokens}
               />
             )}
 
             {onArchive && (
               <MenuItem
-                icon={<Archive size={18} color="#888" />}
-                label="Archive conversation"
+                icon={<Archive size={18} color={c.text3} />}
+                label={t('conversation.archiveConversation')}
                 onPress={handleArchive}
               />
             )}
@@ -296,14 +318,14 @@ export function ChatHeader({
         animationType="fade"
         onRequestClose={() => setShowTokens(false)}
       >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowTokens(false)}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(10, 10, 15, 0.55)' }]} onPress={() => setShowTokens(false)}>
+          <Pressable style={[styles.modalContent, { backgroundColor: c.bgCard }]} onPress={(e) => e.stopPropagation()}>
             <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
-              <Text color="#e4e4e7" fontSize={16} fontWeight="600">
-                Token usage
+              <Text color={c.text} fontSize={16} fontWeight="600" fontFamily="$body">
+                {t('conversation.tokenUsage')}
               </Text>
               <TouchableOpacity onPress={() => setShowTokens(false)}>
-                <X size={20} color="#666" />
+                <X size={20} color={c.text3} />
               </TouchableOpacity>
             </XStack>
 
@@ -324,6 +346,7 @@ function MenuItem({
   label: string;
   onPress: () => void;
 }) {
+  const c = useColors()
   return (
     <XStack
       padding={12}
@@ -331,12 +354,12 @@ function MenuItem({
       alignItems="center"
       borderRadius={8}
       cursor="pointer"
-      hoverStyle={{ backgroundColor: '#1a1a1a' }}
-      pressStyle={{ backgroundColor: '#222' }}
+      hoverStyle={{ backgroundColor: c.bgCardHover }}
+      pressStyle={{ backgroundColor: c.bgInner }}
       onPress={onPress}
     >
       {icon}
-      <Text fontSize={14} color="#e4e4e7">
+      <Text fontSize={14} color={c.text} fontFamily="$body">
         {label}
       </Text>
     </XStack>
@@ -357,13 +380,10 @@ const styles = StyleSheet.create({
   },
   titleInput: {
     flex: 1,
-    backgroundColor: 'rgba(6, 182, 212, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(6, 182, 212, 0.3)',
     borderRadius: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    color: '#e4e4e7',
+    fontFamily: "$body",
     fontSize: 14,
     fontWeight: '500',
   },
@@ -371,7 +391,6 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -382,15 +401,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  micButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#111',
     borderRadius: 12,
     padding: 16,
     width: '100%',

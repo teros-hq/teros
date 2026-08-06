@@ -1,0 +1,92 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 WebSocket 연결을 확인합니다."
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "모든 과거 대화에서 메시지의 텍스트를 검색합니다. 채널별로 그룹화된 일치 항목과 함께 컨텍스트 스니펫을 반환합니다.",
+      "params": {
+        "query": "검색할 텍스트(대소문자 구분 없음, 최소 2자)",
+        "limit": "반환할 최대 결과 수(기본값: 50, 최대: 100)"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "과거 대화를 나열합니다. 채널 이름, 에이전트 및 마지막 메시지 미리보기를 반환합니다.",
+      "params": {
+        "status": "채널 상태로 필터링",
+        "limit": "반환할 최대 채널 수(기본값: 20)"
+      }
+    },
+    "get-channel-messages": {
+      "name": "get-channel-messages",
+      "description": "특정 과거 대화에서 메시지를 가져옵니다. 페이지 매김을 지원합니다.",
+      "params": {
+        "channelId": "메시지를 가져올 채널의 ID",
+        "limit": "반환할 메시지 수(기본값: 50)",
+        "before": "페이지 매김을 위한 메시지 ID - 이 메시지 이전의 메시지를 가져옵니다.",
+        "textOnly": "도구 실행을 제외하고 텍스트 메시지만 반환합니다(기본값: true)"
+      }
+    },
+    "get-channel-summary": {
+      "name": "get-channel-summary",
+      "description": "모든 메시지 없이 대화의 간단한 요약을 가져옵니다. 대화의 내용을 이해하는 데 유용합니다.",
+      "params": {
+        "channelId": "요약할 채널의 ID"
+      }
+    },
+    "create-conversation": {
+      "name": "create-conversation",
+      "description": "특정 에이전트와 새로운 대화를 생성합니다. 메시지를 보내는 데 사용할 수 있는 새로운 채널 ID를 반환합니다.",
+      "params": {
+        "agentId": "대화를 시작할 에이전트의 ID",
+        "name": "대화의 선택적 이름"
+      }
+    },
+    "delegate-task": {
+      "name": "delegate-task",
+      "description": "작업을 에이전트와의 새로운 하위 대화로 위임합니다(기본값: 본인). 대화를 생성하고, 작업 프롬프트를 전송하며 즉시 반환합니다. 하위 에이전트는 독립적으로 작업하며 각 응답은 자동으로 이 대화로 전달됩니다.",
+      "params": {
+        "prompt": "하위 에이전트에게 보낼 전체 작업 설명 및 지침",
+        "agentId": "위임할 에이전트 ID. 현재 에이전트(자기 위임)로 기본값 설정됩니다.",
+        "taskName": "위임된 작업 대화의 선택적 이름"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "기존 대화에 메시지를 보냅니다. 에이전트가 메시지를 처리하고 응답합니다.",
+      "params": {
+        "channelId": "메시지를 보낼 채널의 ID",
+        "message": "보낼 메시지 텍스트"
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "대화의 이름을 변경합니다. 채널의 제목/이름을 변경합니다.",
+      "params": {
+        "channelId": "이름을 변경할 채널의 ID",
+        "name": "대화의 새 이름/제목"
+      }
+    },
+    "import-attachment": {
+      "name": "import-attachment",
+      "description": "사용자가 채팅에서 업로드한 파일(이미지 또는 문서)을 에이전트 작업 공간 볼륨으로 복사하여 파일 시스템 도구가 읽을 수 있도록 합니다. \"[사용자가 보낸 ...]\" 메시지 참조에 표시된 파일 이름으로 식별합니다. { workspacePath, size, mime }를 반환합니다.",
+      "params": {
+        "filename": "메시지 참조에 표시된 채팅 첨부 파일의 파일 이름",
+        "destPath": "작업 공간 내의 선택적 대상 경로(상대적). 기본값은 작업 공간 루트의 원래 파일 이름입니다.",
+        "channelId": "가져올 채널. 기본값은 현재 대화입니다.",
+        "messageId": "여러 첨부 파일이 동일한 파일 이름을 공유할 때 구분하기 위한 선택적 메시지 ID.",
+        "overwrite": "대상이 이미 존재하는 경우 덮어씁니다(기본값: false)."
+      }
+    }
+  },
+  "name": "대화",
+  "description": "데이터베이스에서 과거 대화 및 메시지에 접근하고 검색합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 - 과거 대화를 검색하고 읽고, 채팅을 시작하고, 메시지를 보내고, 에이전트에게 작업을 위임하고, 파일을 가져옵니다."
+    }
+  ]
+}

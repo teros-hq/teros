@@ -30,9 +30,13 @@ function requireWorkspaceService(ws: WorkspaceService | undefined): WorkspaceSer
 }
 
 export function createWorkspacesListHandler(db: Db) {
-  return async function workspacesList(ctx: WsHandlerContext, _rawData: unknown) {
+  return async function workspacesList(ctx: WsHandlerContext, rawData: unknown) {
     await requireAdmin(db, ctx.userId)
-    const workspaces = await db.collection('workspaces').find({ status: 'active' }).toArray()
+    const data = (rawData ?? {}) as { includeAll?: boolean }
+    // Default: solo workspaces activos. includeAll: super admin tools que
+    // necesitan ver workspaces archived / legacy con `status:undefined`.
+    const filter: Record<string, unknown> = data.includeAll === true ? {} : { status: 'active' }
+    const workspaces = await db.collection('workspaces').find(filter).toArray()
     return { workspaces }
   }
 }

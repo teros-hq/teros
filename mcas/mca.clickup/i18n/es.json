@@ -1,0 +1,154 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con ClickUp."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "Obtiene la información del usuario autenticado de ClickUp."
+    },
+    "get-workspaces": {
+      "name": "get-workspaces",
+      "description": "Obtiene todos los espacios de trabajo (equipos) de ClickUp a los que pertenece el usuario."
+    },
+    "get-members": {
+      "name": "get-members",
+      "description": "Obtiene todos los miembros de un espacio de trabajo de ClickUp.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo (equipo)"
+      }
+    },
+    "get-spaces": {
+      "name": "get-spaces",
+      "description": "Obtiene todos los espacios de un espacio de trabajo de ClickUp.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo (equipo)",
+        "archived": "Incluir espacios archivados (por defecto: false)"
+      }
+    },
+    "get-folders": {
+      "name": "get-folders",
+      "description": "Obtiene todas las carpetas de un espacio de ClickUp.",
+      "params": {
+        "spaceId": "ID del espacio",
+        "archived": "Incluir carpetas archivadas (por defecto: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Crea una nueva carpeta en un espacio de ClickUp.",
+      "params": {
+        "spaceId": "ID del espacio donde se creará la carpeta",
+        "name": "Nombre de la nueva carpeta"
+      }
+    },
+    "get-lists": {
+      "name": "get-lists",
+      "description": "Obtiene todas las listas de una carpeta de ClickUp.",
+      "params": {
+        "folderId": "ID de la carpeta",
+        "archived": "Incluir listas archivadas (por defecto: false)"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Crea una nueva lista dentro de una carpeta de ClickUp.",
+      "params": {
+        "folderId": "ID de la carpeta donde se creará la lista",
+        "name": "Nombre de la nueva lista",
+        "content": "Descripción/contenido de la lista (opcional)"
+      }
+    },
+    "get-tasks": {
+      "name": "get-tasks",
+      "description": "Obtiene tareas de una lista de ClickUp con filtros opcionales.",
+      "params": {
+        "listId": "ID de la lista de la que obtener las tareas",
+        "archived": "Incluir tareas archivadas (por defecto: false)",
+        "page": "Número de página para paginación (por defecto: 0)",
+        "orderBy": "Campo de ordenación: id, created, updated, due_date (por defecto: created)",
+        "reverse": "Invertir el orden (por defecto: false)",
+        "subtasks": "Incluir subtareas (por defecto: false)",
+        "statuses": "Filtrar por nombres de estado"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "Obtiene información detallada de una tarea específica de ClickUp.",
+      "params": {
+        "taskId": "ID de la tarea"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "Crea una nueva tarea en una lista de ClickUp.",
+      "params": {
+        "listId": "ID de la lista donde se creará la tarea",
+        "name": "Nombre/título de la tarea",
+        "description": "Descripción de la tarea (soporta markdown)",
+        "priority": "Prioridad de la tarea: urgent, high, normal, low",
+        "status": "Estado de la tarea (debe coincidir con un estado de la lista)",
+        "assignees": "Array de IDs de usuario a asignar",
+        "tags": "Array de nombres de etiqueta",
+        "dueDate": "Fecha límite como timestamp Unix en milisegundos",
+        "startDate": "Fecha de inicio como timestamp Unix en milisegundos",
+        "timeEstimate": "Estimación de tiempo en milisegundos",
+        "parentId": "ID de la tarea padre para crear como subtarea"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "Actualiza una tarea existente de ClickUp.",
+      "params": {
+        "taskId": "ID de la tarea a actualizar",
+        "name": "Nuevo nombre de la tarea",
+        "description": "Nueva descripción de la tarea",
+        "priority": "Nueva prioridad: urgent, high, normal, low",
+        "status": "Nuevo estado",
+        "dueDate": "Nueva fecha límite como timestamp Unix en milisegundos",
+        "startDate": "Nueva fecha de inicio como timestamp Unix en milisegundos",
+        "timeEstimate": "Nueva estimación de tiempo en milisegundos"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "Elimina una tarea de ClickUp permanentemente.",
+      "params": {
+        "taskId": "ID de la tarea a eliminar"
+      }
+    },
+    "search-tasks": {
+      "name": "search-tasks",
+      "description": "Busca tareas en un espacio de trabajo de ClickUp.",
+      "params": {
+        "workspaceId": "ID del espacio de trabajo (equipo) donde buscar",
+        "query": "Texto de búsqueda",
+        "page": "Número de página (por defecto: 0)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "Añade un comentario a una tarea de ClickUp.",
+      "params": {
+        "taskId": "ID de la tarea a comentar",
+        "commentText": "Texto del comentario (soporta markdown)",
+        "notifyAll": "Notificar a todos los asignados de la tarea (por defecto: false)"
+      }
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Obtiene todos los comentarios de una tarea de ClickUp.",
+      "params": {
+        "taskId": "ID de la tarea"
+      }
+    }
+  },
+  "name": "ClickUp",
+  "description": "Gestión de proyectos con ClickUp — administra tareas, listas, carpetas, espacios y espacios de trabajo vía la API de ClickUp con OAuth2",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear, actualizar, buscar y comentar tareas en espacios, carpetas y listas de ClickUp"
+    }
+  ]
+}

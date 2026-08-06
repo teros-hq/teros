@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+**/node_modules/
 .npm/
 .yarn/
 .pnp.*
@@ -61,3 +62,14 @@ docker-compose*.yml
 .cache/
 temp/
 tmp/
+
+# Large dirs not needed for builds
+# NOTE: packages/app/ is intentionally NOT excluded — needed by frontend Dockerfile
+infra/
+.secrets/
+packages/backend/logs/
+packages/backend/uploads/
+packages/backend/media/
+packages/app/node_modules/
+packages/app/dist/
+packages/app/logs/

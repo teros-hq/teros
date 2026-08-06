@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const getContactGroup: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Get detailed information about a specific contact group, including its members.',
   parameters: {

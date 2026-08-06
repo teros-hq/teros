@@ -1,0 +1,20 @@
+{
+  "tools": {
+    "webfetch": {
+      "name": "webfetch",
+      "description": "Fetch content from a URL and convert to text, markdown, or HTML format. Supports intelligent content extraction and format conversion.",
+      "params": {
+        "url": "The URL to fetch content from (must start with http:// or https://)",
+        "format": "The format to return the content in",
+        "timeout": "Optional timeout in seconds (default: 30, max: 120)"
+      }
+    }
+  },
+  "name": "Web Fetch",
+  "description": "Fetch and extract content from web pages. Supports HTML, text, and markdown formats with intelligent conversion.",
+  "changelog": [
+    {
+      "notes": "Initial release — fetch any web page and get it back as clean text, markdown, or HTML"
+    }
+  ]
+}

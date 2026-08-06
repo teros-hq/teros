@@ -1,0 +1,134 @@
+# Supply-chain security (TER-402)
+#
+# Tres gates independientes:
+#  - gitleaks: secrets en los commits del PR (solo el rango del PR, no la
+#    historia completa — evita ruido de leaks históricos). Binario MIT directo;
+#    la action oficial gitleaks-action exige licencia para organizaciones.
+#  - osv-pr-diff: vulnerabilidades de dependencias en modo DIFF — compara el
+#    scan de la rama base contra la del PR y solo falla con vulns NUEVAS.
+#    El lockfile actual ya tiene vulns conocidas (baseline 2026-06-05: 2
+#    critical / 67 high entries); un gate absoluto rompería todos los PRs.
+#    La remediación del stock existente queda fuera de este gate (no-objetivo
+#    del ticket).
+#  - sbom: CycloneDX generado por Syft en cada build de dev/main, publicado
+#    como artifact del workflow run.
+
+name: Security
+
+on:
+  pull_request:
+    branches:
+      - dev
+      - main
+  push:
+    branches:
+      - dev
+      - main
+
+permissions:
+  contents: read
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+
+jobs:
+  gitleaks:
+    name: Secrets (gitleaks)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gitleaks necesita la historia para resolver el rango base..head
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks version
+
+      - name: Scan PR commits for secrets
+        run: |
+          ./gitleaks git \
+            --log-opts "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" \
+            --no-banner --redact --verbose .
+
+  # Réplica inline del reusable osv-scanner-reusable-pr.yml@v2.3.8 SIN su step
+  # "Export results": ese step exporta los JSON completos como job outputs y
+  # con este monorepo revienta ("Maximum object size exceeded" — el scan del
+  # yarn.lock raíz solo ya pesa ~1.04MB > límite de 1MB de outputs). El flujo
+  # de diff (scan base → scan PR → osv-reporter) es idéntico al oficial,
+  # con las actions pineadas al mismo SHA que publica v2.3.8.
+  osv-pr-diff:
+    name: Dependency vulns (OSV diff)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # El diff necesita poder hacer checkout de la rama base
+          fetch-depth: 0
+
+      - name: Checkout target branch
+        run: git checkout "$GITHUB_BASE_REF"
+
+      - name: Scan existing code (baseline)
+        uses: google/osv-scanner-action/osv-scanner-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        # osv-scanner sale ≠0 si hay vulns; la baseline puede tenerlas
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=old-results.json
+            -r
+            ./
+
+      - name: Checkout PR branch
+        run: git checkout -f "$GITHUB_SHA"
+
+      - name: Scan new code
+        uses: google/osv-scanner-action/osv-scanner-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        continue-on-error: true
+        with:
+          scan-args: |-
+            --format=json
+            --output=new-results.json
+            -r
+            ./
+
+      - name: Fail on NEW vulnerabilities (osv-reporter)
+        uses: google/osv-scanner-action/osv-reporter-action@8dc09193bb540e09b23da07ad7e30bd33bf87018 # v2.3.8
+        with:
+          scan-args: |-
+            --output=results.sarif
+            --old=old-results.json
+            --new=new-results.json
+            --gh-annotations=true
+            --fail-on-vuln=true
+
+      - name: Upload SARIF artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scanner-sarif
+          path: results.sarif
+          retention-days: 5
+
+  sbom:
+    name: SBOM (CycloneDX)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          artifact-name: sbom-${{ github.sha }}.cdx.json

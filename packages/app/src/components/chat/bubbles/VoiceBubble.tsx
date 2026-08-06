@@ -1,8 +1,13 @@
-import { Download, MoreVertical, Pause, Play, RefreshCw, Square } from '@tamagui/lucide-icons';
+import { AlertCircle, Download, MoreVertical, Pause, Play, RefreshCw, Square } from '@tamagui/lucide-icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { getDateLocale } from '../../../i18n';
 import { Platform, useWindowDimensions } from 'react-native';
-import { Button, Popover, Text, View, XStack, YStack } from 'tamagui';
+import { Button, Popover, Text, View, XStack, YStack } from 'tamagui'
+import { useColors } from '../../mca/primitives/useColors'
+import { colors as semanticColors, surface } from '../../mca/primitives/colors';
 import { TerosLoading } from '../../TerosLoading';
+import { QueuedIndicator, QueuedShimmer } from '../queuedDecorations';
 import { SelectableText } from './shared';
 
 // Format duration as m:ss
@@ -21,6 +26,7 @@ export function VoiceBubble({
   data,
   duration,
   transcription,
+  transcriptionError,
   timestamp,
   isUser = false,
   showTimestamp = true,
@@ -29,22 +35,27 @@ export function VoiceBubble({
   status,
 }: {
   url: string;
-  data?: string; // Base64 data for offline/retry
+  data?: string;
   duration?: number;
   transcription?: string;
+  transcriptionError?: string;
   timestamp: Date;
   isUser?: boolean;
   showTimestamp?: boolean;
   onRetry?: () => void;
   onDownload?: () => void;
-  status?: 'sending' | 'sent' | 'failed';
+  status?: 'sending' | 'sent' | 'failed' | 'queued';
 }) {
+  const { t } = useTranslation()
+  const c = useColors()
+;
+  const isDark = c.bgPage === surface.dark.bgPage;
   const { width: screenWidth } = useWindowDimensions();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(duration || 0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const progressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
   // For iOS: calculate max text width based on screen (85% max - padding - button - gap)
@@ -167,9 +178,11 @@ export function VoiceBubble({
   const progress = audioDuration > 0 ? currentTime / audioDuration : 0;
   const displayDuration = audioDuration || duration || 0;
 
-  const bgColor = isUser ? '$blue' : 'rgba(255, 255, 255, 0.05)';
+  const bgColor = isUser ? (isDark ? semanticColors.indigoDark : semanticColors.indigoGlow) : c.bgInner;
   const borderRadius = isUser ? '$4' : '$4';
   const cornerRadius = isUser ? '$1' : '$1';
+
+  const isQueued = status === 'queued';
 
   return (
     <YStack
@@ -177,6 +190,7 @@ export function VoiceBubble({
       {...(Platform.OS !== 'web' ? { width: '85%' } : {})}
       gap="$2"
       alignSelf={isUser ? 'flex-end' : 'flex-start'}
+      alignItems={isUser ? 'flex-end' : 'flex-start'}
       // @ts-ignore - userSelect is valid for web
       userSelect={Platform.OS === 'web' ? 'text' : undefined}
     >
@@ -187,7 +201,10 @@ export function VoiceBubble({
         backgroundColor={bgColor}
         borderBottomRightRadius={isUser ? cornerRadius : borderRadius}
         borderBottomLeftRadius={isUser ? borderRadius : cornerRadius}
+        overflow={isQueued ? 'hidden' : undefined}
+        position={isQueued ? 'relative' : undefined}
       >
+        {isQueued && <QueuedShimmer />}
         {/* Transcription with play button */}
         <XStack alignItems="flex-start" gap="$2" flexWrap="nowrap">
           <View
@@ -195,7 +212,7 @@ export function VoiceBubble({
           >
             {transcription ? (
               <SelectableText
-                color={isUser ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.8)'}
+                color={isUser ? (isDark ? '#FFFFFF' : c.text) : c.text2}
                 fontSize="$4"
                 lineHeight="$2"
                 fontStyle="italic"
@@ -203,18 +220,37 @@ export function VoiceBubble({
               >
                 🎙️ "{transcription}"
               </SelectableText>
+            ) : transcriptionError ? (
+              <XStack alignItems="center" gap="$1">
+                <AlertCircle size={14} color={semanticColors.amber} />
+                <Text fontSize="$3" color={semanticColors.amber} fontStyle="italic">
+                  {t('voice.transcriptionFailed')}
+                </Text>
+              </XStack>
+            ) : status === 'failed' ? (
+              <Text fontSize="$3" color={semanticColors.red} fontStyle="italic">
+                ⚠️ {t('voice.sendFailed')}
+              </Text>
+            ) : status === 'sending' ? (
+              <Text
+                color={isUser ? (isDark ? 'rgba(255,255,255,0.6)' : c.text3) : c.text3}
+                fontSize="$3"
+                fontStyle="italic"
+              >
+                {t('voice.sending')}
+              </Text>
             ) : (
               <XStack alignItems="center" gap="$2">
                 <TerosLoading
                   size={20}
-                  color={isUser ? 'rgba(255, 255, 255, 0.7)' : 'rgba(6, 182, 212, 0.8)'}
+                  color={isUser ? (isDark ? 'rgba(255,255,255,0.7)' : semanticColors.indigoLight) : semanticColors.indigoLight}
                 />
                 <Text
-                  color={isUser ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.5)'}
+                  color={isUser ? (isDark ? 'rgba(255,255,255,0.6)' : c.text3) : c.text3}
                   fontSize="$3"
                   fontStyle="italic"
                 >
-                  Generating transcription
+                  {t('voice.generatingTranscription')}
                 </Text>
               </XStack>
             )}
@@ -227,15 +263,15 @@ export function VoiceBubble({
               height={36}
               padding={0}
               borderRadius={8}
-              backgroundColor={isUser ? 'rgba(255, 255, 255, 0.2)' : 'rgba(6, 182, 212, 0.2)'}
+              backgroundColor={isUser ? (isDark ? 'rgba(255, 255, 255, 0.2)' : semanticColors.indigoGlow) : semanticColors.indigoGlow}
               borderWidth={1}
-              borderColor={isUser ? 'rgba(255, 255, 255, 0.3)' : 'rgba(6, 182, 212, 0.5)'}
+              borderColor={isUser ? (isDark ? 'rgba(255, 255, 255, 0.3)' : `rgba(94, 106, 210, 0.5)`) : `rgba(94, 106, 210, 0.5)`}
               onPress={togglePlayback}
               icon={
                 isPlaying ? (
-                  <Square size={14} color={isUser ? '#FFFFFF' : '#06B6D4'} />
+                  <Square size={14} color={isUser ? (isDark ? '#FFFFFF' : semanticColors.indigo) : semanticColors.indigo} />
                 ) : (
-                  <Play size={14} color={isUser ? '#FFFFFF' : '#06B6D4'} />
+                  <Play size={14} color={isUser ? (isDark ? '#FFFFFF' : semanticColors.indigo) : semanticColors.indigo} />
                 )
               }
             />
@@ -252,15 +288,15 @@ export function VoiceBubble({
                   opacity={0.6}
                   hoverStyle={{ opacity: 1 }}
                   onPress={() => setMenuOpen(true)}
-                  icon={<MoreVertical size={14} color={isUser ? '#FFFFFF' : '#888'} />}
+                  icon={<MoreVertical size={14} color={isUser ? (isDark ? '#FFFFFF' : c.text3) : c.text3} />}
                 />
               </View>
             </Popover.Trigger>
 
             <Popover.Content
-              backgroundColor="#1a1a1a"
+              backgroundColor={c.bgCard}
               borderWidth={1}
-              borderColor="#333"
+              borderColor={c.borderStrong}
               borderRadius={8}
               padding={4}
               elevate
@@ -276,17 +312,17 @@ export function VoiceBubble({
                 alignItems="center"
                 borderRadius={4}
                 cursor="pointer"
-                hoverStyle={{ backgroundColor: 'rgba(6, 182, 212, 0.15)' }}
+                hoverStyle={{ backgroundColor: `rgba(94, 106, 210, 0.15)` }}
                 onPress={handleDownload}
               >
-                <Download size={14} color="#06B6D4" />
-                <Text fontSize={13} color="#ccc">
-                  Descargar
+                <Download size={14} color={semanticColors.indigo} />
+                <Text fontSize={13} color={c.text2}>
+                  {t('voice.download')}
                 </Text>
               </XStack>
 
-              {/* Retry option - only show if failed or has retry handler */}
-              {(status === 'failed' || onRetry) && (
+              {/* Retry option - show for send failure or transcription failure */}
+              {(status === 'failed' || transcriptionError || onRetry) && (
                 <XStack
                   paddingHorizontal={12}
                   paddingVertical={8}
@@ -294,12 +330,12 @@ export function VoiceBubble({
                   alignItems="center"
                   borderRadius={4}
                   cursor="pointer"
-                  hoverStyle={{ backgroundColor: 'rgba(255, 152, 0, 0.15)' }}
+                  hoverStyle={{ backgroundColor: `rgba(245, 158, 11, 0.15)` }}
                   onPress={handleRetry}
                 >
-                  <RefreshCw size={14} color="#FF9800" />
-                  <Text fontSize={13} color="#ccc">
-                    Retry sending
+                  <RefreshCw size={14} color={semanticColors.amber} />
+                  <Text fontSize={13} color={c.text2}>
+                    {transcriptionError ? t('voice.retryTranscription') : t('voice.retrySending')}
                   </Text>
                 </XStack>
               )}
@@ -307,36 +343,20 @@ export function VoiceBubble({
           </Popover>
         </XStack>
 
-        {/* Status indicator for sending/failed */}
-        {status && status !== 'sent' && (
-          <XStack alignItems="center" gap="$1">
-            {status === 'sending' && (
-              <>
-                <TerosLoading size={12} color="rgba(255, 255, 255, 0.5)" />
-                <Text fontSize="$1" color="rgba(255, 255, 255, 0.5)">
-                  Enviando...
-                </Text>
-              </>
-            )}
-            {status === 'failed' && (
-              <>
-                <Text fontSize="$1" color="#EF4444">
-                  ⚠️ Error al enviar
-                </Text>
-              </>
+        {/* Timestamp + queued indicator (alineados al mismo nivel) */}
+        {(showTimestamp || isQueued) && (
+          <XStack alignItems="center" gap="$2">
+            {isQueued && <QueuedIndicator />}
+            {showTimestamp && (
+              <SelectableText
+                fontSize="$2"
+                color={isUser ? (isDark ? 'rgba(255,255,255,0.55)' : c.text3) : c.text3}
+                selectable
+              >
+                {timestamp.toLocaleTimeString(getDateLocale(), { hour: '2-digit', minute: '2-digit' })}
+              </SelectableText>
             )}
           </XStack>
-        )}
-
-        {/* Timestamp */}
-        {showTimestamp && (
-          <SelectableText
-            fontSize="$2"
-            color={isUser ? 'rgba(255, 255, 255, 0.7)' : 'rgba(255, 255, 255, 0.4)'}
-            selectable
-          >
-            {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-          </SelectableText>
         )}
       </YStack>
     </YStack>

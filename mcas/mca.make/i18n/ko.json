@@ -1,0 +1,105 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. 웹후크 트리거는 자격 증명이 필요하지 않으며, MAKE_API_TOKEN이 구성된 경우 Make 계정 API에 대해 이를 검증합니다. 전체 시나리오 관리를 위해 토큰은 다음 범위를 가져야 합니다: scenarios:read, scenarios:write, teams:read, organizations:read."
+    },
+    "trigger-webhook": {
+      "name": "trigger-webhook",
+      "description": "Make.com 시나리오를 웹후크 URL에 JSON 페이로드를 POST하여 트리거합니다. 계정 토큰이 필요하지 않으며, 사용자가 웹후크 URL을 제공합니다 (https://hook.<region>.make.com/<token>). { delivered, statusCode, webhookHost, region, responseType, response }를 반환합니다.",
+      "params": {
+        "webhookUrl": "Make.com 웹후크 URL (https://hook.<region>.make.com/<token>). https를 사용하는 *.make.com 호스트만 허용됩니다.",
+        "payload": "웹후크에 전송된 본문. JSON 객체는 application/json으로 전송되며, 문자열은 있는 그대로 전달됩니다 (JSON 문자열 → application/json, 그렇지 않으면 text/plain)."
+      }
+    },
+    "list-scenarios": {
+      "name": "list-scenarios",
+      "description": "구성된 계정에 대한 Make.com 시나리오 목록을 가져옵니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 선택적으로 teamId 및 페이지를 limit/offset으로 필터링할 수 있습니다. { scenarios: [{ id, name, isActive, isPaused, teamId }], returned, total, offset, limit, hasMore, nextOffset, teamId, region }를 반환합니다. hasMore가 true인 경우, offset=nextOffset로 다시 호출하여 다음 페이지를 가져옵니다.",
+      "params": {
+        "teamId": "시나리오의 범위를 지정할 Make 팀 ID (팀 URL에서 찾을 수 있음). 대부분의 계정에서 Make API에 의해 필요합니다.",
+        "limit": "페이지당 반환할 최대 시나리오 수 (1-100, 기본값 50).",
+        "offset": "페이지 매김을 위해 건너뛸 시나리오 수 (기본값 0). 이전 응답의 `nextOffset`을 전달하여 다음 페이지를 가져옵니다.",
+        "includeRaw": "디버깅을 위해 `raw` 아래에 처리되지 않은 상류 시나리오 행을 포함합니다 (기본값 false)."
+      }
+    },
+    "run-scenario": {
+      "name": "run-scenario",
+      "description": "id로 Make.com 시나리오를 즉시 실행합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 실행 입력을 위한 선택적 `data`와 출력을 기다리고 반환하기 위한 `responsive: true`를 전달합니다. { scenarioId, executionId, status, responsive, outputs }를 반환합니다.",
+      "params": {
+        "scenarioId": "실행할 시나리오의 ID (list-scenarios에서).",
+        "data": "시나리오 실행에 전달되는 선택적 입력 데이터.",
+        "responsive": "true인 경우, 실행이 완료될 때까지 기다리고 출력을 반환합니다 (기본값 false)."
+      }
+    },
+    "create-scenario": {
+      "name": "create-scenario",
+      "description": "새 Make.com 시나리오를 생성합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). `blueprint`는 JSON 객체로 제공되며 내부적으로 직렬화됩니다. { scenarioId, name, teamId, folderId, isActive, region, url }를 반환합니다. 일부 Make 요금제는 이 엔드포인트를 사용하기 위해 유료 구독이 필요합니다.",
+      "params": {
+        "teamId": "시나리오를 소유할 Make 팀 ID.",
+        "name": "시나리오의 사람이 읽을 수 있는 이름.",
+        "blueprint": "JSON 객체로서의 시나리오 청사진 (이스케이프된 문자열이 아님). Make에 전송하기 전에 문자열로 직렬화됩니다.",
+        "scheduling": "스케줄링 구성. 기본값은 { type: \"indefinitely\", interval: 60 }입니다.",
+        "folderId": "시나리오를 배치할 선택적 폴더 ID.",
+        "confirmed": "생성 시 시나리오가 확인되었는지 여부 (기본값 true).",
+        "basedon": "이 시나리오를 기반으로 할 기존 시나리오의 선택적 ID."
+      }
+    },
+    "get-scenario": {
+      "name": "get-scenario",
+      "description": "id로 단일 Make.com 시나리오를 가져옵니다 (사용자 비밀에 MAKE_API_TOKEN 필요). Make에서 반환된 시나리오 객체를 반환합니다.",
+      "params": {
+        "scenarioId": "가져올 시나리오의 ID."
+      }
+    },
+    "get-scenario-blueprint": {
+      "name": "get-scenario-blueprint",
+      "description": "id로 Make.com 시나리오의 청사진을 가져옵니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 가능한 경우 { scenarioId, blueprint }를 반환하며, 여기서 blueprint는 파싱된 JSON 객체입니다.",
+      "params": {
+        "scenarioId": "청사진을 가져올 시나리오의 ID."
+      }
+    },
+    "update-scenario": {
+      "name": "update-scenario",
+      "description": "id로 기존 Make.com 시나리오를 업데이트합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 이름, 청사진 (JSON 객체로), 스케줄링 및 folderId 업데이트를 지원합니다. 업데이트된 시나리오 요약을 반환합니다.",
+      "params": {
+        "scenarioId": "업데이트할 시나리오의 ID.",
+        "name": "시나리오의 새 이름.",
+        "blueprint": "새 시나리오 청사진으로서의 JSON 객체 (이스케이프된 문자열이 아님). Make에 전송하기 전에 문자열로 직렬화됩니다.",
+        "scheduling": "새 스케줄링 구성.",
+        "folderId": "시나리오의 새 폴더 ID."
+      }
+    },
+    "delete-scenario": {
+      "name": "delete-scenario",
+      "description": "id로 Make.com 시나리오를 삭제합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 이 작업은 되돌릴 수 없습니다. { scenarioId, deleted, region }을 반환합니다.",
+      "params": {
+        "scenarioId": "삭제할 시나리오의 ID."
+      }
+    },
+    "clone-scenario": {
+      "name": "clone-scenario",
+      "description": "id로 기존 Make.com 시나리오를 복제합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). 새 이름이나 폴더를 선택적으로 설정할 수 있습니다. 복제된 시나리오 요약을 반환합니다.",
+      "params": {
+        "scenarioId": "복제할 시나리오의 ID.",
+        "name": "복제된 시나리오의 선택적 새 이름.",
+        "folderId": "복제된 시나리오의 선택적 폴더 ID."
+      }
+    },
+    "start-scenario": {
+      "name": "start-scenario",
+      "description": "id로 Make.com 시나리오를 활성화(시작)합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). { scenarioId, isActive, region }을 반환합니다.",
+      "params": {
+        "scenarioId": "활성화할 시나리오의 ID."
+      }
+    },
+    "stop-scenario": {
+      "name": "stop-scenario",
+      "description": "id로 Make.com 시나리오를 일시 중지(중지)합니다 (사용자 비밀에 MAKE_API_TOKEN 필요). { scenarioId, isActive, region }을 반환합니다.",
+      "params": {
+        "scenarioId": "일시 중지할 시나리오의 ID."
+      }
+    }
+  },
+  "name": "Make",
+  "description": "Make.com 자동화 — 웹후크를 통해 시나리오를 트리거하고 (토큰 필요 없음) 계정 API를 통해 시나리오를 관리합니다: 생성, 읽기, 업데이트, 삭제, 복제, 시작, 중지, 목록, 실행 및 청사진 검사."
+}

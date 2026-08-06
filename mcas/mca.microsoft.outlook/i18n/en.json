@@ -1,0 +1,190 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "List email messages from inbox or a specific folder. Supports filtering by unread, importance, etc.",
+      "params": {
+        "maxResults": "Maximum number of messages to return (default: 10, max: 100)",
+        "folderId": "Mail folder ID or well-known name (e.g., \"Inbox\", \"SentItems\", \"Drafts\", \"DeletedItems\", \"Archive\"). Defaults to Inbox.",
+        "filter": "OData $filter expression (e.g., \"isRead eq false\", \"importance eq 'high'\")"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "Get full details of a specific email message by ID, including body and attachments.",
+      "params": {
+        "messageId": "The ID of the message to retrieve"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Send an email message from the connected Outlook account.",
+      "params": {
+        "to": "Recipient email address(es), comma-separated",
+        "subject": "Email subject",
+        "body": "Email body (plain text, Markdown, or HTML)",
+        "cc": "CC recipients (comma-separated)",
+        "bcc": "BCC recipients (comma-separated)",
+        "isHtml": "Whether body is HTML (default: false, auto-detects Markdown)",
+        "importance": "Message importance: low, normal, high (default: normal)",
+        "attachments": "Array of file attachments to include"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "Reply to an existing email message.",
+      "params": {
+        "messageId": "The ID of the message to reply to",
+        "body": "Reply body",
+        "isHtml": "Whether body is HTML (default: false)",
+        "replyAll": "Whether to reply to all recipients (default: false)"
+      }
+    },
+    "forward-message": {
+      "name": "forward-message",
+      "description": "Forward an email message to other recipients.",
+      "params": {
+        "messageId": "The ID of the message to forward",
+        "to": "Recipient email address(es), comma-separated",
+        "comment": "Optional comment to include with the forwarded message"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Search for email messages. Supports searching by subject, body, sender, etc.",
+      "params": {
+        "query": "Search query text (searches subject, body, sender, etc.)",
+        "maxResults": "Maximum number of results (default: 10)"
+      }
+    },
+    "modify-message": {
+      "name": "modify-message",
+      "description": "Modify a message: mark as read/unread, set importance, add categories, or flag it.",
+      "params": {
+        "messageId": "The ID of the message to modify",
+        "isRead": "Mark as read (true) or unread (false)",
+        "importance": "Set importance: low, normal, high",
+        "categories": "Set category labels (replaces existing)",
+        "flag": "Set flag status: notFlagged, flagged, complete"
+      }
+    },
+    "move-message": {
+      "name": "move-message",
+      "description": "Move a message to a different mail folder.",
+      "params": {
+        "messageId": "The ID of the message to move",
+        "destinationFolderId": "Destination folder ID or well-known name (e.g., \"Inbox\", \"Archive\", \"DeletedItems\", \"JunkEmail\")"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Delete a message (moves to Deleted Items) or permanently delete it.",
+      "params": {
+        "messageId": "The ID of the message to delete",
+        "permanent": "If true, permanently deletes the message. Otherwise moves to Deleted Items (default: false)"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "List all draft emails in the account.",
+      "params": {
+        "maxResults": "Maximum number of drafts to return (default: 10, max: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "Create a draft email message.",
+      "params": {
+        "to": "Recipient email address(es)",
+        "subject": "Email subject",
+        "body": "Email body",
+        "cc": "CC recipients (comma-separated)",
+        "bcc": "BCC recipients (comma-separated)",
+        "isHtml": "Whether body is HTML (default: false)",
+        "importance": "Message importance: low, normal, high"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "Update an existing draft email by replacing its content.",
+      "params": {
+        "draftId": "The ID of the draft to update",
+        "to": "Recipient email address(es)",
+        "subject": "Email subject",
+        "body": "Email body",
+        "cc": "CC recipients (comma-separated)",
+        "bcc": "BCC recipients (comma-separated)",
+        "isHtml": "Whether body is HTML (default: false)"
+      }
+    },
+    "send-draft": {
+      "name": "send-draft",
+      "description": "Send an existing draft email.",
+      "params": {
+        "draftId": "The ID of the draft to send"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "Delete a draft email.",
+      "params": {
+        "draftId": "The ID of the draft to delete"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "List all mail folders in the account.",
+      "params": {
+        "includeChildFolders": "Whether to include child folders (default: false)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Create a new mail folder.",
+      "params": {
+        "displayName": "Name for the new folder",
+        "parentFolderId": "Parent folder ID (optional, creates at top level if omitted)"
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "Delete a mail folder and all its contents.",
+      "params": {
+        "folderId": "The ID of the folder to delete"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "Get the content of an email attachment by its attachment ID.",
+      "params": {
+        "messageId": "The ID of the message containing the attachment",
+        "attachmentId": "The ID of the attachment to retrieve",
+        "saveToFile": "If true, saves the attachment to /workspace/email-attachments/"
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "Download and store an email attachment to the local filesystem.",
+      "params": {
+        "messageId": "The ID of the message containing the attachment",
+        "attachmentId": "The ID of the attachment to store",
+        "outputPath": "Optional output directory path"
+      }
+    },
+    "list-rules": {
+      "name": "list-rules",
+      "description": "List all inbox rules (mail filters) for the account."
+    }
+  },
+  "name": "Outlook",
+  "description": "Microsoft Outlook email management - send, read, search, and organize emails via Microsoft Graph API",
+  "changelog": [
+    {
+      "notes": "Initial release — send, read, search, reply to and organize Outlook emails, with drafts, folders and attachments"
+    }
+  ]
+}

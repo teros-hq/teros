@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.http",
+  "name": "HTTP Request",
+  "version": "1.0.0",
+  "description": "Call any public REST API (GET/POST/PUT/PATCH/DELETE) from your agent. Reference stored API keys as {{PLACEHOLDER}} so they never reach the model. Private/internal addresses are blocked (SSRF-safe).",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "data",
+  "entrypoint": "src/index.ts",
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "keywords": ["http", "rest", "api", "request", "webhook", "integration", "fetch", "hunter", "brevo", "make"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": [
+        "HUNTER_API_KEY",
+        "BREVO_API_KEY",
+        "MAKE_WEBHOOK_TOKEN",
+        "APOLLO_API_KEY",
+        "CLEARBIT_API_KEY",
+        "NEVERBOUNCE_API_KEY",
+        "CUSTOM_TOKEN_1",
+        "CUSTOM_TOKEN_2"
+      ]
+    },
+    "agent": false
+  }
+}

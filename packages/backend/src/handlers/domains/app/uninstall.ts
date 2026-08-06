@@ -5,12 +5,16 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface UninstallAppData {
   appId: string
 }
 
-export function createUninstallAppHandler(mcaService: McaService) {
+export function createUninstallAppHandler(
+  mcaService: McaService,
+  pubSubService?: PubSubService | null,
+) {
   return async function uninstallApp(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UninstallAppData
     const { appId } = data
@@ -19,6 +23,10 @@ export function createUninstallAppHandler(mcaService: McaService) {
       throw new HandlerError('MISSING_APP_ID', 'appId is required')
     }
 
+    // Capture ownerId BEFORE delete so we can fan-out the event to the workspace.
+    const existingApp = await mcaService.getApp(appId)
+    const ownerId = existingApp?.ownerId ?? null
+
     const result = await mcaService.deleteApp(appId, ctx.userId)
 
     if (!result.success) {
@@ -26,6 +34,14 @@ export function createUninstallAppHandler(mcaService: McaService) {
     }
 
     console.log(`✅ Uninstalled app ${appId} for user ${ctx.userId}`)
+
+    if (pubSubService && ownerId) {
+      await pubSubService.broadcastToWorkspace(ownerId, {
+        type: 'app.uninstalled',
+        appId,
+        ownerId,
+      })
+    }
 
     return { appId }
   }

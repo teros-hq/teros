@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * Teros Boards Manager MCA v1.1 (Read-Write)
+ * Teros Boards Manager MCA v1.2 (Read-Write + Supervision)
  *
  * Provides full management of projects, boards, and tasks for coordinator agents.
  * Only coordinator/manager agents should be granted access to this MCA.
@@ -16,7 +16,8 @@
  * - create-task: Create a single task
  * - batch-create-tasks: Create multiple tasks at once
  * - update-task: Update task properties
- * - update-task-status: Update semantic status (idle/assigned/working/blocked/review/done)
+ * - archive-task: Archive or unarchive a task (manager action)
+ * - archive-project: Archive a project and all its tasks (manager action)
  * - move-task: Move task between columns
  * - assign-task: Assign/unassign agent to task
  * - start-task: Move to in_progress + create conversation
@@ -26,9 +27,21 @@
  * - add-task-dependency: Add a dependency between two tasks (with DFS cycle detection)
  * - remove-task-dependency: Remove a dependency between two tasks
  * - get-task-dependencies: Get the dependencies of a task
+ * - set-agent-slots: Configure parallel execution slots for an agent (autoplay v2)
+ * - set-agent-play: Activate/deactivate autoplay mode for an agent (autoplay v2)
+ * --- Board Supervision (Fase 3) ---
+ * - subscribe-to-board: Subscribe this conversation to real-time board events
+ * - unsubscribe-from-board: Cancel board event subscription
+ * - list-board-subscriptions: List active board subscriptions for this conversation
+ * - get-board-status: Get operational status of a board (agents, slots, workload)
+ * - stop-task: Send a cooperative stop signal to a running task
+ * --- Generic Event Subscriptions ---
+ * - subscribe-to-events: Subscribe this conversation to MCA events on a topic
+ * - unsubscribe-from-events: Delete a channel event subscription
+ * - list-event-subscriptions: List active event subscriptions for a channel
  */
 
-import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
+import { McaServer, healthIssue, notReady, ready } from '@teros/mca-sdk';
 import { disconnectWsClient, initializeWsClient, isWsConnected } from './lib';
 import {
   addProgressNote,
@@ -38,6 +51,7 @@ import {
   createProject,
   createTask,
   deleteTask,
+  deleteProject,
   getProject,
   getTask,
   getTaskDependencies,
@@ -49,7 +63,20 @@ import {
   removeTaskDependency,
   startTask,
   updateTask,
-  updateTaskStatus,
+  updateProject,
+  updateBoardConfig,
+  archiveTask,
+  archiveProject,
+  setAgentSlots,
+  setAgentPlay,
+  subscribeToBoard,
+  unsubscribeFromBoard,
+  listBoardSubscriptions,
+  subscribeToEvents,
+  unsubscribeFromEvents,
+  listEventSubscriptions,
+  getBoardStatus,
+  stopTask,
 } from './tools';
 
 // =============================================================================
@@ -59,7 +86,7 @@ import {
 const server = new McaServer({
   id: 'mca.teros.board-manager',
   name: 'Boards Manager',
-  version: '1.1.0',
+  version: '1.2.0',
 });
 
 // =============================================================================
@@ -73,15 +100,12 @@ server.tool('-health-check', {
     properties: {},
   },
   handler: async () => {
-    const builder = new HealthCheckBuilder().setVersion('1.1.0');
-
     if (isWsConnected()) {
-      builder.addCheck('backend_websocket', true, 'Connected');
-    } else {
-      builder.addCheck('backend_websocket', false, 'Not connected');
+      return ready('1.2.0');
     }
-
-    return builder.build();
+    return notReady(
+      healthIssue('DEPENDENCY_UNAVAILABLE', 'Backend WebSocket not connected'),
+    );
   },
 });
 
@@ -103,16 +127,45 @@ server.tool('create-project', createProject);
 server.tool('create-task', createTask);
 server.tool('batch-create-tasks', batchCreateTasks);
 server.tool('update-task', updateTask);
-server.tool('update-task-status', updateTaskStatus);
+server.tool('archive-task', archiveTask);
+server.tool('archive-project', archiveProject);
+server.tool('update-project', updateProject);
+server.tool('update-board-config', updateBoardConfig);
 server.tool('move-task', moveTask);
 server.tool('assign-task', assignTask);
 server.tool('start-task', startTask);
 server.tool('link-conversation', linkConversation);
 server.tool('add-progress-note', addProgressNote);
 server.tool('delete-task', deleteTask);
+server.tool('delete-project', deleteProject);
 server.tool('add-task-dependency', addTaskDependency);
 server.tool('remove-task-dependency', removeTaskDependency);
 server.tool('get-task-dependencies', getTaskDependencies);
+
+// =============================================================================
+// AUTOPLAY v2
+// =============================================================================
+
+server.tool('set-agent-slots', setAgentSlots);
+server.tool('set-agent-play', setAgentPlay);
+
+// =============================================================================
+// BOARD SUPERVISION (Fase 3)
+// =============================================================================
+
+server.tool('subscribe-to-board', subscribeToBoard);
+server.tool('unsubscribe-from-board', unsubscribeFromBoard);
+server.tool('list-board-subscriptions', listBoardSubscriptions);
+server.tool('get-board-status', getBoardStatus);
+server.tool('stop-task', stopTask);
+
+// =============================================================================
+// GENERIC EVENT SUBSCRIPTIONS
+// =============================================================================
+
+server.tool('subscribe-to-events', subscribeToEvents);
+server.tool('unsubscribe-from-events', unsubscribeFromEvents);
+server.tool('list-event-subscriptions', listEventSubscriptions);
 
 // =============================================================================
 // START

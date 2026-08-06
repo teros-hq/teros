@@ -1,23 +1,23 @@
 /**
  * Workspace Route - /workspace/[workspaceId]
  *
- * Abre la ventana de un workspace específico.
+ * Switches to the given workspace and redirects to the root route (/).
+ * This allows deep-linking to a specific workspace via URL.
  */
 
-import { useLocalSearchParams } from 'expo-router';
-import { useWindowLauncher } from '../../../../src/hooks';
-import { useWorkspaceReady } from '../../workspaceContext';
+import { Redirect, useLocalSearchParams } from 'expo-router';
+import { useEffect } from 'react';
+import { useWorkspaceStore } from '../../../../src/store/workspaceStore';
 
 export default function WorkspaceRoute() {
   const { workspaceId } = useLocalSearchParams<{ workspaceId: string }>();
-  const isReady = useWorkspaceReady();
+  const setActiveWorkspace = useWorkspaceStore((s) => s.setActiveWorkspace);
 
-  useWindowLauncher(
-    'workspace',
-    { workspaceId },
-    (props) => props.workspaceId === workspaceId,
-    isReady && !!workspaceId,
-  );
+  useEffect(() => {
+    if (workspaceId) {
+      setActiveWorkspace(workspaceId);
+    }
+  }, [workspaceId]);
 
-  return null;
+  return <Redirect href="/" />;
 }

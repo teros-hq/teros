@@ -1,0 +1,55 @@
+# packages/mca-testing/docker-compose.yml
+#
+# Isolated MCA testing environment. Runs a single MCA in its Docker
+# container with a mock backend on the host handling callbacks.
+#
+# Always run via bin/test-mca.sh which sets REPO_ROOT and project name.
+
+services:
+
+  # ── MCA Under Test ──────────────────────────────────────────────────────────
+  mca:
+    image: teros/mca-runtime:latest
+    volumes:
+      - ${REPO_ROOT:-.}/mcas/${MCA_ID:-mca.teros.core}:/app/mca:ro
+      - ${REPO_ROOT:-.}/packages:/app/packages:ro
+    environment:
+      MCA_TRANSPORT: http
+      MCA_HTTP_PORT: "3000"
+      MCA_CALLBACK_TOKEN: test-callback-token
+      NODE_ENV: test
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+    ports:
+      - "${MCA_PORT:-13000}:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - mca-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-4", "http://localhost:3000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 15
+      start_period: 10s
+
+  # ── Ephemeral Qdrant (for Memory MCA and others needing vector DB) ──────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    tmpfs:
+      - /qdrant/storage
+    ports:
+      - "${QDRANT_PORT:-6334}:6333"
+    networks:
+      - mca-test-network
+    profiles:
+      - qdrant
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+networks:
+  mca-test-network:
+    driver: bridge

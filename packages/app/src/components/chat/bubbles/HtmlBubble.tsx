@@ -1,11 +1,15 @@
-import { Check, Copy, ExternalLink, FileCode, Maximize2, Minimize2 } from '@tamagui/lucide-icons';
+import { Check, Copy, ExternalLink, FileCode, FileText, Maximize2, Minimize2 } from '@tamagui/lucide-icons';
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 // @ts-ignore - react-dom types not available but package is present
 import { createPortal } from 'react-dom';
 import { Platform, useWindowDimensions } from 'react-native';
 import WebView from 'react-native-webview';
 import { Button, Text, XStack, YStack } from 'tamagui';
+import { useColors, useMcaTheme } from '../../mca/primitives/useColors';
+import { colors as semanticColors } from '../../mca/primitives/colors';
+import i18n from '../../../i18n';
 import { useAuthStore } from '../../../store/authStore';
 import { useTilingStore } from '../../../store/tilingStore';
 import { SelectableText } from './shared';
@@ -18,10 +22,11 @@ import { SelectableText } from './shared';
 export function HtmlBubbleToolbar({
   onFullscreen,
   extraButton,
+  fullscreenLabel,
 }: {
   onFullscreen: () => void;
-  /** Optional button rendered to the left of the fullscreen button (e.g. Copy HTML or Open in FileViewer) */
   extraButton?: React.ReactNode;
+  fullscreenLabel?: string;
 }) {
   return (
     <div
@@ -35,7 +40,6 @@ export function HtmlBubbleToolbar({
       }}
     >
       {extraButton}
-      {/* Fullscreen button */}
       <button
         onClick={onFullscreen}
         style={{
@@ -53,7 +57,7 @@ export function HtmlBubbleToolbar({
         }}
         onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
         onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-        title="Fullscreen"
+        title={fullscreenLabel ?? 'Fullscreen'}
       >
         <Maximize2 size={16} color="white" />
       </button>
@@ -79,6 +83,9 @@ export function HtmlBubble({
   timestamp: Date;
   showTimestamp?: boolean;
 }) {
+  const { t } = useTranslation();
+  const c = useColors();
+  const isDark = useMcaTheme() === 'dark';
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState(height || 300);
@@ -116,11 +123,11 @@ export function HtmlBubble({
       padding: 0;
     }
     html, body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
       font-size: 14px;
       line-height: 1.5;
-      color: #e0e0e0;
-      background: #0f0f17;
+      color: ${isDark ? '#e0e0e0' : '#1A1A1F'};
+      background: ${isDark ? '#0f0f17' : '#E8E1D0'};
       overflow: auto;
       min-height: 100%;
     }
@@ -133,14 +140,14 @@ export function HtmlBubble({
       height: 8px;
     }
     ::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.05);
+      background: ${isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(10, 10, 15, 0.05)'};
     }
     ::-webkit-scrollbar-thumb {
-      background: rgba(255, 255, 255, 0.15);
+      background: ${isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(10, 10, 15, 0.15)'};
       border-radius: 4px;
     }
     ::-webkit-scrollbar-thumb:hover {
-      background: rgba(255, 255, 255, 0.25);
+      background: ${isDark ? 'rgba(255, 255, 255, 0.25)' : 'rgba(10, 10, 15, 0.25)'};
     }
   </style>
 </head>
@@ -165,7 +172,7 @@ ${html}
 </script>
 </body>
 </html>`;
-  }, [html]);
+  }, [html, isDark]);
 
   // Listen for resize messages from iframe
   useEffect(() => {
@@ -205,16 +212,16 @@ ${html}
           width={maxWidth}
           borderRadius="$4"
           overflow="hidden"
-          backgroundColor="#0f0f17"
+          backgroundColor={isDark ? '#0f0f17' : '#E8E1D0'}
           borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.3)"
+          borderColor="rgba(94, 106, 210, 0.3)"
         >
           <WebView
             source={{ html: fullHtml }}
             style={{
               width: maxWidth,
               height: displayHeight,
-              backgroundColor: '#0f0f17',
+              backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
             }}
             scrollEnabled={true}
             onMessage={(event) => {
@@ -229,14 +236,14 @@ ${html}
         </YStack>
 
         {caption && (
-          <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable>
+          <SelectableText color={c.text2} fontSize="$3" selectable>
             {caption}
           </SelectableText>
         )}
 
         {showTimestamp && (
-          <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-            {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          <SelectableText fontSize="$2" color={c.text3} selectable>
+            {timestamp.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
           </SelectableText>
         )}
       </YStack>
@@ -253,7 +260,7 @@ ${html}
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(232, 225, 208, 0.98)',
             zIndex: 99999,
             display: 'flex',
             flexDirection: 'column',
@@ -266,13 +273,13 @@ ${html}
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '12px 20px',
-              backgroundColor: 'rgba(20, 20, 30, 0.98)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: isDark ? 'rgba(20, 20, 30, 0.98)' : 'rgba(250, 247, 240, 0.98)',
+              borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(10, 10, 15, 0.1)'}`,
               flexShrink: 0,
             }}
           >
-            <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 14, fontWeight: 500 }}>
-              {caption || 'HTML Widget'}
+            <span style={{ color: c.text2, fontSize: 14, fontWeight: 500 }}>
+              {caption || t('conversation.htmlWidget')}
             </span>
             <button
               onClick={() => setIsFullscreen(false)}
@@ -281,17 +288,17 @@ ${html}
                 alignItems: 'center',
                 gap: 8,
                 padding: '8px 16px',
-                backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(10, 10, 15, 0.05)',
+                border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(10, 10, 15, 0.15)'}`,
                 borderRadius: 8,
-                color: 'white',
+                color: c.text,
                 cursor: 'pointer',
                 fontSize: 13,
                 fontFamily: 'inherit',
               }}
             >
-              <Minimize2 size={16} color="white" />
-              Exit Fullscreen (ESC)
+              <Minimize2 size={16} color={c.text} />
+              {t('conversation.exitFullscreen')}
             </button>
           </div>
 
@@ -300,10 +307,10 @@ ${html}
             style={{
               flex: 1,
               overflow: 'auto',
-              backgroundColor: '#0f0f17',
+              backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               margin: 20,
               borderRadius: 12,
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+              boxShadow: isDark ? '0 8px 32px rgba(0, 0, 0, 0.5)' : '0 4px 20px rgba(10, 10, 15, 0.14)',
             }}
           >
             <iframe
@@ -315,7 +322,7 @@ ${html}
                 minHeight: screenHeight - 120,
                 border: 'none',
                 display: 'block',
-                backgroundColor: '#0f0f17',
+                backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               }}
               title="HTML Widget Fullscreen"
             />
@@ -336,14 +343,15 @@ ${html}
           width={maxWidth}
           borderRadius="$4"
           overflow="hidden"
-          backgroundColor="#0f0f17"
+          backgroundColor={isDark ? '#0f0f17' : '#E8E1D0'}
           borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.3)"
+          borderColor="rgba(94, 106, 210, 0.3)"
           position="relative"
         >
           {/* Action buttons */}
           <HtmlBubbleToolbar
             onFullscreen={() => setIsFullscreen(true)}
+            fullscreenLabel={t('conversation.fullscreen')}
             extraButton={
               <button
                 onClick={handleCopyHtml}
@@ -353,7 +361,7 @@ ${html}
                   justifyContent: 'center',
                   width: 32,
                   height: 32,
-                  backgroundColor: copied ? 'rgba(34, 197, 94, 0.8)' : 'rgba(0, 0, 0, 0.6)',
+                  backgroundColor: copied ? 'rgba(34, 197, 94, 0.8)' : (isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(10, 10, 15, 0.1)'),
                   border: 'none',
                   borderRadius: 6,
                   cursor: 'pointer',
@@ -362,9 +370,9 @@ ${html}
                 }}
                 onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
                 onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-                title={copied ? 'Copied!' : 'Copy HTML'}
+                title={copied ? t('conversation.copiedHtml') : t('conversation.copyHtml')}
               >
-                {copied ? <Check size={16} color="white" /> : <Copy size={16} color="white" />}
+                {copied ? <Check size={16} color={c.text} /> : <Copy size={16} color={c.text} />}
               </button>
             }
           />
@@ -375,7 +383,7 @@ ${html}
               width: '100%',
               height: displayHeight,
               overflow: 'auto',
-              backgroundColor: '#0f0f17',
+              backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
             }}
           >
             <iframe
@@ -388,7 +396,7 @@ ${html}
                 minHeight: displayHeight,
                 border: 'none',
                 display: 'block',
-                backgroundColor: '#0f0f17',
+                backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               }}
               title="HTML Widget"
             />
@@ -396,14 +404,14 @@ ${html}
         </YStack>
 
         {caption && (
-          <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable>
+          <SelectableText color={c.text2} fontSize="$3" selectable>
             {caption}
           </SelectableText>
         )}
 
         {showTimestamp && (
-          <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-            {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          <SelectableText fontSize="$2" color={c.text3} selectable>
+            {timestamp.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
           </SelectableText>
         )}
       </YStack>
@@ -419,18 +427,23 @@ ${html}
 export function HtmlFileBubble({
   filePath,
   caption,
+  workspaceId,
   channelId,
   timestamp,
   showTimestamp = true,
 }: {
   filePath: string;
   caption?: string;
+  workspaceId?: string;
   channelId?: string;
   timestamp: Date;
   showTimestamp?: boolean;
 }) {
-  const openWindow = useTilingStore((s) => s.openWindow);
-  const sessionToken = useAuthStore((s) => s.sessionToken);
+  const { t } = useTranslation();
+  const c = useColors();
+  const isDark = useMcaTheme() === 'dark';
+  const openWindow = useTilingStore((s: any) => s.openWindow);
+  const sessionToken = useAuthStore((s: any) => s.sessionToken);
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const filename = filePath.split('/').pop() ?? filePath;
@@ -443,9 +456,12 @@ export function HtmlFileBubble({
 
   // Fetch file content from backend
   useEffect(() => {
-    if (!channelId || !sessionToken) return;
+    if ((!channelId && !workspaceId) || !sessionToken) return;
     const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL ?? '';
-    const url = `${backendUrl}/api/files?path=${encodeURIComponent(filePath)}&channelId=${encodeURIComponent(channelId)}`;
+    const contextParam = workspaceId
+      ? `workspaceId=${encodeURIComponent(workspaceId)}`
+      : `channelId=${encodeURIComponent(channelId!)}`;
+    const url = `${backendUrl}/api/files?path=${encodeURIComponent(filePath)}&${contextParam}`;
     fetch(url, { headers: { Authorization: `Bearer ${sessionToken}` } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -454,9 +470,9 @@ export function HtmlFileBubble({
       .then((text) => setHtmlContent(text))
       .catch((err) => {
         console.error('[HtmlFileBubble] Failed to fetch file:', err);
-        setFetchError(err.message ?? 'Error al cargar el fichero');
+        setFetchError(err.message ?? 'unknown');
       });
-  }, [filePath, channelId, sessionToken]);
+  }, [filePath, workspaceId, channelId, sessionToken]);
 
   // Build a complete sandboxed HTML document — same as HtmlBubble
   const fullHtml = useMemo(() => {
@@ -469,14 +485,14 @@ export function HtmlFileBubble({
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 14px; line-height: 1.5; color: #e0e0e0;
-      background: #0f0f17; overflow: auto; min-height: 100%;
+      font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+      font-size: 14px; line-height: 1.5; color: ${isDark ? '#e0e0e0' : '#1A1A1F'};
+      background: ${isDark ? '#0f0f17' : '#E8E1D0'}; overflow: auto; min-height: 100%;
     }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
-    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+    ::-webkit-scrollbar-track { background: ${isDark ? 'rgba(255,255,255,0.05)' : 'rgba(10,10,15,0.05)'}; }
+    ::-webkit-scrollbar-thumb { background: ${isDark ? 'rgba(255,255,255,0.15)' : 'rgba(10,10,15,0.15)'}; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: ${isDark ? 'rgba(255,255,255,0.25)' : 'rgba(10,10,15,0.25)'}; }
   </style>
 </head>
 <body>
@@ -492,7 +508,7 @@ ${htmlContent}
 </script>
 </body>
 </html>`;
-  }, [htmlContent]);
+  }, [htmlContent, isDark]);
 
   // Auto-resize listener (web)
   useEffect(() => {
@@ -516,10 +532,21 @@ ${htmlContent}
     return () => window.removeEventListener('keydown', onKey);
   }, [isFullscreen]);
 
+  // Detect markdown files — these get an extra "Open in Markdown Viewer" button
+  const isMarkdownFile = /\.(md|markdown)$/i.test(filePath);
+
   // Always open in a new tiling window; _ts prevents same-props dedup
   const handleOpenViewer = () => {
-    if (!channelId) return;
-    openWindow('file-viewer', { filePath, channelId, _ts: Date.now() }, true);
+    if (!channelId && !workspaceId) return;
+    setIsFullscreen(false);
+    openWindow('file-viewer', { filePath, channelId, workspaceId, _ts: Date.now() }, true);
+  };
+
+  const handleOpenMarkdownViewer = () => {
+    if (!channelId && !workspaceId) return;
+    setIsFullscreen(false);
+    // Deduplication is handled by the window registry via getKey = filePath
+    openWindow('markdown-viewer', { filePath, channelId, workspaceId }, false);
   };
 
   // ─── Native path ────────────────────────────────────────────────────────────
@@ -530,35 +557,44 @@ ${htmlContent}
           width="100%"
           borderRadius="$4"
           overflow="hidden"
-          backgroundColor="#0f0f17"
+          backgroundColor={isDark ? '#0f0f17' : '#E8E1D0'}
           borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.3)"
+          borderColor="rgba(94, 106, 210, 0.3)"
         >
           {/* File info strip */}
           <XStack
             padding="$2"
-            backgroundColor="rgba(255, 255, 255, 0.04)"
+            backgroundColor={isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(10, 10, 15, 0.04)'}
             borderBottomWidth={1}
-            borderBottomColor="rgba(255, 255, 255, 0.07)"
+            borderBottomColor={isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(10, 10, 15, 0.07)'}
             alignItems="center"
             gap="$2"
           >
-            <FileCode size={16} color="rgba(255, 255, 255, 0.7)" />
+            <FileCode size={16} color={c.text2} />
             <YStack flex={1} gap="$0.5" overflow="hidden">
-              <Text color="rgba(255, 255, 255, 0.75)" fontSize="$3" fontWeight="500" numberOfLines={1}>
+              <Text color={c.text2} fontSize="$3" fontWeight="500" numberOfLines={1}>
                 {filename}
               </Text>
-              <Text color="rgba(255, 255, 255, 0.3)" fontSize="$1" fontFamily="monospace" numberOfLines={1}>
+              <Text color={c.text3} fontSize="$1" fontFamily="$mono" numberOfLines={1}>
                 {filePath}
               </Text>
             </YStack>
-            {channelId && (
+            {channelId && isMarkdownFile && (
+              <Button
+                size="$2"
+                chromeless
+                onPress={handleOpenMarkdownViewer}
+                pressStyle={{ opacity: 0.7 }}
+                icon={<FileText size={14} color="rgba(94,106,210,0.8)" />}
+              />
+            )}
+            {channelId && !isMarkdownFile && (
               <Button
                 size="$2"
                 chromeless
                 onPress={handleOpenViewer}
                 pressStyle={{ opacity: 0.7 }}
-                icon={<ExternalLink size={14} color="rgba(255,255,255,0.6)" />}
+                icon={<ExternalLink size={14} color={c.text2} />}
               />
             )}
           </XStack>
@@ -566,16 +602,16 @@ ${htmlContent}
           {/* Content area */}
           {fetchError ? (
             <XStack padding="$3" alignItems="center" gap="$2">
-              <Text color="rgba(239,68,68,0.8)" fontSize="$2">⚠ {fetchError}</Text>
+              <Text color="rgba(239,68,68,0.8)" fontSize="$2">⚠ {t('conversation.couldNotLoadFile', { error: fetchError })}</Text>
             </XStack>
           ) : !htmlContent ? (
             <XStack padding="$3" alignItems="center" justifyContent="center">
-              <Text color="rgba(255,255,255,0.3)" fontSize="$2">Cargando…</Text>
+              <Text color={c.text3} fontSize="$2">{t('conversation.loadingFile')}</Text>
             </XStack>
           ) : (
             <WebView
               source={{ html: fullHtml }}
-              style={{ width: maxWidth, height: iframeHeight, backgroundColor: '#0f0f17' }}
+              style={{ width: maxWidth, height: iframeHeight, backgroundColor: isDark ? '#0f0f17' : '#E8E1D0' }}
               scrollEnabled={true}
               onMessage={(event) => {
                 try {
@@ -588,13 +624,13 @@ ${htmlContent}
         </YStack>
 
         {caption && (
-          <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable>
+          <SelectableText color={c.text2} fontSize="$3" selectable>
             {caption}
           </SelectableText>
         )}
         {showTimestamp && (
-          <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-            {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          <SelectableText fontSize="$2" color={c.text3} selectable>
+            {timestamp.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
           </SelectableText>
         )}
       </YStack>
@@ -611,7 +647,7 @@ ${htmlContent}
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.95)',
+            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.95)' : 'rgba(232, 225, 208, 0.98)',
             zIndex: 99999,
             display: 'flex',
             flexDirection: 'column',
@@ -624,19 +660,40 @@ ${htmlContent}
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '12px 20px',
-              backgroundColor: 'rgba(20, 20, 30, 0.98)',
-              borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+              backgroundColor: isDark ? 'rgba(20, 20, 30, 0.98)' : 'rgba(250, 247, 240, 0.98)',
+              borderBottom: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(10, 10, 15, 0.1)'}`,
               flexShrink: 0,
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <FileCode size={16} color="rgba(255, 255, 255, 0.7)" />
-              <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontSize: 14, fontWeight: 500 }}>
+              <FileCode size={16} color={c.text2} />
+              <span style={{ color: c.text2, fontSize: 14, fontWeight: 500 }}>
                 {filename}
               </span>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {channelId && (
+              {channelId && isMarkdownFile && (
+                <button
+                  onClick={handleOpenMarkdownViewer}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 16px',
+                    backgroundColor: 'rgba(94, 106, 210, 0.2)',
+                    border: '1px solid rgba(94, 106, 210, 0.4)',
+                    borderRadius: 8,
+                    color: c.text,
+                    cursor: 'pointer',
+                    fontSize: 13,
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <FileText size={16} color={c.text} />
+                  {t('conversation.openInMarkdownViewer')}
+                </button>
+              )}
+              {channelId && !isMarkdownFile && (
                 <button
                   onClick={handleOpenViewer}
                   style={{
@@ -644,17 +701,17 @@ ${htmlContent}
                     alignItems: 'center',
                     gap: 8,
                     padding: '8px 16px',
-                    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(10, 10, 15, 0.05)',
+                    border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(10, 10, 15, 0.15)'}`,
                     borderRadius: 8,
-                    color: 'white',
+                    color: c.text,
                     cursor: 'pointer',
                     fontSize: 13,
                     fontFamily: 'inherit',
                   }}
                 >
-                  <ExternalLink size={16} color="white" />
-                  Abrir en FileViewer
+                  <ExternalLink size={16} color={c.text} />
+                  {t('conversation.openInFileViewer')}
                 </button>
               )}
               <button
@@ -664,17 +721,17 @@ ${htmlContent}
                   alignItems: 'center',
                   gap: 8,
                   padding: '8px 16px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(10, 10, 15, 0.05)',
+                  border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(10, 10, 15, 0.15)'}`,
                   borderRadius: 8,
-                  color: 'white',
+                  color: c.text,
                   cursor: 'pointer',
                   fontSize: 13,
                   fontFamily: 'inherit',
                 }}
               >
-                <Minimize2 size={16} color="white" />
-                Exit Fullscreen (ESC)
+                <Minimize2 size={16} color={c.text} />
+                {t('conversation.exitFullscreen')}
               </button>
             </div>
           </div>
@@ -684,10 +741,10 @@ ${htmlContent}
             style={{
               flex: 1,
               overflow: 'auto',
-              backgroundColor: '#0f0f17',
+              backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               margin: 20,
               borderRadius: 12,
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+              boxShadow: isDark ? '0 8px 32px rgba(0, 0, 0, 0.5)' : '0 4px 20px rgba(10, 10, 15, 0.14)',
             }}
           >
             <iframe
@@ -699,7 +756,7 @@ ${htmlContent}
                 minHeight: screenHeight - 120,
                 border: 'none',
                 display: 'block',
-                backgroundColor: '#0f0f17',
+                backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               }}
               title={`HTML File Fullscreen: ${filename}`}
             />
@@ -719,59 +776,84 @@ ${htmlContent}
           width={maxWidth}
           borderRadius="$4"
           overflow="hidden"
-          backgroundColor="#0f0f17"
+          backgroundColor={isDark ? '#0f0f17' : '#E8E1D0'}
           borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.3)"
+          borderColor="rgba(94, 106, 210, 0.3)"
           position="relative"
         >
           {/* File info strip — sits above the iframe, below the floating toolbar */}
           <XStack
             padding="$2"
             paddingRight={80}
-            backgroundColor="rgba(255, 255, 255, 0.04)"
+            backgroundColor={isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(10, 10, 15, 0.04)'}
             borderBottomWidth={1}
-            borderBottomColor="rgba(255, 255, 255, 0.07)"
+            borderBottomColor={isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(10, 10, 15, 0.07)'}
             alignItems="center"
             gap="$2"
             overflow="hidden"
           >
-            <FileCode size={16} color="rgba(255, 255, 255, 0.7)" />
+            <FileCode size={16} color={c.text2} />
             <YStack flex={1} gap="$0.5" overflow="hidden">
-              <Text color="rgba(255, 255, 255, 0.75)" fontSize="$3" fontWeight="500" numberOfLines={1}>
+              <Text color={c.text2} fontSize="$3" fontWeight="500" numberOfLines={1}>
                 {filename}
               </Text>
-              <Text color="rgba(255, 255, 255, 0.3)" fontSize="$1" fontFamily="monospace" numberOfLines={1}>
+              <Text color={c.text3} fontSize="$1" fontFamily="$mono" numberOfLines={1}>
                 {filePath}
               </Text>
             </YStack>
           </XStack>
 
-          {/* Floating action buttons — identical to HtmlBubble, ExternalLink instead of Copy */}
+          {/* Floating action buttons — ExternalLink for HTML, FileText for Markdown */}
           <HtmlBubbleToolbar
             onFullscreen={() => setIsFullscreen(true)}
+            fullscreenLabel={t('conversation.fullscreen')}
             extraButton={
               channelId ? (
-                <button
-                  onClick={handleOpenViewer}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: 32,
-                    height: 32,
-                    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                    border: 'none',
-                    borderRadius: 6,
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'opacity 0.2s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
-                  title="Abrir en FileViewer"
-                >
-                  <ExternalLink size={16} color="white" />
-                </button>
+                isMarkdownFile ? (
+                  <button
+                    onClick={handleOpenMarkdownViewer}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      backgroundColor: 'rgba(94, 106, 210, 0.5)',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      opacity: 0.8,
+                      transition: 'opacity 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.8')}
+                    title={t('conversation.openInMarkdownViewer')}
+                  >
+                    <FileText size={16} color={c.text} />
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleOpenViewer}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 32,
+                      height: 32,
+                      backgroundColor: isDark ? 'rgba(0, 0, 0, 0.6)' : 'rgba(10, 10, 15, 0.1)',
+                      border: 'none',
+                      borderRadius: 6,
+                      cursor: 'pointer',
+                      opacity: 0.7,
+                      transition: 'opacity 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.7')}
+                    title={t('conversation.openInFileViewer')}
+                  >
+                    <ExternalLink size={16} color={c.text} />
+                  </button>
+                )
               ) : undefined
             }
           />
@@ -780,7 +862,7 @@ ${htmlContent}
           {fetchError ? (
             <XStack padding="$3" backgroundColor="rgba(239,68,68,0.06)" alignItems="center" gap="$2">
               <Text color="rgba(239,68,68,0.8)" fontSize="$2">
-                ⚠ No se pudo cargar el fichero: {fetchError}
+                ⚠ {t('conversation.couldNotLoadFile', { error: fetchError })}
               </Text>
             </XStack>
           ) : !htmlContent ? (
@@ -788,10 +870,10 @@ ${htmlContent}
               padding="$3"
               alignItems="center"
               justifyContent="center"
-              backgroundColor="rgba(255,255,255,0.02)"
+              backgroundColor={isDark ? 'rgba(255,255,255,0.02)' : 'rgba(10,10,15,0.02)'}
             >
-              <Text color="rgba(255,255,255,0.3)" fontSize="$2">
-                Cargando…
+              <Text color={c.text3} fontSize="$2">
+                {t('conversation.loadingFile')}
               </Text>
             </XStack>
           ) : (
@@ -800,7 +882,7 @@ ${htmlContent}
                 width: '100%',
                 height: iframeHeight,
                 overflow: 'auto',
-                backgroundColor: '#0f0f17',
+                backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
               }}
             >
               <iframe
@@ -812,7 +894,7 @@ ${htmlContent}
                   minHeight: iframeHeight,
                   border: 'none',
                   display: 'block',
-                  backgroundColor: '#0f0f17',
+                  backgroundColor: isDark ? '#0f0f17' : '#E8E1D0',
                 }}
                 title={`HTML File: ${filename}`}
               />
@@ -821,13 +903,13 @@ ${htmlContent}
         </YStack>
 
         {caption && (
-          <SelectableText color="rgba(255, 255, 255, 0.7)" fontSize="$3" selectable>
+          <SelectableText color={c.text2} fontSize="$3" selectable>
             {caption}
           </SelectableText>
         )}
         {showTimestamp && (
-          <SelectableText fontSize="$2" color="rgba(255, 255, 255, 0.4)" selectable>
-            {timestamp.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+          <SelectableText fontSize="$2" color={c.text3} selectable>
+            {timestamp.toLocaleTimeString(i18n.language, { hour: '2-digit', minute: '2-digit' })}
           </SelectableText>
         )}
       </YStack>

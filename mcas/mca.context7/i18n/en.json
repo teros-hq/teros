@@ -1,0 +1,33 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies Context7 API key presence and connectivity."
+    },
+    "resolve-library": {
+      "name": "resolve-library",
+      "description": "Resolve a Context7 library identifier from a free-text name (e.g. \"react\" → \"/reactjs/react.dev\"). Returns ranked candidates with reputation and snippet count. Cache: 7d. Use the chosen `id` as `libraryId` for `get-docs`.",
+      "params": {
+        "libraryName": "Library name to resolve (e.g. \"react\", \"tamagui\")",
+        "query": "Optional refinement query (e.g. \"hooks\", \"router\")"
+      }
+    },
+    "get-docs": {
+      "name": "get-docs",
+      "description": "Fetch up-to-date documentation snippets for a Context7-resolved libraryId. Returns array of {title, source, description, code, language}. Use `resolve-library` first to get the libraryId.",
+      "params": {
+        "libraryId": "Context7-compatible library id (e.g. \"/reactjs/react.dev\"). Get it from `resolve-library`.",
+        "query": "Topic or question (e.g. \"useEffect cleanup\", \"router hooks\")",
+        "format": "Response format from Context7 (default: json)",
+        "limit": "Max snippets to return (default 10, max 30)"
+      }
+    }
+  },
+  "name": "Context7",
+  "description": "Up-to-date library and framework documentation via Context7 (Upstash). Resolves library identifiers and fetches structured doc snippets with code examples.",
+  "changelog": [
+    {
+      "notes": "Initial release — find software libraries by name and fetch up-to-date documentation snippets with real code examples"
+    }
+  ]
+}

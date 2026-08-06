@@ -1,0 +1,180 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity."
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "List files and folders in Google Drive. Supports filtering by folder, file type, and search query.",
+      "params": {
+        "folderId": "Optional: List files within a specific folder (use folder ID)",
+        "query": "Optional: filename match (Drive `name contains`: prefix/token, e.g. 'Hello' matches 'HelloWorld' but 'World' does not). NOT a raw Drive query — for owner/date/fullText filters use `driveQuery`.",
+        "pageSize": "Optional: Number of results to return (default: 10, max: 100)",
+        "mimeType": "Optional: Filter by MIME type (e.g., 'application/pdf', 'application/vnd.google-apps.folder')",
+        "driveQuery": "Optional advanced: a raw Google Drive API v3 query clause, AND-ed with the other filters. Use for filters `query` can't express, e.g. \"not 'me' in owners\", \"modifiedTime > '2024-01-01T00:00:00'\", \"fullText contains 'budget'\". Inside a literal, escape a single quote as \\' (Drive syntax, NOT '' ) — for a plain filename match prefer the `query` param, which escapes for you."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "Get detailed information about a specific file or folder.",
+      "params": {
+        "fileId": "The ID of the file or folder to get information about"
+      }
+    },
+    "download-file": {
+      "name": "download-file",
+      "description": "Download a file from Google Drive.",
+      "params": {
+        "fileId": "The ID of the file to download",
+        "outputPath": "Optional: Local path to save the file (default: current directory)"
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "Upload a local file to Google Drive. By default the file is stored as-is with its real type. Pass convertTo to import it as a native Google file (e.g. an HTML/Word file → editable Google Doc).",
+      "params": {
+        "filePath": "Local path of the file to upload",
+        "parentFolderId": "Optional: ID of the folder to upload to (default: root)",
+        "fileName": "Optional: Custom name for the file (default: original filename)",
+        "convertTo": "Optional: convert the upload into a native Google file. \"document\" (e.g. from HTML/Word/Markdown) → editable Google Doc; \"spreadsheet\" (from CSV/Excel) → Google Sheet; \"presentation\" (from PPTX) → Google Slides. Omit to keep the original format."
+      }
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "Create a native, editable Google Doc from text content. Pass the body as HTML (default, best formatting), Markdown, or plain text — Drive converts it into a real Google Doc, NOT an .html file. Use this to author documents; use upload-file only for existing local files.",
+      "params": {
+        "title": "Title (file name) of the new Google Doc",
+        "content": "The document body. Interpreted according to contentType.",
+        "contentType": "How to interpret content: \"html\" (default, richest formatting), \"markdown\", or \"text\" (plain). Drive converts it to a native Google Doc.",
+        "parentFolderId": "Optional: ID of the folder to create the doc in (default: root)"
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "Create a new folder in Google Drive.",
+      "params": {
+        "name": "Name of the folder to create",
+        "parentFolderId": "Optional: ID of the parent folder (default: root)"
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Delete a file or folder from Google Drive.",
+      "params": {
+        "fileId": "The ID of the file or folder to delete"
+      }
+    },
+    "share-file": {
+      "name": "share-file",
+      "description": "Share a file or folder with specific permissions.",
+      "params": {
+        "fileId": "The ID of the file or folder to share",
+        "emailAddress": "Email address to share with",
+        "role": "Permission role (default: reader)"
+      }
+    },
+    "search-files": {
+      "name": "search-files",
+      "description": "Search for files in Google Drive by name, content, or properties.",
+      "params": {
+        "searchTerm": "Filename match (Drive `name contains`: prefix/token, not substring). For advanced filters (owners, dates, fullText) use the list-files `driveQuery` parameter.",
+        "mimeType": "Optional: Filter by MIME type",
+        "maxResults": "Maximum number of results (default: 20)"
+      }
+    },
+    "move-file": {
+      "name": "move-file",
+      "description": "Move a file or folder to a different location in Google Drive.",
+      "params": {
+        "fileId": "ID of the file/folder to move",
+        "newParentId": "ID of the destination folder"
+      }
+    },
+    "copy-file": {
+      "name": "copy-file",
+      "description": "Create a copy of a file in Google Drive.",
+      "params": {
+        "fileId": "ID of the file to copy",
+        "name": "Optional: Name for the copy",
+        "parentFolderId": "Optional: Copy to specific folder"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "Get the plain-text content of a Google Doc or text file. Does NOT extract text from binary files (PDF, Word, etc.) — for those, download the file and use the file-processor \"file-to-markdown\" tool.",
+      "params": {
+        "fileId": "ID of the file to read",
+        "mimeType": "Optional: Export MIME type for Google Docs (e.g., 'text/plain', 'text/html')"
+      }
+    },
+    "list-comments": {
+      "name": "list-comments",
+      "description": "List all comments on a file.",
+      "params": {
+        "fileId": "ID of the file",
+        "includeDeleted": "Optional: Include deleted comments (default: false)",
+        "pageSize": "Optional: Maximum number of comments to return (default: 100)"
+      }
+    },
+    "get-comment": {
+      "name": "get-comment",
+      "description": "Get a specific comment by ID.",
+      "params": {
+        "fileId": "ID of the file",
+        "commentId": "ID of the comment"
+      }
+    },
+    "create-comment": {
+      "name": "create-comment",
+      "description": "Create a comment on a file.",
+      "params": {
+        "fileId": "ID of the file to comment on",
+        "content": "The text content of the comment"
+      }
+    },
+    "update-comment": {
+      "name": "update-comment",
+      "description": "Update the content of a comment.",
+      "params": {
+        "fileId": "ID of the file",
+        "commentId": "ID of the comment to update",
+        "content": "New content for the comment"
+      }
+    },
+    "delete-comment": {
+      "name": "delete-comment",
+      "description": "Delete a comment.",
+      "params": {
+        "fileId": "ID of the file",
+        "commentId": "ID of the comment to delete"
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "Create a reply to a comment. Can also be used to resolve a comment.",
+      "params": {
+        "fileId": "ID of the file",
+        "commentId": "ID of the comment to reply to",
+        "content": "The reply text content",
+        "action": "Optional: Action to perform. Use 'resolve' to resolve the comment."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "List all replies to a comment.",
+      "params": {
+        "fileId": "ID of the file",
+        "commentId": "ID of the comment",
+        "pageSize": "Optional: Maximum number of replies to return (default: 100)"
+      }
+    }
+  },
+  "name": "Google Drive",
+  "description": "Manage Google Drive files and folders - upload, download, share, search, read content",
+  "changelog": [
+    {
+      "notes": "Initial release — browse, upload, share and organize Drive files, read Sheets and Slides, and edit Docs"
+    }
+  ]
+}

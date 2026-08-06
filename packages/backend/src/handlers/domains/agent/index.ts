@@ -8,6 +8,7 @@
  *   agent.delete              → Delete an agent instance
  *   agent.generate-profile    → Generate a unique agent profile via LLM
  *   agent.list-cores          → List available agent cores (engines)
+ *   agent.create-core         → Create a new agent core (engine)
  *   agent.update-core         → Update an agent core configuration
  *   agent.get-apps            → Get apps an agent has access to
  *   agent.list-providers      → List providers available for an agent
@@ -19,8 +20,10 @@ import type { Db } from 'mongodb'
 import type { WsRouter } from '../../../ws-framework/WsRouter'
 import { ModelService } from '../../../services/model-service'
 import { McaService } from '../../../services/mca-service'
+import { AgentProvisioningService } from '../../../services/agent-provisioning-service'
 import type { ProviderService } from '../../../services/provider-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 import { createListAgentsHandler } from './list'
 import { createCreateAgentHandler } from './create'
@@ -28,6 +31,7 @@ import { createUpdateAgentHandler } from './update'
 import { createDeleteAgentHandler } from './delete'
 import { createGenerateProfileHandler } from './generate-profile'
 import { createListCoresHandler } from './list-cores'
+import { createCreateCoreHandler } from './create-core'
 import { createUpdateCoreHandler } from './update-core'
 import { createGetAppsHandler } from './get-apps'
 import { createListProvidersHandler } from './list-providers'
@@ -38,22 +42,30 @@ export interface AgentDomainDeps {
   db: Db
   providerService: ProviderService
   workspaceService?: WorkspaceService | null
+  modelService?: ModelService | null
+  mcaService?: McaService | null
+  pubSubService?: PubSubService | null
 }
 
 export function register(router: WsRouter, deps: AgentDomainDeps): void {
-  const { db, providerService, workspaceService } = deps
+  const { db, providerService, workspaceService, pubSubService } = deps
 
-  const modelService = new ModelService(db)
-  const mcaService = new McaService(db)
+  const modelService = deps.modelService ?? new ModelService(db)
+  const mcaService = deps.mcaService ?? new McaService(db)
+  const provisioningService = new AgentProvisioningService(db, mcaService)
 
   router.register('agent.list', createListAgentsHandler(db, workspaceService))
-  router.register('agent.create', createCreateAgentHandler(db, workspaceService))
-  router.register('agent.update', createUpdateAgentHandler(db))
-  router.register('agent.delete', createDeleteAgentHandler(db))
+  router.register(
+    'agent.create',
+    createCreateAgentHandler(provisioningService, workspaceService, pubSubService),
+  )
+  router.register('agent.update', createUpdateAgentHandler(db, pubSubService))
+  router.register('agent.delete', createDeleteAgentHandler(db, pubSubService))
   router.register('agent.generate-profile', createGenerateProfileHandler(db, providerService))
   router.register('agent.list-cores', createListCoresHandler(db, modelService))
+  router.register('agent.create-core', createCreateCoreHandler(db, modelService))
   router.register('agent.update-core', createUpdateCoreHandler(db, modelService))
-  router.register('agent.get-apps', createGetAppsHandler(mcaService))
+  router.register('agent.get-apps', createGetAppsHandler(mcaService, db))
   router.register('agent.list-providers', createListProvidersHandler(db))
   router.register('agent.set-providers', createSetProvidersHandler(db))
   router.register('agent.set-preferred-provider', createSetPreferredProviderHandler(db))

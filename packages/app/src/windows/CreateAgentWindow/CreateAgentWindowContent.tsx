@@ -3,6 +3,14 @@
  *
  * Shows role templates grid. When user selects a role,
  * creates the agent and replaces this window with the agent config.
+ *
+ * Migrated to the Design System:
+ * - Uses `useColors()` for theme-adaptive surface/border/text tokens.
+ * - Uses `semanticColors` for the error accent (red) and custom-agent link (violet).
+ * - Uses `isDark` to switch dark-only rgba values to light equivalents.
+ * - Per-role brand colors (`template.color`) are theme-agnostic identity colors
+ *   and remain as-is, consistent with the semantic palette approach.
+ * - Uses Tamagui `Text`, `XStack`, `YStack` for layout and typography.
  */
 
 import {
@@ -12,7 +20,6 @@ import {
   Code,
   FileText,
   Headphones,
-  type LucideIcon,
   Megaphone,
   Palette,
   Server,
@@ -22,13 +29,20 @@ import {
   Workflow,
 } from "@tamagui/lucide-icons"
 import React, { useEffect, useState } from "react"
+
+// Local type for lucide icon components (tamagui no longer exports this)
+type LucideIcon = React.ComponentType<{ size?: number; color?: string }>
+import { useTranslation } from 'react-i18next'
 import { ScrollView } from "react-native"
 import { Text, XStack, YStack } from "tamagui"
-import { getTerosClient } from "../../../app/_layout"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { track } from "../../lib/analytics"
 import { AppSpinner } from "../../components/ui"
 import { generateRandomPersonality } from "../../data/agentPersonalities"
 import { useNavbarStore } from "../../store/navbarStore"
 import { useTilingStore } from "../../store/tilingStore"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { colors as semanticColors, surface } from "../../components/mca/primitives/colors"
 
 // ============================================================================
 // AGENT ROLE TEMPLATES
@@ -256,17 +270,18 @@ I can help with:
 // COMPONENT
 // ============================================================================
 
-const DEFAULT_CORE_ID = "iria"
-
 interface Props {
   windowId: string
   workspaceId?: string
 }
 
 export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
+  const { t } = useTranslation()
   const client = getTerosClient()
   const { replaceWindow, closeWindow } = useTilingStore()
   const { addAgent } = useNavbarStore()
+  const c = useColors()
+  const isDark = c.bgPage === surface.dark.bgPage
 
   const [creating, setCreating] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -294,9 +309,8 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
       // Generate random personality (name + avatar)
       const personality = generateRandomPersonality(existingNames)
 
-      // Create the agent
+      // Create the agent (core assigned server-side by scope)
       const createdAgent = await client.createAgent({
-        coreId: DEFAULT_CORE_ID,
         name: personality.firstName,
         fullName: personality.fullName,
         role: template.role,
@@ -304,6 +318,12 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
         avatarUrl: personality.avatar,
         workspaceId,
         context: template.responseStyle,
+      })
+
+      track("agent_created", {
+        agentId: createdAgent.agentId,
+        role: template.role,
+        ...(workspaceId ? { workspaceId } : {}),
       })
 
       // Add to navbar
@@ -322,7 +342,7 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
       })
     } catch (err: any) {
       console.error("Failed to create agent:", err)
-      setError(err.message || "Failed to create agent")
+      setError(err.message || t("agent.failedToCreateAgent"))
       setCreating(null)
     }
   }
@@ -334,27 +354,27 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
   }
 
   return (
-    <YStack flex={1} backgroundColor="#0a0a0b">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16 }}>
         <Text
           fontSize={11}
-          color="#666"
+          color={c.text3}
           marginBottom={16}
           fontWeight="600"
           textTransform="uppercase"
           letterSpacing={0.5}
         >
-          Elige un rol para tu agente
+          {t("agent.selectEngineSubtitle")}
         </Text>
 
         {error && (
           <XStack
-            backgroundColor="rgba(239, 68, 68, 0.1)"
+            backgroundColor={isDark ? "rgba(239, 68, 68, 0.1)" : semanticColors.red + "1A"}
             padding={12}
             borderRadius={8}
             marginBottom={16}
           >
-            <Text color="#EF4444" fontSize={13}>
+            <Text color={semanticColors.red} fontSize={13}>
               {error}
             </Text>
           </XStack>
@@ -373,14 +393,14 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
                 padding={12}
                 gap={10}
                 alignItems="center"
-                backgroundColor="rgba(113, 113, 122, 0.1)"
+                backgroundColor={isDark ? "rgba(113, 113, 122, 0.1)" : c.bgInner}
                 borderRadius={8}
                 borderWidth={1}
-                borderColor="rgba(113, 113, 122, 0.2)"
+                borderColor={c.border}
                 cursor={creating ? "default" : "pointer"}
                 opacity={creating && !isCreating ? 0.5 : 1}
-                hoverStyle={!creating ? { backgroundColor: "rgba(113, 113, 122, 0.15)" } : {}}
-                pressStyle={!creating ? { backgroundColor: "rgba(113, 113, 122, 0.2)" } : {}}
+                hoverStyle={!creating ? { backgroundColor: isDark ? "rgba(113, 113, 122, 0.15)" : c.bgCardHover } : {}}
+                pressStyle={!creating ? { backgroundColor: isDark ? "rgba(113, 113, 122, 0.2)" : c.bgCardHover } : {}}
                 onPress={() => handleSelectRole(template)}
                 disabled={!!creating}
               >
@@ -399,11 +419,11 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
                   )}
                 </XStack>
                 <YStack flex={1}>
-                  <Text color="#F4F4F5" fontSize={13} fontWeight="600">
-                    {template.name}
+                  <Text color={c.text} fontSize={13} fontWeight="600">
+                    {t(`agent.roles.${template.id}`)}
                   </Text>
-                  <Text color="#71717A" fontSize={11}>
-                    {template.description}
+                  <Text color={c.text3} fontSize={11}>
+                    {t(`agent.roles.${template.id}Desc`)}
                   </Text>
                 </YStack>
               </XStack>
@@ -414,14 +434,14 @@ export function CreateAgentWindowContent({ windowId, workspaceId }: Props) {
         {/* Custom option */}
         <XStack justifyContent="center" marginTop={20} paddingVertical={8}>
           <Text
-            color="#8B5CF6"
+            color={semanticColors.violet}
             fontSize={13}
             cursor={creating ? "default" : "pointer"}
             opacity={creating ? 0.5 : 1}
             hoverStyle={!creating ? { opacity: 0.8 } : {}}
             onPress={handleCustom}
           >
-            O crea un agente personalizado...
+            {t("agent.createAgent")}
           </Text>
         </XStack>
       </ScrollView>

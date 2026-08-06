@@ -1,0 +1,126 @@
+{
+  "name": "Google Contacts",
+  "description": "Gestiona Google Contacts: lista, busca, crea, actualiza y elimina contactos, y organízalos en grupos y etiquetas",
+  "changelog": [
+    {
+      "notes": "Versión inicial — listar, buscar, crear, actualizar y eliminar contactos, más organizarlos en grupos y etiquetas"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de Google y la conectividad con la API de Contacts."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Lista los contactos de Google Contacts. Devuelve nombre, email y números de teléfono. Soporta paginación.",
+      "params": {
+        "pageSize": "Número de contactos por página (por defecto: 100, máximo: 1000)",
+        "pageToken": "Token de paginación (de la respuesta anterior)"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "Obtiene un contacto específico por su resource name.",
+      "params": {
+        "resourceName": "Resource name del contacto (ej., 'people/c123456789')"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "Busca contactos por consulta de texto.",
+      "params": {
+        "query": "Consulta de búsqueda (nombre, email, teléfono, etc.)",
+        "pageSize": "Número de resultados por página (por defecto: 30, máximo: 30)"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "Crea un nuevo contacto.",
+      "params": {
+        "givenName": "Nombre",
+        "familyName": "Apellidos",
+        "email": "Dirección de email",
+        "phone": "Número de teléfono",
+        "organization": "Nombre de empresa/organización",
+        "title": "Cargo",
+        "notes": "Notas/biografía"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "Actualiza un contacto existente.",
+      "params": {
+        "resourceName": "Resource name del contacto (ej., 'people/c123456789')",
+        "givenName": "Nombre",
+        "familyName": "Apellidos",
+        "email": "Dirección de email",
+        "phone": "Número de teléfono",
+        "organization": "Nombre de empresa/organización",
+        "title": "Cargo"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "Elimina un contacto.",
+      "params": {
+        "resourceName": "Resource name del contacto (ej., 'people/c123456789')"
+      }
+    },
+    "list-contact-groups": {
+      "name": "list-contact-groups",
+      "description": "Lista todos los grupos de contactos (etiquetas) de Google Contacts. Devuelve el nombre del grupo, el número de miembros y el tipo.",
+      "params": {
+        "pageSize": "Número máximo de grupos a devolver (por defecto: 100, máximo: 1000)",
+        "pageToken": "Token de paginación (de la respuesta anterior)"
+      }
+    },
+    "get-contact-group": {
+      "name": "get-contact-group",
+      "description": "Obtiene información detallada sobre un grupo de contactos específico, incluyendo sus miembros.",
+      "params": {
+        "resourceName": "Resource name del grupo de contactos (ej., 'contactGroups/abc123')",
+        "maxMembers": "Número máximo de miembros a devolver (por defecto: 100, máximo: 1000)"
+      }
+    },
+    "create-contact-group": {
+      "name": "create-contact-group",
+      "description": "Crea un nuevo grupo de contactos (etiqueta) en Google Contacts.",
+      "params": {
+        "name": "Nombre del grupo de contactos (debe ser único)"
+      }
+    },
+    "update-contact-group": {
+      "name": "update-contact-group",
+      "description": "Actualiza un grupo de contactos existente (lo renombra).",
+      "params": {
+        "resourceName": "Resource name del grupo de contactos (ej., 'contactGroups/abc123')",
+        "name": "Nuevo nombre del grupo de contactos"
+      }
+    },
+    "delete-contact-group": {
+      "name": "delete-contact-group",
+      "description": "Elimina un grupo de contactos. Esto NO elimina los contactos del grupo, solo el grupo en sí.",
+      "params": {
+        "resourceName": "Resource name del grupo de contactos (ej., 'contactGroups/abc123')",
+        "deleteContacts": "Si es true, también elimina los contactos del grupo (por defecto: false)"
+      }
+    },
+    "add-contacts-to-group": {
+      "name": "add-contacts-to-group",
+      "description": "Añade uno o más contactos a un grupo de contactos.",
+      "params": {
+        "resourceName": "Resource name del grupo de contactos (ej., 'contactGroups/abc123')",
+        "contactResourceNames": "Array de resource names de contactos a añadir (ej., ['people/c123', 'people/c456'])"
+      }
+    },
+    "remove-contacts-from-group": {
+      "name": "remove-contacts-from-group",
+      "description": "Elimina uno o más contactos de un grupo de contactos.",
+      "params": {
+        "resourceName": "Resource name del grupo de contactos (ej., 'contactGroups/abc123')",
+        "contactResourceNames": "Array de resource names de contactos a eliminar (ej., ['people/c123', 'people/c456'])"
+      }
+    }
+  }
+}

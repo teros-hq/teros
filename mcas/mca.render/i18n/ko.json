@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 헬스 체크 도구. Render API 키와 연결성을 확인합니다."
+    },
+    "render-get-user": {
+      "name": "render-get-user",
+      "description": "인증된 Render 사용자 정보를 가져옵니다."
+    },
+    "render-list-owners": {
+      "name": "render-list-owners",
+      "description": "인증된 사용자가 접근할 수 있는 모든 작업 공간/소유자(개인 및 팀 계정)를 나열합니다."
+    },
+    "render-list-projects": {
+      "name": "render-list-projects",
+      "description": "Render 계정의 모든 프로젝트를 나열합니다."
+    },
+    "render-get-project": {
+      "name": "render-get-project",
+      "description": "특정 Render 프로젝트에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "projectId": "Render 프로젝트 ID"
+      }
+    },
+    "render-create-project": {
+      "name": "render-create-project",
+      "description": "Render에 새 프로젝트를 생성합니다. render-list-owners를 사용하여 ownerId를 가져옵니다.",
+      "params": {
+        "name": "프로젝트 이름",
+        "ownerId": "소유자/작업 공간 ID (render-list-owners를 사용하여 ID를 가져옵니다)"
+      }
+    },
+    "render-delete-project": {
+      "name": "render-delete-project",
+      "description": "Render 프로젝트를 삭제합니다. 이 작업은 되돌릴 수 없습니다!",
+      "params": {
+        "projectId": "삭제할 Render 프로젝트 ID"
+      }
+    },
+    "render-list-environments": {
+      "name": "render-list-environments",
+      "description": "Render 프로젝트의 모든 환경을 나열합니다.",
+      "params": {
+        "projectId": "Render 프로젝트 ID"
+      }
+    },
+    "render-create-environment": {
+      "name": "render-create-environment",
+      "description": "Render 프로젝트에 새 환경을 생성합니다.",
+      "params": {
+        "projectId": "Render 프로젝트 ID",
+        "name": "환경 이름 (예: \"staging\", \"production\")"
+      }
+    },
+    "render-list-services": {
+      "name": "render-list-services",
+      "description": "Render 계정의 모든 서비스를 나열합니다. 선택적으로 유형 또는 이름으로 필터링할 수 있습니다.",
+      "params": {
+        "type": "서비스 유형으로 필터링: web_service, static_site, background_worker, private_service, cron_job",
+        "name": "서비스 이름으로 필터링 (부분 일치)"
+      }
+    },
+    "render-get-service": {
+      "name": "render-get-service",
+      "description": "특정 Render 서비스에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID"
+      }
+    },
+    "render-create-service": {
+      "name": "render-create-service",
+      "description": "GitHub 리포지토리에서 Render에 새 서비스를 생성합니다. render-list-owners를 사용하여 ownerId를 가져옵니다.",
+      "params": {
+        "name": "서비스 이름",
+        "ownerId": "소유자/작업 공간 ID (render-list-owners를 사용하여 ID를 가져옵니다)",
+        "type": "서비스 유형: web_service, static_site, background_worker, private_service, cron_job",
+        "repoURL": "GitHub 리포지토리 URL (예: \"https://github.com/owner/repo\")",
+        "branch": "배포할 브랜치 (기본값: \"main\")",
+        "buildCommand": "빌드 명령 (예: \"npm run build\")",
+        "startCommand": "웹/작업자 서비스의 시작 명령 (예: \"node server.js\")",
+        "plan": "인스턴스 요금제 (예: \"free\", \"starter\", \"standard\", \"pro\")",
+        "region": "배포 지역 (예: \"oregon\", \"frankfurt\", \"singapore\")",
+        "autoDeploy": "git push 시 자동 배포: \"yes\" 또는 \"no\" (기본값: \"yes\")"
+      }
+    },
+    "render-delete-service": {
+      "name": "render-delete-service",
+      "description": "Render 서비스를 삭제합니다. 이 작업은 되돌릴 수 없습니다!",
+      "params": {
+        "serviceId": "삭제할 Render 서비스 ID"
+      }
+    },
+    "render-suspend-service": {
+      "name": "render-suspend-service",
+      "description": "실행 중인 Render 서비스를 일시 중지합니다 (컴퓨팅 요금 중지).",
+      "params": {
+        "serviceId": "일시 중지할 Render 서비스 ID"
+      }
+    },
+    "render-resume-service": {
+      "name": "render-resume-service",
+      "description": "일시 중지된 Render 서비스를 재개합니다.",
+      "params": {
+        "serviceId": "재개할 Render 서비스 ID"
+      }
+    },
+    "render-restart-service": {
+      "name": "render-restart-service",
+      "description": "실행 중인 Render 서비스를 재시작합니다.",
+      "params": {
+        "serviceId": "재시작할 Render 서비스 ID"
+      }
+    },
+    "render-list-deploys": {
+      "name": "render-list-deploys",
+      "description": "Render 서비스의 최근 배포를 나열합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "limit": "반환할 최대 배포 수 (기본값: 10, 최대: 100)"
+      }
+    },
+    "render-get-deploy": {
+      "name": "render-get-deploy",
+      "description": "특정 Render 배포의 상태 및 세부 정보를 가져옵니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "deployId": "Render 배포 ID"
+      }
+    },
+    "render-trigger-deploy": {
+      "name": "render-trigger-deploy",
+      "description": "Render 서비스에 대한 새 배포를 트리거합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "clearCache": "빌드 캐시를 지울지 여부: \"clear\" 또는 \"do_not_clear\" (기본값: do_not_clear)"
+      }
+    },
+    "render-cancel-deploy": {
+      "name": "render-cancel-deploy",
+      "description": "실행 중인 Render 배포를 취소합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "deployId": "취소할 Render 배포 ID"
+      }
+    },
+    "render-rollback-deploy": {
+      "name": "render-rollback-deploy",
+      "description": "Render 서비스를 특정 이전 배포로 롤백합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "deployId": "롤백할 배포 ID"
+      }
+    },
+    "render-list-env-vars": {
+      "name": "render-list-env-vars",
+      "description": "Render 서비스의 환경 변수를 나열합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID"
+      }
+    },
+    "render-set-env-vars": {
+      "name": "render-set-env-vars",
+      "description": "Render 서비스의 환경 변수를 설정(모두 교체)합니다. 이는 모든 기존 변수를 교체합니다. 단일 변수를 업데이트하려면 render-update-env-var를 사용하십시오.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "envVars": "설정할 환경 변수 배열"
+      }
+    },
+    "render-update-env-var": {
+      "name": "render-update-env-var",
+      "description": "Render 서비스에 대한 단일 환경 변수를 추가하거나 업데이트합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "key": "환경 변수 키",
+        "value": "환경 변수 값"
+      }
+    },
+    "render-delete-env-var": {
+      "name": "render-delete-env-var",
+      "description": "Render 서비스에서 환경 변수를 삭제합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "key": "삭제할 환경 변수 키"
+      }
+    },
+    "render-list-custom-domains": {
+      "name": "render-list-custom-domains",
+      "description": "Render 서비스에 구성된 사용자 정의 도메인을 나열합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID"
+      }
+    },
+    "render-add-custom-domain": {
+      "name": "render-add-custom-domain",
+      "description": "Render 서비스에 사용자 정의 도메인을 추가합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "domain": "사용자 정의 도메인 이름 (예: \"app.example.com\")"
+      }
+    },
+    "render-delete-custom-domain": {
+      "name": "render-delete-custom-domain",
+      "description": "Render 서비스에서 사용자 정의 도메인을 제거합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "domainId": "제거할 사용자 정의 도메인 ID"
+      }
+    },
+    "render-verify-custom-domain": {
+      "name": "render-verify-custom-domain",
+      "description": "Render 서비스에서 사용자 정의 도메인의 DNS 구성을 확인합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "domainId": "확인할 사용자 정의 도메인 ID"
+      }
+    },
+    "render-list-disks": {
+      "name": "render-list-disks",
+      "description": "Render 서비스에 연결된 영구 디스크를 나열합니다.",
+      "params": {
+        "serviceId": "Render 서비스 ID"
+      }
+    },
+    "render-add-disk": {
+      "name": "render-add-disk",
+      "description": "Render 서비스에 영구 디스크를 추가합니다 (데이터베이스 및 상태 저장 앱에 유용합니다).",
+      "params": {
+        "serviceId": "Render 서비스 ID",
+        "name": "디스크 이름",
+        "mountPath": "컨테이너 내부의 마운트 경로 (예: \"/data\")",
+        "sizeGB": "디스크 크기 (GB 단위, 최소: 1)"
+      }
+    },
+    "render-get-logs": {
+      "name": "render-get-logs",
+      "description": "하나 이상의 Render 서비스에 대한 최근 로그를 가져옵니다. 소유자 ID가 필요합니다 (render-list-owners 사용) 및 서비스 ID.",
+      "params": {
+        "ownerId": "소유자/작업 공간 ID (render-list-owners를 사용하여 ID를 가져옵니다)",
+        "serviceIds": "로그를 가져올 서비스 ID 배열",
+        "limit": "반환할 최대 로그 라인 수 (기본값: 100)",
+        "text": "이 텍스트가 포함된 로그 필터링",
+        "level": "로그 수준으로 필터링: debug, info, warning, error"
+      }
+    }
+  },
+  "name": "Render",
+  "description": "Teros 작업 공간에서 직접 Render에 서비스를 배포하고 관리합니다. 웹 서비스, 정적 사이트, 배포, 환경 변수, 사용자 정의 도메인 등을 지원합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — GitHub에서 서비스 배포, 배포 트리거 및 롤백, env vars, 사용자 정의 도메인, 디스크 및 로그 관리"
+    }
+  ]
+}

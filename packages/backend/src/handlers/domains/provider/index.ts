@@ -14,6 +14,7 @@
 
 import type { WsRouter } from '../../../ws-framework/WsRouter'
 import type { ProviderService } from '../../../services/provider-service'
+import type { ModelService } from '../../../services/model-service'
 import type { Db } from 'mongodb'
 
 import { createListProvidersHandler } from './list'
@@ -28,6 +29,7 @@ import { createListModelsHandler } from './list-models'
 export interface ProviderDomainDeps {
   db: Db
   providerService: ProviderService
+  modelService?: ModelService | null
 }
 
 export function register(router: WsRouter, deps: ProviderDomainDeps): void {
@@ -40,5 +42,5 @@ export function register(router: WsRouter, deps: ProviderDomainDeps): void {
   router.register('provider.delete', createDeleteProviderHandler(db, providerService))
   router.register('provider.start-oauth', createStartOAuthHandler())
   router.register('provider.complete-oauth', createCompleteOAuthHandler(providerService))
-  router.register('provider.list-models', createListModelsHandler(db))
+  router.register('provider.list-models', createListModelsHandler(db, deps.modelService ?? undefined))
 }

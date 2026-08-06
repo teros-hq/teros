@@ -1,0 +1,193 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. Railway API 토큰 및 연결성을 확인합니다."
+    },
+    "railway-get-user": {
+      "name": "railway-get-user",
+      "description": "사용 가능한 작업 공간을 포함하여 현재 Railway 사용자 정보를 가져옵니다."
+    },
+    "railway-list-workspaces": {
+      "name": "railway-list-workspaces",
+      "description": "현재 사용자에게 사용 가능한 모든 Railway 작업 공간을 나열합니다."
+    },
+    "railway-list-projects": {
+      "name": "railway-list-projects",
+      "description": "연결된 계정의 모든 Railway 프로젝트를 나열합니다."
+    },
+    "railway-get-project": {
+      "name": "railway-get-project",
+      "description": "서비스 및 환경을 포함하여 Railway 프로젝트에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID"
+      }
+    },
+    "railway-create-project": {
+      "name": "railway-create-project",
+      "description": "새 Railway 프로젝트를 생성합니다. workspaceId가 필요합니다 - railway-list-workspaces를 사용하여 사용 가능한 작업 공간을 가져옵니다.",
+      "params": {
+        "name": "프로젝트 이름",
+        "workspaceId": "프로젝트를 생성할 작업 공간 ID (railway-list-workspaces를 사용하여 ID를 가져옵니다)",
+        "description": "선택적 프로젝트 설명"
+      }
+    },
+    "railway-delete-project": {
+      "name": "railway-delete-project",
+      "description": "Railway 프로젝트를 삭제합니다. 이 작업은 되돌릴 수 없습니다!",
+      "params": {
+        "projectId": "삭제할 Railway 프로젝트 ID"
+      }
+    },
+    "railway-list-environments": {
+      "name": "railway-list-environments",
+      "description": "Railway 프로젝트의 모든 환경을 나열합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID"
+      }
+    },
+    "railway-create-environment": {
+      "name": "railway-create-environment",
+      "description": "Railway 프로젝트에 새 환경을 생성합니다 (예: 스테이징, 프로덕션).",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "name": "환경 이름 (예: \"staging\", \"production\")"
+      }
+    },
+    "railway-list-services": {
+      "name": "railway-list-services",
+      "description": "Railway 프로젝트의 모든 서비스를 나열합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID"
+      }
+    },
+    "railway-create-service": {
+      "name": "railway-create-service",
+      "description": "Railway 프로젝트에 새 서비스를 생성합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "name": "서비스 이름 (예: \"web\", \"api\", \"worker\")"
+      }
+    },
+    "railway-delete-service": {
+      "name": "railway-delete-service",
+      "description": "Railway 프로젝트에서 서비스를 삭제합니다.",
+      "params": {
+        "serviceId": "삭제할 Railway 서비스 ID"
+      }
+    },
+    "railway-list-variables": {
+      "name": "railway-list-variables",
+      "description": "서비스의 환경 변수를 나열합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID"
+      }
+    },
+    "railway-set-variables": {
+      "name": "railway-set-variables",
+      "description": "서비스의 환경 변수를 설정합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID",
+        "variables": "설정할 환경 변수의 키-값 쌍"
+      }
+    },
+    "railway-list-deployments": {
+      "name": "railway-list-deployments",
+      "description": "서비스의 최근 배포를 나열합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID"
+      }
+    },
+    "railway-get-deployment": {
+      "name": "railway-get-deployment",
+      "description": "특정 배포의 상태를 가져옵니다.",
+      "params": {
+        "deploymentId": "Railway 배포 ID"
+      }
+    },
+    "railway-redeploy": {
+      "name": "railway-redeploy",
+      "description": "기존 배포의 재배포를 트리거합니다.",
+      "params": {
+        "deploymentId": "재배포할 Railway 배포 ID"
+      }
+    },
+    "railway-list-domains": {
+      "name": "railway-list-domains",
+      "description": "서비스의 도메인을 나열합니다.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID"
+      }
+    },
+    "railway-create-domain": {
+      "name": "railway-create-domain",
+      "description": "서비스를 위한 Railway 생성 도메인을 생성합니다 (예: myapp.up.railway.app).",
+      "params": {
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID"
+      }
+    },
+    "railway-connect-repo": {
+      "name": "railway-connect-repo",
+      "description": "GitHub 리포지토리를 Railway 서비스에 연결합니다. 공개 및 비공개 리포지토리 모두에서 작동합니다 (Railway 계정에 GitHub이 연결되어 있는 경우). 자동으로 배포를 트리거합니다.",
+      "params": {
+        "serviceId": "Railway 서비스 ID",
+        "repo": "형식 \"owner/repo\"의 GitHub 리포지토리 (예: \"myuser/myapp\")",
+        "branch": "배포할 브랜치 (기본값: \"main\")"
+      }
+    },
+    "railway-deploy-public-repo": {
+      "name": "railway-deploy-public-repo",
+      "description": "공개 GitHub 리포지토리를 Railway에 배포합니다. 리포지토리에서 새 서비스를 생성합니다. 공개 리포지토리에서만 작동합니다. 비공개 리포지토리는 대신 railway-connect-repo를 사용하십시오.",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "repo": "형식 \"owner/repo\"의 공개 GitHub 리포지토리 (예: \"myuser/myapp\")",
+        "branch": "배포할 브랜치 (기본값: \"main\")",
+        "environmentId": "Railway 환경 ID (선택 사항)"
+      }
+    },
+    "railway-create-volume": {
+      "name": "railway-create-volume",
+      "description": "서비스를 위한 지속적인 볼륨을 생성합니다 (데이터베이스에 유용합니다).",
+      "params": {
+        "projectId": "Railway 프로젝트 ID",
+        "serviceId": "Railway 서비스 ID",
+        "environmentId": "Railway 환경 ID",
+        "mountPath": "볼륨을 마운트할 경로 (예: MongoDB의 경우 \"/data/db\")"
+      }
+    },
+    "railway-get-build-logs": {
+      "name": "railway-get-build-logs",
+      "description": "배포에 대한 빌드 로그를 가져옵니다. 빌드/컴파일 단계에서 발생한 일을 보여줍니다.",
+      "params": {
+        "deploymentId": "빌드 로그를 가져올 배포 ID",
+        "limit": "반환할 최대 로그 라인 수 (기본값: 100, 최대: 500)",
+        "filter": "로그 내에서 검색할 선택적 텍스트 필터"
+      }
+    },
+    "railway-get-deploy-logs": {
+      "name": "railway-get-deploy-logs",
+      "description": "배포에 대한 런타임/배포 로그를 가져옵니다. 애플리케이션 출력, 오류 및 시작 로그를 보여줍니다.",
+      "params": {
+        "deploymentId": "런타임 로그를 가져올 배포 ID",
+        "limit": "반환할 최대 로그 라인 수 (기본값: 100, 최대: 500)",
+        "filter": "로그 내에서 검색할 선택적 텍스트 필터"
+      }
+    }
+  },
+  "name": "Railway",
+  "description": "Teros 작업 공간에서 직접 Railway에 프로젝트를 배포합니다. 자동 배포, 환경 관리 및 데이터베이스 프로비저닝을 지원합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 프로젝트 생성 및 배포, 서비스, 환경, 변수, 도메인 및 볼륨 관리, 배포 로그 보기"
+    }
+  ]
+}

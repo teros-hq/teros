@@ -1,0 +1,713 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. GitHub OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-repos": {
+      "name": "list-repos",
+      "description": "현재 사용자가 Teros GitHub 앱을 통해 접근할 수 있는 리포지토리 목록을 나열합니다 (접근 가능한 모든 설치에서). 특정 사용자/조직으로 필터링하려면 `owner`를 전달하십시오.",
+      "params": {
+        "owner": "선택적 필터 — 이 사용자 또는 조직에 속하는 리포지토리만 반환합니다.",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100).",
+        "page": "페이지 인덱스 (1 기반)."
+      }
+    },
+    "get-repo": {
+      "name": "get-repo",
+      "description": "특정 리포지토리에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름"
+      }
+    },
+    "create-repo": {
+      "name": "create-repo",
+      "description": "새 리포지토리를 생성합니다.",
+      "params": {
+        "name": "리포지토리 이름",
+        "description": "리포지토리 설명",
+        "private": "비공개 리포지토리로 생성 (기본값: false)",
+        "auto_init": "README로 초기화 (기본값: false)",
+        "gitignore_template": "Gitignore 템플릿 이름 (예: \"Node\", \"Python\")",
+        "license_template": "라이센스 템플릿 (예: \"mit\", \"apache-2.0\")",
+        "org": "조직 이름. 제공되면 해당 조직 아래에 리포지토리를 생성합니다."
+      }
+    },
+    "list-issues": {
+      "name": "list-issues",
+      "description": "리포지토리에 대한 이슈 목록을 선택적 필터와 함께 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "state": "상태로 필터링 (기본값: open)",
+        "labels": "쉼표로 구분된 레이블 이름 목록",
+        "sort": "정렬 기준 (기본값: created)",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-issue": {
+      "name": "get-issue",
+      "description": "특정 이슈의 세부 정보를 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "issue_number": "이슈 번호"
+      }
+    },
+    "create-issue": {
+      "name": "create-issue",
+      "description": "리포지토리에 새 이슈를 생성합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "title": "이슈 제목",
+        "body": "이슈 설명 (마크다운 지원)",
+        "labels": "레이블 이름 배열",
+        "assignees": "할당할 GitHub 사용자 이름 배열"
+      }
+    },
+    "update-issue": {
+      "name": "update-issue",
+      "description": "기존 이슈를 업데이트합니다. `state: \"closed\"`를 설정하면 이슈가 닫힙니다 (완료/계획되지 않음에 대해 `state_reason` 사용). `labels`는 전체 레이블 세트를 대체합니다 — 추가하려면 add-labels-to-issue를 사용하십시오.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "issue_number": "이슈 번호",
+        "title": "새 제목",
+        "body": "새 본문",
+        "state": "새 상태",
+        "state_reason": "상태 전환 시 이유 (기본값: completed)",
+        "labels": "새 레이블 (기존 레이블 대체)"
+      }
+    },
+    "add-issue-comment": {
+      "name": "add-issue-comment",
+      "description": "이슈에 댓글을 추가합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "issue_number": "이슈 번호",
+        "body": "댓글 텍스트 (마크다운 지원)"
+      }
+    },
+    "add-labels-to-issue": {
+      "name": "add-labels-to-issue",
+      "description": "이슈 또는 풀 리퀘스트에 레이블을 추가합니다 (PR은 API에서 이슈입니다). 추가 후 전체 레이블 세트를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "issue_number": "이슈 또는 풀 리퀘스트 번호",
+        "labels": "추가할 레이블 이름 (대소문자 구분). 기존 레이블은 보존됩니다."
+      }
+    },
+    "search-issues": {
+      "name": "search-issues",
+      "description": "GitHub 전역에서 이슈 및 풀 리퀘스트를 검색합니다. `q`에서 GitHub 검색 구문을 사용하십시오 (예: `repo:owner/name is:issue is:open label:bug`). {total_count, incomplete_results, items[]}를 반환합니다.",
+      "params": {
+        "q": "검색 쿼리 (GitHub 검색 구문). `repo:`, `is:`, `label:`, `author:`, `assignee:`와 같은 한정자를 지원합니다.",
+        "sort": "정렬 기준 (기본값: best-match)",
+        "order": "정렬 방향 (기본값: desc)",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "list-pulls": {
+      "name": "list-pulls",
+      "description": "리포지토리에 대한 풀 리퀘스트 목록을 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "state": "상태로 필터링 (기본값: open)",
+        "sort": "정렬 기준 (기본값: created)",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-pull": {
+      "name": "get-pull",
+      "description": "특정 풀 리퀘스트의 세부 정보를 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호"
+      }
+    },
+    "create-pull": {
+      "name": "create-pull",
+      "description": "새 풀 리퀘스트를 생성합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "title": "풀 리퀘스트 제목",
+        "body": "풀 리퀘스트 설명",
+        "head": "변경 사항이 포함된 브랜치 이름",
+        "base": "병합할 브랜치 이름 (기본값: main)",
+        "draft": "초안 PR로 생성 (기본값: false)"
+      }
+    },
+    "merge-pull": {
+      "name": "merge-pull",
+      "description": "풀 리퀘스트를 병합합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "commit_title": "병합 커밋 제목 (선택 사항)",
+        "commit_message": "병합 커밋 메시지 (선택 사항)",
+        "merge_method": "병합 방법 (기본값: merge)"
+      }
+    },
+    "list-pr-files": {
+      "name": "list-pr-files",
+      "description": "풀 리퀘스트에서 변경된 파일 목록을 나열합니다. 각 파일에는 {filename, status, additions, deletions, changes, patch?, sha, blob_url}가 포함됩니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "list-pr-commits": {
+      "name": "list-pr-commits",
+      "description": "풀 리퀘스트의 커밋 목록을 나열합니다. 각 커밋에는 {sha, commit.message, author, html_url}가 포함됩니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "list-pr-review-comments": {
+      "name": "list-pr-review-comments",
+      "description": "풀 리퀘스트의 리뷰 댓글 (diff에 대한 인라인 댓글) 목록을 나열합니다. {id, user, body, path, line, commit_id, created_at}가 포함된 배열을 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "sort": "정렬 기준 (기본값: created)",
+        "direction": "정렬 방향 (기본값: asc)",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "request-reviewers": {
+      "name": "request-reviewers",
+      "description": "풀 리퀘스트에 리뷰어를 요청합니다. `requested_reviewers` 및 `requested_teams`가 채워진 PR을 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "reviewers": "리뷰를 요청할 GitHub 사용자 이름",
+        "team_reviewers": "리뷰를 요청할 팀 슬러그 (조직 내)"
+      }
+    },
+    "create-pr-review": {
+      "name": "create-pr-review",
+      "description": "풀 리퀘스트 리뷰를 생성합니다. `event`는 판결을 제어합니다: APPROVE / REQUEST_CHANGES / COMMENT. 리뷰 {id, state, user, submitted_at}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "pull_number": "풀 리퀘스트 번호",
+        "event": "리뷰의 판결",
+        "body": "리뷰 본문 (마크다운). REQUEST_CHANGES 및 COMMENT에 필수, APPROVE에 선택적.",
+        "commit_id": "리뷰가 적용되는 커밋의 SHA (기본값: PR의 최신 커밋)",
+        "comments": "인라인 댓글. 각 항목: {path, position OR line, body}."
+      }
+    },
+    "list-branches": {
+      "name": "list-branches",
+      "description": "리포지토리의 브랜치 목록을 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-branch": {
+      "name": "get-branch",
+      "description": "특정 브랜치에 대한 정보를 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "branch": "브랜치 이름"
+      }
+    },
+    "create-branch": {
+      "name": "create-branch",
+      "description": "참조에서 새 브랜치를 생성합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "branch": "새 브랜치 이름",
+        "from_branch": "소스 브랜치 이름 (기본값: main)"
+      }
+    },
+    "list-commits": {
+      "name": "list-commits",
+      "description": "리포지토리의 커밋 목록을 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "sha": "커밋을 나열할 SHA 또는 브랜치 이름",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-commit": {
+      "name": "get-commit",
+      "description": "특정 커밋의 세부 정보를 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "ref": "커밋 SHA"
+      }
+    },
+    "compare-commits": {
+      "name": "compare-commits",
+      "description": "두 커밋 또는 브랜치를 비교합니다. `basehead` 형식 `BASE...HEAD` (예: `main...feat/x`). {status, ahead_by, behind_by, total_commits, commits[], files[].patch}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "basehead": "비교 범위, 형식 `BASE...HEAD`. `owner:ref`를 통해 크로스 포크를 포함할 수 있습니다.",
+        "per_page": "페이지당 파일 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "list-workflows": {
+      "name": "list-workflows",
+      "description": "리포지토리의 워크플로우 목록을 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름"
+      }
+    },
+    "list-workflow-runs": {
+      "name": "list-workflow-runs",
+      "description": "리포지토리에 대한 워크플로우 실행 목록을 나열합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "workflow_id": "워크플로우 ID 또는 파일 이름 (선택 사항)",
+        "status": "상태로 필터링",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-workflow-run": {
+      "name": "get-workflow-run",
+      "description": "워크플로우 실행을 가져옵니다. {id, name, status, conclusion, run_number, head_branch, head_sha, html_url, created_at, updated_at, run_started_at}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "run_id": "워크플로우 실행 ID"
+      }
+    },
+    "list-workflow-run-jobs": {
+      "name": "list-workflow-run-jobs",
+      "description": "워크플로우 실행의 작업 목록을 나열합니다. 각 작업에는 {id, name, status, conclusion, started_at, completed_at, html_url, steps[]}가 포함됩니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "run_id": "워크플로우 실행 ID",
+        "filter": "시도에 따라 필터링 (기본값: latest)",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "trigger-workflow": {
+      "name": "trigger-workflow",
+      "description": "워크플로우 배포 이벤트를 트리거합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "workflow_id": "워크플로우 ID 또는 파일 이름",
+        "ref": "브랜치 또는 태그 이름 (기본값: main)",
+        "inputs": "워크플로우의 입력 매개변수"
+      }
+    },
+    "rerun-workflow-run": {
+      "name": "rerun-workflow-run",
+      "description": "워크플로우 실행을 다시 실행합니다. 기본적으로 실패한 작업만 다시 실행합니다 (더 빠르고 저렴함). 모든 작업을 다시 실행하려면 `mode: \"all\"`로 설정하십시오.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "run_id": "워크플로우 실행 ID",
+        "mode": "어떤 작업을 다시 실행할지 (기본값: failed)",
+        "enable_debug_logging": "다시 실행에 대한 디버그 로깅을 활성화할지 여부 (기본값: false)"
+      }
+    },
+    "cancel-workflow-run": {
+      "name": "cancel-workflow-run",
+      "description": "진행 중인 워크플로우 실행을 취소합니다. 202 수락 시 {success: true}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "run_id": "워크플로우 실행 ID"
+      }
+    },
+    "list-releases": {
+      "name": "list-releases",
+      "description": "리포지토리의 릴리스를 나열합니다. 최신 릴리스가 먼저 표시됩니다. 각 릴리스에는 {id, tag_name, name, draft, prerelease, body, html_url, published_at, author}가 포함됩니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)",
+        "page": "페이지 인덱스 (1 기반)"
+      }
+    },
+    "create-release": {
+      "name": "create-release",
+      "description": "GitHub 릴리스를 `tag_name`으로 태그하여 생성합니다. `target_commitish`가 생략되면 GitHub는 기본 브랜치를 사용합니다. {id, tag_name, name, html_url, draft, prerelease, published_at}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "tag_name": "이 릴리스가 가리키는 태그 (누락 시 생성됨)",
+        "target_commitish": "태그가 생성되는 브랜치 또는 SHA (기본값: 리포지토리 기본 브랜치)",
+        "name": "릴리스 제목 (기본값: tag_name)",
+        "body": "릴리스 노트 (마크다운)",
+        "draft": "초안으로 생성 (기본값: false)",
+        "prerelease": "사전 릴리스로 표시 (기본값: false)",
+        "generate_release_notes": "커밋에서 릴리스 노트를 자동 생성 (기본값: false)"
+      }
+    },
+    "get-file-content": {
+      "name": "get-file-content",
+      "description": "리포지토리의 파일 내용을 가져옵니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "path": "리포지토리 내 파일 경로",
+        "ref": "브랜치, 태그 또는 커밋 SHA (기본값: 기본 브랜치)"
+      }
+    },
+    "create-or-update-file": {
+      "name": "create-or-update-file",
+      "description": "리포지토리에 파일을 생성하거나 업데이트합니다. 업데이트 시 기존 파일의 `sha`를 전달하십시오. 경로는 `..`를 포함하거나 `/`로 시작할 수 없습니다.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "path": "리포지토리 내 파일 경로 (no `..`, no leading `/`)",
+        "message": "커밋 메시지",
+        "content": "파일 내용 (base64로 인코딩됨)",
+        "branch": "브랜치 이름 (기본값: 기본 브랜치)",
+        "sha": "교체되는 파일의 SHA (업데이트 시 필수)"
+      }
+    },
+    "search-repos": {
+      "name": "search-repos",
+      "description": "GitHub에서 리포지토리를 검색합니다.",
+      "params": {
+        "query": "검색 쿼리 (예: \"react language:javascript stars:>1000\")",
+        "sort": "결과 정렬 기준",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "search-code": {
+      "name": "search-code",
+      "description": "GitHub 리포지토리에서 코드를 검색합니다.",
+      "params": {
+        "query": "검색 쿼리 (예: \"addClass in:file language:js repo:jquery/jquery\")",
+        "per_page": "페이지당 결과 수 (기본값: 30, 최대: 100)"
+      }
+    },
+    "get-installation-context": {
+      "name": "get-installation-context",
+      "description": "현재 사용자가 접근할 수 있는 Teros GitHub 앱 설치 목록을 나열하며, 접근 가능한 리포지토리, 부여된 권한 및 관리/설치 URL을 포함합니다."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "현재 사용자가 접근할 수 있는 Teros GitHub 앱 설치 목록을 나열하며, 접근 가능한 리포지토리, 부여된 권한 및 관리/설치 URL을 포함합니다."
+    },
+    "create-check-run": {
+      "name": "create-check-run",
+      "description": "커밋에 대한 체크 실행을 생성합니다 (GitHub 앱 전용). 체크는 PR/커밋 사이드바에 나타납니다. 체크가 실행되는 동안 status:in_progress를 사용하고, 완료되면 conclusion으로 업데이트하십시오.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "name": "체크의 표시 이름 (예: \"Teros review\")",
+        "head_sha": "체크가 적용되는 커밋 SHA",
+        "status": "상태 (기본값: queued)",
+        "conclusion": "상태가 `completed`일 때 필요합니다.",
+        "output": "제목, 요약 (마크다운), 선택적 텍스트 본문이 포함된 풍부한 출력",
+        "details_url": "체크에 대한 더 많은 세부 정보를 포함하는 선택적 URL (체크에서 링크로 표시됨)",
+        "external_id": "앱에서 제어하는 참조 ID (앱 측의 멱등성)"
+      }
+    },
+    "update-check-run": {
+      "name": "update-check-run",
+      "description": "기존 체크 실행을 업데이트합니다 — 일반적으로 작업이 완료되면 status:completed + conclusion을 설정합니다. 변경하려는 필드만 전달하십시오.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "check_run_id": "체크 실행 ID (create-check-run에서 반환됨)",
+        "name": "새 표시 이름 (선택 사항)",
+        "status": "새 상태",
+        "conclusion": "상태가 `completed`일 때 필요합니다.",
+        "output": "업데이트된 출력"
+      }
+    },
+    "get-rate-limit": {
+      "name": "get-rate-limit",
+      "description": "설치 토큰에 대한 현재 GitHub API 속도 제한 예산을 읽습니다. 각 버킷에 대해 {limit, remaining, reset, used}를 반환합니다 — core, search, graphql, code_search."
+    },
+    "dispatch-event": {
+      "name": "dispatch-event",
+      "description": "워크플로우가 이를 수신하도록 구성된 `repository_dispatch` 이벤트를 전송합니다. `event_type` (워크플로우가 필터링하는 문자열) 및 선택적 `client_payload`를 전달하십시오.",
+      "params": {
+        "owner": "리포지토리 소유자",
+        "repo": "리포지토리 이름",
+        "event_type": "워크플로우가 필터링하는 사용자 정의 이벤트 유형 (예: `deploy-staging`)",
+        "client_payload": "선택적 페이로드 (최대 10 속성, JSON 직렬화 가능). 워크플로우에서 `github.event.client_payload`로 사용 가능합니다."
+      }
+    },
+    "clone-repo": {
+      "name": "clone-repo",
+      "description": "GitHub 리포지토리를 로컬 파일 시스템에 복제합니다 (Teros GitHub 앱의 현재 사용자 액세스 토큰을 사용합니다). {path, branch, sha, recentCommits[]}를 반환합니다.",
+      "params": {
+        "owner": "리포지토리 소유자 (사용자 또는 조직)",
+        "repo": "리포지토리 이름",
+        "destination": "리포지토리가 복제될 로컬 경로 (기본값: /workspace/<repo>)",
+        "branch": "복제 후 체크아웃할 브랜치 (기본값: 기본 브랜치)"
+      }
+    },
+    "git-status": {
+      "name": "git-status",
+      "description": "로컬 git 상태: 브랜치, 업스트림 대비 앞서거나 뒤쳐진 상태, 스테이징된, 수정된, 추적되지 않은, 충돌된 파일 목록.",
+      "params": {
+        "repoPath": "복제된 리포지토리에 대한 절대 경로. 생략 시 `<workspace>/<repo>`로 해결됩니다.",
+        "owner": "리포지토리 소유자 (기본 repoPath를 해결하는 데 사용됨).",
+        "repo": "리포지토리 이름 (기본 repoPath를 해결하는 데 사용됨)."
+      }
+    },
+    "git-add": {
+      "name": "git-add",
+      "description": "로컬 변경 사항을 스테이징합니다. 선택적으로 스테이징할 경로의 배열을 전달하거나 `paths`를 생략하여 모든 것을 스테이징합니다 (기본값 `.`).",
+      "params": {
+        "paths": "리포지토리 루트에 대한 경로. 기본값은 [\".\"] (모든 변경 사항을 스테이징).",
+        "update": "true인 경우, 이미 추적된 파일만 스테이징합니다 (`git add -u`)."
+      }
+    },
+    "git-commit": {
+      "name": "git-commit",
+      "description": "스테이징된 변경 사항으로 커밋을 생성합니다. `{ sha, branch, message }`를 반환합니다. 이전 커밋을 수정하려면 `amend: true`를 사용하십시오.",
+      "params": {
+        "message": "커밋 메시지 (제목 + 선택적 본문은 빈 줄로 구분됨).",
+        "amend": "새 커밋을 생성하는 대신 이전 커밋을 수정합니다.",
+        "allowEmpty": "스테이징된 변경 사항이 없는 커밋을 생성할 수 있습니다.",
+        "author": "커밋 작성자를 재정의합니다 (기본값: git config user.name/user.email)."
+      }
+    },
+    "git-push": {
+      "name": "git-push",
+      "description": "원격으로 커밋을 푸시합니다. `force: true`는 `--force-with-lease`를 사용하고; `forceUnsafe: true`는 원시 `--force`를 사용합니다 (파괴적).",
+      "params": {
+        "remote": "원격 이름. 기본값은 `origin`.",
+        "branch": "푸시할 로컬 브랜치. 기본값은 현재 브랜치.",
+        "setUpstream": "업스트림 추적 설정 (`-u`).",
+        "force": " `--force-with-lease` 사용 (더 안전한 강제 푸시).",
+        "forceUnsafe": "원시 `--force` 사용 (파괴적; 원격 기록을 재작성).",
+        "tags": "커밋과 함께 태그를 푸시합니다."
+      }
+    },
+    "git-checkout": {
+      "name": "git-checkout",
+      "description": "브랜치를 전환하거나 새 브랜치를 생성하거나 특정 경로를 복원합니다. 새 HEAD 참조를 반환합니다. `force: true`를 설정하여 로컬 변경 사항을 무시합니다 (파괴적).",
+      "params": {
+        "target": "브랜치, 태그, 커밋 SHA, 또는 — `paths`와 함께 — 소스를 복원합니다.",
+        "create": "새 브랜치 `target`을 생성합니다 (`-b`).",
+        "paths": "대상에서 이 특정 경로를 복원합니다 (브랜치 전환 없음).",
+        "force": "로컬 변경 사항을 무시합니다 (`--force`). 파괴적."
+      }
+    },
+    "git-rm": {
+      "name": "git-rm",
+      "description": "작업 트리에서 추적된 파일을 제거하고 삭제를 스테이징합니다. `cached: true`를 전달하여 삭제하지 않고 스테이징만 합니다.",
+      "params": {
+        "paths": "제거할 경로 (리포지토리 루트에 대한 상대 경로).",
+        "cached": "삭제만 스테이징하고; 디스크에서 파일을 유지합니다 (`git rm --cached`).",
+        "recursive": "디렉토리로 재귀합니다 (`-r`)."
+      }
+    },
+    "git-mv": {
+      "name": "git-mv",
+      "description": "추적된 파일/디렉토리를 이동하거나 이름을 변경하면서 git 기록을 보존합니다. `from`과 `to` 모두 리포지토리 루트에 대한 상대 경로입니다.",
+      "params": {
+        "from": "소스 경로 (리포지토리 루트에 대한 상대 경로).",
+        "to": "대상 경로 (리포지토리 루트에 대한 상대 경로).",
+        "force": "`to`가 이미 존재하는 경우 덮어씁니다 (`-f`)."
+      }
+    },
+    "git-read-file": {
+      "name": "git-read-file",
+      "description": "작업 트리 또는 특정 git 수정에서 파일을 읽습니다. `ref` (커밋/브랜치/태그)를 전달하여 해당 시점의 버전을 읽습니다.",
+      "params": {
+        "path": "리포지토리 루트에 대한 파일 경로.",
+        "ref": "선택적 커밋/브랜치/태그. 생략 시 현재 작업 트리에서 읽습니다.",
+        "encoding": "출력 인코딩. 이진 파일의 경우 `base64`를 사용합니다."
+      }
+    },
+    "git-write-file": {
+      "name": "git-write-file",
+      "description": "파일 내용을 작업 트리에 기록하고 (부모 디렉토리를 생성) 이를 스테이징합니다. 스테이징을 건너뛰려면 `stage: false`를 사용하십시오.",
+      "params": {
+        "path": "리포지토리 루트에 대한 파일 경로.",
+        "content": "파일 내용 (기본적으로 utf8 또는 base64 — `encoding` 참조).",
+        "stage": "변경 사항을 스테이징합니다 (`git add`)."
+      }
+    },
+    "git-list-files": {
+      "name": "git-list-files",
+      "description": "리포지토리의 파일 목록을 나열합니다. `.gitignore`를 존중합니다. `{ tracked, untracked, ignored }` 배열을 반환합니다. 선택적으로 `pattern`으로 필터링할 수 있습니다 (glob, 리포지토리 루트에 대한 상대 경로).",
+      "params": {
+        "pattern": "선택적 glob 필터 (예: `src/**`).",
+        "includeIgnored": "`ignored` 목록을 포함합니다."
+      }
+    },
+    "git-pull": {
+      "name": "git-pull",
+      "description": "원격에서 현재 브랜치로 커밋을 가져옵니다. `rebase: true`는 선형 기록을 위해 사용합니다 (병합 커밋 없음).",
+      "params": {
+        "branch": "가져올 원격 브랜치. 기본값은 업스트림.",
+        "rebase": "`--rebase`를 사용하여 병합 대신 사용합니다.",
+        "ff": "`only` = 빠른 전환이 아닐 경우 중단; `no` = 항상 병합 커밋; `auto` = git 기본값."
+      }
+    },
+    "git-diff": {
+      "name": "git-diff",
+      "description": "통합 diff + numstat으로 차이를 표시합니다. 기본값은 작업 트리와 HEAD입니다. `from: staged`는 인덱스와 HEAD 간의 차이를 표시합니다; `from` + `to` 커밋 SHA를 전달하여 임의의 차이를 표시합니다.",
+      "params": {
+        "from": "`working` (기본값), `staged`, `HEAD`, 또는 커밋/브랜치/태그 SHA.",
+        "to": "from이 커밋일 때 대상 참조. from이 working/staged일 때 기본값은 `HEAD`.",
+        "path": "특정 경로로 diff를 제한합니다.",
+        "contextLines": "각 변경 사항 주위의 컨텍스트 라인 수."
+      }
+    },
+    "git-log": {
+      "name": "git-log",
+      "description": "구조화된 항목으로 로컬 커밋 기록을 보여줍니다. 기본값은 현재 브랜치의 마지막 20개 커밋입니다. `ref`, `path`, `author`, `since`/`until`로 필터링합니다.",
+      "params": {
+        "ref": "시작할 브랜치 / 태그 / 커밋 (기본값: HEAD).",
+        "path": "특정 경로로 기록을 제한합니다.",
+        "author": "작성자로 필터링 (부분 문자열 일치).",
+        "since": "ISO 날짜 또는 git 스타일 상대 (예: \"2주 전\").",
+        "until": "ISO 날짜 또는 git 스타일 상대.",
+        "limit": "최대 커밋 수."
+      }
+    },
+    "git-batch-commit": {
+      "name": "git-batch-commit",
+      "description": "여러 파일 변경 사항 (생성/업데이트/삭제/이름 변경)을 적용하고 하나의 원자 커밋을 생성합니다. 리팩토링 및 중간 상태가 git 기록에 표시되지 않아야 하는 다중 파일 변경에 사용합니다.",
+      "params": {
+        "message": "커밋 메시지."
+      }
+    },
+    "git-stash": {
+      "name": "git-stash",
+      "description": "스태시를 관리합니다. 기본 작업 `push`는 커밋되지 않은 변경 사항을 저장합니다. 다른 작업: pop, apply, drop, list, clear.",
+      "params": {
+        "message": "`push`에 대한 선택적 메시지.",
+        "index": "`pop/apply/drop`에 대한 스태시 인덱스 (기본값 0 = 상단).",
+        "includeUntracked": "스태시할 때 추적되지 않은 파일을 포함합니다 (`-u`)."
+      }
+    },
+    "git-merge": {
+      "name": "git-merge",
+      "description": "브랜치/태그/커밋을 현재 브랜치에 병합합니다. 충돌 시 `GIT_CONFLICT`를 발생시키며 에이전트는 `git-status` + 편집 + `git-add`를 통해 해결해야 합니다.",
+      "params": {
+        "target": "현재에 병합할 브랜치/태그/커밋.",
+        "message": "병합 커밋 메시지 (빠른 전환이 아닐 때 사용됨).",
+        "noFf": "항상 병합 커밋을 생성합니다 (`--no-ff`).",
+        "ffOnly": "빠른 전환이 아닐 경우 중단합니다 (`--ff-only`).",
+        "squash": "모든 변경 사항을 하나의 스테이징된 변경 사항으로 압축합니다 (커밋하지 않음).",
+        "strategyOption": "통과 `-X<option>` (예: `ours`, `theirs`, `patience`)."
+      }
+    },
+    "git-rebase": {
+      "name": "git-rebase",
+      "description": "현재 브랜치를 다른 참조 위로 리베이스합니다 (선형 기록). 또는 진행 중인 리베이스를 `mode: continue/skip/abort`로 진행합니다.",
+      "params": {
+        "onto": "리베이스할 대상 참조 (주어진 경우를 제외하고 필수).",
+        "autosquash": "`fixup!`/`squash!` 커밋을 존중합니다.",
+        "strategyOption": "통과 `-X<option>` (예: `theirs`)."
+      }
+    },
+    "git-reset": {
+      "name": "git-reset",
+      "description": "HEAD를 `target`으로 재설정합니다. `mode: soft`는 스테이징을 유지하고; `mode: mixed` (기본값)는 작업 트리를 유지하고; `mode: hard`는 모든 것을 버립니다 (파괴적).",
+      "params": {
+        "target": "재설정할 참조 (기본값 `HEAD`)."
+      }
+    },
+    "git-cherry-pick": {
+      "name": "git-cherry-pick",
+      "description": "현재 브랜치에 커밋을 체리픽합니다. `commits: [\"sha\", ...]`를 전달하거나 진행 중인 선택을 `mode: continue/skip/abort`로 진행합니다.",
+      "params": {
+        "commits": "체리픽할 SHAs / refs (순서대로).",
+        "noCommit": "변경 사항을 스테이징하지만 커밋을 생성하지 않습니다.",
+        "mainline": "병합 커밋의 경우: 메인라인으로 사용할 부모 번호 (1 인덱스)."
+      }
+    },
+    "git-config": {
+      "name": "git-config",
+      "description": "git 구성을 읽거나 씁니다 (허용된 키만). 기본 범위는 `local` (리포지토리)입니다. 아이덴티티의 경우 `user.name` 및 `user.email`을 선호합니다.",
+      "params": {
+        "key": "구성 키 (get/set/unset에 필요).",
+        "value": "새 값 (set에 필요)."
+      }
+    },
+    "git-tag": {
+      "name": "git-tag",
+      "description": "로컬 git 태그를 나열, 생성 또는 삭제합니다. 생성 시 주석이 있는 태그를 위해 `message`를 전달합니다 (그렇지 않으면 경량 태그).",
+      "params": {
+        "name": "태그 이름 (생성/삭제에 필요).",
+        "ref": "태그할 참조 (기본값 `HEAD`). 생성 시 사용됩니다.",
+        "message": "설정 시 이 메시지로 주석이 있는 태그를 생성합니다.",
+        "pattern": "`list`에 대한 glob 필터.",
+        "force": "기존 태그를 대체합니다 (`-f`)."
+      }
+    },
+    "git-remote": {
+      "name": "git-remote",
+      "description": "git 원격을 나열, 추가, 제거 또는 업데이트합니다. `list`는 이름 + 가져오기/푸시 URL을 반환합니다.",
+      "params": {
+        "name": "원격 이름 (추가/제거/설정 URL에 필요).",
+        "url": "원격 URL (추가/설정 URL에 필요)."
+      }
+    },
+    "git-blame": {
+      "name": "git-blame",
+      "description": "파일에 대한 라인별 기여도. `[{ sha, author, date, lineNumber, content }]`를 반환합니다. `range: \"10,50\"` 또는 `ref`로 제한합니다.",
+      "params": {
+        "path": "리포지토리 루트에 대한 파일 경로.",
+        "ref": "특정 참조에서의 기여도 (기본 HEAD).",
+        "range": "선택적 라인 범위 `start,end` (1 인덱스 포함)."
+      }
+    },
+    "git-bisect": {
+      "name": "git-bisect",
+      "description": "버그를 도입한 커밋을 찾기 위한 이진 검색. 워크플로우: 시작 → 각 단계를 좋음/나쁨으로 표시 → 완료. `reset`을 사용하여 중단합니다.",
+      "params": {
+        "bad": "나쁜 커밋 (시작에 필요).",
+        "good": "좋은 커밋 (시작에 선택적이지만 권장).",
+        "ref": "`good/bad/skip`로 표시할 커밋 (기본 현재 HEAD)."
+      }
+    },
+    "git-fetch": {
+      "name": "git-fetch",
+      "description": "병합 없이 원격에서 refs를 가져옵니다. `refspec`을 사용하여 임의의 refs를 가져옵니다 (예: PR 헤드를 로컬 브랜치로 가져오기 위해 `pull/<n>/head:pr-<n>`, 태그를 가져오기 위해 `refs/tags/v1.0.0:refs/tags/v1.0.0`).",
+      "params": {
+        "refspec": "선택적 refspec — 예: PR 헤드를 로컬 브랜치로 가져오기 위해 `pull/<n>/head:pr-<n>` 또는 단일 태그를 가져오기 위해 `refs/tags/<tag>`. 생략 시 원격의 모든 브랜치와 태그를 가져옵니다.",
+        "depth": "N 커밋으로 기록을 제한합니다 (얕은 가져오기).",
+        "tags": "태그도 가져옵니다 (기본적으로 기본 가져오기 시 true, refspec이 제공될 때 false).",
+        "prune": "원격 상대가 사라진 로컬 refs를 제거합니다 (`--prune`)."
+      }
+    }
+  },
+  "name": "GitHub",
+  "description": "GitHub 리포지토리 관리 + 로컬 git 개발 환경 - 리포지토리, 이슈, 풀 리퀘스트, 액션, 커밋, 브랜치, 릴리스, 복제된 리포지토리에서의 로컬 git 작업 (상태/추가/커밋/푸시/체크아웃). Teros GitHub 앱을 통한 사용자-서버 OAuth로 인증 (각 사용자는 자신의 GitHub 아이덴티티로 작업합니다).",
+  "changelog": [
+    {
+      "notes": "리포지토리, 이슈, 풀 리퀘스트 및 리뷰 관리, 액션 및 릴리스 실행, 복제된 리포지토리에서의 전체 로컬 git"
+    }
+  ]
+}

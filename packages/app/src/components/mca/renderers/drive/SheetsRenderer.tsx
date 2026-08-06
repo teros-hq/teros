@@ -7,22 +7,17 @@
  * - export-sheet
  */
 
-import { Download, FileSpreadsheet, Table } from '@tamagui/lucide-icons';
+import { Download, FileSpreadsheet, Table } from '../../primitives';
+import { ErrorBlock, SuccessBlock, ToolCallCard } from '../../primitives';
 import type React from 'react';
-import { useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import type { ToolCallRendererProps } from '../../types';
 import {
   Badge,
-  colors,
-  ErrorBlock,
-  ExpandedBody,
-  ExpandedContainer,
-  HeaderRow,
+  useDriveColors,
   parseOutput,
-  SuccessBlock,
   truncate,
 } from './shared';
 
@@ -39,19 +34,19 @@ interface SheetRangeResult {
 export function ReadSheetRangeRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<SheetRangeResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.values ? parsed : null;
   const rowCount = result?.values?.length || 0;
 
   // Get range from input
   const inputParsed = typeof input === 'string' ? parseOutput<{ range?: string }>(input) : input;
-  const range = inputParsed?.range || result?.range || '';
+  const range = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.range : undefined) || result?.range || '';
 
   // Badge
   let badge: React.ReactNode = null;
@@ -69,31 +64,9 @@ export function ReadSheetRangeRenderer({
         ? `Read range: ${truncate(range, 20)}`
         : 'Read sheet range';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && result.values.length > 0 && (
@@ -105,7 +78,7 @@ export function ReadSheetRangeRenderer({
                     {row.slice(0, 6).map((cell, cellIndex) => (
                       <XStack
                         key={cellIndex}
-                        backgroundColor={rowIndex === 0 ? 'rgba(66,133,244,0.15)' : colors.bgInner}
+                        backgroundColor={rowIndex === 0 ? 'rgba(66,133,244,0.15)' : c.bgInner}
                         paddingVertical={4}
                         paddingHorizontal={6}
                         minWidth={60}
@@ -113,7 +86,7 @@ export function ReadSheetRangeRenderer({
                         borderRadius={2}
                       >
                         <Text
-                          color={rowIndex === 0 ? colors.driveBlue : colors.primary}
+                          color={rowIndex === 0 ? colors.driveBlue : c.text}
                           fontSize={9}
                           fontWeight={rowIndex === 0 ? '600' : '400'}
                           numberOfLines={1}
@@ -124,12 +97,12 @@ export function ReadSheetRangeRenderer({
                     ))}
                     {row.length > 6 && (
                       <XStack
-                        backgroundColor={colors.bgInner}
+                        backgroundColor={c.bgInner}
                         paddingVertical={4}
                         paddingHorizontal={6}
                         borderRadius={2}
                       >
-                        <Text color={colors.muted} fontSize={9}>
+                        <Text color={c.text3} fontSize={9}>
                           +{row.length - 6}
                         </Text>
                       </XStack>
@@ -137,7 +110,7 @@ export function ReadSheetRangeRenderer({
                   </XStack>
                 ))}
                 {result.values.length > 10 && (
-                  <Text color={colors.muted} fontSize={9} paddingTop={4}>
+                  <Text color={c.text3} fontSize={9} paddingTop={4}>
                     +{result.values.length - 10} more rows
                   </Text>
                 )}
@@ -147,12 +120,11 @@ export function ReadSheetRangeRenderer({
         )}
 
         {status === 'completed' && result && result.values.length === 0 && (
-          <Text color={colors.muted} fontSize={10}>
+          <Text color={c.text3} fontSize={10}>
             No data in range
           </Text>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -176,12 +148,12 @@ interface ListTabsResult {
 export function ListSheetTabsRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<ListTabsResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.sheets ? parsed : null;
   const tabCount = result?.sheets?.length || 0;
@@ -202,31 +174,9 @@ export function ListSheetTabsRenderer({
         ? `Tabs: ${truncate(result.spreadsheetTitle, 20)}`
         : 'List sheet tabs';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -234,7 +184,7 @@ export function ListSheetTabsRenderer({
             {result.spreadsheetTitle && (
               <XStack gap={8} alignItems="center" paddingBottom={4}>
                 <FileSpreadsheet size={12} color={colors.spreadsheet} />
-                <Text color={colors.primary} fontSize={10} fontWeight="500">
+                <Text color={c.text} fontSize={10} fontWeight="500">
                   {result.spreadsheetTitle}
                 </Text>
               </XStack>
@@ -247,22 +197,21 @@ export function ListSheetTabsRenderer({
                 gap={8}
                 paddingVertical={4}
                 paddingHorizontal={8}
-                backgroundColor={colors.bgInner}
+                backgroundColor={c.bgInner}
                 borderRadius={4}
               >
                 <Table size={10} color={colors.spreadsheet} />
-                <Text color={colors.primary} fontSize={10} flex={1}>
+                <Text color={c.text} fontSize={10} flex={1}>
                   {sheet.title}
                 </Text>
-                <Text color={colors.muted} fontSize={9}>
+                <Text color={c.text3} fontSize={9}>
                   {sheet.rowCount}×{sheet.columnCount}
                 </Text>
               </XStack>
             ))}
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }
 
@@ -282,18 +231,18 @@ interface ExportResult {
 export function ExportSheetRenderer({
   toolName,
   status,
+  appIcon,
   output,
-  duration,
   input,
 }: ToolCallRendererProps) {
-  const [expanded, setExpanded] = useState(false);
-
+  const c = useDriveColors();
+  const colors = useDriveColors();
   const parsed = parseOutput<ExportResult>(output || '');
   const result = typeof parsed === 'object' && parsed?.success ? parsed : null;
 
   // Get format from input
   const inputParsed = typeof input === 'string' ? parseOutput<{ format?: string }>(input) : input;
-  const format = inputParsed?.format || result?.format || 'csv';
+  const format = (typeof inputParsed === 'object' && inputParsed !== null ? inputParsed.format : undefined) || result?.format || 'csv';
 
   // Badge
   let badge: React.ReactNode = null;
@@ -311,31 +260,9 @@ export function ExportSheetRenderer({
         ? `Export: ${truncate(result.filename, 20)}`
         : 'Export sheet';
 
-  if (!expanded) {
-    return (
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={false}
-        onToggle={() => setExpanded(true)}
-      />
-    );
-  }
 
   return (
-    <ExpandedContainer>
-      <HeaderRow
-        status={status}
-        description={description}
-        duration={duration}
-        badge={badge}
-        expanded={true}
-        onToggle={() => setExpanded(false)}
-        isInContainer
-      />
-      <ExpandedBody>
+    <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && result && (
@@ -344,11 +271,11 @@ export function ExportSheetRenderer({
 
             <YStack gap={4} paddingLeft={8}>
               <XStack gap={8}>
-                <Text color={colors.muted} fontSize={9} width={50}>
+                <Text color={c.text3} fontSize={9} width={50}>
                   Path:
                 </Text>
                 <Text
-                  color={colors.secondary}
+                  color={c.text2}
                   fontSize={9}
                   fontFamily="$mono"
                   flex={1}
@@ -358,17 +285,16 @@ export function ExportSheetRenderer({
                 </Text>
               </XStack>
               <XStack gap={8}>
-                <Text color={colors.muted} fontSize={9} width={50}>
+                <Text color={c.text3} fontSize={9} width={50}>
                   Format:
                 </Text>
-                <Text color={colors.secondary} fontSize={9}>
+                <Text color={c.text2} fontSize={9}>
                   {result.format.toUpperCase()}
                 </Text>
               </XStack>
             </YStack>
           </YStack>
         )}
-      </ExpandedBody>
-    </ExpandedContainer>
+      </ToolCallCard>
   );
 }

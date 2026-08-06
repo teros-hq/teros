@@ -7,9 +7,10 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { AppToolPermissions, ToolPermission } from '../../../types/database'
+import type { McaManager } from '../../../services/mca-manager'
 import type { McaService } from '../../../services/mca-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import { getPermissionsSummary, isPrivateTool } from '../../../types/permissions'
+import { buildAppPermissionsView } from './_permissions-view'
 
 interface UpdatePermissionsData {
   appId: string
@@ -35,6 +36,7 @@ async function canManageApp(
 
 export function createUpdatePermissionsHandler(
   mcaService: McaService,
+  mcaManager: McaManager | null,
   workspaceService?: WorkspaceService,
 ) {
   return async function updatePermissions(ctx: WsHandlerContext, rawData: unknown) {
@@ -74,8 +76,7 @@ export function createUpdatePermissionsHandler(
     }
 
     const mca = await mcaService.getMcaFromCatalog(app.mcaId)
-    const publicTools = (mca?.tools || []).filter((name) => !isPrivateTool(name))
-    const summary = getPermissionsSummary(permissions, publicTools)
+    const { summary } = await buildAppPermissionsView(mcaManager, updated, appId, mca?.tools || [])
 
     console.log(`[app.update-permissions] Updated permissions for ${appId}`)
 

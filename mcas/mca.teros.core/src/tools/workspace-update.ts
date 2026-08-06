@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceUpdate: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Update workspace properties including the context that gets injected into agent system prompts.',
   parameters: {

@@ -1,12 +1,21 @@
 /**
  * Test WebSocket Client for E2E Testing
  *
- * Provides a typed client for interacting with the Teros backend
- * via WebSocket. Handles authentication, message sending, and
- * response collection.
+ * Speaks the REAL Teros WS protocol (TER-453):
+ *   1. Auth handshake: flat `{type:'auth',...}` → `auth_success`/`auth_error`
+ *      (this is the production protocol — auth happens before the envelope).
+ *   2. Everything else: WsFramework envelope
+ *      `{type:'request', requestId, action, data}` correlated by requestId
+ *      against `{type:'response'|'error', requestId, ...}`.
+ *   3. Server pushes (flat `message_sent`, `channel_list_status`,
+ *      `project.created`, envelope `event`…) observed via waitFor/waitForEvent.
+ *
+ * The legacy flat-type request surface (create_channel, list_channels…) was
+ * removed: the backend routes those to UNKNOWN_MESSAGE_TYPE.
  */
 
 import WebSocket from 'ws';
+import type { WsError, WsRequest, WsResponse } from '@teros/shared';
 
 export interface TestClientConfig {
   /** WebSocket URL (default: ws://localhost:3002/ws) */
@@ -30,15 +39,27 @@ export interface AuthResponse {
   error?: string;
 }
 
+export type MessageFilter = (msg: WsMessage) => boolean;
+
+interface Waiter {
+  filter: MessageFilter;
+  resolve: (msg: WsMessage) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+let requestCounter = 0;
+
 /**
- * Test client for E2E WebSocket testing
+ * Test client for E2E WebSocket testing against the real protocol.
  */
 export class TestClient {
   private ws: WebSocket | null = null;
   private config: Required<TestClientConfig>;
   private messageQueue: WsMessage[] = [];
-  private waiters: Map<string, (msg: WsMessage) => void> = new Map();
+  private waiters: Waiter[] = [];
   private allMessages: WsMessage[] = [];
+  /** Raw JSON frames sent over the socket (for contract assertions). */
+  private sentFrames: string[] = [];
 
   constructor(config: TestClientConfig = {}) {
     this.config = {
@@ -48,9 +69,10 @@ export class TestClient {
     };
   }
 
-  /**
-   * Connect to the WebSocket server
-   */
+  // ==========================================================================
+  // Connection
+  // ==========================================================================
+
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -71,7 +93,7 @@ export class TestClient {
           this.log('Received:', msg.type, msg);
           this.allMessages.push(msg);
           this.handleMessage(msg);
-        } catch (e) {
+        } catch (_e) {
           this.log('Failed to parse message:', data.toString());
         }
       });
@@ -87,9 +109,6 @@ export class TestClient {
     });
   }
 
-  /**
-   * Disconnect from the server
-   */
   async disconnect(): Promise<void> {
     if (this.ws) {
       this.ws.close();
@@ -97,114 +116,114 @@ export class TestClient {
     }
   }
 
-  /**
-   * Authenticate with email/password
-   */
+  isConnected(): boolean {
+    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  }
+
+  // ==========================================================================
+  // Auth handshake (flat protocol — pre-envelope, as in production)
+  // ==========================================================================
+
   async authenticate(email: string, password: string): Promise<AuthResponse> {
-    const response = await this.sendAndWait(
-      { type: 'auth', method: 'credentials', email, password },
-      ['auth_success', 'auth_error'],
-    );
-    return response as AuthResponse;
+    this.sendRaw({ type: 'auth', method: 'credentials', email, password });
+    return (await this.waitFor(
+      (msg) => msg.type === 'auth_success' || msg.type === 'auth_error',
+    )) as AuthResponse;
   }
 
-  /**
-   * Authenticate with existing token
-   */
   async authenticateWithToken(token: string): Promise<AuthResponse> {
-    const response = await this.sendAndWait(
-      { type: 'auth', method: 'token', sessionToken: token },
-      ['auth_success', 'auth_error'],
+    this.sendRaw({ type: 'auth', method: 'token', sessionToken: token });
+    return (await this.waitFor(
+      (msg) => msg.type === 'auth_success' || msg.type === 'auth_error',
+    )) as AuthResponse;
+  }
+
+  // ==========================================================================
+  // WsFramework envelope — request/response correlated by requestId
+  // ==========================================================================
+
+  /**
+   * Send a `{type:'request'}` envelope and wait for the response or error
+   * carrying the SAME requestId. Other traffic (pushes, concurrent responses)
+   * does not satisfy the wait — that is the whole point of the correlation.
+   */
+  async request(
+    action: string,
+    data?: Record<string, unknown>,
+    timeout?: number,
+  ): Promise<(WsResponse | WsError) & WsMessage> {
+    const requestId = `req_${++requestCounter}_${Math.random().toString(36).slice(2, 10)}`;
+    const envelope: WsRequest = { type: 'request', requestId, action, ...(data ? { data } : {}) };
+
+    const responsePromise = this.waitFor(
+      (msg) => (msg.type === 'response' || msg.type === 'error') && msg.requestId === requestId,
+      timeout,
+      `response/error for ${action} (${requestId})`,
     );
-    return response as AuthResponse;
+    this.sendRaw(envelope);
+    return (await responsePromise) as (WsResponse | WsError) & WsMessage;
   }
 
   /**
-   * Register a new user (via auth with credentials - backend auto-creates)
+   * Like request() but throws on `{type:'error'}` and unwraps `response.data`.
    */
-  async register(email: string, password: string, name?: string): Promise<AuthResponse> {
-    // In Teros, registration happens via credentials auth if user doesn't exist
-    // This might need adjustment based on actual backend behavior
-    const response = await this.sendAndWait(
-      { type: 'auth', method: 'credentials', email, password },
-      ['auth_success', 'auth_error'],
-    );
-    return response as AuthResponse;
+  async requestOk<T = any>(
+    action: string,
+    data?: Record<string, unknown>,
+    timeout?: number,
+  ): Promise<T> {
+    const result = await this.request(action, data, timeout);
+    if (result.type === 'error') {
+      throw new Error(`[${action}] ${(result as WsError).code}: ${(result as WsError).message}`);
+    }
+    return (result as WsResponse).data as T;
   }
 
+  // ==========================================================================
+  // Push observation
+  // ==========================================================================
+
   /**
-   * Send a message and wait for a specific response type
+   * Wait for a message matching a type (string) or predicate. Checks the
+   * queue of already-received messages first.
    */
-  async sendAndWait(
-    message: WsMessage,
-    responseTypes: string | string[],
+  async waitFor(
+    filter: string | string[] | MessageFilter,
+    timeout?: number,
+    label?: string,
+  ): Promise<WsMessage> {
+    const filterFn = this.toFilter(filter);
+    const description = label ?? (typeof filter === 'function' ? 'predicate' : String(filter));
+
+    const queueIndex = this.messageQueue.findIndex(filterFn);
+    if (queueIndex >= 0) {
+      return this.messageQueue.splice(queueIndex, 1)[0];
+    }
+
+    return new Promise((resolve, reject) => {
+      const timeoutMs = timeout || this.config.timeout;
+      const waiter: Waiter = {
+        filter: filterFn,
+        resolve,
+        timer: setTimeout(() => {
+          this.waiters = this.waiters.filter((w) => w !== waiter);
+          reject(new Error(`Timeout waiting for ${description} after ${timeoutMs}ms`));
+        }, timeoutMs),
+      };
+      this.waiters.push(waiter);
+    });
+  }
+
+  /** Semantic alias for server pushes (flat or envelope `event`). */
+  async waitForEvent(
+    filter: string | string[] | MessageFilter,
     timeout?: number,
   ): Promise<WsMessage> {
-    const types = Array.isArray(responseTypes) ? responseTypes : [responseTypes];
-
-    return new Promise((resolve, reject) => {
-      const timeoutMs = timeout || this.config.timeout;
-      const timer = setTimeout(() => {
-        types.forEach((t) => this.waiters.delete(t));
-        reject(new Error(`Timeout waiting for ${types.join(' or ')} after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      // Register waiters for all expected types
-      types.forEach((type) => {
-        this.waiters.set(type, (msg) => {
-          clearTimeout(timer);
-          types.forEach((t) => this.waiters.delete(t));
-          resolve(msg);
-        });
-      });
-
-      this.send(message);
-    });
+    return this.waitFor(filter, timeout);
   }
 
   /**
-   * Send a message without waiting
-   */
-  send(message: WsMessage): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket not connected');
-    }
-    this.log('Sending:', message.type, message);
-    this.ws.send(JSON.stringify(message));
-  }
-
-  /**
-   * Wait for a specific message type
-   */
-  async waitFor(responseTypes: string | string[], timeout?: number): Promise<WsMessage> {
-    const types = Array.isArray(responseTypes) ? responseTypes : [responseTypes];
-
-    // Check if we already have it in the queue
-    const existing = this.messageQueue.find((m) => types.includes(m.type));
-    if (existing) {
-      this.messageQueue = this.messageQueue.filter((m) => m !== existing);
-      return existing;
-    }
-
-    return new Promise((resolve, reject) => {
-      const timeoutMs = timeout || this.config.timeout;
-      const timer = setTimeout(() => {
-        types.forEach((t) => this.waiters.delete(t));
-        reject(new Error(`Timeout waiting for ${types.join(' or ')} after ${timeoutMs}ms`));
-      }, timeoutMs);
-
-      types.forEach((type) => {
-        this.waiters.set(type, (msg) => {
-          clearTimeout(timer);
-          types.forEach((t) => this.waiters.delete(t));
-          resolve(msg);
-        });
-      });
-    });
-  }
-
-  /**
-   * Collect all messages of a type until a condition or timeout
+   * Collect messages matching a type until a condition, count, or timeout.
    */
   async collectMessages(
     type: string,
@@ -214,66 +233,85 @@ export class TestClient {
     const { until, timeout = this.config.timeout, count } = options;
 
     return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        resolve(collected);
-      }, timeout);
-
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.waiters.delete(type);
-        if (until) this.waiters.delete(until);
+      const collector: Waiter = {
+        filter: (msg) => msg.type === type || (until !== undefined && msg.type === until),
+        resolve: () => {},
+        timer: setTimeout(() => {
+          cleanup();
+          resolve(collected);
+        }, timeout),
       };
 
-      // Collector for target type
-      this.waiters.set(type, (msg) => {
+      const cleanup = () => {
+        clearTimeout(collector.timer);
+        this.waiters = this.waiters.filter((w) => w !== collector);
+      };
+
+      collector.resolve = (msg: WsMessage) => {
+        if (until && msg.type === until) {
+          cleanup();
+          resolve(collected);
+          return;
+        }
         collected.push(msg);
         if (count && collected.length >= count) {
           cleanup();
           resolve(collected);
+          return;
         }
-      });
+        // Re-arm: waiters are one-shot, so push the collector back.
+        this.waiters.push(collector);
+      };
 
-      // Stop condition
-      if (until) {
-        this.waiters.set(until, () => {
-          cleanup();
-          resolve(collected);
-        });
-      }
+      this.waiters.push(collector);
     });
   }
 
-  /**
-   * Get all messages received (for debugging)
-   */
+  // ==========================================================================
+  // Introspection
+  // ==========================================================================
+
   getAllMessages(): WsMessage[] {
     return [...this.allMessages];
   }
 
-  /**
-   * Clear message history
-   */
+  /** Raw frames sent over the socket — exact bytes for contract tests. */
+  getSentFrames(): string[] {
+    return [...this.sentFrames];
+  }
+
   clearMessages(): void {
     this.allMessages = [];
     this.messageQueue = [];
   }
 
-  /**
-   * Check if connected
-   */
-  isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+  // ==========================================================================
+  // Private
+  // ==========================================================================
+
+  /** Low-level send. Public API should go through request()/authenticate(). */
+  sendRaw(message: WsMessage | WsRequest): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      throw new Error('WebSocket not connected');
+    }
+    const frame = JSON.stringify(message);
+    this.log('Sending:', (message as WsMessage).type, message);
+    this.sentFrames.push(frame);
+    this.ws.send(frame);
   }
 
-  // ============================================================================
-  // Private
-  // ============================================================================
+  private toFilter(filter: string | string[] | MessageFilter): MessageFilter {
+    if (typeof filter === 'function') return filter;
+    const types = Array.isArray(filter) ? filter : [filter];
+    return (msg) => types.includes(msg.type);
+  }
 
   private handleMessage(msg: WsMessage): void {
-    const waiter = this.waiters.get(msg.type);
-    if (waiter) {
-      waiter(msg);
+    const index = this.waiters.findIndex((w) => w.filter(msg));
+    if (index >= 0) {
+      const waiter = this.waiters.splice(index, 1)[0];
+      clearTimeout(waiter.timer);
+      waiter.resolve(msg);
     } else {
       this.messageQueue.push(msg);
     }

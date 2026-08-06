@@ -1,0 +1,263 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave de API de Odoo y la conectividad."
+    },
+    "list-models": {
+      "name": "list-models",
+      "description": "Lista todos los modelos de Odoo disponibles (ir.model).",
+      "params": {
+        "limit": "Número máximo de resultados (por defecto: 100)",
+        "offset": "Desplazamiento de paginación"
+      }
+    },
+    "search-records": {
+      "name": "search-records",
+      "description": "Busca y lee registros de cualquier modelo de Odoo. Usa filtros como \"is_company=true,name=Acme\".",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo, p. ej. res.partner",
+        "filters": "Filtros separados por comas: campo=valor, campo!=valor, campo>valor, etc.",
+        "fields": "Campos a devolver (por defecto: todos los campos almacenados)",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. name asc"
+      }
+    },
+    "get-record": {
+      "name": "get-record",
+      "description": "Lee un único registro de Odoo por modelo e ID.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "id": "ID del registro",
+        "fields": "Campos a devolver"
+      }
+    },
+    "create-record": {
+      "name": "create-record",
+      "description": "Crea un nuevo registro en cualquier modelo de Odoo.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "values": "Valores de los campos para el nuevo registro"
+      }
+    },
+    "update-record": {
+      "name": "update-record",
+      "description": "Actualiza un registro existente de Odoo por modelo e ID.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "id": "ID del registro",
+        "values": "Valores de los campos a actualizar"
+      }
+    },
+    "delete-record": {
+      "name": "delete-record",
+      "description": "Elimina un registro de Odoo por modelo e ID.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "id": "ID del registro"
+      }
+    },
+    "count-records": {
+      "name": "count-records",
+      "description": "Cuenta los registros de un modelo de Odoo que coinciden con los filtros indicados.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "filters": "Filtros separados por comas: campo=valor, campo!=valor, etc."
+      }
+    },
+    "call-method": {
+      "name": "call-method",
+      "description": "Llama a cualquier método público de un modelo de Odoo.",
+      "params": {
+        "model": "Nombre técnico del modelo de Odoo",
+        "method": "Nombre del método a llamar",
+        "args": "Argumentos posicionales pasados al método",
+        "kwargs": "Argumentos con nombre pasados al método"
+      }
+    },
+    "list-partners": {
+      "name": "list-partners",
+      "description": "Lista los contactos de Odoo (contactos / empresas).",
+      "params": {
+        "filters": "Filtros separados por comas, p. ej. is_company=true,name=Acme",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. name asc"
+      }
+    },
+    "get-partner": {
+      "name": "get-partner",
+      "description": "Obtiene un contacto específico de Odoo por ID.",
+      "params": {
+        "id": "ID del contacto"
+      }
+    },
+    "create-partner": {
+      "name": "create-partner",
+      "description": "Crea un nuevo contacto de Odoo (contacto o empresa).",
+      "params": {
+        "name": "Nombre del contacto",
+        "email": "Dirección de correo electrónico",
+        "phone": "Número de teléfono",
+        "isCompany": "Si es una empresa",
+        "street": "Dirección postal",
+        "city": "Ciudad",
+        "zip": "Código postal",
+        "countryId": "ID del país",
+        "parentId": "ID de la empresa matriz",
+        "values": "Valores adicionales de los campos"
+      }
+    },
+    "update-partner": {
+      "name": "update-partner",
+      "description": "Actualiza un contacto existente de Odoo por ID.",
+      "params": {
+        "id": "ID del contacto",
+        "values": "Valores de los campos a actualizar"
+      }
+    },
+    "list-products": {
+      "name": "list-products",
+      "description": "Lista los productos de Odoo (product.template).",
+      "params": {
+        "filters": "Filtros separados por comas, p. ej. sale_ok=true",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. name asc"
+      }
+    },
+    "list-sale-orders": {
+      "name": "list-sale-orders",
+      "description": "Lista los pedidos de venta de Odoo.",
+      "params": {
+        "filters": "Filtros separados por comas, p. ej. state=sale",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. date_order desc"
+      }
+    },
+    "get-sale-order": {
+      "name": "get-sale-order",
+      "description": "Obtiene un pedido de venta específico de Odoo por ID, incluyendo las líneas del pedido.",
+      "params": {
+        "id": "ID del pedido de venta"
+      }
+    },
+    "create-sale-order": {
+      "name": "create-sale-order",
+      "description": "Crea un nuevo pedido de venta de Odoo con líneas de pedido opcionales.",
+      "params": {
+        "partnerId": "ID del contacto del cliente",
+        "orderLines": "Líneas del pedido como objetos con productId, quantity, priceUnit",
+        "dateOrder": "Fecha del pedido (ISO 8601)",
+        "note": "Nota interna"
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "Lista las facturas de cliente de Odoo (account.move).",
+      "params": {
+        "filters": "Filtros separados por comas, p. ej. state=posted",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. invoice_date desc"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "Lista los proyectos de Odoo.",
+      "params": {
+        "filters": "Filtros separados por comas",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. name asc"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "Lista las tareas de proyectos de Odoo.",
+      "params": {
+        "projectId": "Filtrar por ID de proyecto",
+        "filters": "Filtros adicionales separados por comas",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. date_deadline asc"
+      }
+    },
+    "create-project-task": {
+      "name": "create-project-task",
+      "description": "Crea una nueva tarea en un proyecto de Odoo.",
+      "params": {
+        "projectId": "ID del proyecto",
+        "name": "Nombre de la tarea",
+        "userId": "ID del usuario asignado",
+        "dateDeadline": "Fecha límite (ISO 8601)",
+        "description": "Descripción de la tarea (soporta HTML)",
+        "values": "Valores adicionales de los campos"
+      }
+    },
+    "list-employees": {
+      "name": "list-employees",
+      "description": "Lista los empleados de Odoo (hr.employee).",
+      "params": {
+        "filters": "Filtros separados por comas",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. name asc"
+      }
+    },
+    "list-leaves": {
+      "name": "list-leaves",
+      "description": "Lista las solicitudes de permiso de Odoo (hr.leave).",
+      "params": {
+        "employeeId": "Filtrar por ID de empleado",
+        "state": "Filtrar por estado: draft, confirm, validate, refuse",
+        "filters": "Filtros adicionales separados por comas",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. date_from desc"
+      }
+    },
+    "create-leave": {
+      "name": "create-leave",
+      "description": "Crea una nueva solicitud de permiso de Odoo (hr.leave).",
+      "params": {
+        "employeeId": "ID del empleado",
+        "holidayStatusId": "ID del tipo de permiso",
+        "dateFrom": "Fecha/hora de inicio (ISO 8601)",
+        "dateTo": "Fecha/hora de fin (ISO 8601)",
+        "name": "Motivo / descripción"
+      }
+    },
+    "list-timesheets": {
+      "name": "list-timesheets",
+      "description": "Lista las entradas de partes de horas de Odoo (account.analytic.line).",
+      "params": {
+        "projectId": "Filtrar por ID de proyecto",
+        "taskId": "Filtrar por ID de tarea",
+        "employeeId": "Filtrar por ID de empleado",
+        "dateFrom": "Fecha de inicio (YYYY-MM-DD)",
+        "dateTo": "Fecha de fin (YYYY-MM-DD)",
+        "filters": "Filtros adicionales separados por comas",
+        "limit": "Número máximo de resultados (por defecto: 50)",
+        "offset": "Desplazamiento de paginación",
+        "order": "Cláusula de ordenación, p. ej. date desc"
+      }
+    },
+    "create-timesheet": {
+      "name": "create-timesheet",
+      "description": "Crea una nueva entrada de parte de horas de Odoo (account.analytic.line).",
+      "params": {
+        "projectId": "ID del proyecto",
+        "taskId": "ID de la tarea (opcional)",
+        "employeeId": "ID del empleado",
+        "date": "Fecha (YYYY-MM-DD)",
+        "name": "Descripción del trabajo realizado",
+        "hours": "Horas invertidas"
+      }
+    }
+  },
+  "name": "Odoo",
+  "description": "Integración con Odoo ERP — administra contactos, productos, pedidos de venta, facturas, proyectos, tareas, empleados, permisos y partes de horas vía la API JSON-RPC de Odoo usando una clave de API."
+}

@@ -1,0 +1,107 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales de MinIO y la conectividad."
+    },
+    "list-buckets": {
+      "name": "list-buckets",
+      "description": "Lista todos los buckets del servidor MinIO"
+    },
+    "create-bucket": {
+      "name": "create-bucket",
+      "description": "Crea un nuevo bucket",
+      "params": {
+        "bucket": "Nombre del bucket a crear (minúsculas, 3-63 caracteres)",
+        "region": "Región del bucket (opcional, por defecto: us-east-1)"
+      }
+    },
+    "delete-bucket": {
+      "name": "delete-bucket",
+      "description": "Elimina un bucket (debe estar vacío)",
+      "params": {
+        "bucket": "Nombre del bucket a eliminar"
+      }
+    },
+    "bucket-exists": {
+      "name": "bucket-exists",
+      "description": "Comprueba si un bucket existe",
+      "params": {
+        "bucket": "Nombre del bucket a comprobar"
+      }
+    },
+    "list-objects": {
+      "name": "list-objects",
+      "description": "Lista los objetos de un bucket con filtro de prefijo opcional",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "prefix": "Filtra objetos por prefijo/carpeta (opcional)",
+        "recursive": "Lista recursivamente (por defecto: true)",
+        "limit": "Número máximo de objetos a devolver (por defecto: 100)"
+      }
+    },
+    "upload-object": {
+      "name": "upload-object",
+      "description": "Sube un archivo o contenido a un bucket",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "objectName": "Nombre/ruta del objeto en el bucket",
+        "filePath": "Ruta local del archivo a subir (usa esto O content)",
+        "content": "Contenido de texto a subir (usa esto O filePath)",
+        "contentType": "Tipo MIME (opcional, se auto-detecta si es posible)"
+      }
+    },
+    "download-object": {
+      "name": "download-object",
+      "description": "Descarga un objeto de un bucket",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "objectName": "Nombre/ruta del objeto a descargar",
+        "destPath": "Ruta local de destino (opcional, por defecto: ~/Downloads/minio/)"
+      }
+    },
+    "delete-object": {
+      "name": "delete-object",
+      "description": "Elimina un objeto de un bucket",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "objectName": "Nombre/ruta del objeto a eliminar"
+      }
+    },
+    "copy-object": {
+      "name": "copy-object",
+      "description": "Copia un objeto dentro de un bucket o entre buckets",
+      "params": {
+        "sourceBucket": "Nombre del bucket de origen",
+        "sourceObject": "Nombre/ruta del objeto de origen",
+        "destBucket": "Nombre del bucket de destino",
+        "destObject": "Nombre/ruta del objeto de destino"
+      }
+    },
+    "get-presigned-url": {
+      "name": "get-presigned-url",
+      "description": "Genera una URL pre-firmada para acceso temporal a un objeto",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "objectName": "Nombre/ruta del objeto",
+        "expiry": "Tiempo de expiración de la URL en segundos (por defecto: 3600 = 1 hora, máximo: 604800 = 7 días)",
+        "method": "Método HTTP: GET (descargar) o PUT (subir)"
+      }
+    },
+    "get-object-info": {
+      "name": "get-object-info",
+      "description": "Obtiene metadatos/información sobre un objeto (tamaño, tipo, etag, etc.)",
+      "params": {
+        "bucket": "Nombre del bucket",
+        "objectName": "Nombre/ruta del objeto"
+      }
+    }
+  },
+  "name": "MinIO",
+  "description": "Almacenamiento de objetos compatible con S3 MinIO — gestiona buckets, sube/descarga objetos, genera URLs pre-firmadas",
+  "changelog": [
+    {
+      "notes": "Versión inicial — gestiona buckets, sube, descarga, copia y elimina archivos, y crea enlaces temporales compartibles"
+    }
+  ]
+}

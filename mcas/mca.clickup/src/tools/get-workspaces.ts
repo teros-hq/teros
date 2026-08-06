@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest } from '../lib';
 
 export const getWorkspaces: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get all ClickUp workspaces (teams) the user belongs to.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {

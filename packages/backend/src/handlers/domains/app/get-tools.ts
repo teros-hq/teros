@@ -4,13 +4,10 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
+import type { McaManager } from '../../../services/mca-manager'
 import type { McaService } from '../../../services/mca-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import {
-  getPermissionsSummary,
-  getToolPermission,
-  isPrivateTool,
-} from '../../../types/permissions'
+import { buildAppPermissionsView } from './_permissions-view'
 
 interface GetToolsData {
   appId: string
@@ -18,6 +15,7 @@ interface GetToolsData {
 
 export function createGetToolsHandler(
   mcaService: McaService,
+  mcaManager: McaManager | null,
   workspaceService?: WorkspaceService,
 ) {
   return async function getTools(ctx: WsHandlerContext, rawData: unknown) {
@@ -47,14 +45,7 @@ export function createGetToolsHandler(
       throw new HandlerError('MCA_NOT_FOUND', 'MCA not found')
     }
 
-    const publicTools = mca.tools.filter((name) => !isPrivateTool(name))
-
-    const tools = publicTools.map((name) => ({
-      name,
-      permission: getToolPermission(app, name),
-    }))
-
-    const summary = getPermissionsSummary(app.permissions, publicTools)
+    const { tools, summary } = await buildAppPermissionsView(mcaManager, app, appId, mca.tools)
 
     console.log(`[app.get-tools] Sent tools for ${appId}: ${tools.length} tools`)
 

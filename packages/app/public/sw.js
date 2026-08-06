@@ -1,5 +1,6 @@
 // Service Worker for Teros PWA
-const CACHE_NAME = 'teros-v1';
+// Bump the version when the caching logic changes so old caches are purged on activate.
+const CACHE_NAME = 'teros-v2';
 
 // Install event - cache basic assets
 self.addEventListener('install', (event) => {
@@ -25,6 +26,14 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Last-resort response when the network is down and nothing usable is cached.
+function offlineResponse() {
+  return new Response('Offline', {
+    status: 503,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
 // Fetch event - network first, fallback to cache
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -37,8 +46,9 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        // Clone and cache successful responses
-        if (response.status === 200) {
+        // Clone and cache successful responses.
+        // GET only: cache.put() throws on other methods.
+        if (event.request.method === 'GET' && response.status === 200) {
           const responseClone = response.clone();
           caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, responseClone);
@@ -49,7 +59,14 @@ self.addEventListener('fetch', (event) => {
       .catch(() => {
         // Fallback to cache, or return offline response
         return caches.match(event.request).then((cached) => {
-          return cached || new Response('Offline', { status: 503 });
+          if (cached) return cached;
+          // SPA navigation fallback: nginx serves index.html for every route
+          // (try_files), so any deep link can boot from the cached app shell
+          // at '/' instead of a blank "Offline" page.
+          if (event.request.mode === 'navigate') {
+            return caches.match('/').then((shell) => shell || offlineResponse());
+          }
+          return offlineResponse();
         });
       }),
   );

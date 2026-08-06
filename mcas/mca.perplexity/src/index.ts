@@ -134,6 +134,7 @@ server.tool('-health-check', {
 // -----------------------------------------------------------------------------
 
 server.tool('perplexity-search', {
+  annotations: { readOnlyHint: false },
   description:
     'Search the web using Perplexity AI with real-time information. Returns comprehensive answers with sources.',
   parameters: {
@@ -185,6 +186,7 @@ server.tool('perplexity-search', {
 // -----------------------------------------------------------------------------
 
 server.tool('perplexity-chat', {
+  annotations: { readOnlyHint: false },
   description:
     'Have a multi-turn conversation with Perplexity AI. Can maintain context across messages.',
   parameters: {

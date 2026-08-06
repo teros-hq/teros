@@ -1,0 +1,362 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. OAuth 자격 증명 및 Canva에 대한 연결성을 확인합니다."
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "인증된 Canva 사용자를 가져옵니다. 정리된 { userId, teamId }를 반환합니다. 매개변수: fields?, includeRaw.",
+      "params": {
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva /users/me 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "인증된 사용자의 프로필을 가져옵니다. 정리된 { displayName }을 반환합니다. 매개변수: fields?, includeRaw.",
+      "params": {
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 프로필 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-user-capabilities": {
+      "name": "get-user-capabilities",
+      "description": "인증된 사용자 기능을 가져옵니다 (Canva 계획 + 역할 제한). 정리된 { capabilities: string[] }을 반환합니다. 브랜드 템플릿이나 자동 완성과 같은 기능이 호출되기 전에 사용 가능 여부를 결정하는 데 사용합니다. 매개변수: fields?, includeRaw.",
+      "params": {
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 기능 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "list-designs": {
+      "name": "list-designs",
+      "description": "사용자의 계정에서 디자인을 검색/정렬/페이지 매김하여 나열합니다. 인라인 미리보기를 위한 썸네일 URL이 포함된 정리된 행을 반환합니다. 매개변수: query?, ownership? (any|owned|shared), sortBy?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "디자인을 필터링하기 위한 검색어입니다.",
+        "ownership": "소유권으로 필터링합니다.",
+        "limit": "최대 결과. 최소 1, 최대 100, 기본값 25입니다.",
+        "continuation": "이전 응답의 페이지 매김 토큰입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-design": {
+      "name": "get-design",
+      "description": "ID로 Canva 디자인을 가져옵니다. 정리된 세부정보 (id, title, ownerUserId/teamId, thumbnail*, edit/view URLs, pageCount, dates)를 반환합니다. 매개변수: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 디자인 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-design": {
+      "name": "create-design",
+      "description": "새 Canva 디자인을 만듭니다. 사용자 정의 캔버스의 경우 designType=custom과 width+height를 사용하거나 미리 설정된 이름(doc, whiteboard, presentation, email) 중 하나를 사용합니다. 정리된 디자인을 반환합니다. 재시도할 수 없습니다. 매개변수: designType, title?, width?, height?, assetId?, fields?, includeRaw.",
+      "params": {
+        "designType": "미리 설정된 이름 또는 width+height가 포함된 \"custom\"입니다.",
+        "title": "새 디자인의 선택적 이름입니다.",
+        "width": "픽셀 단위의 캔버스 너비(사용자 정의 전용).",
+        "height": "픽셀 단위의 캔버스 높이(사용자 정의 전용).",
+        "assetId": "새 디자인에 삽입할 선택적 자산 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-design-pages": {
+      "name": "get-design-pages",
+      "description": "썸네일이 포함된 Canva 디자인의 페이지를 가져옵니다 (제한된 디자인의 경우 치수를 반환합니다). 정리된 { pages: [{ index, thumbnailUrl, width, height }] }를 반환합니다. 매개변수: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 페이지 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-design-export-formats": {
+      "name": "get-design-export-formats",
+      "description": "특정 디자인에서 지원하는 내보내기 형식을 나열합니다. 지원되지 않는 형식에 대한 400 오류를 피하기 위해 export-design 전에 사용합니다. 정리된 { formats: string[] }를 반환합니다. 매개변수: designId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 형식 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "export-design": {
+      "name": "export-design",
+      "description": "디자인에 대한 내보내기 작업을 시작합니다. 정리된 작업을 반환합니다 (id로 get-export-job을 폴링합니다). 형식: pdf, png, jpg, gif, pptx, mp4, html_bundle, html_standalone. transparentBackground는 png에만 해당합니다. 재시도할 수 없습니다. 매개변수: designId, format, quality?, width?, height?, pages?, transparentBackground?, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "quality": "JPEG 품질 1-100 (jpg 전용).",
+        "width": "픽셀 단위의 내보내기 너비 (png/jpg).",
+        "height": "픽셀 단위의 내보내기 높이 (png/jpg).",
+        "pages": "내보낼 페이지 (1부터 시작).",
+        "transparentBackground": "PNG 전용 — 캔버스를 투명하게 유지합니다. 기본값은 false입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-export-job": {
+      "name": "get-export-job",
+      "description": "내보내기 작업 상태/결과를 가져옵니다. 정리된 작업 { id, status, error, result.urls? }를 반환합니다. 매개변수: exportId, fields?, includeRaw.",
+      "params": {
+        "exportId": "export-design에서 반환된 내보내기 작업 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-resize-job": {
+      "name": "create-resize-job",
+      "description": "디자인을 새 크기로 조정합니다 (미리 설정된 또는 사용자 정의). 비동기 — 정리된 작업을 반환합니다 (get-resize-job을 폴링합니다). designType=\"custom\"와 width+height 또는 미리 설정된 이름을 사용합니다. 출력은 최상위 수준의 새 디자인입니다. 재시도할 수 없습니다. 매개변수: designId, designType, width?, height?, fields?, includeRaw.",
+      "params": {
+        "designId": "소스 Canva 디자인 ID입니다.",
+        "designType": "미리 설정된 이름 또는 width+height가 포함된 \"custom\"입니다.",
+        "width": "픽셀 단위의 새 너비 (사용자 정의 전용).",
+        "height": "픽셀 단위의 새 높이 (사용자 정의 전용).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-resize-job": {
+      "name": "get-resize-job",
+      "description": "크기 조정 작업 상태/결과를 가져옵니다. 정리된 작업 { id, status, error, result: design? }을 반환합니다. 매개변수: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "create-resize-job에서 반환된 작업 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "import-design": {
+      "name": "import-design",
+      "description": "외부 파일 (예: PDF, PPTX, DOCX)을 새 Canva 디자인으로 가져옵니다. 비동기 — 정리된 작업을 반환합니다 (id로 get-import-job을 폴링합니다). url은 http/https여야 합니다. 재시도할 수 없습니다. 매개변수: title, url, mimeType?, fields?, includeRaw.",
+      "params": {
+        "title": "가져온 디자인의 제목입니다.",
+        "url": "소스 파일의 공개적으로 접근 가능한 http/https URL입니다.",
+        "mimeType": "선택적 MIME 유형 재정의입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-import-job": {
+      "name": "get-import-job",
+      "description": "URL 디자인 가져오기 작업 상태/결과를 가져옵니다. 정리된 작업 { id, status, error, result.designId? }을 반환합니다. 매개변수: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "import-design에서 반환된 작업 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "폴더의 항목 (디자인, 하위 폴더, 이미지, 비디오)을 나열합니다. 최상위 수준의 경우 folderId=\"root\"를 사용합니다. 썸네일 URL이 포함된 정리된 행을 반환합니다. 매개변수: folderId, itemTypes?, sortBy?, pinStatus? (pinned|unpinned), limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "folderId": "폴더 ID ('root'는 최상위 수준).",
+        "itemTypes": "유형으로 필터링합니다 (예: [\"design\", \"image\", \"video\", \"folder\"]).",
+        "sortBy": "예: modified_descending, title_ascending.",
+        "pinStatus": "핀 항목을 필터링합니다.",
+        "limit": "최대 결과. 최소 1, 최대 100, 기본값 50입니다.",
+        "continuation": "페이지 매김 토큰입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-folder": {
+      "name": "get-folder",
+      "description": "폴더 메타데이터를 가져옵니다. 정리된 { id, name, thumbnailUrl, dates }를 반환합니다. 매개변수: folderId, fields?, includeRaw.",
+      "params": {
+        "folderId": "Canva 폴더 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 폴더 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-folder": {
+      "name": "create-folder",
+      "description": "부모 아래에 새 폴더를 만듭니다. 최상위 수준의 경우 parentFolderId=\"root\"를 사용합니다. 정리된 폴더를 반환합니다. 재시도할 수 없습니다. 매개변수: name, parentFolderId, fields?, includeRaw.",
+      "params": {
+        "name": "폴더 이름입니다.",
+        "parentFolderId": "부모 폴더 ID (최상위 수준의 경우 \"root\").",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 폴더 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-folder": {
+      "name": "update-folder",
+      "description": "폴더 이름을 변경합니다. 멱등성. 정리된 폴더를 반환합니다. 매개변수: folderId, name, fields?, includeRaw.",
+      "params": {
+        "folderId": "Canva 폴더 ID입니다.",
+        "name": "새 폴더 이름입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 폴더 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "delete-folder": {
+      "name": "delete-folder",
+      "description": "폴더를 삭제합니다. 폴더의 항목은 부모로 이동됩니다. 멱등성 — 반복 삭제는 404를 반환합니다. { folderId, deleted: true }를 반환합니다. 매개변수: folderId.",
+      "params": {
+        "folderId": "Canva 폴더 ID입니다."
+      }
+    },
+    "move-item": {
+      "name": "move-item",
+      "description": "항목 (디자인 / 폴더 / 자산)을 다른 폴더로 이동합니다. 대상이 변경되지 않으면 멱등성입니다. { itemId, toFolderId, moved: true }를 반환합니다. 매개변수: itemId, toFolderId.",
+      "params": {
+        "itemId": "이동할 항목의 ID입니다.",
+        "toFolderId": "대상 폴더 ID (최상위 수준의 경우 \"root\" 사용)."
+      }
+    },
+    "upload-asset": {
+      "name": "upload-asset",
+      "description": "공개 URL에서 사용자 라이브러리에 자산 (이미지, 비디오, 오디오)을 업로드합니다. 비동기 — 정리된 작업을 반환합니다 (id로 get-asset-upload-job을 폴링합니다). url은 http/https여야 합니다. 재시도할 수 없습니다. 매개변수: name, url, fields?, includeRaw.",
+      "params": {
+        "name": "새 자산의 표시 이름입니다.",
+        "url": "파일의 공개적으로 접근 가능한 http/https URL입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-asset-upload-job": {
+      "name": "get-asset-upload-job",
+      "description": "자산 URL 업로드 작업 상태/결과를 가져옵니다. 정리된 작업 { id, status, error, result: {asset shape with thumbnailUrl}? }을 반환합니다. 매개변수: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "upload-asset에서 반환된 작업 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-asset": {
+      "name": "get-asset",
+      "description": "자산 메타데이터를 가져옵니다. 정리된 { id, name, type, thumbnail*, tags, metadata, dates }를 반환합니다. 매개변수: assetId, fields?, includeRaw.",
+      "params": {
+        "assetId": "Canva 자산 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 자산 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "update-asset": {
+      "name": "update-asset",
+      "description": "자산 메타데이터를 업데이트합니다 (이름 변경, 태그 변경). 멱등성 — 동일한 페이로드는 동일한 최종 상태를 생성합니다. 정리된 자산을 반환합니다. 매개변수: assetId, name?, tags?, fields?, includeRaw.",
+      "params": {
+        "assetId": "Canva 자산 ID입니다.",
+        "name": "새 표시 이름입니다.",
+        "tags": "태그를 통째로 교체합니다 (Canva PATCH 의미론).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 자산 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "delete-asset": {
+      "name": "delete-asset",
+      "description": "자산을 삭제합니다 (휴지통으로 이동됨). 멱등성 — 반복 삭제는 404를 반환합니다 (이미 삭제됨). { assetId, deleted: true }를 반환합니다. 매개변수: assetId.",
+      "params": {
+        "assetId": "Canva 자산 ID입니다."
+      }
+    },
+    "list-brand-templates": {
+      "name": "list-brand-templates",
+      "description": "사용자가 접근할 수 있는 브랜드 템플릿을 나열합니다 (Canva Enterprise 필요). 썸네일 URL이 포함된 정리된 행을 반환합니다. 매개변수: query?, ownership?, limit (1-100, def 25), continuation?, fields?, includeRaw.",
+      "params": {
+        "query": "템플릿을 필터링하기 위한 검색어입니다.",
+        "ownership": "소유권으로 필터링합니다.",
+        "limit": "최대 결과. 최소 1, 최대 100, 기본값 25입니다.",
+        "continuation": "페이지 매김 토큰입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-brand-template": {
+      "name": "get-brand-template",
+      "description": "브랜드 템플릿 메타데이터를 가져옵니다. 정리된 세부정보 (id, title, thumbnailUrl, viewUrl, createUrl, dates)를 반환합니다. 매개변수: brandTemplateId, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "Canva 브랜드 템플릿 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-brand-template-dataset": {
+      "name": "get-brand-template-dataset",
+      "description": "브랜드 템플릿에 대한 자동 완성 데이터 세트 ( {title}, {body}, {image}와 같은 명명된 필드)를 가져옵니다. 반환된 형태는 Canva와 유사하며 — 자동 완성 디자인을 호출하기 전에 유용합니다. 매개변수: brandTemplateId.",
+      "params": {
+        "brandTemplateId": "Canva 브랜드 템플릿 ID입니다."
+      }
+    },
+    "autofill-design": {
+      "name": "autofill-design",
+      "description": "명명된 필드로 브랜드 템플릿을 자동 완성하여 디자인을 만듭니다. 데이터 키는 템플릿 데이터 세트와 일치해야 합니다 (먼저 get-brand-template-dataset 호출). columnConfigs: 선택적 차트 데이터 필드 정의입니다. 비동기 — 정리된 작업을 반환합니다 (get-autofill-job을 폴링합니다). 재시도할 수 없습니다. 매개변수: brandTemplateId, data, title?, columnConfigs?, fields?, includeRaw.",
+      "params": {
+        "brandTemplateId": "Canva 브랜드 템플릿 ID입니다.",
+        "title": "새 디자인의 제목입니다.",
+        "data": "템플릿 데이터 세트와 일치하는 필드 이름 → 값 객체입니다.",
+        "columnConfigs": "차트 필드에 대한 선택적 열 구성입니다 (2026-03에 추가됨). 필드 이름 → { type, ... }를 매핑합니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-autofill-job": {
+      "name": "get-autofill-job",
+      "description": "자동 완성 작업 상태/결과를 가져옵니다. 정리된 작업 { id, status, error, result: design? }을 반환합니다. 매개변수: jobId, fields?, includeRaw.",
+      "params": {
+        "jobId": "autofill-design에서 반환된 작업 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 작업 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-thread": {
+      "name": "create-thread",
+      "description": "디자인에 대한 댓글 스레드를 만듭니다. 메시지 ≤ 2048자. 정리된 스레드를 반환합니다. 재시도할 수 없습니다. 매개변수: designId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "message": "댓글 본문 (일반 텍스트, 최대 2048자).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 스레드 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-thread": {
+      "name": "get-thread",
+      "description": "ID로 댓글 스레드를 가져옵니다. 정리된 스레드를 반환합니다. 매개변수: designId, threadId, fields?, includeRaw.",
+      "params": {
+        "designId": "스레드가 속한 Canva 디자인 ID입니다.",
+        "threadId": "댓글 스레드 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 스레드 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "list-replies": {
+      "name": "list-replies",
+      "description": "댓글 스레드에 대한 답글을 나열합니다. 정리된 행을 반환합니다. 매개변수: designId, threadId, limit (1-100, def 50), continuation?, fields?, includeRaw.",
+      "params": {
+        "designId": "스레드가 속한 Canva 디자인 ID입니다.",
+        "threadId": "댓글 스레드 ID입니다.",
+        "limit": "최대 결과. 최소 1, 최대 100, 기본값 50입니다.",
+        "continuation": "페이지 매김 토큰입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "create-reply": {
+      "name": "create-reply",
+      "description": "댓글 스레드에 답글을 작성합니다. 메시지 ≤ 2048자. 정리된 답글을 반환합니다. 재시도할 수 없습니다. 매개변수: designId, threadId, message, fields?, includeRaw.",
+      "params": {
+        "designId": "스레드가 속한 Canva 디자인 ID입니다.",
+        "threadId": "댓글 스레드 ID입니다.",
+        "message": "답글 본문 (일반 텍스트, 최대 2048자).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 답글 응답을 반환합니다. 기본값은 false입니다."
+      }
+    },
+    "get-reply": {
+      "name": "get-reply",
+      "description": "댓글 스레드 내의 단일 답글을 가져옵니다. 정리된 답글을 반환합니다. 매개변수: designId, threadId, replyId, fields?, includeRaw.",
+      "params": {
+        "designId": "Canva 디자인 ID입니다.",
+        "threadId": "댓글 스레드 ID입니다.",
+        "replyId": "답글 ID입니다.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Canva 답글 응답을 반환합니다. 기본값은 false입니다."
+      }
+    }
+  },
+  "name": "Canva",
+  "description": "Canva 디자인 관리 — 디자인, 내보내기, 크기 조정, 폴더, 자산, 브랜드 템플릿, 자동 완성 및 Canva Connect API를 통한 댓글.",
+  "changelog": [
+    {
+      "notes": "디자인 생성, 내보내기, 크기 조정 및 가져오기, 폴더 및 자산 구성, 브랜드 템플릿 자동 완성 및 댓글 관리"
+    }
+  ]
+}

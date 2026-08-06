@@ -2,10 +2,10 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.filesystem",
   "name": "Filesystem",
-  "version": "1.0.0",
-  "description": "File system operations within a mounted volume. Read, write, edit, list, search files and content.",
+  "version": "2.1.0",
+  "description": "Filesystem operations within a mounted volume: read (with batch), write, edit (exact-match + patch), navigate (list/tree/stat), search (glob/grep with ripgrep + context), and manage files. Path-traversal safe, shell-injection safe, gitignore aware.",
   "type": "utility",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "development",
   "entrypoint": "src/index.ts",
   "author": {
@@ -33,5 +33,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["files", "filesystem", "read", "write", "edit", "search"]
+  "keywords": ["files", "filesystem", "read", "write", "edit", "patch", "search", "grep", "ripgrep", "glob"],
+  "changelog": [
+    {
+      "version": "2.1.0",
+      "date": "2026-04-30",
+      "notes": "Read, write, edit and patch files, browse folders, search by name or content, and manage media and hashes"
+    }
+  ]
 }

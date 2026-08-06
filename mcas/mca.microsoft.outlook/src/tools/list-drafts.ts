@@ -3,6 +3,7 @@ import { createGraphClient, formatMessage } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const listDrafts: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all draft emails in the account.',
   parameters: {
     type: 'object',

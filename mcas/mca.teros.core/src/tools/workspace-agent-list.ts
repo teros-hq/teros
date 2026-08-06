@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceAgentList: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'List agents in a workspace.',
   parameters: {
     type: 'object',

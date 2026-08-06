@@ -1,0 +1,126 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-contacts": {
+      "name": "list-contacts",
+      "description": "Google 연락처에서 연락처를 나열합니다. 이름, 이메일, 전화번호를 반환합니다. 페이지네이션을 지원합니다.",
+      "params": {
+        "pageSize": "페이지당 연락처 수 (기본값: 100, 최대: 1000)",
+        "pageToken": "페이지네이션을 위한 토큰 (이전 응답에서)"
+      }
+    },
+    "get-contact": {
+      "name": "get-contact",
+      "description": "리소스 이름으로 특정 연락처를 가져옵니다.",
+      "params": {
+        "resourceName": "연락처 리소스 이름 (예: 'people/c123456789')"
+      }
+    },
+    "search-contacts": {
+      "name": "search-contacts",
+      "description": "쿼리로 연락처를 검색합니다.",
+      "params": {
+        "query": "검색 쿼리 (이름, 이메일, 전화 등)",
+        "pageSize": "페이지당 결과 수 (기본값: 30, 최대: 30)"
+      }
+    },
+    "create-contact": {
+      "name": "create-contact",
+      "description": "새 연락처를 생성합니다.",
+      "params": {
+        "givenName": "이름",
+        "familyName": "성",
+        "email": "이메일 주소",
+        "phone": "전화번호",
+        "organization": "회사/조직 이름",
+        "title": "직함",
+        "notes": "메모/전기"
+      }
+    },
+    "update-contact": {
+      "name": "update-contact",
+      "description": "기존 연락처를 업데이트합니다.",
+      "params": {
+        "resourceName": "연락처 리소스 이름 (예: 'people/c123456789')",
+        "givenName": "이름",
+        "familyName": "성",
+        "email": "이메일 주소",
+        "phone": "전화번호",
+        "organization": "회사/조직 이름",
+        "title": "직함"
+      }
+    },
+    "delete-contact": {
+      "name": "delete-contact",
+      "description": "연락처를 삭제합니다.",
+      "params": {
+        "resourceName": "연락처 리소스 이름 (예: 'people/c123456789')"
+      }
+    },
+    "list-contact-groups": {
+      "name": "list-contact-groups",
+      "description": "Google 연락처에서 모든 연락처 그룹(레이블)을 나열합니다. 그룹 이름, 구성원 수 및 유형을 반환합니다.",
+      "params": {
+        "pageSize": "반환할 최대 그룹 수 (기본값: 100, 최대: 1000)",
+        "pageToken": "페이지네이션을 위한 토큰 (이전 응답에서)"
+      }
+    },
+    "get-contact-group": {
+      "name": "get-contact-group",
+      "description": "특정 연락처 그룹에 대한 자세한 정보를 가져옵니다. 구성원 포함.",
+      "params": {
+        "resourceName": "연락처 그룹 리소스 이름 (예: 'contactGroups/abc123')",
+        "maxMembers": "반환할 최대 구성원 수 (기본값: 100, 최대: 1000)"
+      }
+    },
+    "create-contact-group": {
+      "name": "create-contact-group",
+      "description": "Google 연락처에서 새 연락처 그룹(레이블)을 생성합니다.",
+      "params": {
+        "name": "연락처 그룹의 이름 (고유해야 함)"
+      }
+    },
+    "update-contact-group": {
+      "name": "update-contact-group",
+      "description": "기존 연락처 그룹을 업데이트합니다(이름 변경).",
+      "params": {
+        "resourceName": "연락처 그룹 리소스 이름 (예: 'contactGroups/abc123')",
+        "name": "연락처 그룹의 새 이름"
+      }
+    },
+    "delete-contact-group": {
+      "name": "delete-contact-group",
+      "description": "연락처 그룹을 삭제합니다. 이는 그룹 내의 연락처를 삭제하지 않고 그룹 자체만 삭제합니다.",
+      "params": {
+        "resourceName": "연락처 그룹 리소스 이름 (예: 'contactGroups/abc123')",
+        "deleteContacts": "true인 경우, 이 그룹의 연락처도 삭제합니다 (기본값: false)"
+      }
+    },
+    "add-contacts-to-group": {
+      "name": "add-contacts-to-group",
+      "description": "하나 이상의 연락처를 연락처 그룹에 추가합니다.",
+      "params": {
+        "resourceName": "연락처 그룹 리소스 이름 (예: 'contactGroups/abc123')",
+        "contactResourceNames": "추가할 연락처 리소스 이름 배열 (예: ['people/c123', 'people/c456'])"
+      }
+    },
+    "remove-contacts-from-group": {
+      "name": "remove-contacts-from-group",
+      "description": "하나 이상의 연락처를 연락처 그룹에서 제거합니다.",
+      "params": {
+        "resourceName": "연락처 그룹 리소스 이름 (예: 'contactGroups/abc123')",
+        "contactResourceNames": "제거할 연락처 리소스 이름 배열 (예: ['people/c123', 'people/c456'])"
+      }
+    }
+  },
+  "name": "Google 연락처",
+  "description": "Google 연락처 관리 - 연락처 나열, 검색, 생성, 업데이트 및 삭제, 그룹 및 레이블로 구성",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 연락처 나열, 검색, 생성, 업데이트 및 삭제, 그룹 및 레이블로 구성"
+    }
+  ]
+}

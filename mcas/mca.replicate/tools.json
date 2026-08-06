@@ -29,6 +29,9 @@
             "description": "Get the full schema for a specific model in \"owner/name\" format (e.g. \"google/veo-3.1\", \"runwayml/gen-4.5\", \"kwaivgi/kling-v2.6\"). Returns all input parameters with types, defaults and descriptions."
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -46,7 +49,13 @@
             "description": "Input parameters for the model. Use replicate-list-models with the model field to get the exact schema."
           }
         },
-        "required": ["model", "input"]
+        "required": [
+          "model",
+          "input"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -60,7 +69,12 @@
             "description": "The prediction ID returned by replicate-run"
           }
         },
-        "required": ["predictionId"]
+        "required": [
+          "predictionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -74,7 +88,13 @@
             "description": "The prediction ID to cancel"
           }
         },
-        "required": ["predictionId"]
+        "required": [
+          "predictionId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -83,6 +103,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

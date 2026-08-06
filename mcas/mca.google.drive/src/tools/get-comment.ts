@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const getComment: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get a specific comment by ID.',
   parameters: {
     type: 'object',

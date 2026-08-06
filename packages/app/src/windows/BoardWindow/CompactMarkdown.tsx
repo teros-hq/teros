@@ -8,6 +8,7 @@ import { marked } from 'marked';
 import { useMemo } from 'react';
 import { Platform, useWindowDimensions } from 'react-native';
 import RenderHtml from 'react-native-render-html';
+import { useColors } from '../../components/mca/primitives/useColors';
 
 marked.setOptions({
   breaks: true,
@@ -18,7 +19,7 @@ interface CompactMarkdownProps {
   text: string;
   /** Base font size (default: 11.5) */
   fontSize?: number;
-  /** Base text color (default: rgba(229,231,235,0.6)) */
+  /** Base text color (defaults to theme secondary text) */
   color?: string;
   /** Width override — defaults to container width from useWindowDimensions */
   width?: number;
@@ -30,8 +31,10 @@ interface CompactMarkdownProps {
 export function CompactMarkdown({
   text,
   fontSize = 11.5,
-  color = 'rgba(229,231,235,0.6)',
+  color: colorProp,
 }: CompactMarkdownProps) {
+  const c = useColors();
+  const color = colorProp ?? c.text2;
   const { width: windowWidth } = useWindowDimensions();
 
   const html = useMemo(() => marked.parse(text) as string, [text]);
@@ -52,22 +55,22 @@ export function CompactMarkdown({
       },
       strong: {
         fontWeight: '600' as const,
-        color: 'rgba(229,231,235,0.9)',
+        color: c.text,
       },
       em: {
         fontStyle: 'italic' as const,
       },
       code: {
-        backgroundColor: 'rgba(255,255,255,0.08)',
+        backgroundColor: c.bgInner,
         paddingHorizontal: 4,
         paddingVertical: 1,
         borderRadius: 3,
         fontFamily: 'monospace',
         fontSize: fontSize - 0.5,
-        color: 'rgba(167,139,250,0.9)',
+        color: c.badges.info.text,
       },
       pre: {
-        backgroundColor: 'rgba(0,0,0,0.3)',
+        backgroundColor: c.bgInner,
         padding: 8,
         borderRadius: 5,
         marginVertical: 4,
@@ -86,38 +89,38 @@ export function CompactMarkdown({
         marginVertical: 1,
       },
       a: {
-        color: '#60A5FA',
+        color: c.badges.info.text,
       },
       blockquote: {
         borderLeftWidth: 2,
-        borderLeftColor: 'rgba(255,255,255,0.2)',
+        borderLeftColor: c.borderStrong,
         marginVertical: 4,
         paddingLeft: 8,
-        color: 'rgba(229,231,235,0.45)',
+        color: c.text3,
       },
       h1: {
         marginTop: 6,
         marginBottom: 3,
         fontWeight: '600' as const,
-        color: 'rgba(229,231,235,0.85)',
+        color: c.text,
         fontSize: fontSize + 2,
       },
       h2: {
         marginTop: 6,
         marginBottom: 3,
         fontWeight: '600' as const,
-        color: 'rgba(229,231,235,0.85)',
+        color: c.text,
         fontSize: fontSize + 1,
       },
       h3: {
         marginTop: 4,
         marginBottom: 2,
         fontWeight: '600' as const,
-        color: 'rgba(229,231,235,0.85)',
+        color: c.text,
         fontSize,
       },
     }),
-    [fontSize, color],
+    [fontSize, color, c],
   );
 
   // On web, use a custom <pre> renderer to allow horizontal scroll
@@ -135,7 +138,7 @@ export function CompactMarkdown({
               return (
                 <div
                   style={{
-                    backgroundColor: 'rgba(0,0,0,0.3)',
+                    backgroundColor: c.bgInner,
                     padding: 8,
                     borderRadius: 5,
                     marginTop: 4,
@@ -148,7 +151,7 @@ export function CompactMarkdown({
                     style={{
                       fontFamily: 'monospace',
                       fontSize: fontSize - 0.5,
-                      color: 'rgba(229,231,235,0.8)',
+                      color: c.text2,
                       whiteSpace: 'pre',
                       wordWrap: 'normal',
                       overflowWrap: 'normal',
@@ -161,7 +164,7 @@ export function CompactMarkdown({
             },
           }
         : {},
-    [fontSize],
+    [fontSize, c],
   );
 
   return (

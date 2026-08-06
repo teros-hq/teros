@@ -1,0 +1,152 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Browserbase API credentials and connectivity."
+    },
+    "session-create": {
+      "name": "session-create",
+      "description": "Create a new Browserbase cloud browser session. Returns a sessionId to use with all other tools, and opens a Live View window so you can watch the browser in real time.",
+      "params": {
+        "proxies": "Enable residential proxies for stealth (default: false)",
+        "proxyCountry": "ISO 3166-1 alpha-2 country code for proxy geolocation (e.g. \"ES\" for Spain, \"US\" for USA). Only used when proxies is true.",
+        "proxyCity": "City name for proxy geolocation (e.g. \"Madrid\", \"New York\"). Only used when proxies is true.",
+        "stealth": "Enable stealth mode to bypass bot detection (default: false)",
+        "advancedStealth": "Enable advanced stealth mode for stronger bot detection bypass (default: false)",
+        "blockAds": "Block ads in the browser (default: false)",
+        "solveCaptchas": "Automatically solve CAPTCHAs (default: true)",
+        "os": "Operating system to simulate for stealth mode",
+        "region": "Server region where the session runs (default: us-west-2)",
+        "keepAlive": "Keep session alive after disconnections (requires Hobby plan or above)",
+        "timeout": "Session timeout in seconds (default: 3600)",
+        "contextId": "Reuse a saved browser context ID (cookies, localStorage, etc.)",
+        "persistContext": "Persist the context after the session ends (default: false). Only used when contextId is provided."
+      }
+    },
+    "session-list": {
+      "name": "session-list",
+      "description": "List all active Browserbase sessions in this instance."
+    },
+    "session-close": {
+      "name": "session-close",
+      "description": "Close a Browserbase session and release cloud resources.",
+      "params": {
+        "sessionId": "The session ID to close"
+      }
+    },
+    "navigate": {
+      "name": "navigate",
+      "description": "Navigate the browser to a URL.",
+      "params": {
+        "sessionId": "Active session ID",
+        "url": "URL to navigate to"
+      }
+    },
+    "navigate-back": {
+      "name": "navigate-back",
+      "description": "Go back to the previous page.",
+      "params": {
+        "sessionId": "Active session ID"
+      }
+    },
+    "snapshot": {
+      "name": "snapshot",
+      "description": "Capture an accessibility snapshot of the current page. Returns the page structure with element refs for interaction.",
+      "params": {
+        "sessionId": "Active session ID"
+      }
+    },
+    "get-content": {
+      "name": "get-content",
+      "description": "Get the current page HTML or plain text content.",
+      "params": {
+        "sessionId": "Active session ID",
+        "format": "Return full HTML or plain text (default: text)"
+      }
+    },
+    "take-screenshot": {
+      "name": "take-screenshot",
+      "description": "Take a screenshot of the current page. Saved to /workspace/ on the shared volume.",
+      "params": {
+        "sessionId": "Active session ID",
+        "filename": "File name (e.g. \"screenshot.png\"). Defaults to screenshot-{timestamp}.png",
+        "fullPage": "Capture full scrollable page",
+        "type": "Image format (default: png)"
+      }
+    },
+    "network-requests": {
+      "name": "network-requests",
+      "description": "List network requests made in the current session.",
+      "params": {
+        "sessionId": "Active session ID",
+        "includeStatic": "Include static resources (images, fonts, scripts). Default: false"
+      }
+    },
+    "click": {
+      "name": "click",
+      "description": "Click on an element in the page.",
+      "params": {
+        "sessionId": "Active session ID",
+        "ref": "Element ref from snapshot (e.g. s1e3) or CSS selector",
+        "element": "Human-readable element description",
+        "button": "Mouse button (default: left)",
+        "doubleClick": "Perform double click"
+      }
+    },
+    "type": {
+      "name": "type",
+      "description": "Type text into an editable element.",
+      "params": {
+        "sessionId": "Active session ID",
+        "ref": "Element ref from snapshot or CSS selector",
+        "element": "Human-readable element description",
+        "text": "Text to type",
+        "submit": "Press Enter after typing",
+        "slowly": "Type character by character (triggers key handlers)"
+      }
+    },
+    "fill-form": {
+      "name": "fill-form",
+      "description": "Fill multiple form fields at once.",
+      "params": {
+        "sessionId": "Active session ID",
+        "fields": "Fields to fill"
+      }
+    },
+    "evaluate": {
+      "name": "evaluate",
+      "description": "Execute JavaScript in the page context.",
+      "params": {
+        "sessionId": "Active session ID",
+        "function": "() => { /* code */ } or (element) => { /* code */ } when ref is provided",
+        "ref": "Optional element ref to pass as argument",
+        "element": "Human-readable element description (if using ref)"
+      }
+    },
+    "press-key": {
+      "name": "press-key",
+      "description": "Press a keyboard key.",
+      "params": {
+        "sessionId": "Active session ID",
+        "key": "Key name or character, e.g. \"Enter\", \"ArrowDown\", \"a\""
+      }
+    },
+    "wait-for": {
+      "name": "wait-for",
+      "description": "Wait for text to appear/disappear on the page, or wait a fixed amount of time.",
+      "params": {
+        "sessionId": "Active session ID",
+        "time": "Seconds to wait",
+        "text": "Text to wait for (appear)",
+        "textGone": "Text to wait to disappear"
+      }
+    }
+  },
+  "name": "Browserbase",
+  "description": "Cloud browser automation at scale. Anti-bot bypass, CAPTCHA solving, residential proxies, session recording, and parallel browsers. Includes Live View to watch the browser in real time.",
+  "changelog": [
+    {
+      "notes": "Initial release — run cloud browsers with stealth and CAPTCHA solving, navigate pages, capture screenshots, click, type, and fill forms"
+    }
+  ]
+}

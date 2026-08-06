@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const addIssueComment: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Add a comment to an issue',
   parameters: {
     type: 'object',

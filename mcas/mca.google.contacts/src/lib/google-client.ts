@@ -55,9 +55,7 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
   }
 
   // Parse redirect URI
-  // Falls back to TEROS_BACKEND_URL env var, or localhost for self-hosted installs
-  const backendUrl = process.env.TEROS_BACKEND_URL || 'http://localhost:3000';
-  let redirectUri = `${backendUrl}/auth/callback`;
+  let redirectUri = 'https://be.teros.ai/auth/callback';
   if (redirectUrisRaw) {
     try {
       const uris = JSON.parse(redirectUrisRaw);

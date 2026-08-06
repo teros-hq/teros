@@ -1,0 +1,190 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검 도구. OAuth 자격 증명 및 연결성을 확인합니다."
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "받은 편지함 또는 특정 레이블에서 이메일 메시지를 나열합니다. 읽지 않음, 별표 등으로 필터링을 지원합니다.",
+      "params": {
+        "maxResults": "반환할 최대 메시지 수 (기본값: 10, 최대: 100)",
+        "labelIds": "필터링할 레이블 ID",
+        "query": "Gmail 검색 쿼리"
+      }
+    },
+    "get-message": {
+      "name": "get-message",
+      "description": "ID로 특정 이메일 메시지의 전체 세부정보를 가져옵니다.",
+      "params": {
+        "messageId": "가져올 메시지의 ID"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "지정된 계정에서 이메일 메시지를 보냅니다.",
+      "params": {
+        "to": "수신자 이메일 주소",
+        "subject": "이메일 제목",
+        "body": "이메일 본문 (일반 텍스트 또는 HTML)",
+        "bodyFile": "이메일 본문으로 사용할 파일의 경로 (.html/.htm → HTML, .md/.markdown → Markdown이 자동으로 HTML로 변환, .txt → 일반 텍스트). 문자열로 큰 내용을 전달하지 않기 위해 본문 대신 사용합니다.",
+        "cc": "참조 수신자 (쉼표로 구분)",
+        "bcc": "숨은 참조 수신자 (쉼표로 구분)",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)",
+        "attachments": "포함할 첨부 파일 배열"
+      }
+    },
+    "reply-message": {
+      "name": "reply-message",
+      "description": "기존 이메일 메시지에 회신합니다.",
+      "params": {
+        "messageId": "회신할 메시지의 ID",
+        "body": "회신 본문",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Gmail의 검색 구문을 사용하여 이메일 메시지를 검색합니다.",
+      "params": {
+        "query": "Gmail 검색 쿼리",
+        "maxResults": "최대 결과 수 (기본값: 10)"
+      }
+    },
+    "modify-labels": {
+      "name": "modify-labels",
+      "description": "메시지에서 레이블을 추가하거나 제거합니다 (예: 읽음/읽지 않음으로 표시, 보관, 별표).",
+      "params": {
+        "messageId": "수정할 메시지의 ID",
+        "addLabelIds": "추가할 레이블",
+        "removeLabelIds": "제거할 레이블"
+      }
+    },
+    "list-drafts": {
+      "name": "list-drafts",
+      "description": "계정의 모든 초안 이메일을 나열합니다.",
+      "params": {
+        "maxResults": "반환할 최대 초안 수 (기본값: 10, 최대: 100)"
+      }
+    },
+    "create-draft": {
+      "name": "create-draft",
+      "description": "초안 이메일 메시지를 생성합니다.",
+      "params": {
+        "to": "수신자 이메일 주소",
+        "subject": "이메일 제목",
+        "body": "이메일 본문",
+        "bodyFile": "이메일 본문으로 사용할 파일의 경로 (.html/.htm → HTML, .md/.markdown → Markdown이 자동으로 HTML로 변환, .txt → 일반 텍스트). 문자열로 큰 내용을 전달하지 않기 위해 본문 대신 사용합니다.",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)"
+      }
+    },
+    "delete-draft": {
+      "name": "delete-draft",
+      "description": "초안 ID로 초안 이메일을 삭제합니다.",
+      "params": {
+        "draftId": "삭제할 초안의 ID"
+      }
+    },
+    "update-draft": {
+      "name": "update-draft",
+      "description": "기존 초안 이메일을 내용으로 교체하여 업데이트합니다.",
+      "params": {
+        "draftId": "업데이트할 초안의 ID",
+        "to": "수신자 이메일 주소",
+        "subject": "이메일 제목",
+        "body": "이메일 본문",
+        "bodyFile": "이메일 본문으로 사용할 파일의 경로 (.html/.htm → HTML, .md/.markdown → Markdown이 자동으로 HTML로 변환, .txt → 일반 텍스트). 문자열로 큰 내용을 전달하지 않기 위해 본문 대신 사용합니다.",
+        "isHtml": "본문이 HTML인지 여부 (기본값: false)"
+      }
+    },
+    "get-attachment": {
+      "name": "get-attachment",
+      "description": "첨부 파일 ID로 이메일 첨부 파일의 내용을 가져옵니다.",
+      "params": {
+        "messageId": "첨부 파일이 포함된 메시지의 ID",
+        "attachmentId": "가져올 첨부 파일의 ID",
+        "saveToFile": "true인 경우 ~/Downloads/email-attachments/에 저장합니다."
+      }
+    },
+    "store-attachment": {
+      "name": "store-attachment",
+      "description": "이메일 첨부 파일을 로컬 파일 시스템에 다운로드하고 저장합니다.",
+      "params": {
+        "messageId": "첨부 파일이 포함된 메시지의 ID",
+        "attachmentId": "저장할 첨부 파일의 ID",
+        "outputPath": "선택적 출력 디렉토리 경로"
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "계정의 모든 Gmail 레이블(시스템 및 사용자 정의 레이블 모두)을 나열합니다."
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "새로운 Gmail 레이블을 생성합니다.",
+      "params": {
+        "name": "레이블 이름",
+        "backgroundColor": "16진수 형식의 배경색",
+        "textColor": "16진수 형식의 텍스트 색상"
+      }
+    },
+    "update-label": {
+      "name": "update-label",
+      "description": "기존 Gmail 레이블(이름, 색상, 가시성)을 업데이트합니다.",
+      "params": {
+        "labelId": "업데이트할 레이블의 ID",
+        "name": "레이블의 새 이름",
+        "backgroundColor": "16진수 형식의 배경색",
+        "textColor": "16진수 형식의 텍스트 색상"
+      }
+    },
+    "delete-label": {
+      "name": "delete-label",
+      "description": "Gmail 레이블을 삭제합니다. 이 레이블이 있는 이메일은 삭제되지 않습니다.",
+      "params": {
+        "labelId": "삭제할 레이블의 ID"
+      }
+    },
+    "list-filters": {
+      "name": "list-filters",
+      "description": "계정의 모든 Gmail 필터를 나열합니다."
+    },
+    "create-filter": {
+      "name": "create-filter",
+      "description": "이메일을 자동으로 정리하기 위해 새로운 Gmail 필터를 생성합니다.",
+      "params": {
+        "criteria": "필터 기준",
+        "action": "필터가 일치할 때 수행할 작업"
+      }
+    },
+    "delete-filter": {
+      "name": "delete-filter",
+      "description": "ID로 Gmail 필터를 삭제합니다.",
+      "params": {
+        "filterId": "삭제할 필터의 ID"
+      }
+    },
+    "start-email-watcher": {
+      "name": "start-email-watcher",
+      "description": "새로운 읽지 않은 이메일을 감지하고 `gmail.email.received` 이벤트를 백엔드로 전송하는 백그라운드 폴링 루프를 시작합니다. 감시자는 구성 가능한 간격(기본값: 5분)으로 Gmail API를 폴링합니다. MCA 프로세스당 하나의 감시자만 활성화될 수 있습니다.",
+      "params": {
+        "intervalMinutes": "폴링 간격(분) (기본값: 5, 최소: 1). 낮은 값은 더 많은 Gmail API 할당량을 소모합니다."
+      }
+    },
+    "stop-email-watcher": {
+      "name": "stop-email-watcher",
+      "description": "백그라운드 이메일 폴링 루프를 중지합니다. 더 이상 이벤트가 전송되지 않습니다."
+    },
+    "get-watcher-status": {
+      "name": "get-watcher-status",
+      "description": "이메일 감시자의 현재 상태를 가져옵니다: 활성 상태인지, 마지막으로 확인한 시간, 추적 중인 메시지 ID 수, 폴링 간격."
+    }
+  },
+  "name": "Gmail",
+  "description": "Gmail 이메일 관리 - Google Gmail API를 통해 이메일을 보내고, 읽고, 검색하고, 레이블을 붙이고, 필터링합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 이메일을 보내고, 읽고, 검색하고 회신하며, 초안, 레이블, 필터, 첨부 파일을 관리하고 새로운 메일을 감시합니다."
+    }
+  ]
+}

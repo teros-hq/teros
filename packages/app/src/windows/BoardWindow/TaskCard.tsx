@@ -4,11 +4,13 @@
 
 import { GripVertical, MessageSquare } from '@tamagui/lucide-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, TouchableOpacity, View } from 'react-native';
+import { Platform, Pressable, TouchableOpacity, View } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 import { type BoardColumn, type Task } from '../../store/boardStore';
 import { BLOCK_STATUS_CONFIG, type DependencyHighlight, getBlockStatus, timeAgo } from './board-utils';
 import { AppSpinner } from '../../components/ui';
+import { useColors } from '../../components/mca/primitives/useColors';
+import { colors } from '../../components/mca/primitives/colors';
 
 interface TaskCardProps {
   task: Task;
@@ -43,13 +45,13 @@ const DEPENDENCY_HIGHLIGHT_CONFIG: Record<
   'will-unblock': {
     bg: 'rgba(249,115,22,0.12)',
     border: 'rgba(249,115,22,0.55)',
-    labelColor: '#F97316',
+    labelColor: colors.orange,
     label: 'Would unblock',
   },
   'still-blocked': {
     bg: 'rgba(153,27,27,0.15)',
     border: 'rgba(185,28,28,0.5)',
-    labelColor: '#B91C1C',
+    labelColor: colors.red,
     label: 'Would remain blocked',
   },
 };
@@ -69,6 +71,7 @@ export function TaskCard({
   onHoverIn,
   onHoverOut,
 }: TaskCardProps) {
+  const c = useColors();
   const [showActions, setShowActions] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const blockStatus = getBlockStatus(task, allTasks);
@@ -120,22 +123,26 @@ export function TaskCard({
   }, [onHoverIn, onHoverOut]);
 
   // Compute border color with priority: dependency highlight > running > selected > default
+  // Note: 'blocked' is now a column concept only — visual blocking is handled by column position
   const borderColor = depConfig
     ? depConfig.border
     : task.running
       ? 'rgba(245,158,11,0.5)'
       : isSelected
-        ? 'rgba(139,92,246,0.3)'
-        : 'rgba(255,255,255,0.06)';
+        ? 'rgba(139,92,246,0.35)'
+        : c.borderStrong;
 
   const backgroundColor = depConfig
     ? depConfig.bg
     : isSelected
-      ? 'rgba(139,92,246,0.12)'
-      : 'rgba(255,255,255,0.05)';
+      ? 'rgba(139,92,246,0.10)'
+      : c.bgCard;
 
   return (
-    <Pressable onPress={onPress}>
+    <Pressable
+      onPress={onPress}
+      {...(Platform.OS === 'web' ? { 'data-task-card': true } as any : {})}
+    >
       {/* @ts-ignore — web-only style */}
       <XStack
         ref={cardRef}
@@ -144,7 +151,7 @@ export function TaskCard({
         borderWidth={1}
         borderColor={borderColor}
         opacity={isDragging ? 0.15 : 1}
-        // @ts-expect-error — web-only
+        // @ts-ignore — web-only
         style={{ userSelect: 'none', transition: 'background-color 0.15s ease, border-color 0.15s ease' }}
       >
         {/* Left strip: block-status dot (absolute top) + drag handle (centered) */}
@@ -156,9 +163,10 @@ export function TaskCard({
             borderBottomLeftRadius: 8,
             alignItems: 'center',
             justifyContent: 'center',
-            cursor: 'grab',
+            // @ts-ignore web-only cursor
+            cursor: 'grab' as any,
             position: 'relative',
-          }}
+          } as any}
         >
           {/* Block status indicator — colored dot */}
           <View
@@ -169,12 +177,12 @@ export function TaskCard({
               height: 6,
               borderRadius: 3,
               backgroundColor: blockConfig.color,
-              opacity: 0.85,
+              opacity: 0.9,
             }}
           />
 
           {/* Grip icon — always centered */}
-          <GripVertical size={10} color="rgba(255,255,255,0.2)" />
+          <GripVertical size={10} color={c.text3} />
         </View>
 
         {/* Card content */}
@@ -184,7 +192,7 @@ export function TaskCard({
             {/* @ts-ignore — web-only style */}
             <Text
               fontSize={13}
-              color="$color"
+              color={c.text}
               fontWeight="500"
               flex={1}
               numberOfLines={2}
@@ -193,7 +201,24 @@ export function TaskCard({
               {task.title}
             </Text>
             {task.running && (
-              <AppSpinner size="xs" variant="warning" style={{ marginTop: 2 }} />
+              <AppSpinner size="xs" variant="warning" />
+            )}
+            {task.stopRequested && (
+              <View
+                style={{
+                  backgroundColor: 'rgba(251,146,60,0.14)',
+                  borderRadius: 3,
+                  paddingHorizontal: 4,
+                  paddingVertical: 1,
+                  borderWidth: 1,
+                  borderColor: 'rgba(251,146,60,0.35)',
+                  marginTop: 1,
+                }}
+              >
+                <Text fontSize={8} color={c.badges.warn.text} fontWeight="700">
+                  ⏹ Stop
+                </Text>
+              </View>
             )}
           </XStack>
 
@@ -208,7 +233,7 @@ export function TaskCard({
                   backgroundColor: depConfig.labelColor,
                 }}
               />
-              <Text fontSize={9} color={depConfig.labelColor} fontWeight="600" opacity={0.9}>
+              <Text fontSize={9} color={depConfig.labelColor} fontWeight="600" opacity={0.95}>
                 {depConfig.label}
               </Text>
             </XStack>
@@ -225,7 +250,7 @@ export function TaskCard({
                       height: 14,
                       borderRadius: 7,
                       overflow: 'hidden',
-                      backgroundColor: 'rgba(139,92,246,0.2)',
+                      backgroundColor: colors.violetGlow,
                     }}
                   >
                     <img
@@ -239,17 +264,17 @@ export function TaskCard({
                       width: 14,
                       height: 14,
                       borderRadius: 7,
-                      backgroundColor: 'rgba(139,92,246,0.25)',
+                      backgroundColor: 'rgba(139,92,246,0.18)',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <Text fontSize={8} color="#8B5CF6" fontWeight="700">
+                    <Text fontSize={8} color={colors.violet} fontWeight="700">
                       {(agentMap[task.assignedAgentId]?.name || '?')[0]}
                     </Text>
                   </View>
                 )}
-                <Text fontSize={10} color="$color" opacity={0.6} numberOfLines={1}>
+                <Text fontSize={10} color={c.text2} numberOfLines={1}>
                   {agentMap[task.assignedAgentId]?.name || task.assignedAgentId.slice(0, 12)}
                 </Text>
               </XStack>
@@ -264,11 +289,11 @@ export function TaskCard({
                 }}
                 style={{ padding: 2, marginRight: 4 }}
               >
-                <MessageSquare size={12} color="#3B82F6" />
+                <MessageSquare size={12} color={c.badges.info.text} />
               </TouchableOpacity>
             )}
 
-            <Text fontSize={9} color="$color" opacity={0.3}>
+            <Text fontSize={9} color={c.text3}>
               {timeAgo(task.createdAt)}
             </Text>
           </XStack>

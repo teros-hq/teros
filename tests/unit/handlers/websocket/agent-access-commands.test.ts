@@ -46,8 +46,9 @@ describe('AgentAccessCommands', () => {
               app: {
                 appId: 'app_1',
                 name: 'Test App',
-                mcp: {
-                  mcpId: 'mca.test',
+                // The handler accesses app.mca (not app.mcp) — field renamed in service layer
+                mca: {
+                  mcaId: 'mca.test',
                   description: 'Test MCA',
                   icon: '🔧',
                 },
@@ -85,10 +86,11 @@ describe('AgentAccessCommands', () => {
       const commands = createCommands();
       await commands.handleGetAgentApps(wsMock, { agentId });
 
+      // NOTE: The handler appends the error message: `Failed to get agent apps: ${errorMessage}`
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,
         'GET_AGENT_APPS_ERROR',
-        'Failed to get agent apps',
+        'Failed to get agent apps: DB error',
       );
     });
   });

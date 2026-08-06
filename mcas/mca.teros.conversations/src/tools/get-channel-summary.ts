@@ -1,4 +1,4 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
 import {
   CURRENT_CHANNEL_ID,
   type GetChannelSummaryResult,
@@ -7,6 +7,7 @@ import {
 } from '../lib';
 
 export const getChannelSummary: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Get a quick summary of a conversation without all messages. Useful to understand what a conversation was about.',
   parameters: {
@@ -19,7 +20,7 @@ export const getChannelSummary: ToolConfig = {
     },
     required: ['channelId'],
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
     const wsClient = getWsClient();
     if (!isWsConnected()) {
       throw new Error('Not connected to backend. Please try again in a moment.');
@@ -40,7 +41,7 @@ export const getChannelSummary: ToolConfig = {
 
     const result = await wsClient.queryConversations<GetChannelSummaryResult>(
       'get_channel_summary',
-      { channelId },
+      { channelId, agentId: context.execution.agentId },
     );
 
     return {

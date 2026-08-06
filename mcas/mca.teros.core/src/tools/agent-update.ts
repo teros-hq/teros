@@ -1,6 +1,8 @@
 import type { ToolConfig } from '@teros/mca-sdk';
+import { validateAgentId } from './utils';
 
 export const agentUpdate: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: "Update an existing agent's properties.",
   parameters: {
     type: 'object',
@@ -43,6 +45,7 @@ export const agentUpdate: ToolConfig = {
   },
   handler: async (args, context) => {
     const agentId = args.agentId as string;
+    await validateAgentId(agentId, context);
     return context.agentUpdate(agentId, {
       name: args.name as string | undefined,
       fullName: args.fullName as string | undefined,

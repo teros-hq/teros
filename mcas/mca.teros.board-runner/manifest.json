@@ -5,7 +5,7 @@
   "version": "2.0.0",
   "description": "Task execution capabilities for worker agents. Provides access to assigned tasks only \u2014 view task details, update progress, move tasks through workflow stages, and add progress notes. To propose new tasks or escalate blockers, use the notes field with the 'PROPUESTA:' prefix so the supervisor can act on it.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "productivity",
   "entrypoint": "./src/index.ts",
   "author": {
@@ -39,5 +39,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-03-01",
+      "notes": "View your assigned tasks, log progress notes, and move work through completion, blocked, or cancelled stages"
+    }
+  ]
 }

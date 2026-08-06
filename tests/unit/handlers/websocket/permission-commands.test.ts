@@ -20,31 +20,29 @@ describe('PermissionCommands', () => {
       getApp: mock(() =>
         Promise.resolve({
           appId,
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           ownerId: userId,
           name: 'Test App',
         }),
       ),
       getMcaFromCatalog: mock(() =>
         Promise.resolve({
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
           name: 'Test MCA',
           tools: ['tool1', 'tool2', 'tool3'],
         }),
       ),
-      getAccess: mock(() =>
-        Promise.resolve({
-          agentId,
-          appId,
-          permissions: {
-            defaultPermission: 'ask',
-            tools: { tool1: 'allow' },
-          },
-        }),
-      ),
-      updatePermissions: mock(() =>
+      // updateAppPermissions: used by handleUpdateAppPermissions (deprecated handler)
+      updateAppPermissions: mock(() =>
         Promise.resolve({
           permissions: { defaultPermission: 'allow', tools: {} },
+        }),
+      ),
+      // updateToolPermission: used by handleUpdateToolPermission
+      updateToolPermission: mock(() =>
+        Promise.resolve({
+          appId,
+          permissions: { defaultPermission: 'ask', tools: { tool1: 'allow' } },
         }),
       ),
     };
@@ -132,7 +130,7 @@ describe('PermissionCommands', () => {
         Promise.resolve({
           appId,
           ownerId: 'system',
-          mcpId: 'mca.test',
+          mcaId: 'mca.test',
         }),
       );
 
@@ -151,7 +149,7 @@ describe('PermissionCommands', () => {
         permissions: { defaultPermission: 'allow', tools: {} },
       });
 
-      expect(mcaServiceMock.updatePermissions).toHaveBeenCalled();
+      expect(mcaServiceMock.updateAppPermissions).toHaveBeenCalled();
       expect(sendMessageMock.mock.calls[0][1].type).toBe('app_permissions_updated');
     });
 
@@ -184,7 +182,10 @@ describe('PermissionCommands', () => {
     });
 
     it('should return error if update fails', async () => {
-      mcaServiceMock.updatePermissions = mock(() => Promise.resolve(null));
+      // NOTE: The handler calls mcaService.updateAppPermissions (not updatePermissions).
+      // When it returns null, the handler sends UPDATE_PERMISSIONS_ERROR.
+      // The old test expected UPDATE_FAILED/'Agent access not found' — that was the old API.
+      mcaServiceMock.updateAppPermissions = mock(() => Promise.resolve(null));
 
       const commands = createCommands();
       await commands.handleUpdateAppPermissions(wsMock, userId, {
@@ -192,7 +193,11 @@ describe('PermissionCommands', () => {
         permissions: { defaultPermission: 'allow' },
       });
 
-      expect(sendErrorMock).toHaveBeenCalledWith(wsMock, 'UPDATE_FAILED', 'Agent access not found');
+      expect(sendErrorMock).toHaveBeenCalledWith(
+        wsMock,
+        'UPDATE_FAILED',
+        'Failed to update permissions',
+      );
     });
   });
 
@@ -241,22 +246,29 @@ describe('PermissionCommands', () => {
     });
 
     it('should return error if tool not found in MCA', async () => {
+      // The handler extracts shortToolName via split('_').slice(1).join('_'):
+      //   'prefix_nonexistent' → shortToolName = 'nonexistent'
+      //   'nonexistent' (no underscore) → shortToolName = 'nonexistent'
+      // Use a toolName without underscore so shortToolName equals the full name.
       const commands = createCommands();
       await commands.handleUpdateToolPermission(wsMock, userId, {
         appId,
-        toolName: 'nonexistent_tool',
+        toolName: 'nonexistent',
         permission: 'allow',
       });
 
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,
         'TOOL_NOT_FOUND',
-        "Tool 'nonexistent_tool' not found in this app",
+        "Tool 'nonexistent' not found in this app",
       );
     });
 
-    it('should return error if agent has no access', async () => {
-      mcaServiceMock.getAccess = mock(() => Promise.resolve(null));
+    it('should return error if update fails (updateToolPermission returns null)', async () => {
+      // NOTE: The old test checked for ACCESS_NOT_FOUND via getAccess — that API no longer exists.
+      // The handler now uses canManageApp (ownership check). When updateToolPermission returns
+      // null, the handler sends UPDATE_FAILED.
+      mcaServiceMock.updateToolPermission = mock(() => Promise.resolve(null));
 
       const commands = createCommands();
       await commands.handleUpdateToolPermission(wsMock, userId, {
@@ -267,8 +279,8 @@ describe('PermissionCommands', () => {
 
       expect(sendErrorMock).toHaveBeenCalledWith(
         wsMock,
-        'ACCESS_NOT_FOUND',
-        'Agent does not have access to this app',
+        'UPDATE_FAILED',
+        'Failed to update permission',
       );
     });
   });

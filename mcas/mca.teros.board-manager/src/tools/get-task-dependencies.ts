@@ -1,42 +1,70 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected } from '../lib';
+import type { ToolConfig } from '@teros/mca-sdk';
+import { getWsClient } from '../lib';
+import { TASK_DEPENDENCY_FIELDS } from './_fields';
+import { assertBackendConnected, paginate, pickFields, withRetry, withTimeout } from './utils';
 
 export const getTaskDependencies: ToolConfig = {
   description:
-    'Get the dependencies of a task — i.e. the list of task IDs that must be completed ' +
-    'before the given task can start. Returns the dependency task IDs and their full details.',
+    'Get dependencies of a task (tasks that must complete before it can start). Returns: { taskId, dependencies: [{ taskId, title, columnSlug, priority, archived }], count, nextCursor? }. Paginated when large: default 50, max 200.',
+  annotations: { readOnlyHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
-      taskId: {
-        type: 'string',
-        description: 'The task ID to get dependencies for',
-      },
+      taskId: { type: 'string', description: 'Task ID whose dependencies to list' },
+      limit: { type: 'number', description: 'Max results (default 50, max 200)' },
+      cursor: { type: 'string', description: 'Pagination cursor' },
     },
     required: ['taskId'],
   },
   handler: async (args) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const taskId = args?.taskId as string;
-    if (!taskId) {
-      throw new Error('taskId is required');
+    if (!taskId) throw new Error('taskId is required');
+
+    const result = await withRetry(
+      () =>
+        withTimeout(
+          wsClient.queryConversations<any>('get_task', { taskId }),
+          15_000,
+          'get_task_dependencies',
+        ),
+      { retries: 2, delayMs: 500, label: 'get_task_dependencies' },
+    );
+
+    const depIds: string[] = result?.task?.dependencies ?? [];
+    if (depIds.length === 0) {
+      return { taskId, dependencies: [], count: 0 };
     }
 
-    const result = await wsClient.queryConversations<any>('get_task', {
-      taskId,
-    });
+    // Resolve each dependency task in parallel with timeout (read-only, safe).
+    const resolved = await Promise.all(
+      depIds.map(async (id) => {
+        try {
+          const r = await withTimeout(
+            wsClient.queryConversations<any>('get_task', { taskId: id }),
+            10_000,
+            'get_task(dep)',
+          );
+          return r?.task ?? { taskId: id };
+        } catch {
+          return { taskId: id };
+        }
+      }),
+    );
 
-    const task = result.task;
-    const dependencies: string[] = task?.dependencies ?? [];
+    const { items, nextCursor } = paginate(
+      resolved,
+      args?.limit as number | undefined,
+      args?.cursor as string | undefined,
+    );
+    const dependencies = items.map((t: any) => pickFields(t, TASK_DEPENDENCY_FIELDS));
 
     return {
       taskId,
       dependencies,
       count: dependencies.length,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   },
 };

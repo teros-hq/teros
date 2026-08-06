@@ -17,7 +17,8 @@ import {
   SearchContactsRenderer,
   UpdateContactRenderer,
 } from './contacts/ContactsRenderer';
-import { Badge, getShortToolName, HeaderRow } from './contacts/shared';
+import { ToolCallCard } from '../primitives';
+import { Badge, getShortToolName } from './contacts/shared';
 
 // ============================================================================
 // Tool Name to Renderer Mapping
@@ -36,7 +37,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // Fallback Renderer
 // ============================================================================
 
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
 
   let badge: React.ReactNode = null;
@@ -47,13 +48,11 @@ function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps)
   }
 
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
       description={shortName}
-      duration={duration}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
+      iconUri={appIcon}
     />
   );
 }

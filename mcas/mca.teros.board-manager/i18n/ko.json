@@ -1,0 +1,337 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. 백엔드에 대한 WebSocket 연결을 확인합니다."
+    },
+    "get-project": {
+      "name": "get-project",
+      "description": "프로젝트 세부정보 및 보드 열을 가져옵니다. 반환: { project: { projectId, name, description, context, status, boardId, createdAt }, board: { boardId, columns: [{ columnId, slug, name, position }] } }. list-tasks를 사용하여 작업을 나열합니다.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "fields": "프로젝트에 대한 사용자 지정 하위 집합",
+        "includeRaw": "전체 프로젝트 + 보드 반환"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "작업 공간의 프로젝트 목록을 가져옵니다. 반환: { workspaceId, projects: [{ projectId, name, description, status, boardId, taskCount, activeAgentCount, createdAt }], nextCursor? }. 페이지 매김: 기본 50, 최대 200. 전체 세부정보 + 보드 열을 보려면 get-project를 사용하세요.",
+      "params": {
+        "workspaceId": "작업 공간 ID (선택 사항, 기본값은 실행 작업 공간)",
+        "fields": "사용자 지정 필드 하위 집합",
+        "includeArchived": "보관된 프로젝트 포함 (기본값: false)",
+        "includeRaw": "전체 프로젝트 문서 반환",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "작업 세부정보 및 하위 작업을 가져옵니다. 반환: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
+      "params": {
+        "taskId": "작업 ID",
+        "fields": "작업 + 하위 작업에 대한 사용자 지정 필드 하위 집합",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "프로젝트의 작업 목록을 가져옵니다. 반환: { projectId, projectName, tasks: [{ taskId, title, columnName, columnSlug, priority, archived, tags, running, assigneeName, assigneeAvatarUrl }], agents, nextCursor? }. 페이지 매김: 기본 50, 최대 200. 자신의 작업에 대한 에이전트 보기를 사용하려면 get-my-tasks를 사용하세요 (러너 MCA).",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "columnId": "열로 필터링 (선택 사항)",
+        "assignedAgentId": "담당자로 필터링 (선택 사항)",
+        "tags": "모든 태그가 있는 작업만 반환 (선택 사항)",
+        "archived": "true=보관된 것만, false=활성화된 것만 (기본값: 활성화)",
+        "fields": "반환할 필드의 사용자 지정 하위 집합 (기본 화이트리스트를 재정의)",
+        "includeRaw": "전체 작업 문서 반환",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "이전 응답의 페이지 매김 커서"
+      }
+    },
+    "list-board-agents": {
+      "name": "list-board-agents",
+      "description": "보드 관리자 또는 보드 러너 앱에 액세스할 수 있는 작업 공간의 에이전트 목록을 가져옵니다. 반환: { agents: [{ agentId, name, fullName, role, avatarUrl, capabilities }], nextCursor? }. 페이지 매김: 기본 50, 최대 200.",
+      "params": {
+        "workspaceId": "작업 공간 (선택 사항, 기본값은 실행)",
+        "fields": "사용자 지정 필드 하위 집합",
+        "includeRaw": "전체 에이전트 문서 반환",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    },
+    "create-project": {
+      "name": "create-project",
+      "description": "작업 공간에 연결된 칸반 보드와 함께 프로젝트를 생성합니다. 반환: { project: { projectId, workspaceId, name, status, boardId }, board: { boardId, columns: [...] } }. 기본 열: 백로그, 할 일, 진행 중, 차단됨, 검토, 완료.",
+      "params": {
+        "workspaceId": "작업 공간 ID (선택 사항, 기본값은 실행 작업 공간)",
+        "name": "프로젝트 이름",
+        "description": "선택적 프로젝트 설명",
+        "includeRaw": "전체 문서 반환"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "프로젝트 보드에 작업을 생성합니다. 기본값은 백로그 열입니다. 반환: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. 여러 개를 원자적으로 생성하려면 batch-create-tasks를 사용하세요.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "title": "작업 제목",
+        "description": "짧은 일반 텍스트 설명 (최대 ~1000자)",
+        "instructions": "전체 작업 지침 (마크다운 — 상세 사양, 맥락, 단계)",
+        "priority": "우선 순위 (기본값: 중간)",
+        "tags": "범주화를 위한 태그",
+        "assignedAgentId": "지정할 에이전트",
+        "columnId": "대상 열 (기본값: 백로그)",
+        "parentTaskId": "상위 작업 (하위 작업용)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "batch-create-tasks": {
+      "name": "batch-create-tasks",
+      "description": "여러 작업을 원자적으로 생성합니다 (모두 성공하거나 모두 실패). 호출당 최대 100. 반환: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. 단일 작업을 위해 create-task를 사용하세요.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "tasks": "작업 객체 배열 (최대 100)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "작업 속성의 부분 업데이트. 생략된 필드는 변경되지 않습니다. 반환: { task: { ...TASK_FIELDS } }. 열 간에 작업을 이동하려면 move-task를 사용하세요. 에이전트를 지정하려면 assign-task를 사용하세요.",
+      "params": {
+        "taskId": "작업 ID",
+        "title": "새 제목",
+        "description": "새 짧은 설명 (일반 텍스트, 최대 ~1000자)",
+        "instructions": "새 지침 (마크다운 — 상세 사양, 맥락, 단계)",
+        "priority": "새 우선 순위",
+        "tags": "새 태그 (기존 태그를 대체)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "archive-task": {
+      "name": "archive-task",
+      "description": "작업을 보관하거나 복원합니다 (관리자 작업). archived=true는 작업을 활성 보드에서 제거합니다 (완료 / 취소 / 폐기); archived=false는 작업을 복원하고 자동 재일정을 트리거합니다. 반환: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "archived": "true = 보관, false = 활성 보드로 복원",
+        "archiveNote": "작업이 보관된 이유를 설명하는 선택적 메모",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "archive-project": {
+      "name": "archive-project",
+      "description": "프로젝트 (소프트 삭제) 및 모든 비보관 작업을 보관합니다. 관리자/소유자만 보관할 수 있습니다. 아이도포턴트 — 이미 보관된 경우 프로젝트를 반환합니다. 반환: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "보관할 프로젝트 ID",
+        "archiveNote": "프로젝트가 보관된 이유를 설명하는 선택적 메모",
+        "includeRaw": "전체 프로젝트 문서 반환"
+      }
+    },
+    "update-project": {
+      "name": "update-project",
+      "description": "프로젝트 속성 (이름, 설명, 맥락)의 부분 업데이트. 맥락은 이 프로젝트에서 작업할 때 에이전트 시스템 프롬프트에 주입됩니다 (마크다운 지원). 반환: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "name": "새 이름",
+        "description": "새 설명",
+        "context": "에이전트 시스템 프롬프트에 주입된 프로젝트 맥락 (아키텍처 노트, 코딩 표준 등). 마크다운 지원.",
+        "includeRaw": "전체 프로젝트 문서 반환"
+      }
+    },
+    "update-board-config": {
+      "name": "update-board-config",
+      "description": "프로젝트의 보드 실행 구성을 업데이트합니다. 구성 객체는 보드에 그대로 전달됩니다. 현재는 향후 자동 배포기 설정을 위해 예약되어 있습니다. 반환: { projectId, config }.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "config": "보드 문서에 그대로 전달되는 보드 구성 객체"
+      }
+    },
+    "move-task": {
+      "name": "move-task",
+      "description": "작업을 보드의 다른 열로 이동합니다. 반환: { task: { ...TASK_FIELDS } } (이동 후 columnName + columnSlug 포함). 작업이 이동할 때 알림을 받으려면 list-board-subscriptions + subscribe-to-board를 사용하세요.",
+      "params": {
+        "taskId": "작업 ID",
+        "columnId": "대상 열 ID",
+        "position": "열 내 위치 (선택 사항, 기본값은 끝)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "assign-task": {
+      "name": "assign-task",
+      "description": "작업에 에이전트를 지정하거나 해제합니다. 에이전트 ID를 전달하여 지정하고, 생략하거나 null로 지정하여 해제합니다. 반환: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "작업 ID",
+        "agentId": "에이전트 ID (해제하려면 생략하거나 null)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "start-task": {
+      "name": "start-task",
+      "description": "작업을 시작합니다: 진행 중으로 이동하고, 지정된 에이전트와 헤드리스 대화를 생성하며, 작업 설명을 첫 번째 메시지로 전송하고, 대화를 작업에 연결합니다. 반환: { task: { ...TASK_FIELDS, channelId }, channelId }. 에이전트 또는 프롬프트의 선택적 재정의.",
+      "params": {
+        "taskId": "작업 ID",
+        "agentId": "선택적 에이전트 재정의. 시작하기 전에 작업을 재지정합니다.",
+        "prompt": "선택적 사용자 지정 프롬프트. 기본 작업 설명을 첫 번째 메시지로 재정의합니다.",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "link-conversation": {
+      "name": "link-conversation",
+      "description": "기존 대화 (채널)를 작업에 연결합니다. 이전에 연결된 채널을 대체합니다. 반환: { task: { ...TASK_FIELDS, channelId } }. 새 헤드리스 대화를 연결하려면 start-task를 사용하세요.",
+      "params": {
+        "taskId": "작업 ID",
+        "channelId": "연결할 채널 ID",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "작업에 진행 노트를 게시합니다 (관리자 작업). 노트는 작업 세부정보 및 보드에서 볼 수 있습니다. 반환: { task: { ...TASK_WITH_PROGRESS_FIELDS } }. 러너 에이전트는 대신 보드 러너 add-progress-note를 사용해야 합니다.",
+      "params": {
+        "taskId": "작업 ID",
+        "text": "진행 노트 텍스트",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "작업을 영구적으로 삭제합니다. 하위 작업은 최상위 작업이 됩니다. 연결된 대화는 삭제되지 않습니다. 되돌릴 수 없습니다. 반환: { taskId, deleted: true }.",
+      "params": {
+        "taskId": "삭제할 작업 ID"
+      }
+    },
+    "delete-project": {
+      "name": "delete-project",
+      "description": "프로젝트와 모든 작업 및 보드를 영구적으로 삭제합니다. 오직 작업 공간 관리자/소유자만 삭제할 수 있습니다. 되돌릴 수 없습니다 — 소프트 삭제를 위해 archive-project를 선호하세요. 반환: { projectId, deleted: true }.",
+      "params": {
+        "projectId": "삭제할 프로젝트 ID"
+      }
+    },
+    "add-task-dependency": {
+      "name": "add-task-dependency",
+      "description": "의존성을 추가합니다: 이 호출 후 taskId는 dependsOnTaskId에 의존합니다 (dependsOnTaskId가 먼저 완료되어야 합니다). 사이클 감지가 자동으로 실행됩니다; 엣지를 추가하면 사이클이 생성되는 경우 호출이 오류를 발생시키고 영향을 받는 작업이 circular_dependency로 표시됩니다. 반환: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "새 의존성을 가지게 될 작업 (종속 작업)",
+        "dependsOnTaskId": "taskId가 의존할 작업 (먼저 완료되어야 함)",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "remove-task-dependency": {
+      "name": "remove-task-dependency",
+      "description": "두 작업 간의 의존성을 제거합니다. 아이도포턴트 — 의존성이 존재하지 않으면 작업이 변경되지 않고 반환됩니다. 반환: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "현재 의존성을 가진 작업",
+        "dependsOnTaskId": "taskId의 의존성에서 제거할 작업",
+        "includeRaw": "전체 작업 문서 반환"
+      }
+    },
+    "get-task-dependencies": {
+      "name": "get-task-dependencies",
+      "description": "작업의 의존성을 가져옵니다 (시작하기 전에 완료해야 하는 작업). 반환: { taskId, dependencies: [{ taskId, title, columnSlug, priority, archived }], count, nextCursor? }. 대량일 경우 페이지 매김: 기본 50, 최대 200.",
+      "params": {
+        "taskId": "의존성을 나열할 작업 ID",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "프로젝트에서 에이전트의 병렬 실행 슬롯을 구성합니다. slots=0은 자동 재생을 비활성화합니다 (playEnabled가 켜져 있으면 자동으로 비활성화됨). slots≥1은 재생 버튼을 활성화합니다. 반환: { relationship: { agentId, projectId, slots, playEnabled, activeSlots } }. 슬롯을 설정한 후 autoplay를 전환하려면 set-agent-play를 사용하세요.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "agentId": "에이전트 ID",
+        "slots": "병렬 실행 슬롯 (0 = 비활성화, ≥1 = 사용 가능)",
+        "includeRaw": "전체 관계 문서 반환"
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "프로젝트에서 에이전트의 자동 재생을 전환합니다. enabled=true일 때 에이전트는 슬롯 한도까지 적격 할 일 작업을 자동으로 선택합니다. slots≥1이 필요합니다 (먼저 set-agent-slots를 사용하세요). 비활성화해도 이미 실행 중인 작업은 취소되지 않습니다. 반환: { relationship: { agentId, projectId, slots, playEnabled } }.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "agentId": "에이전트 ID",
+        "enabled": "true = 자동 재생 활성화, false = 비활성화",
+        "includeRaw": "전체 관계 문서 반환"
+      }
+    },
+    "subscribe-to-board": {
+      "name": "subscribe-to-board",
+      "description": "현재 대화를 실시간 보드 이벤트에 구독합니다. 이벤트 (작업 이동, 상태 변경, 진행 노트, 의존성 변경, 자동 재생 전환)는 발생하는 대로 대화에 전달됩니다. 필터를 사용하여 이벤트를 좁힐 수 있습니다. 반환: { subscription: { subscriptionId, boardId, filter, createdAt } }. unsubscribe-from-board를 사용하여 중지합니다.",
+      "params": {
+        "boardId": "구독할 보드 ID",
+        "filter": "전달된 이벤트를 좁히기 위한 선택적 필터",
+        "includeRaw": "전체 구독 문서 반환"
+      }
+    },
+    "unsubscribe-from-board": {
+      "name": "unsubscribe-from-board",
+      "description": "특정 보드에 대한 보드 이벤트에 대한 이 대화의 구독을 취소합니다. 아이도포턴트 — 구독이 존재하지 않으면 { boardId, unsubscribed: true }가 변경되지 않고 반환됩니다. 반환: { boardId, unsubscribed: true }.",
+      "params": {
+        "boardId": "구독을 취소할 보드 ID"
+      }
+    },
+    "list-board-subscriptions": {
+      "name": "list-board-subscriptions",
+      "description": "현재 대화에 대한 활성 보드 구독 목록을 가져옵니다. 반환: { subscriptions: [{ subscriptionId, boardId, boardName, filter, createdAt }], nextCursor? }. 페이지 매김: 기본 50, 최대 200.",
+      "params": {
+        "fields": "사용자 지정 필드",
+        "includeRaw": "전체 구독 문서 반환",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    },
+    "get-board-status": {
+      "name": "get-board-status",
+      "description": "보드의 운영 상태: 에이전트별 작업량 + 요약. 반환: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. 병목 현상을 식별하는 데 사용합니다.",
+      "params": {
+        "boardId": "보드 ID",
+        "fields": "에이전트별 행에 대한 사용자 지정 하위 집합",
+        "includeRaw": "전체 백엔드 페이로드 반환"
+      }
+    },
+    "stop-task": {
+      "name": "stop-task",
+      "description": "실행 중인 작업에 협력적 중지 신호를 보냅니다 (task.running=true). 지정된 러너 에이전트는 현재 단계를 마친 후 작업을 차단으로 이동합니다. 협력적 — 신호는 다음 러너 턴에서 처리됩니다. 관리자만 호출해야 합니다. 반환: { taskId, stopRequested: true }.",
+      "params": {
+        "taskId": "실행 중인 작업의 작업 ID",
+        "reason": "러너에게 전달되는 선택적 사람이 읽을 수 있는 이유"
+      }
+    },
+    "subscribe-to-events": {
+      "name": "subscribe-to-events",
+      "description": "현재 대화를 주제에 대한 MCA 이벤트에 구독합니다. 주제와 일치하는 이벤트는 발생하는 대로 대화에 전달됩니다. 규칙을 사용하여 이벤트를 좁힐 수 있습니다. 반환: { subscription: { id, topic, channelId, rules, mode, createdAt } }. unsubscribe-from-events를 사용하여 중지합니다.",
+      "params": {
+        "topic": "구독할 이벤트 주제 (예: \"mca.teros.scheduler.reminder\")",
+        "channelId": "이벤트를 수신할 채널 ID (기본값은 현재 대화)",
+        "rules": "전달된 이벤트를 좁히기 위한 선택적 필터 규칙",
+        "mode": "전달 모드: notify = 조용한 알림, wake = 에이전트 응답 턴 트리거. 기본값: notify",
+        "includeRaw": "전체 구독 문서 반환"
+      }
+    },
+    "unsubscribe-from-events": {
+      "name": "unsubscribe-from-events",
+      "description": "ID로 채널 이벤트 구독을 삭제합니다. 반환: { deleted: true }.",
+      "params": {
+        "id": "삭제할 구독 ID"
+      }
+    },
+    "list-event-subscriptions": {
+      "name": "list-event-subscriptions",
+      "description": "채널에 대한 활성 이벤트 구독 목록을 가져옵니다. 반환: { subscriptions: [{ id, topic, channelId, rules, mode, createdAt, lastActivityAt }], nextCursor? }. 페이지 매김: 기본 50, 최대 200.",
+      "params": {
+        "channelId": "구독 목록을 가져올 채널 ID (기본값은 현재 대화)",
+        "fields": "사용자 지정 필드",
+        "includeRaw": "전체 구독 문서 반환",
+        "limit": "최대 결과 (기본값 50, 최대 200)",
+        "cursor": "페이지 매김 커서"
+      }
+    }
+  },
+  "name": "보드 관리자",
+  "description": "조정자 및 감독 에이전트를 위한 전체 보드 관리 기능. 프로젝트, 보드 및 작업에 대한 완전한 제어를 제공합니다 — 작업 생성, 할당, 업데이트, 이동 및 삭제를 포함합니다. 여러 작업자 간의 작업을 조정하고 우선 순위를 관리하며 프로젝트 보드의 전체 수명 주기를 감독하는 에이전트를 위해 설계되었습니다.",
+  "changelog": [
+    {
+      "notes": "프로젝트 및 칸반 보드를 생성 및 구성하고, 작업 및 의존성을 관리하며, 에이전트를 할당하고 자율 작업을 조정합니다."
+    }
+  ]
+}

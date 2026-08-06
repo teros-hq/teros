@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const listCommits: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List commits in a repository',
   parameters: {
     type: 'object',

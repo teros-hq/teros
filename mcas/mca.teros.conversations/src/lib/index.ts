@@ -5,7 +5,6 @@ import { createWebSocketClient, type McaWebSocketClient } from '@teros/mca-sdk';
 // =============================================================================
 
 export const CURRENT_CHANNEL_ID = process.env.MCA_CHANNEL_ID || null;
-export const SENDER_AGENT_ID = process.env.MCA_AGENT_ID || null;
 
 // =============================================================================
 // WEBSOCKET CLIENT SINGLETON
@@ -149,4 +148,16 @@ export interface RenameChannelResult {
   success: boolean;
   channelId: string;
   name: string;
+}
+
+export interface ImportAttachmentResult {
+  success: boolean;
+  /** Original filename of the imported attachment */
+  filename: string;
+  /** Path of the copied file relative to the workspace volume root */
+  workspacePath: string;
+  /** File size in bytes, or null if unknown */
+  size: number | null;
+  /** MIME type, or null if unknown */
+  mime: string | null;
 }

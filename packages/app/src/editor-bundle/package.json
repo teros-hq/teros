@@ -1,0 +1,31 @@
+{
+  "name": "@teros/editor-bundle",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CodeMirror 6 editor bundle for Teros — compiled to a self-contained HTML string",
+  "scripts": {
+    "build": "bun run build.ts"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.18.0",
+    "@codemirror/commands": "^6.7.0",
+    "@codemirror/lang-css": "^6.3.0",
+    "@codemirror/lang-html": "^6.4.0",
+    "@codemirror/lang-javascript": "^6.2.0",
+    "@codemirror/lang-json": "^6.0.0",
+    "@codemirror/lang-markdown": "^6.3.0",
+    "@codemirror/lang-python": "^6.1.0",
+    "@codemirror/lang-sql": "^6.8.0",
+    "@codemirror/lang-xml": "^6.1.0",
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/legacy-modes": "^6.4.0",
+    "@codemirror/search": "^6.5.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/theme-one-dark": "^6.1.0",
+    "@codemirror/view": "^6.35.0",
+    "@replit/codemirror-vim": "^6.3.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.20.0"
+  }
+}

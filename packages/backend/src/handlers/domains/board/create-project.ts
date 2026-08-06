@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface CreateProjectData {
   workspaceId: string
@@ -16,6 +17,7 @@ interface CreateProjectData {
 export function createCreateProjectHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
+  pubSubService?: PubSubService | null,
 ) {
   return async function createProject(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as CreateProjectData
@@ -34,6 +36,14 @@ export function createCreateProjectHandler(
       name,
       description,
     })
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(workspaceId, {
+        type: 'project.created',
+        project,
+        board,
+      })
+    }
 
     return { project, board }
   }

@@ -1,0 +1,58 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.brevo",
+  "name": "Brevo",
+  "version": "1.0.0",
+  "description": "Brevo email marketing — send transactional emails, manage contacts and lists, create email templates, and browse email campaigns through the Brevo API.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "color": "#0B996E",
+  "entrypoint": "./src/index.ts",
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "keywords": [
+    "brevo",
+    "sendinblue",
+    "email",
+    "email marketing",
+    "transactional email",
+    "contacts",
+    "lists",
+    "folders",
+    "segments",
+    "attributes",
+    "import",
+    "templates",
+    "campaigns",
+    "newsletter",
+    "smtp",
+    "statistics",
+    "reports",
+    "analytics"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["BREVO_API_KEY"]
+    },
+    "agent": false
+  }
+}

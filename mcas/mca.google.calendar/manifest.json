@@ -2,11 +2,11 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.google.calendar",
   "name": "Google Calendar",
-  "version": "1.0.0",
-  "description": "Manage Google Calendar events - create, update, delete, search events and check availability",
+  "version": "2.0.0",
+  "description": "Manage Google Calendar: discover calendars, list/get/search events, create/update/delete events with recurrence + Meet + reminders + RSVP notifications, check availability",
   "type": "integration",
   "icon": "icon.png",
-  "category": "productivity",
+  "category": "google",
   "entrypoint": "src/index.ts",
   "author": {
     "name": "Teros Team",
@@ -33,8 +33,6 @@
       "tokenUrl": "https://oauth2.googleapis.com/token",
       "scopes": [
         "https://www.googleapis.com/auth/calendar",
-        "https://www.googleapis.com/auth/calendar.events",
-        "https://www.googleapis.com/auth/calendar.readonly",
         "https://www.googleapis.com/auth/userinfo.email"
       ],
       "pkce": false
@@ -47,5 +45,12 @@
     "healthCheck": "/health",
     "containerMode": "per-app"
   },
-  "keywords": ["google", "calendar", "events", "scheduling", "meetings"]
+  "keywords": ["google", "calendar", "events", "scheduling", "meetings"],
+  "changelog": [
+    {
+      "version": "2.0.0",
+      "date": "2026-04-30",
+      "notes": "Browse calendars, create and manage events with recurrence and Meet, RSVP, and check free-busy availability"
+    }
+  ]
 }

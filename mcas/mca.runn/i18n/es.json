@@ -1,0 +1,251 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave de API de Runn y la conectividad."
+    },
+    "runn-list-projects": {
+      "name": "runn-list-projects",
+      "description": "Lista proyectos de Runn. Devuelve { items: [{ id, name, clientId, isArchived, isConfirmed, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: clientId?, isArchived?, limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "clientId": "Filtrar por ID de cliente.",
+        "isArchived": "Filtrar por estado archivado.",
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de proyecto Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-get-project": {
+      "name": "runn-get-project",
+      "description": "Obtiene un único proyecto de Runn por ID. Devuelve detalle curado { id, name, clientId, teamId, isArchived, isConfirmed, pricingModel, rateType, budget, expensesBudget, tags, references, ... }. Parámetros: projectId (obligatorio), fields?, includeRaw.",
+      "params": {
+        "projectId": "ID del proyecto de Runn.",
+        "fields": "Sobrescribir la lista blanca predeterminada.",
+        "includeRaw": "Devolver el objeto de proyecto Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-project": {
+      "name": "runn-create-project",
+      "description": "Crea un proyecto de Runn desde cero. Devuelve el proyecto creado curado. No reintentable (sin clave de idempotencia). Parámetros: name, clientId (ambos obligatorios), isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel? (fp|tm|nb), rateType? (hours|days), rateCardId?, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre del proyecto.",
+        "clientId": "ID de cliente (obligatorio). Usa runn-list-clients para encontrarlo.",
+        "isConfirmed": "Proyecto confirmado (frente a tentativo). Por defecto false.",
+        "teamId": "ID de equipo.",
+        "budget": "Presupuesto del proyecto (en la moneda de la cuenta).",
+        "expensesBudget": "Presupuesto de gastos.",
+        "pricingModel": "fp = precio fijo, tm = tiempo y materiales, nb = no facturable.",
+        "rateType": "Unidad de tarifa.",
+        "rateCardId": "ID de tarifa.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de proyecto Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-update-project": {
+      "name": "runn-update-project",
+      "description": "Actualiza un proyecto de Runn. Solo se modifican los campos que pases (semántica PATCH). Idempotente — seguro para reintentar. Devuelve el proyecto actualizado curado. Parámetros: projectId (obligatorio), name?, clientId?, isConfirmed?, teamId?, budget?, expensesBudget?, pricingModel?, rateType?, rateCardId?, fields?, includeRaw.",
+      "params": {
+        "projectId": "ID del proyecto de Runn a actualizar.",
+        "name": "Nuevo nombre del proyecto.",
+        "clientId": "Nuevo ID de cliente.",
+        "isConfirmed": "Proyecto confirmado (frente a tentativo).",
+        "teamId": "Nuevo ID de equipo.",
+        "budget": "Presupuesto del proyecto.",
+        "expensesBudget": "Presupuesto de gastos.",
+        "pricingModel": "fp | tm | nb.",
+        "rateType": "hours | days.",
+        "rateCardId": "ID de tarifa.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de proyecto Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-people": {
+      "name": "runn-list-people",
+      "description": "Lista personas de Runn. Devuelve { items: [{ id, firstName, lastName, email, isArchived, teamId, createdAt, updatedAt }], total, hasMore, nextCursor }. Nota: el rol de una persona vive en su contrato, no en la persona. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de persona Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-get-person": {
+      "name": "runn-get-person",
+      "description": "Obtiene una única persona de Runn por ID. Devuelve detalle curado { id, firstName, lastName, email, isArchived, teamId, tags, references, holidaysGroupId, managers, ... }. Parámetros: personId (obligatorio), fields?, includeRaw.",
+      "params": {
+        "personId": "ID de persona de Runn.",
+        "fields": "Sobrescribir la lista blanca predeterminada.",
+        "includeRaw": "Devolver el objeto de persona Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-person": {
+      "name": "runn-create-person",
+      "description": "Crea una persona en Runn. Se crea un primer contrato (rol) con ella. Devuelve la persona creada curada. No reintentable (sin clave de idempotencia). Parámetros: firstName, lastName, roleId (todos obligatorios), email?, teamId?, startDate? (YYYY-MM-DD), employmentType? (employee|contractor), costPerHour?, fields?, includeRaw.",
+      "params": {
+        "firstName": "Nombre.",
+        "lastName": "Apellidos.",
+        "roleId": "ID de rol para el contrato inicial (obligatorio).",
+        "email": "Correo electrónico.",
+        "teamId": "ID de equipo.",
+        "startDate": "Fecha de inicio del contrato, YYYY-MM-DD. Por defecto hoy.",
+        "employmentType": "Tipo de empleo. Por defecto employee.",
+        "costPerHour": "Coste por hora. Por defecto el coste del rol.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de persona Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-placeholders": {
+      "name": "runn-list-placeholders",
+      "description": "Lista placeholders de Runn (ranuras de rol sin nombre usadas para planificación antes de asignar una persona real). Devuelve { items: [{ id, firstName, lastName, isArchived, tags, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de placeholder Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-placeholder": {
+      "name": "runn-create-placeholder",
+      "description": "Crea un placeholder de Runn (una ranura de rol sin nombre para planificación antes de contratar/asignar a una persona real). Devuelve el placeholder creado curado. No reintentable (sin clave de idempotencia). Parámetros: roleId (obligatorio), teamId?, costPerHour?, fields?, includeRaw.",
+      "params": {
+        "roleId": "ID de rol para el que el placeholder sustituye (obligatorio).",
+        "teamId": "ID de equipo.",
+        "costPerHour": "Coste por hora. Por defecto el coste del rol.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de placeholder Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-assignments": {
+      "name": "runn-list-assignments",
+      "description": "Lista asignaciones de Runn (una persona/placeholder asignada a un proyecto en un rol durante un rango de fechas). Devuelve { items: [{ id, personId, projectId, roleId, startDate, endDate, minutesPerDay, isBillable, isPlaceholder, ... }], total, hasMore, nextCursor }. Filtrar por personId O projectId (no ambos). Parámetros: personId?, projectId?, limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "Limitar a las asignaciones de una persona.",
+        "projectId": "Limitar a las asignaciones de un proyecto.",
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de asignación Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-assignment": {
+      "name": "runn-create-assignment",
+      "description": "Asigna una persona (o placeholder) a un proyecto en un rol durante un rango de fechas. Devuelve la asignación creada curada. No reintentable (sin clave de idempotencia). Parámetros: personId, projectId, roleId, startDate, endDate (YYYY-MM-DD), minutesPerDay (todos obligatorios), isBillable?, note?, phaseId?, workstreamId?, isNonWorkingDay?, fields?, includeRaw.",
+      "params": {
+        "personId": "ID de persona O placeholder a asignar.",
+        "projectId": "ID del proyecto.",
+        "roleId": "ID de rol en el que la persona trabaja en esta asignación.",
+        "startDate": "Fecha de inicio, YYYY-MM-DD.",
+        "endDate": "Fecha de fin, YYYY-MM-DD (igual o posterior a startDate).",
+        "minutesPerDay": "Minutos asignados por día (>= 0).",
+        "isBillable": "Si la asignación es facturable. Por defecto true.",
+        "note": "Nota opcional.",
+        "phaseId": "ID de fase de proyecto opcional.",
+        "workstreamId": "ID de workstream opcional.",
+        "isNonWorkingDay": "Si cae en un día no laborable.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de asignación Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-delete-assignment": {
+      "name": "runn-delete-assignment",
+      "description": "Elimina una asignación de Runn por ID. Irreversible. Devuelve { success, assignmentId }. Parámetros: assignmentId (obligatorio).",
+      "params": {
+        "assignmentId": "ID de la asignación de Runn a eliminar."
+      }
+    },
+    "runn-list-actuals": {
+      "name": "runn-list-actuals",
+      "description": "Lista actuals de Runn (horas de timesheet registradas por día). Devuelve { items: [{ id, date, personId, projectId, roleId, billableMinutes, nonbillableMinutes, ... }], total, hasMore, nextCursor }. Filtrar por personId O projectId (no ambos). Parámetros: personId?, projectId?, limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "personId": "Limitar a los actuals de una persona.",
+        "projectId": "Limitar a los actuals de un proyecto.",
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de actual Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-actual": {
+      "name": "runn-create-actual",
+      "description": "Registra un actual de Runn (horas reales trabajadas en un día). Los minutos sobrescriben cualquier actual existente para el mismo día/persona/proyecto/rol/workstream. Devuelve el actual curado. Parámetros: date (YYYY-MM-DD), billableMinutes, nonbillableMinutes, personId, projectId, roleId (todos obligatorios), billableNote?, nonbillableNote?, phaseId?, workstreamId?, fields?, includeRaw.",
+      "params": {
+        "date": "Día en que se realizó el trabajo, YYYY-MM-DD.",
+        "billableMinutes": "Minutos facturables (>= 0).",
+        "nonbillableMinutes": "Minutos no facturables (>= 0).",
+        "personId": "ID de persona.",
+        "projectId": "ID del proyecto.",
+        "roleId": "ID de rol.",
+        "billableNote": "Nota opcional para el tiempo facturable.",
+        "nonbillableNote": "Nota opcional para el tiempo no facturable.",
+        "phaseId": "ID de fase de proyecto opcional.",
+        "workstreamId": "ID de workstream opcional.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de actual Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-clients": {
+      "name": "runn-list-clients",
+      "description": "Lista clientes de Runn. Devuelve { items: [{ id, name, website, isArchived, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de cliente Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-create-client": {
+      "name": "runn-create-client",
+      "description": "Crea un cliente de Runn. Devuelve el cliente creado curado. No reintentable (sin clave de idempotencia). Parámetros: name (obligatorio), website?, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre del cliente.",
+        "website": "URL del sitio web del cliente.",
+        "fields": "Sobrescribir la lista blanca predeterminada en el resultado.",
+        "includeRaw": "Devolver el objeto de cliente Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-roles": {
+      "name": "runn-list-roles",
+      "description": "Lista roles de Runn (roles de trabajo bajo los que se asignan personas y placeholders). Devuelve { items: [{ id, name, isArchived, defaultHourCost, standardRate, references, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de rol Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-teams": {
+      "name": "runn-list-teams",
+      "description": "Lista equipos de Runn. Devuelve { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de equipo Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-list-skills": {
+      "name": "runn-list-skills",
+      "description": "Lista habilidades de Runn. Devuelve { items: [{ id, name, createdAt, updatedAt }], total, hasMore, nextCursor }. Parámetros: limit (1-200, por defecto 50), cursor?, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máx 200, por defecto 50.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos de habilidad Runn sin procesar. Por defecto false."
+      }
+    },
+    "runn-project-totals": {
+      "name": "runn-project-totals",
+      "description": "Obtiene totales de minutos agregados por proyecto (facturables, no facturables, total — de actuals cuando disponibles, con fallback a asignaciones). Devuelve { items: [{ id, billableMinutes, nonBillableMinutes, totalMinutes, assignments, actuals }], total, hasMore, nextCursor }. Parámetros: includeArchived (por defecto false), limit (1-10, por defecto 10), cursor?, fields?, includeRaw.",
+      "params": {
+        "includeArchived": "Incluir proyectos archivados en los totales. Por defecto false.",
+        "limit": "Resultados por página. Mín 1, máx 10, por defecto 10.",
+        "cursor": "Cursor de paginación de una respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca predeterminada por fila.",
+        "includeRaw": "Devolver objetos agregados Runn sin procesar. Por defecto false."
+      }
+    }
+  },
+  "name": "Runn",
+  "description": "Gestión de recursos Runn — proyectos, personas, asignaciones, timesheets y planificación de capacidad"
+}

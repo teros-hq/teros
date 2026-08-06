@@ -6,6 +6,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import type { PubSubService } from '../../../services/pubsub-service'
 
 interface UpdateProjectData {
   projectId: string
@@ -17,6 +18,7 @@ interface UpdateProjectData {
 export function createUpdateProjectHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
+  pubSubService?: PubSubService | null,
 ) {
   return async function updateProject(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateProjectData
@@ -39,6 +41,13 @@ export function createUpdateProjectHandler(
     const project = await boardService.updateProject(projectId, { name, description, context })
     if (!project) {
       throw new HandlerError('NOT_FOUND', 'Project not found')
+    }
+
+    if (pubSubService) {
+      await pubSubService.broadcastToWorkspace(project.workspaceId, {
+        type: 'project.updated',
+        project,
+      })
     }
 
     return { project }

@@ -1,0 +1,337 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend."
+    },
+    "get-project": {
+      "name": "get-project",
+      "description": "Get project detail + its board columns. Returns: { project: { projectId, name, description, context, status, boardId, createdAt }, board: { boardId, columns: [{ columnId, slug, name, position }] } }. Use list-tasks to enumerate tasks.",
+      "params": {
+        "projectId": "Project ID",
+        "fields": "Custom subset for project",
+        "includeRaw": "Return full project + board"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "List projects in a workspace. Returns: { workspaceId, projects: [{ projectId, name, description, status, boardId, taskCount, activeAgentCount, createdAt }], nextCursor? }. Paginated: default 50, max 200. Use get-project for full detail + board columns.",
+      "params": {
+        "workspaceId": "Workspace ID (optional, defaults to execution workspace)",
+        "fields": "Custom subset of fields",
+        "includeArchived": "Include archived projects (default: false)",
+        "includeRaw": "Return full project documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    },
+    "get-task": {
+      "name": "get-task",
+      "description": "Get task detail + sub-tasks. Returns: { task: { taskId, title, description, columnName, columnSlug, priority, tags, assigneeName, running, stopRequested, dependencies, progressNotes, projectName, parentTaskTitle? }, subTasks: [...], agents }.",
+      "params": {
+        "taskId": "Task ID",
+        "fields": "Custom subset of fields for task + subTasks",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "List tasks in a project. Returns: { projectId, projectName, tasks: [{ taskId, title, columnName, columnSlug, priority, archived, tags, running, assigneeName, assigneeAvatarUrl }], agents, nextCursor? }. Paginated: default 50, max 200. For agent-view of own tasks use get-my-tasks (runner MCA).",
+      "params": {
+        "projectId": "Project ID",
+        "columnId": "Filter by column (optional)",
+        "assignedAgentId": "Filter by assignee (optional)",
+        "tags": "Return only tasks that have ALL these tags (optional)",
+        "archived": "true=archived only, false=active only (default: active)",
+        "fields": "Custom subset of fields to return (overrides default whitelist)",
+        "includeRaw": "Return full task documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor from previous response"
+      }
+    },
+    "list-board-agents": {
+      "name": "list-board-agents",
+      "description": "List agents in the workspace with access to board-manager or board-runner apps. Returns: { agents: [{ agentId, name, fullName, role, avatarUrl, capabilities }], nextCursor? }. Paginated: default 50, max 200.",
+      "params": {
+        "workspaceId": "Workspace (optional, defaults to execution)",
+        "fields": "Custom subset of fields",
+        "includeRaw": "Return full agent documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    },
+    "create-project": {
+      "name": "create-project",
+      "description": "Create a project with an associated Kanban board in a workspace. Returns: { project: { projectId, workspaceId, name, status, boardId }, board: { boardId, columns: [...] } }. Default columns: Backlog, To Do, In Progress, Blocked, Review, Done.",
+      "params": {
+        "workspaceId": "Workspace ID (optional, defaults to execution workspace)",
+        "name": "Project name",
+        "description": "Optional project description",
+        "includeRaw": "Return the full documents"
+      }
+    },
+    "create-task": {
+      "name": "create-task",
+      "description": "Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically.",
+      "params": {
+        "projectId": "Project ID",
+        "title": "Task title",
+        "description": "Short plain-text description (max ~1000 chars)",
+        "instructions": "Full task instructions (markdown — detailed specs, context, steps)",
+        "priority": "Priority (default: medium)",
+        "tags": "Tags for categorization",
+        "assignedAgentId": "Agent to assign",
+        "columnId": "Target column (default: backlog)",
+        "parentTaskId": "Parent task (for sub-tasks)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "batch-create-tasks": {
+      "name": "batch-create-tasks",
+      "description": "Create multiple tasks atomically (all succeed or all fail). Max 100 per call. Returns: { projectId, tasks: [{ taskId, title, columnId, priority, tags }], count }. Use create-task for a single task.",
+      "params": {
+        "projectId": "Project ID",
+        "tasks": "Array of task objects (max 100)",
+        "includeRaw": "Return full task documents"
+      }
+    },
+    "update-task": {
+      "name": "update-task",
+      "description": "Partial update of task properties. Omitted fields unchanged. Returns: { task: { ...TASK_FIELDS } }. To move a task between columns use move-task. To assign an agent use assign-task.",
+      "params": {
+        "taskId": "Task ID",
+        "title": "New title",
+        "description": "New short description (plain text, max ~1000 chars)",
+        "instructions": "New instructions (markdown — detailed specs, context, steps)",
+        "priority": "New priority",
+        "tags": "New tags (replaces existing)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "archive-task": {
+      "name": "archive-task",
+      "description": "Archive or restore a task (manager action). archived=true takes the task out of the active board (done / cancelled / discarded); archived=false restores it and triggers autoplay rescheduling. Returns: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "Task ID",
+        "archived": "true = archive, false = restore to active board",
+        "archiveNote": "Optional note explaining why the task was archived",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "archive-project": {
+      "name": "archive-project",
+      "description": "Archive a project (soft-delete) and all its non-archived tasks. Only admin/owner can archive. Idempotent — if already archived, returns the project. Returns: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "Project ID to archive",
+        "archiveNote": "Optional note explaining why the project was archived",
+        "includeRaw": "Return full project document"
+      }
+    },
+    "update-project": {
+      "name": "update-project",
+      "description": "Partial update of project properties (name, description, context). context is injected into agent system prompts when working on this project (markdown supported). Returns: { project: { ...PROJECT_FIELDS } }.",
+      "params": {
+        "projectId": "Project ID",
+        "name": "New name",
+        "description": "New description",
+        "context": "Project context injected into agent system prompts (architecture notes, coding standards, etc.). Markdown supported.",
+        "includeRaw": "Return full project document"
+      }
+    },
+    "update-board-config": {
+      "name": "update-board-config",
+      "description": "Update the board execution config for a project. The config object is passed as-is to the board. Currently reserved for future auto-dispatcher settings. Returns: { projectId, config }.",
+      "params": {
+        "projectId": "Project ID",
+        "config": "Board config object (passed as-is to the board document)"
+      }
+    },
+    "move-task": {
+      "name": "move-task",
+      "description": "Move a task to a different column on the board. Returns: { task: { ...TASK_FIELDS } } (includes columnName + columnSlug after move). Use list-board-subscriptions + subscribe-to-board to get notified when tasks move.",
+      "params": {
+        "taskId": "Task ID",
+        "columnId": "Target column ID",
+        "position": "Position within the column (optional, defaults to end)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "assign-task": {
+      "name": "assign-task",
+      "description": "Assign or unassign an agent to a task. Pass agentId to assign, omit or null to unassign. Returns: { task: { ...TASK_FIELDS } }.",
+      "params": {
+        "taskId": "Task ID",
+        "agentId": "Agent ID (omit or null to unassign)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "start-task": {
+      "name": "start-task",
+      "description": "Start a task: moves to in_progress, creates a headless conversation with the assigned agent, sends the task description as the first message, and links the conversation to the task. Returns: { task: { ...TASK_FIELDS, channelId }, channelId }. Optional override of agent or prompt.",
+      "params": {
+        "taskId": "Task ID",
+        "agentId": "Optional agent override. Reassigns the task before starting.",
+        "prompt": "Optional custom prompt. Overrides the default task description as the first message.",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "link-conversation": {
+      "name": "link-conversation",
+      "description": "Link an existing conversation (channel) to a task. Replaces any previously linked channel. Returns: { task: { ...TASK_FIELDS, channelId } }. Use start-task to link a new headless conversation instead.",
+      "params": {
+        "taskId": "Task ID",
+        "channelId": "Channel ID to link",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "add-progress-note": {
+      "name": "add-progress-note",
+      "description": "Post a progress note on a task (manager action). Notes are visible on the task detail and the board. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }. Runner agents should use the board-runner add-progress-note instead.",
+      "params": {
+        "taskId": "Task ID",
+        "text": "Progress note text",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "delete-task": {
+      "name": "delete-task",
+      "description": "Permanently delete a task. Sub-tasks become top-level tasks. Linked conversations are NOT deleted. Irreversible. Returns: { taskId, deleted: true }.",
+      "params": {
+        "taskId": "Task ID to delete"
+      }
+    },
+    "delete-project": {
+      "name": "delete-project",
+      "description": "Permanently delete a project and all its tasks and board. Only workspace admin/owner can delete. Irreversible — prefer archive-project for soft-delete. Returns: { projectId, deleted: true }.",
+      "params": {
+        "projectId": "Project ID to delete"
+      }
+    },
+    "add-task-dependency": {
+      "name": "add-task-dependency",
+      "description": "Add a dependency: after this call, taskId depends on dependsOnTaskId (dependsOnTaskId must complete first). Cycle detection runs automatically; if adding the edge would create a cycle, the call errors and affected tasks are marked circular_dependency. Returns: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "Task that gains the new dependency (the dependent task)",
+        "dependsOnTaskId": "Task that taskId will depend on (must complete first)",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "remove-task-dependency": {
+      "name": "remove-task-dependency",
+      "description": "Remove a dependency between two tasks. Idempotent — if the dependency does not exist, the task is returned unchanged. Returns: { task: { ...TASK_FIELDS, dependencies } }.",
+      "params": {
+        "taskId": "Task that currently has the dependency",
+        "dependsOnTaskId": "Task to remove from taskId's dependencies",
+        "includeRaw": "Return full task document"
+      }
+    },
+    "get-task-dependencies": {
+      "name": "get-task-dependencies",
+      "description": "Get dependencies of a task (tasks that must complete before it can start). Returns: { taskId, dependencies: [{ taskId, title, columnSlug, priority, archived }], count, nextCursor? }. Paginated when large: default 50, max 200.",
+      "params": {
+        "taskId": "Task ID whose dependencies to list",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "Configure parallel execution slots for an agent in a project. slots=0 disables autoplay (also auto-disables playEnabled if it was on). slots≥1 enables the play button. Returns: { relationship: { agentId, projectId, slots, playEnabled, activeSlots } }. Use set-agent-play to toggle autoplay after setting slots.",
+      "params": {
+        "projectId": "Project ID",
+        "agentId": "Agent ID",
+        "slots": "Parallel execution slots (0 = disabled, ≥1 = available)",
+        "includeRaw": "Return full relationship document"
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "Toggle autoplay for an agent on a project. When enabled=true the agent auto-picks eligible To Do tasks up to its slot limit. Requires slots≥1 (use set-agent-slots first). Disabling does NOT cancel tasks already running. Returns: { relationship: { agentId, projectId, slots, playEnabled } }.",
+      "params": {
+        "projectId": "Project ID",
+        "agentId": "Agent ID",
+        "enabled": "true = activate autoplay, false = deactivate",
+        "includeRaw": "Return full relationship document"
+      }
+    },
+    "subscribe-to-board": {
+      "name": "subscribe-to-board",
+      "description": "Subscribe the current conversation to real-time board events. Events (task moves, status changes, progress notes, dependency changes, autoplay toggles) are delivered to the conversation as they happen. Use filter to narrow events. Returns: { subscription: { subscriptionId, boardId, filter, createdAt } }. Use unsubscribe-from-board to stop.",
+      "params": {
+        "boardId": "Board ID to subscribe to",
+        "filter": "Optional filter to narrow delivered events",
+        "includeRaw": "Return full subscription document"
+      }
+    },
+    "unsubscribe-from-board": {
+      "name": "unsubscribe-from-board",
+      "description": "Cancel this conversation's subscription to board events for a specific board. Idempotent — if no subscription exists, returns { boardId, unsubscribed: true } unchanged. Returns: { boardId, unsubscribed: true }.",
+      "params": {
+        "boardId": "Board ID to unsubscribe from"
+      }
+    },
+    "list-board-subscriptions": {
+      "name": "list-board-subscriptions",
+      "description": "List active board subscriptions for the current conversation. Returns: { subscriptions: [{ subscriptionId, boardId, boardName, filter, createdAt }], nextCursor? }. Paginated: default 50, max 200.",
+      "params": {
+        "fields": "Custom fields",
+        "includeRaw": "Return full subscription documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    },
+    "get-board-status": {
+      "name": "get-board-status",
+      "description": "Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Use to identify bottlenecks.",
+      "params": {
+        "boardId": "Board ID",
+        "fields": "Custom subset for per-agent rows",
+        "includeRaw": "Return the full backend payload"
+      }
+    },
+    "stop-task": {
+      "name": "stop-task",
+      "description": "Send cooperative stop signal to a running task (task.running=true). The assigned runner agent finishes its current step, then moves the task to Blocked. Cooperative — the signal is processed at the next runner turn. Only managers should call this. Returns: { taskId, stopRequested: true }.",
+      "params": {
+        "taskId": "Task ID of a running task",
+        "reason": "Optional human-readable reason delivered to the runner"
+      }
+    },
+    "subscribe-to-events": {
+      "name": "subscribe-to-events",
+      "description": "Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.",
+      "params": {
+        "topic": "Event topic to subscribe to (e.g. \"mca.teros.scheduler.reminder\")",
+        "channelId": "Channel ID to receive events in (defaults to current conversation)",
+        "rules": "Optional filter rules to narrow delivered events",
+        "mode": "Delivery mode: notify = silent notification, wake = trigger agent response turn. Default: notify",
+        "includeRaw": "Return full subscription document"
+      }
+    },
+    "unsubscribe-from-events": {
+      "name": "unsubscribe-from-events",
+      "description": "Delete a channel event subscription by ID. Returns: { deleted: true }.",
+      "params": {
+        "id": "Subscription ID to delete"
+      }
+    },
+    "list-event-subscriptions": {
+      "name": "list-event-subscriptions",
+      "description": "List active event subscriptions for a channel. Returns: { subscriptions: [{ id, topic, channelId, rules, mode, createdAt, lastActivityAt }], nextCursor? }. Paginated: default 50, max 200.",
+      "params": {
+        "channelId": "Channel ID to list subscriptions for (defaults to current conversation)",
+        "fields": "Custom fields",
+        "includeRaw": "Return full subscription documents",
+        "limit": "Max results (default 50, max 200)",
+        "cursor": "Pagination cursor"
+      }
+    }
+  },
+  "name": "Board Manager",
+  "description": "Full board management capabilities for coordinator and supervisor agents. Provides complete control over projects, boards, and tasks — including creating, assigning, updating, moving, and deleting tasks. Designed for agents that orchestrate work across multiple workers, manage priorities, and oversee the full lifecycle of a project board.",
+  "changelog": [
+    {
+      "notes": "Create and organize projects and Kanban boards, manage tasks and dependencies, assign agents, and orchestrate autonomous work"
+    }
+  ]
+}

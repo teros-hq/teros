@@ -28,16 +28,18 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
   const title = definition?.getTitle(window.props) ?? 'Window';
   const subtitle = definition?.getSubtitle?.(window.props);
 
-  const handleMinimize = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (definition?.capabilities.canMinimize) {
+  const canMinimize = definition?.capabilities?.canMinimize ?? true;
+  const canMaximize = definition?.capabilities?.canMaximize ?? true;
+  const canClose = definition?.capabilities?.canClose ?? true;
+
+  const handleMinimize = () => {
+    if (canMinimize) {
       minimizeWindow(window.id);
     }
   };
 
-  const handleMaximize = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (definition?.capabilities.canMaximize) {
+  const handleMaximize = () => {
+    if (canMaximize) {
       if (window.isMaximized) {
         restoreWindow(window.id);
       } else {
@@ -46,16 +48,15 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
     }
   };
 
-  const handleClose = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (definition?.capabilities.canClose) {
+  const handleClose = () => {
+    if (canClose) {
       closeWindow(window.id);
     }
   };
 
   const handleDoubleClick = () => {
     // Double click en title bar = maximize/restore
-    if (definition?.capabilities.canMaximize) {
+    if (canMaximize) {
       if (window.isMaximized) {
         restoreWindow(window.id);
       } else {
@@ -74,8 +75,8 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
       paddingLeft="$3"
       paddingRight="$1"
       gap="$2"
-      {...dragHandleProps}
-      onDoubleClick={handleDoubleClick}
+      {...(dragHandleProps as any)}
+      onDoubleClick={handleDoubleClick as any}
     >
       {/* Icon */}
       {Icon && <Icon size={14} color={isActive ? '$cyan10' : '$gray9'} />}
@@ -106,7 +107,7 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
       {/* Window controls */}
       <XStack gap={0}>
         {/* Minimize */}
-        {definition?.capabilities.canMinimize && (
+        {canMinimize && (
           <XStack
             width={32}
             height={28}
@@ -121,7 +122,7 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
         )}
 
         {/* Maximize/Restore */}
-        {definition?.capabilities.canMaximize && (
+        {canMaximize && (
           <XStack
             width={32}
             height={28}
@@ -140,7 +141,7 @@ export function WindowTitleBar({ window, isActive, dragHandleProps }: Props) {
         )}
 
         {/* Close */}
-        {definition?.capabilities.canClose && (
+        {canClose && (
           <XStack
             width={32}
             height={28}

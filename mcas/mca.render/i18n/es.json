@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave API de Render y la conectividad."
+    },
+    "render-get-user": {
+      "name": "render-get-user",
+      "description": "Obtiene la información del usuario autenticado de Render."
+    },
+    "render-list-owners": {
+      "name": "render-list-owners",
+      "description": "Lista todos los espacios de trabajo/propietarios (cuentas personales y de equipo) accesibles para el usuario autenticado."
+    },
+    "render-list-projects": {
+      "name": "render-list-projects",
+      "description": "Lista todos los proyectos de la cuenta de Render."
+    },
+    "render-get-project": {
+      "name": "render-get-project",
+      "description": "Obtiene información detallada sobre un proyecto específico de Render.",
+      "params": {
+        "projectId": "El ID del proyecto de Render"
+      }
+    },
+    "render-create-project": {
+      "name": "render-create-project",
+      "description": "Crea un nuevo proyecto en Render. Usa render-list-owners para obtener el ownerId.",
+      "params": {
+        "name": "Nombre del proyecto",
+        "ownerId": "ID del propietario/espacio de trabajo (usa render-list-owners para obtener los IDs)"
+      }
+    },
+    "render-delete-project": {
+      "name": "render-delete-project",
+      "description": "Elimina un proyecto de Render. ¡Esta acción es irreversible!",
+      "params": {
+        "projectId": "El ID del proyecto de Render a eliminar"
+      }
+    },
+    "render-list-environments": {
+      "name": "render-list-environments",
+      "description": "Lista todos los entornos de un proyecto de Render.",
+      "params": {
+        "projectId": "El ID del proyecto de Render"
+      }
+    },
+    "render-create-environment": {
+      "name": "render-create-environment",
+      "description": "Crea un nuevo entorno en un proyecto de Render.",
+      "params": {
+        "projectId": "El ID del proyecto de Render",
+        "name": "Nombre del entorno (p. ej., \"staging\", \"production\")"
+      }
+    },
+    "render-list-services": {
+      "name": "render-list-services",
+      "description": "Lista todos los servicios de la cuenta de Render. Permite filtrar por tipo o nombre.",
+      "params": {
+        "type": "Filtrar por tipo de servicio: web_service, static_site, background_worker, private_service, cron_job",
+        "name": "Filtrar por nombre de servicio (coincidencia parcial)"
+      }
+    },
+    "render-get-service": {
+      "name": "render-get-service",
+      "description": "Obtiene información detallada sobre un servicio específico de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render"
+      }
+    },
+    "render-create-service": {
+      "name": "render-create-service",
+      "description": "Crea un nuevo servicio en Render desde un repositorio de GitHub. Usa render-list-owners para obtener el ownerId.",
+      "params": {
+        "name": "Nombre del servicio",
+        "ownerId": "ID del propietario/espacio de trabajo (usa render-list-owners para obtener los IDs)",
+        "type": "Tipo de servicio: web_service, static_site, background_worker, private_service, cron_job",
+        "repoURL": "URL del repositorio de GitHub (p. ej., \"https://github.com/owner/repo\")",
+        "branch": "Rama desde la que desplegar (por defecto: \"main\")",
+        "buildCommand": "Comando de build (p. ej., \"npm run build\")",
+        "startCommand": "Comando de inicio para servicios web/worker (p. ej., \"node server.js\")",
+        "plan": "Plan de instancia (p. ej., \"free\", \"starter\", \"standard\", \"pro\")",
+        "region": "Región de despliegue (p. ej., \"oregon\", \"frankfurt\", \"singapore\")",
+        "autoDeploy": "Auto-despliegue en git push: \"yes\" o \"no\" (por defecto: \"yes\")"
+      }
+    },
+    "render-delete-service": {
+      "name": "render-delete-service",
+      "description": "Elimina un servicio de Render. ¡Esta acción es irreversible!",
+      "params": {
+        "serviceId": "El ID del servicio de Render a eliminar"
+      }
+    },
+    "render-suspend-service": {
+      "name": "render-suspend-service",
+      "description": "Suspende un servicio en ejecución de Render (detiene la facturación de cómputo).",
+      "params": {
+        "serviceId": "El ID del servicio de Render a suspender"
+      }
+    },
+    "render-resume-service": {
+      "name": "render-resume-service",
+      "description": "Reanuda un servicio suspendido de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render a reanudar"
+      }
+    },
+    "render-restart-service": {
+      "name": "render-restart-service",
+      "description": "Reinicia un servicio en ejecución de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render a reiniciar"
+      }
+    },
+    "render-list-deploys": {
+      "name": "render-list-deploys",
+      "description": "Lista los despliegues recientes de un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "limit": "Número máximo de despliegues a devolver (por defecto: 10, máximo: 100)"
+      }
+    },
+    "render-get-deploy": {
+      "name": "render-get-deploy",
+      "description": "Obtiene el estado y los detalles de un despliegue específico de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "deployId": "El ID del despliegue de Render"
+      }
+    },
+    "render-trigger-deploy": {
+      "name": "render-trigger-deploy",
+      "description": "Lanza un nuevo despliegue para un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "clearCache": "Si limpiar la caché de build: \"clear\" o \"do_not_clear\" (por defecto: do_not_clear)"
+      }
+    },
+    "render-cancel-deploy": {
+      "name": "render-cancel-deploy",
+      "description": "Cancela un despliegue en curso de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "deployId": "El ID del despliegue de Render a cancelar"
+      }
+    },
+    "render-rollback-deploy": {
+      "name": "render-rollback-deploy",
+      "description": "Revierte un servicio de Render a un despliegue anterior específico.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "deployId": "El ID del despliegue al que revertir"
+      }
+    },
+    "render-list-env-vars": {
+      "name": "render-list-env-vars",
+      "description": "Lista las variables de entorno de un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render"
+      }
+    },
+    "render-set-env-vars": {
+      "name": "render-set-env-vars",
+      "description": "Establece (reemplaza todas) las variables de entorno de un servicio de Render. Esto reemplaza TODAS las variables existentes. Usa render-update-env-var para actualizar una sola variable.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "envVars": "Array de variables de entorno a establecer"
+      }
+    },
+    "render-update-env-var": {
+      "name": "render-update-env-var",
+      "description": "Añade o actualiza una sola variable de entorno de un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "key": "Clave de la variable de entorno",
+        "value": "Valor de la variable de entorno"
+      }
+    },
+    "render-delete-env-var": {
+      "name": "render-delete-env-var",
+      "description": "Elimina una variable de entorno de un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "key": "Clave de la variable de entorno a eliminar"
+      }
+    },
+    "render-list-custom-domains": {
+      "name": "render-list-custom-domains",
+      "description": "Lista los dominios personalizados configurados para un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render"
+      }
+    },
+    "render-add-custom-domain": {
+      "name": "render-add-custom-domain",
+      "description": "Añade un dominio personalizado a un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "domain": "El nombre del dominio personalizado (p. ej., \"app.example.com\")"
+      }
+    },
+    "render-delete-custom-domain": {
+      "name": "render-delete-custom-domain",
+      "description": "Elimina un dominio personalizado de un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "domainId": "El ID del dominio personalizado a eliminar"
+      }
+    },
+    "render-verify-custom-domain": {
+      "name": "render-verify-custom-domain",
+      "description": "Verifica la configuración DNS de un dominio personalizado en un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "domainId": "El ID del dominio personalizado a verificar"
+      }
+    },
+    "render-list-disks": {
+      "name": "render-list-disks",
+      "description": "Lista los discos persistentes conectados a un servicio de Render.",
+      "params": {
+        "serviceId": "El ID del servicio de Render"
+      }
+    },
+    "render-add-disk": {
+      "name": "render-add-disk",
+      "description": "Añade un disco persistente a un servicio de Render (útil para bases de datos y aplicaciones con estado).",
+      "params": {
+        "serviceId": "El ID del servicio de Render",
+        "name": "Nombre del disco",
+        "mountPath": "Ruta de montaje dentro del contenedor (p. ej., \"/data\")",
+        "sizeGB": "Tamaño del disco en GB (mínimo: 1)"
+      }
+    },
+    "render-get-logs": {
+      "name": "render-get-logs",
+      "description": "Obtiene los logs recientes de uno o más servicios de Render. Requiere el ID del propietario (usa render-list-owners) y los IDs de los servicios.",
+      "params": {
+        "ownerId": "El ID del propietario/espacio de trabajo (usa render-list-owners para obtener los IDs)",
+        "serviceIds": "Array de IDs de servicios de los que obtener logs",
+        "limit": "Número máximo de líneas de log a devolver (por defecto: 100)",
+        "text": "Filtra los logs que contengan este texto",
+        "level": "Filtra por nivel de log: debug, info, warning, error"
+      }
+    }
+  },
+  "name": "Render",
+  "description": "Despliega y gestiona servicios en Render directamente desde los espacios de trabajo de Teros. Soporta servicios web, sitios estáticos, despliegues, variables de entorno, dominios personalizados y más.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — despliega servicios desde GitHub, lanza y revierte despliegues, gestiona variables de entorno, dominios personalizados, discos y logs"
+    }
+  ]
+}

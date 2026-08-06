@@ -1,37 +1,50 @@
 /**
- * app.list — List installed apps for the current user (own + system)
+ * app.list — Return the list of installed apps for the authenticated user
  */
 
-import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
-import type { McaService } from '../../../services/mca-service'
+import type { Db } from 'mongodb'
 
-export function createListAppsHandler(mcaService: McaService) {
+export function createListAppsHandler(db: Db) {
   return async function listApps(ctx: WsHandlerContext, _rawData: unknown) {
-    const [userApps, systemApps] = await Promise.all([
-      mcaService.listAppsByOwner(ctx.userId),
-      mcaService.listAppsByOwner('system'),
-    ])
+    const usersCollection = db.collection('users')
+    const userDoc = await usersCollection.findOne(
+      { userId: ctx.userId },
+      { projection: { privateWorkspaceId: 1, _id: 0 } },
+    )
 
-    const allApps = [...userApps, ...systemApps]
+    const privateWorkspaceId = userDoc?.privateWorkspaceId
+    if (!privateWorkspaceId) {
+      return { apps: [] }
+    }
 
-    const appsWithInfo = await Promise.all(
-      allApps.map(async (app) => {
-        const mca = await mcaService.getMcaFromCatalog(app.mcaId)
+    const appsCollection = db.collection('apps')
+    const installedApps = await appsCollection
+      .find({ ownerId: privateWorkspaceId })
+      .toArray()
+
+    const catalogCollection = db.collection('mca_catalog')
+
+    const apps = await Promise.all(
+      installedApps.map(async (app) => {
+        const catalogEntry = await catalogCollection.findOne(
+          { mcaId: app.mcaId },
+          { projection: { name: 1, description: 1, icon: 1, color: 1, category: 1, _id: 0 } },
+        )
+
         return {
           appId: app.appId,
-          name: app.name,
+          name: app.name ?? catalogEntry?.name ?? app.mcaId,
           mcaId: app.mcaId,
-          mcpName: mca?.name || app.mcaId,
-          description: mca?.description || '',
-          icon: mca?.icon,
-          color: mca?.color,
-          category: mca?.category || 'integration',
-          status: app.status,
+          description: catalogEntry?.description ?? null,
+          icon: catalogEntry?.icon ?? null,
+          color: catalogEntry?.color ?? null,
+          category: catalogEntry?.category ?? null,
+          status: app.status ?? null,
         }
       }),
     )
 
-    return { apps: appsWithInfo }
+    return { apps }
   }
 }

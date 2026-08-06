@@ -25,8 +25,7 @@ async function userHasAppAccess(
 ): Promise<boolean> {
   const app = await mcaService.getApp(appId)
   if (!app) return false
-  if (app.ownerId === userId) return true
-  if (app.ownerType === 'workspace' && workspaceService) {
+  if (workspaceService) {
     return workspaceService.canAccess(app.ownerId, userId)
   }
   return false
@@ -36,13 +35,10 @@ async function getExecutionContext(
   mcaService: McaService,
   userId: string,
   appId: string,
-): Promise<{ userId: string; workspaceId?: string } | null> {
+): Promise<{ userId: string; workspaceId: string } | null> {
   const app = await mcaService.getApp(appId)
   if (!app) return null
-  if (app.ownerType === 'workspace') {
-    return { userId, workspaceId: app.ownerId }
-  }
-  return { userId: app.ownerId }
+  return { userId, workspaceId: app.ownerId }
 }
 
 export function createExecuteToolHandler(
@@ -82,10 +78,15 @@ export function createExecuteToolHandler(
     const fullToolName = `${app.name}_${tool}`
     console.log(`[app.execute-tool] Executing ${fullToolName} for user ${ctx.userId} (app: ${appId})`)
 
-    const result = await mcaManager.executeTool(fullToolName, input, {
+    // Extract channelId from input (e.g. terminal window passes it for streaming)
+    // and forward it to the execution context so MCAs can use it for callbacks.
+    const { channelId: inputChannelId, ...toolInput } = input as Record<string, any>
+
+    const result = await mcaManager.executeTool(fullToolName, toolInput, {
       appId,
       userId: context.userId,
       workspaceId: context.workspaceId,
+      ...(inputChannelId ? { channelId: inputChannelId } : {}),
     })
 
     let output: any

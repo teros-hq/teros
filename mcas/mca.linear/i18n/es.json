@@ -1,0 +1,235 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la clave de la API de Linear y la conectividad."
+    },
+    "linear-list-issues": {
+      "name": "linear-list-issues",
+      "description": "Lista issues de Linear con filtros opcionales. Devuelve filas curadas { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. Parámetros: teamId?, status?, assigneeId?, priority?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filtrar por UUID de equipo.",
+        "status": "Filtrar por tipo de estado del flujo de trabajo.",
+        "assigneeId": "Filtrar por UUID de asignado.",
+        "priority": "Filtrar por prioridad.",
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de issues de Linear. Por defecto: false."
+      }
+    },
+    "linear-get-issue": {
+      "name": "linear-get-issue",
+      "description": "Obtiene un issue de Linear por UUID o identificador (p. ej. \"TER-123\"). Devuelve { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Parámetros: issueId, descriptionFormat ('full' | 'summary', por defecto 'full'), fields?, includeRaw.",
+      "params": {
+        "issueId": "UUID del issue o identificador legible (p. ej. \"TER-123\").",
+        "descriptionFormat": "Controlar el tamaño de la descripción. 'full' (por defecto) devuelve el markdown completo; 'summary' trunca a 500 caracteres y añade descriptionTruncated=true. Útil al escanear issues por tamaño de contexto.",
+        "fields": "Sobrescribir la lista blanca por defecto.",
+        "includeRaw": "Devolver objeto raw del issue de Linear. Por defecto: false."
+      }
+    },
+    "linear-create-issue": {
+      "name": "linear-create-issue",
+      "description": "Crea un issue en Linear. Devuelve { id, identifier, title, url, status, priority, assignee, team, createdAt, updatedAt }. No reintentable (sin clave de idempotencia). Parámetros: title, teamId, description?, assigneeId?, priority?, projectId?, labelIds?, stateId?, parentId? (UUID o \"TER-123\"), fields?, includeRaw.",
+      "params": {
+        "title": "Título del issue.",
+        "teamId": "UUID del equipo (obligatorio).",
+        "description": "Descripción en markdown.",
+        "assigneeId": "UUID del asignado.",
+        "priority": "Prioridad del issue.",
+        "projectId": "UUID del proyecto.",
+        "labelIds": "UUIDs de etiquetas a adjuntar al crear.",
+        "stateId": "UUID del estado del flujo de trabajo a establecer inicialmente.",
+        "parentId": "UUID o identificador del issue padre (p. ej. \"TER-123\"). Solo establecer al crear una subtarea; omitir en caso contrario.",
+        "fields": "Sobrescribir la lista blanca por defecto en el issue devuelto.",
+        "includeRaw": "Devolver objeto raw del issue de Linear. Por defecto: false."
+      }
+    },
+    "linear-update-issue": {
+      "name": "linear-update-issue",
+      "description": "Actualiza un issue de Linear. Devuelve el issue actualizado. Idempotente por campo — seguro para reintentar. Parámetros: issueId, title?, description?, stateId?, assigneeId?, priority?, projectId?, labelIds?, estimate?, dueDate?, fields?, includeRaw.",
+      "params": {
+        "issueId": "UUID o identificador del issue.",
+        "title": "Nuevo título.",
+        "description": "Nueva descripción en markdown.",
+        "stateId": "UUID del estado del flujo de trabajo.",
+        "assigneeId": "UUID del asignado (null para desasignar).",
+        "priority": "Nueva prioridad.",
+        "projectId": "UUID del proyecto (pasar equivalente de null vía remove-issues-from-project).",
+        "labelIds": "Conjunto completo de IDs de etiquetas (sobrescribe). Usar add/remove-labels-to-issue para cambios incrementales.",
+        "estimate": "Estimación en puntos.",
+        "dueDate": "Cadena de fecha ISO (YYYY-MM-DD).",
+        "fields": "Sobrescribir la lista blanca por defecto en el issue devuelto.",
+        "includeRaw": "Devolver objeto raw del issue de Linear. Por defecto: false."
+      }
+    },
+    "linear-delete-issue": {
+      "name": "linear-delete-issue",
+      "description": "Elimina permanentemente un issue de Linear. Irreversible. Devuelve { success, issueId }.",
+      "params": {
+        "issueId": "UUID o identificador del issue."
+      }
+    },
+    "linear-archive-issue": {
+      "name": "linear-archive-issue",
+      "description": "Archiva un issue de Linear (eliminación suave). Reversible vía des-archivar. Devuelve { success, issueId }.",
+      "params": {
+        "issueId": "UUID o identificador del issue."
+      }
+    },
+    "linear-add-comment": {
+      "name": "linear-add-comment",
+      "description": "Añade un comentario a un issue de Linear. Devuelve { id, body, authorId, authorName, issueId, url, createdAt }. No reintentable. Parámetros: issueId, body, fields?, includeRaw.",
+      "params": {
+        "issueId": "UUID o identificador del issue.",
+        "body": "Cuerpo del comentario en markdown. No debe estar vacío.",
+        "fields": "Sobrescribir la lista blanca por defecto.",
+        "includeRaw": "Devolver objeto raw del comentario de Linear. Por defecto: false."
+      }
+    },
+    "linear-list-projects": {
+      "name": "linear-list-projects",
+      "description": "Lista proyectos de Linear. Devuelve filas curadas { id, name, url, state, icon, color, progress, startDate, targetDate, createdAt, updatedAt }. Parámetros: teamId?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filtrar por UUID de equipo.",
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de proyectos de Linear. Por defecto: false."
+      }
+    },
+    "linear-create-project": {
+      "name": "linear-create-project",
+      "description": "Crea un proyecto en Linear. Devuelve la forma curada del proyecto. No reintentable (sin clave de idempotencia). Parámetros: name, teamIds, description?, leadId?, startDate?, targetDate?, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre del proyecto.",
+        "teamIds": "UUIDs de equipos que poseen este proyecto.",
+        "description": "Descripción del proyecto.",
+        "leadId": "UUID del responsable del proyecto.",
+        "startDate": "Fecha ISO (YYYY-MM-DD).",
+        "targetDate": "Fecha ISO (YYYY-MM-DD).",
+        "fields": "Sobrescribir la lista blanca por defecto en el proyecto devuelto.",
+        "includeRaw": "Devolver objeto raw del proyecto de Linear. Por defecto: false."
+      }
+    },
+    "linear-delete-project": {
+      "name": "linear-delete-project",
+      "description": "Elimina permanentemente un proyecto de Linear. Irreversible. Los issues del proyecto se desvinculan (no se eliminan). Devuelve { success, projectId }.",
+      "params": {
+        "projectId": "UUID del proyecto."
+      }
+    },
+    "linear-add-issues-to-project": {
+      "name": "linear-add-issues-to-project",
+      "description": "Adjunta uno o más issues de Linear a un proyecto. Devuelve { projectId, added, failed, results: [{ issueId, identifier?, success, error? }] }.",
+      "params": {
+        "projectId": "UUID del proyecto.",
+        "issueIds": "UUIDs o identificadores de issues."
+      }
+    },
+    "linear-remove-issues-from-project": {
+      "name": "linear-remove-issues-from-project",
+      "description": "Desvincula uno o más issues de Linear de su proyecto. Devuelve { removed, failed, results: [{ issueId, identifier?, success, error? }] }.",
+      "params": {
+        "issueIds": "UUIDs o identificadores de issues a desvincular."
+      }
+    },
+    "linear-list-labels": {
+      "name": "linear-list-labels",
+      "description": "Lista etiquetas de Linear. Devuelve filas curadas { id, name, color, description, isGroup, parentId }. Parámetros: teamId?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filtrar por UUID de equipo (etiquetas de ámbito de equipo).",
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de etiquetas de Linear. Por defecto: false."
+      }
+    },
+    "linear-create-label": {
+      "name": "linear-create-label",
+      "description": "Crea una etiqueta en Linear. Devuelve { id, name, color, description }. No reintentable. Parámetros: name, teamId, color?, description?, fields?, includeRaw.",
+      "params": {
+        "name": "Nombre de la etiqueta.",
+        "teamId": "UUID del equipo que posee la etiqueta.",
+        "color": "Color hexadecimal (p. ej. '#FF5733').",
+        "description": "Descripción de la etiqueta.",
+        "fields": "Sobrescribir la lista blanca por defecto en la etiqueta devuelta.",
+        "includeRaw": "Devolver objeto raw de la etiqueta de Linear. Por defecto: false."
+      }
+    },
+    "linear-update-label": {
+      "name": "linear-update-label",
+      "description": "Actualiza una etiqueta de Linear. Devuelve la etiqueta actualizada. Idempotente por campo. Parámetros: labelId, name?, color?, description?, fields?, includeRaw.",
+      "params": {
+        "labelId": "UUID de la etiqueta.",
+        "name": "Nuevo nombre.",
+        "color": "Nuevo color hexadecimal (p. ej. '#FF5733').",
+        "description": "Nueva descripción.",
+        "fields": "Sobrescribir la lista blanca por defecto en la etiqueta devuelta.",
+        "includeRaw": "Devolver objeto raw de la etiqueta de Linear. Por defecto: false."
+      }
+    },
+    "linear-delete-label": {
+      "name": "linear-delete-label",
+      "description": "Elimina permanentemente una etiqueta de Linear. Irreversible. Devuelve { success, labelId }.",
+      "params": {
+        "labelId": "UUID de la etiqueta."
+      }
+    },
+    "linear-add-labels-to-issue": {
+      "name": "linear-add-labels-to-issue",
+      "description": "Añade etiquetas a un issue de Linear (se deduplican en el servidor contra las etiquetas existentes). Devuelve { issueId, added, total, labelIds }.",
+      "params": {
+        "issueId": "UUID o identificador del issue.",
+        "labelIds": "UUIDs de etiquetas a añadir."
+      }
+    },
+    "linear-remove-labels-from-issue": {
+      "name": "linear-remove-labels-from-issue",
+      "description": "Elimina etiquetas de un issue de Linear. Devuelve { issueId, removed, total, labelIds }.",
+      "params": {
+        "issueId": "UUID o identificador del issue.",
+        "labelIds": "UUIDs de etiquetas a eliminar."
+      }
+    },
+    "linear-list-teams": {
+      "name": "linear-list-teams",
+      "description": "Lista equipos de Linear. Devuelve filas curadas { id, name, key, icon, color, description, private }. Parámetros: limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de equipos de Linear. Por defecto: false."
+      }
+    },
+    "linear-list-users": {
+      "name": "linear-list-users",
+      "description": "Lista usuarios del workspace de Linear. Opcionalmente filtra por pertenencia a un equipo. Devuelve filas curadas { id, name, displayName, email, avatarUrl, active, admin }. Parámetros: teamId?, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "Filtrar por UUID de equipo (devuelve solo miembros de ese equipo).",
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de usuarios de Linear. Por defecto: false."
+      }
+    },
+    "linear-list-workflow-states": {
+      "name": "linear-list-workflow-states",
+      "description": "Lista estados del flujo de trabajo de un equipo. Devuelve filas curadas { id, name, type, color, position, description }. Parámetros: teamId, limit (1-100, por defecto 50), startCursor, fields?, includeRaw.",
+      "params": {
+        "teamId": "UUID del equipo.",
+        "limit": "Resultados por página. Mín 1, máximo 100, por defecto 50.",
+        "startCursor": "Cursor relay de Linear de la respuesta anterior nextCursor.",
+        "fields": "Sobrescribir la lista blanca por defecto en cada fila.",
+        "includeRaw": "Devolver nodos raw de estados de Linear. Por defecto: false."
+      }
+    }
+  },
+  "name": "Linear",
+  "description": "Seguimiento de issues con Linear — listar, crear, actualizar issues, gestionar equipos y usuarios",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crear, actualizar y comentar issues, gestionar proyectos y etiquetas, y explorar equipos"
+    }
+  ]
+}

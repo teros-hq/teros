@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "send-image": {
+      "name": "send-image",
+      "description": "Send an image to the user. The image will be displayed in the chat. Supports public URLs or local file paths.",
+      "params": {
+        "url": "Public URL of the image (use this OR filePath)",
+        "filePath": "File path in /workspace/ (e.g., '/workspace/image.png'). This is the shared volume accessible to all MCAs. Use this OR url.",
+        "caption": "Optional caption/description for the image",
+        "width": "Optional width in pixels",
+        "height": "Optional height in pixels"
+      }
+    },
+    "send-audio": {
+      "name": "send-audio",
+      "description": "Send an audio file to the user. The audio will be playable in the chat. Supports public URLs or local file paths.",
+      "params": {
+        "url": "Public URL of the audio file (use this OR filePath)",
+        "filePath": "File path in /workspace/ (e.g., '/workspace/audio.mp3'). This is the shared volume accessible to all MCAs. Use this OR url.",
+        "caption": "Optional caption/description for the audio",
+        "duration": "Optional duration in seconds",
+        "mimeType": "Optional MIME type (e.g., 'audio/mp3')"
+      }
+    },
+    "send-video": {
+      "name": "send-video",
+      "description": "Send a video to the user. The video will be playable in the chat. Supports public URLs or local file paths.",
+      "params": {
+        "url": "Public URL of the video (use this OR filePath)",
+        "filePath": "File path in /workspace/ (e.g., '/workspace/video.mp4'). This is the shared volume accessible to all MCAs. Use this OR url.",
+        "caption": "Optional caption/description for the video",
+        "duration": "Optional duration in seconds",
+        "width": "Optional width in pixels",
+        "height": "Optional height in pixels",
+        "thumbnailUrl": "Optional URL for video thumbnail/preview image",
+        "mimeType": "Optional MIME type (e.g., 'video/mp4')"
+      }
+    },
+    "send-file": {
+      "name": "send-file",
+      "description": "Send a document or file to the user. The file will be downloadable from the chat. Supports public URLs or local file paths.",
+      "params": {
+        "url": "Public URL of the file (use this OR filePath)",
+        "filePath": "File path in /workspace/ (e.g., '/workspace/document.pdf'). This is the shared volume accessible to all MCAs. Use this OR url.",
+        "filename": "Display name for the file (e.g., 'report.pdf'). Required if using url, optional for filePath.",
+        "caption": "Optional caption/description for the file",
+        "mimeType": "Optional MIME type (e.g., 'application/pdf')",
+        "size": "Optional file size in bytes"
+      }
+    },
+    "send-html": {
+      "name": "send-html",
+      "description": "Send an HTML widget to the user. The HTML will be rendered directly in the chat. Use this to display UI mockups, interactive previews, styled tables, diagrams, or any visual content that can be represented with HTML/CSS. The HTML is sandboxed for security.",
+      "params": {
+        "html": "HTML content to render. Can include inline <style> tags for CSS.",
+        "caption": "Optional caption/description for the widget",
+        "height": "Optional fixed height in pixels. If not provided, height will be auto-calculated."
+      }
+    },
+    "send-html-file": {
+      "name": "send-html-file",
+      "description": "Send an HTML file to the user. The file will be rendered inline in the chat (fetched from its path) AND can be opened in a dedicated FileViewer window that auto-refreshes when the file changes. Use this when you want the user to see a live preview of an HTML file you are editing.",
+      "params": {
+        "filePath": "Absolute path to the HTML file (e.g., '/workspace/mockup.html'). The file must exist on the shared volume.",
+        "caption": "Optional caption/description for the widget"
+      }
+    },
+    "notify-by-email": {
+      "name": "notify-by-email",
+      "description": "Send a notification email to the current user. The email is sent via Resend from a Teros notification address (notifications@teros.ai). Use this instead of Gmail when you want to deliver a report or alert to the user by email — it does not require any email account connection. The user's email is resolved automatically from their Teros account. The backend appends a Teros banner with a CTA to os.teros.ai at the bottom automatically — do NOT include your own footer or Teros branding. EMAIL HTML GUIDELINES: Use table-based layouts (not divs/flexbox/grid). Inline ALL styles (no <style> blocks, no class attributes). Use full HTML document: <!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>...</body></html>. Max width 560px for content. Use system fonts: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif. For headings use Georgia, serif. Background via <body> or outer table with bgcolor. Use <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"> for layout. Spacers: <tr><td style=\"height: Npx;\"></td></tr>. Buttons: <a> with inline display:inline-block, padding, background-color, border-radius. Images: absolute URLs only, width/height attributes, style=\"display:block\". No JavaScript, no <form>, no external CSS, no web fonts. Colors: dark theme #0A0A0F (bg), #FAFAFA (text), #A1A1AA (secondary), #5E6AD2 (accent/CTA). Light theme: #EFE9DB (bg), #18181B (text). Keep it clean and minimal.",
+      "params": {
+        "subject": "Email subject line",
+        "content": "Email body content as email-safe HTML. The backend sends it as-is (no wrapping template) and appends a Teros banner at the bottom. See the tool description for HTML formatting guidelines. If contentType is \"text\", line breaks are converted to <br> tags.",
+        "contentType": "Format of the content. \"text\" = plain text (will be converted to HTML with line breaks). \"html\" = raw HTML (will be embedded as-is). Default: \"html\"."
+      }
+    }
+  },
+  "name": "Messaging",
+  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, and notification emails via Resend",
+  "changelog": [
+    {
+      "notes": "Initial release — send images, audio, video, and documents to the chat, plus live HTML previews"
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Higgsfield API 자격 증명 및 연결성을 확인합니다."
+    },
+    "higgsfield-run": {
+      "name": "higgsfield-run",
+      "description": "Higgsfield에서 모델을 실행합니다. 텍스트-이미지, 이미지-비디오 및 기타 AI 생성 모델을 지원합니다.",
+      "params": {
+        "model": "모델/엔드포인트 식별자 (예: 'bytedance/seedream/v4/text-to-image')",
+        "input": "모델의 입력 매개변수",
+        "wait": "완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-text-to-image": {
+      "name": "higgsfield-text-to-image",
+      "description": "Seedream v4를 사용하여 텍스트 프롬프트에서 이미지를 생성합니다.",
+      "params": {
+        "prompt": "생성할 이미지에 대한 텍스트 설명",
+        "resolution": "출력 해상도",
+        "aspect_ratio": "생성된 이미지의 종횡비",
+        "style": "선택적 스타일 프리셋",
+        "wait": "완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-image-to-video": {
+      "name": "higgsfield-image-to-video",
+      "description": "이미지를 동작이 있는 비디오로 변환합니다. 다양한 동작 스타일과 카메라 움직임을 지원합니다.",
+      "params": {
+        "image_url": "입력 이미지의 URL",
+        "prompt": "원하는 동작/비디오에 대한 설명",
+        "duration": "비디오 길이(초 단위) (기본값: 5)",
+        "motion_strength": "동작 강도 (0.0-1.0)",
+        "camera_motion": "카메라 움직임 유형",
+        "wait": "완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-text-to-video": {
+      "name": "higgsfield-text-to-video",
+      "description": "텍스트 프롬프트에서 비디오를 생성합니다.",
+      "params": {
+        "prompt": "생성할 비디오에 대한 텍스트 설명",
+        "duration": "비디오 길이(초 단위) (기본값: 5)",
+        "resolution": "출력 해상도",
+        "aspect_ratio": "종횡비",
+        "wait": "완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-soul-generate": {
+      "name": "higgsfield-soul-generate",
+      "description": "Soul을 사용하여 일관된 캐릭터 외관의 이미지를 생성합니다. 동일한 캐릭터의 여러 이미지를 만드는 데 적합합니다.",
+      "params": {
+        "prompt": "캐릭터의 장면/포즈에 대한 텍스트 설명",
+        "reference_image": "캐릭터 일관성을 위한 참조 이미지의 URL",
+        "style": "선택적 스타일 프리셋",
+        "wait": "완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-get-prediction": {
+      "name": "higgsfield-get-prediction",
+      "description": "ID로 예측의 상태와 결과를 가져옵니다.",
+      "params": {
+        "prediction_id": "확인할 예측 ID",
+        "wait": "여전히 처리 중인 경우 완료될 때까지 대기 (기본값: false)"
+      }
+    },
+    "higgsfield-cancel-prediction": {
+      "name": "higgsfield-cancel-prediction",
+      "description": "대기 중이거나 처리 중인 예측을 취소합니다.",
+      "params": {
+        "prediction_id": "취소할 예측 ID"
+      }
+    },
+    "higgsfield-list-models": {
+      "name": "higgsfield-list-models",
+      "description": "사용 가능한 모델과 그 기능을 나열합니다.",
+      "params": {
+        "type": "유형별로 모델 필터링"
+      }
+    }
+  },
+  "name": "Higgsfield",
+  "description": "Higgsfield로 AI 이미지 및 비디오를 생성합니다 - 텍스트-이미지, 이미지-비디오, 그리고 Soul을 통한 일관된 캐릭터 생성.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 텍스트에서 이미지 생성, 이미지를 비디오로 변환, 그리고 Soul로 일관된 캐릭터 생성"
+    }
+  ]
+}

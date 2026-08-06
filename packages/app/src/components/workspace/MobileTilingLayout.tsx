@@ -7,15 +7,19 @@
  * - The active tab takes up the full screen
  */
 
-import { ChevronLeft, ChevronRight, Menu, Plus, X } from '@tamagui/lucide-icons';
-import React, { useCallback, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, LayoutGrid, Menu, Plus, X } from '@tamagui/lucide-icons';
+import React, { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Circle, Text, XStack, YStack } from 'tamagui';
 import { useTabState } from '../../hooks/useTabState';
 import { useNavbarStore } from '../../store/navbarStore';
 import { type ContainerNode, type LayoutNode, useTilingStore } from '../../store/tilingStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import { NewConversationModal } from '../NewConversationModal';
 import { TerosLoading } from '../TerosLoading';
+import { useColors } from '../mca/primitives/useColors';
+import { colors as semanticColors, surface } from '../mca/primitives/colors';
 import { WindowContent } from './WindowContent';
 
 /** Collect all windows from all containers in the layout tree */
@@ -48,6 +52,8 @@ function findContainerForWindow(node: LayoutNode | null, windowId: string): Cont
 }
 
 export function MobileTilingLayout() {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
   const insets = useSafeAreaInsets();
 
   const windows = useTilingStore((state) => state.windows);
@@ -119,14 +125,14 @@ export function MobileTilingLayout() {
   }
 
   return (
-    <YStack flex={1} backgroundColor="#0a0a0a">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* Tab bar with menu button */}
       <XStack
         height={44 + insets.top}
         paddingTop={insets.top}
-        backgroundColor="#0c0c0e"
+        backgroundColor={isDark ? c.bgCard : "#C8C8C8"}
         borderBottomWidth={1}
-        borderBottomColor="#1f1f22"
+        borderBottomColor={isDark ? c.border : "rgba(10,10,15,0.12)"}
         alignItems="center"
         paddingHorizontal={4}
       >
@@ -139,12 +145,12 @@ export function MobileTilingLayout() {
           borderRadius={8}
           cursor="pointer"
           opacity={0.6}
-          hoverStyle={{ backgroundColor: '#1a1a1a', opacity: 1 }}
-          pressStyle={{ backgroundColor: '#222' }}
+          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
+          pressStyle={{ backgroundColor: c.bgCardHover }}
           marginLeft={4}
           onPress={() => setMobileMenuOpen(true)}
         >
-          <Menu size={18} color="#06B6D4" />
+          <Menu size={18} color={semanticColors.indigo} />
         </XStack>
 
         {/* Back / Forward navigation buttons */}
@@ -157,11 +163,11 @@ export function MobileTilingLayout() {
             borderRadius={6}
             opacity={canGoBack ? 0.7 : 0.2}
             cursor={canGoBack ? 'pointer' : 'default'}
-            hoverStyle={canGoBack ? { backgroundColor: '#1a1a1a', opacity: 1 } : {}}
-            pressStyle={canGoBack ? { backgroundColor: '#222' } : {}}
+            hoverStyle={canGoBack ? { backgroundColor: c.bgCardHover, opacity: 1 } : {}}
+            pressStyle={canGoBack ? { backgroundColor: c.bgCardHover } : {}}
             onPress={canGoBack && activeWindow ? () => navigateBack(activeWindow.id) : undefined}
           >
-            <ChevronLeft size={16} color="#aaa" />
+            <ChevronLeft size={16} color={c.text3} />
           </XStack>
           <XStack
             width={32}
@@ -171,11 +177,11 @@ export function MobileTilingLayout() {
             borderRadius={6}
             opacity={canGoForward ? 0.7 : 0.2}
             cursor={canGoForward ? 'pointer' : 'default'}
-            hoverStyle={canGoForward ? { backgroundColor: '#1a1a1a', opacity: 1 } : {}}
-            pressStyle={canGoForward ? { backgroundColor: '#222' } : {}}
+            hoverStyle={canGoForward ? { backgroundColor: c.bgCardHover, opacity: 1 } : {}}
+            pressStyle={canGoForward ? { backgroundColor: c.bgCardHover } : {}}
             onPress={canGoForward && activeWindow ? () => navigateForward(activeWindow.id) : undefined}
           >
-            <ChevronRight size={16} color="#aaa" />
+            <ChevronRight size={16} color={c.text3} />
           </XStack>
         </XStack>
 
@@ -206,18 +212,18 @@ export function MobileTilingLayout() {
           justifyContent="center"
           alignItems="center"
           opacity={0.6}
-          hoverStyle={{ backgroundColor: '#1a1a1a', opacity: 1 }}
+          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
           borderRadius={8}
           cursor="pointer"
           marginRight={4}
           onPress={handleOpenLauncher}
         >
-          <Plus size={18} color="#06B6D4" />
+          <Plus size={18} color={semanticColors.indigo} />
         </XStack>
       </XStack>
 
       {/* Content */}
-      <YStack flex={1} backgroundColor="#0f0f0f">
+      <YStack flex={1} backgroundColor={c.bgPage}>
         {activeWindow && (
           <WindowContent
             key={activeWindow.id}
@@ -252,6 +258,8 @@ interface MobileTabProps {
 }
 
 function MobileTab({ window, isActive, onSelect, onClose }: MobileTabProps) {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
   // Use shared hook for tab state
   const { Icon, iconColor, title, showSpinner, showRedDot, showBlueDot, showIcon } = useTabState(
     window,
@@ -273,20 +281,20 @@ function MobileTab({ window, isActive, onSelect, onClose }: MobileTabProps) {
       paddingRight={6}
       gap={6}
       alignItems="center"
-      backgroundColor={isActive ? '#1a1a1a' : 'transparent'}
+      backgroundColor={isActive ? (isDark ? c.bgCardHover : '#F8F4EC') : 'transparent'}
       borderRadius={6}
       cursor="pointer"
-      hoverStyle={{ backgroundColor: isActive ? '#1a1a1a' : '#151515' }}
-      pressStyle={{ backgroundColor: '#1f1f1f' }}
+      hoverStyle={{ backgroundColor: isActive ? (isDark ? c.bgCardHover : '#F8F4EC') : (isDark ? c.bgCard : 'rgba(10,10,15,0.08)') }}
+      pressStyle={{ backgroundColor: c.bgCardHover }}
       onPress={onSelect}
     >
       {/* Status indicator */}
-      {showSpinner && <TerosLoading size={14} color="#06B6D4" />}
-      {showRedDot && <Circle size={8} backgroundColor="#ef4444" />}
-      {showBlueDot && <Circle size={8} backgroundColor="#06B6D4" />}
+      {showSpinner && <TerosLoading size={14} color={semanticColors.indigo} />}
+      {showRedDot && <Circle size={8} backgroundColor={semanticColors.red} />}
+      {showBlueDot && <Circle size={8} backgroundColor={semanticColors.indigo} />}
       {showIcon && Icon && <Icon size={14} color={iconColor} />}
 
-      <Text fontSize={13} color={isActive ? '#e4e4e7' : '#888'} numberOfLines={1} maxWidth={100}>
+      <Text fontSize={13} color={isActive ? c.text : (isDark ? c.text3 : 'rgba(10,10,15,0.50)')} numberOfLines={1} maxWidth={100}>
         {title}
       </Text>
 
@@ -297,10 +305,10 @@ function MobileTab({ window, isActive, onSelect, onClose }: MobileTabProps) {
         justifyContent="center"
         alignItems="center"
         opacity={0.5}
-        hoverStyle={{ backgroundColor: '#333', opacity: 1 }}
+        hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
         onPress={handleCloseClick}
       >
-        <X size={12} color="#aaa" />
+        <X size={12} color={c.text3} />
       </XStack>
     </XStack>
   );
@@ -311,18 +319,35 @@ function MobileTab({ window, isActive, onSelect, onClose }: MobileTabProps) {
 // ============================================
 
 function EmptyMobileLayout({ onOpenLauncher }: { onOpenLauncher: () => void }) {
+  const c = useColors();
+  const isDark = c.bgPage === surface.dark.bgPage;
   const insets = useSafeAreaInsets();
   const { setMobileMenuOpen } = useNavbarStore();
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const { openWindow } = useTilingStore();
+  const [showNewConversationModal, setShowNewConversationModal] = useState(false);
+
+  const handleSelectAgent = (agent: { agentId: string; name: string; fullName: string }) => {
+    openWindow(
+      'chat',
+      {
+        agentId: agent.agentId,
+        agentName: agent.name || agent.fullName,
+        workspaceId: activeWorkspaceId ?? undefined,
+      },
+      true,
+    );
+  };
 
   return (
-    <YStack flex={1} backgroundColor="#0a0a0a">
+    <YStack flex={1} backgroundColor={c.bgPage}>
       {/* Header with menu */}
       <XStack
         height={44 + insets.top}
         paddingTop={insets.top}
-        backgroundColor="#0c0c0e"
+        backgroundColor={isDark ? c.bgCard : "#C8C8C8"}
         borderBottomWidth={1}
-        borderBottomColor="#1f1f22"
+        borderBottomColor={isDark ? c.border : "rgba(10,10,15,0.12)"}
         alignItems="center"
         paddingHorizontal={4}
       >
@@ -334,39 +359,69 @@ function EmptyMobileLayout({ onOpenLauncher }: { onOpenLauncher: () => void }) {
           borderRadius={8}
           cursor="pointer"
           opacity={0.6}
-          hoverStyle={{ backgroundColor: '#1a1a1a', opacity: 1 }}
-          pressStyle={{ backgroundColor: '#222' }}
+          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
+          pressStyle={{ backgroundColor: c.bgCardHover }}
           marginLeft={4}
           onPress={() => setMobileMenuOpen(true)}
         >
-          <Menu size={18} color="#06B6D4" />
+          <Menu size={18} color={semanticColors.indigo} />
         </XStack>
       </XStack>
 
-      {/* Empty content - just show + button that opens launcher */}
+      {/* New conversation flow - same experience as desktop EmptyLayout */}
       <YStack flex={1} justifyContent="center" alignItems="center" gap={16}>
+        {/* Primary: New Conversation */}
         <XStack
-          width={64}
-          height={64}
-          borderRadius={32}
-          backgroundColor="rgba(6, 182, 212, 0.15)"
-          borderWidth={2}
-          borderColor="rgba(6, 182, 212, 0.4)"
-          justifyContent="center"
           alignItems="center"
+          gap={14}
+          paddingHorizontal={28}
+          paddingLeft={14}
+          height={56}
+          borderWidth={1.5}
+          borderColor={c.border}
+          borderRadius={14}
           cursor="pointer"
-          hoverStyle={{
-            backgroundColor: 'rgba(6, 182, 212, 0.25)',
-            borderColor: 'rgba(6, 182, 212, 0.6)',
-          }}
-          pressStyle={{
-            backgroundColor: 'rgba(6, 182, 212, 0.3)',
-            scale: 0.95,
-          }}
+          hoverStyle={{ backgroundColor: c.bgCardHover, borderColor: c.borderStrong }}
+          pressStyle={{ scale: 0.97 }}
+          onPress={() => setShowNewConversationModal(true)}
+        >
+          <YStack
+            width={32}
+            height={32}
+            borderRadius={6}
+            backgroundColor={semanticColors.indigo}
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Plus size={20} color="white" />
+          </YStack>
+          <Text fontSize={18} fontWeight="500" color={c.text}>
+            New Conversation
+          </Text>
+        </XStack>
+
+        {/* Secondary: Open Window Selector */}
+        <XStack
+          alignItems="center"
+          gap={9}
+          paddingHorizontal={18}
+          paddingVertical={8}
+          borderRadius={10}
+          cursor="pointer"
+          hoverStyle={{ backgroundColor: c.bgCardHover }}
           onPress={onOpenLauncher}
         >
-          <Plus size={28} color="#06B6D4" />
+          <LayoutGrid size={15} color={c.text3} />
+          <Text fontSize={15} color={c.text3}>
+            Open Window Selector
+          </Text>
         </XStack>
+
+        <NewConversationModal
+          visible={showNewConversationModal}
+          onClose={() => setShowNewConversationModal(false)}
+          onSelectAgent={handleSelectAgent}
+        />
       </YStack>
     </YStack>
   );

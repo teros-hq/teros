@@ -5,7 +5,7 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
 
 // ============================================================================
 // Shared types
@@ -55,7 +55,6 @@ export interface BoardSummary {
 }
 
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low'
-export type TaskStatus = 'idle' | 'assigned' | 'working' | 'blocked' | 'review' | 'done'
 
 export interface ProgressNote {
   text: string
@@ -77,8 +76,9 @@ export interface TaskData {
   parentTaskId?: string
   title: string
   description?: string
+  instructions?: string
   priority: TaskPriority
-  status: TaskStatus
+  archived: boolean
   tags?: string[]
   assignedAgentId?: string
   channelId?: string
@@ -99,6 +99,7 @@ export interface AgentInfo {
 export interface CreateTaskInput {
   title: string
   description?: string
+  instructions?: string
   priority?: TaskPriority
   tags?: string[]
   columnId?: string
@@ -111,7 +112,7 @@ export interface CreateTaskInput {
 // ============================================================================
 
 export class BoardApi {
-  constructor(private readonly transport: WsTransport) {}
+  constructor(private readonly transport: Transport) {}
 
   // --------------------------------------------------------------------------
   // Projects
@@ -229,6 +230,7 @@ export class BoardApi {
     updates: {
       title?: string
       description?: string
+      instructions?: string
       priority?: TaskPriority
       tags?: string[]
       assignedAgentId?: string | null
@@ -237,15 +239,17 @@ export class BoardApi {
     return this.transport.request('board.update-task', { taskId, ...updates })
   }
 
-  /** Update task status (manager action) */
-  updateTaskStatus(
+  /** Archive or unarchive a task (manager action) */
+  archiveTask(
     taskId: string,
-    status: TaskStatus,
+    archived: boolean,
+    archiveNote?: string,
     actor?: string,
-  ): Promise<{ task: TaskData; previousStatus: TaskStatus }> {
-    return this.transport.request('board.update-task-status', {
+  ): Promise<{ task: TaskData }> {
+    return this.transport.request('board.archive-task', {
       taskId,
-      status,
+      archived,
+      ...(archiveNote !== undefined ? { archiveNote } : {}),
       ...(actor !== undefined ? { actor } : {}),
     })
   }
@@ -316,6 +320,14 @@ export class BoardApi {
     return this.transport.request('board.get-task-by-channel', { channelId })
   }
 
+  /** Request cooperative stop of a running task */
+  stopTask(taskId: string, reason?: string): Promise<{ task: TaskData }> {
+    return this.transport.request('board.stop-task', {
+      taskId,
+      ...(reason !== undefined ? { reason } : {}),
+    })
+  }
+
   // --------------------------------------------------------------------------
   // Runner commands (ownership-validated — only for the assigned agent)
   // --------------------------------------------------------------------------
@@ -335,15 +347,6 @@ export class BoardApi {
     })
   }
 
-  /** Update status of a task assigned to the calling agent */
-  updateMyTaskStatus(
-    taskId: string,
-    status: TaskStatus,
-    agentId: string,
-  ): Promise<{ task: TaskData; previousStatus: TaskStatus }> {
-    return this.transport.request('board.update-my-task-status', { taskId, status, agentId })
-  }
-
   /** Add a progress note to a task assigned to the calling agent */
   addMyProgressNote(
     taskId: string,
@@ -352,4 +355,59 @@ export class BoardApi {
   ): Promise<{ task: TaskData }> {
     return this.transport.request('board.add-my-progress-note', { taskId, text, agentId })
   }
+
+  // --------------------------------------------------------------------------
+  // Autoplay v2
+  // --------------------------------------------------------------------------
+
+  /** Configure parallel execution slots for an agent in a project */
+  setAgentSlots(
+    projectId: string,
+    agentId: string,
+    slots: number,
+  ): Promise<{ relationship: AgentRelationship }> {
+    return this.transport.request('board.set-agent-slots', { projectId, agentId, slots })
+  }
+
+  /** Activate or deactivate autoplay mode for an agent in a project */
+  setAgentPlay(
+    projectId: string,
+    agentId: string,
+    enabled: boolean,
+  ): Promise<{ relationship: AgentRelationship }> {
+    return this.transport.request('board.set-agent-play', { projectId, agentId, enabled })
+  }
+
+  /** Remove an agent from a project's autoplay panel (deletes the relationship) */
+  removeAgent(projectId: string, agentId: string): Promise<{ projectId: string; agentId: string; removed: boolean }> {
+    return this.transport.request('board.remove-agent', { projectId, agentId })
+  }
+
+  /** List all agents in the workspace that have board-manager or board-runner access */
+  listBoardAgents(workspaceId: string): Promise<{
+    workspaceId: string
+    agents: BoardAgentInfo[]
+    count: number
+  }> {
+    return this.transport.request('board.list-board-agents', { workspaceId })
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Autoplay v2 types
+// ---------------------------------------------------------------------------
+
+export interface AgentRelationship {
+  agentId: string
+  projectId: string
+  slots: number
+  playEnabled: boolean
+}
+
+export interface BoardAgentInfo {
+  agentId: string
+  name: string
+  fullName?: string
+  avatarUrl?: string
+  boardRole: 'manager' | 'runner' | 'both'
 }

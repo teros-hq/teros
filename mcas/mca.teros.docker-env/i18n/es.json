@@ -1,0 +1,83 @@
+{
+  "tools": {
+    "env-create": {
+      "name": "env-create",
+      "description": "Lanza un stack de docker-compose desde un directorio local del workspace como un entorno efímero. Devuelve inmediatamente con el envId y el estado \"creating\" — la compilación ocurre en segundo plano. Usa env-status para consultar hasta que el estado sea \"running\". El entorno está aislado en su propia red Docker con alcance limitado a tu usuario.",
+      "params": {
+        "localPath": "Ruta absoluta al directorio local del workspace que contiene el archivo docker-compose. Ejemplo: /workspace/my-project",
+        "composeFile": "Ruta al archivo docker-compose relativa a localPath (por defecto: docker-compose.yml)",
+        "envVars": "Variables de entorno adicionales para inyectar en el stack de compose (pares clave-valor)",
+        "timeout": "Tiempo de espera en segundos para docker-compose up --build (por defecto: 300)",
+        "slug": "Slug de URL personalizado opcional para el entorno (ej. \"teros-landing-maria\"). Debe contener solo letras minúsculas, dígitos y guiones. Si se omite, el slug se deriva automáticamente del último segmento de localPath. Si hay una colisión, se añade un sufijo aleatorio corto (ej. \"-a3f2\")."
+      }
+    },
+    "env-status": {
+      "name": "env-status",
+      "description": "Obtiene el estado detallado de un entorno Docker. Útil para consultar después de env-create hasta que el entorno esté \"running\". Devuelve el estado, las URLs, los servicios, createdAt, el error (si falló) y las últimas líneas del log de compilación.",
+      "params": {
+        "envId": "ID del entorno devuelto por env-create",
+        "buildLogLines": "Número de líneas recientes del log de compilación a incluir (por defecto: 20, máximo: 100)"
+      }
+    },
+    "env-exec": {
+      "name": "env-exec",
+      "description": "Ejecuta un comando dentro de un entorno en ejecución. El comando se ejecuta en el contexto del proyecto de docker-compose. Devuelve stdout, stderr y el código de salida.",
+      "params": {
+        "envId": "ID del entorno devuelto por env-create",
+        "service": "Nombre del servicio/contenedor en el que ejecutar el comando (según docker-compose)",
+        "command": "Comando a ejecutar dentro del contenedor (ej. \"npx playwright test --reporter=json\")",
+        "workdir": "Directorio de trabajo dentro del contenedor (opcional)",
+        "timeout": "Tiempo de espera en segundos (por defecto: 120, máximo: 600)"
+      }
+    },
+    "env-logs": {
+      "name": "env-logs",
+      "description": "Obtiene los logs recientes de un servicio en un entorno en ejecución. Devuelve las últimas N líneas de salida del contenedor.",
+      "params": {
+        "envId": "ID del entorno devuelto por env-create",
+        "service": "Nombre del servicio (según docker-compose). Omitir para todos los servicios.",
+        "lines": "Número de líneas de log a devolver (por defecto: 50, máximo: 200)",
+        "timestamps": "Incluir marcas de tiempo en la salida del log (por defecto: true)"
+      }
+    },
+    "env-list": {
+      "name": "env-list",
+      "description": "Lista todos los entornos del usuario/workspace actual. Muestra envId, estado (incluyendo estados intermedios: creating, building, running, stopped, error), localPath, servicios y URLs."
+    },
+    "env-restart": {
+      "name": "env-restart",
+      "description": "Reinicia un entorno Docker: detiene todos los contenedores y los vuelve a levantar. Útil para recargar cambios de configuración o recuperarse de un estado detenido. Devuelve inmediatamente — usa env-status para consultar hasta que esté \"running\".",
+      "params": {
+        "envId": "ID del entorno a reiniciar",
+        "rebuild": "Si es true, recompila las imágenes antes de reiniciar (docker-compose up --build). Por defecto: false."
+      }
+    },
+    "env-destroy": {
+      "name": "env-destroy",
+      "description": "Detiene y elimina un entorno Docker: ejecuta docker-compose down, elimina contenedores, redes y volúmenes. El directorio local del workspace (localPath) NO se elimina. Esta acción es irreversible.",
+      "params": {
+        "envId": "ID del entorno a destruir",
+        "removeVolumes": "Eliminar también los volúmenes nombrados de Docker (por defecto: true)"
+      }
+    },
+    "env-rename": {
+      "name": "env-rename",
+      "description": "Cambia el slug de URL de un entorno existente. Actualiza la ruta de Caddy para que el entorno sea accesible en la nueva URL inmediatamente. El envId no cambia.",
+      "params": {
+        "envId": "ID del entorno a renombrar",
+        "slug": "Nuevo slug de URL (ej. \"my-project-v2\"). Debe contener solo letras minúsculas, dígitos y guiones, y no debe empezar ni terminar con un guión. Máximo 63 caracteres."
+      }
+    },
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la conectividad del socket de Docker."
+    }
+  },
+  "name": "Entornos Docker",
+  "description": "Gestiona entornos Docker efímeros vinculados a un workspace. Levanta un stack completo de docker-compose desde un repositorio git, ejecuta comandos dentro de él, transmite logs y desmóntalo — todo con alcance por usuario para garantizar aislamiento.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — levanta entornos Docker en vivo desde tus proyectos, ejecuta comandos, consulta logs, reinicia, renombra y desmonta los entornos"
+    }
+  ]
+}

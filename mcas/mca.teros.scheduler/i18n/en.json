@@ -1,0 +1,184 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies MongoDB connectivity. Use `get-stats` for per-user active counts."
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "Live counters for the current user: active reminders, active recurring tasks, and next scheduled run timestamp.",
+      "params": {
+        "timezone": "IANA timezone for nextScheduledHumanReadable (default env)."
+      }
+    },
+    "parse-time-expression": {
+      "name": "parse-time-expression",
+      "description": "Preview a time/cron expression without scheduling. Returns parsed timestamp, humanReadable, and next occurrences.",
+      "params": {
+        "expression": "Natural language (\"in 2 hours\", \"tomorrow at 9am\", ISO) or cron (\"0 9 * * 1-5\").",
+        "timezone": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "Parser locale (default: en).",
+        "previewCount": "Next occurrences for cron (default 5, max 20).",
+        "reference": "ISO 8601 reference timestamp (default: now)."
+      }
+    },
+    "schedule-reminder": {
+      "name": "schedule-reminder",
+      "description": "Schedule a one-shot reminder. time: natural (\"in 2 hours\", \"tomorrow at 9am\") or ISO 8601. timezone defaults to env. Returns the new reminder.",
+      "params": {
+        "time": "Natural (\"in 2 hours\", \"tomorrow at 9am\") or ISO 8601.",
+        "message": "Message to deliver (max 4000 chars).",
+        "channelId": "Channel that receives the wake event (must be owned by user).",
+        "timezone": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE).",
+        "locale": "Parser locale (default: en).",
+        "allowPast": "Allow scheduling in the past (default false).",
+        "idempotencyKey": "Optional idempotency key. If a reminder with the same key+user already exists, returns it instead of creating a duplicate."
+      }
+    },
+    "list-reminders": {
+      "name": "list-reminders",
+      "description": "List reminders of the current user, paginated. Filter by channelId or status. Returns {items[], nextCursor?}.",
+      "params": {
+        "channelId": "Filter by channel.",
+        "status": "Filter by status (default: all).",
+        "limit": "Max results (default 50, max 200).",
+        "cursor": "Pagination cursor from previous response.",
+        "timezone": "IANA timezone for humanReadable (default env)."
+      }
+    },
+    "list-upcoming": {
+      "name": "list-upcoming",
+      "description": "List upcoming reminders and recurring tasks of the current user within a window (default 7 days). include: reminders|recurring|both. Paginated.",
+      "params": {
+        "channelId": "Filter by channel.",
+        "days": "Window length in days (default 7, max 90).",
+        "limit": "Max items per group (default 50, max 200).",
+        "cursor": "Pagination cursor (applies to reminders only).",
+        "timezone": "IANA timezone for humanReadable.",
+        "include": "What to include (default both)."
+      }
+    },
+    "get-reminder": {
+      "name": "get-reminder",
+      "description": "Get a reminder by ID (must belong to current user). Returns full reminder with humanReadable next-run.",
+      "params": {
+        "reminderId": "Reminder ID.",
+        "timezone": "IANA timezone for humanReadable (default env)."
+      }
+    },
+    "update-reminder": {
+      "name": "update-reminder",
+      "description": "Update a pending reminder of the current user. Provide time (re-parsed) or message (or both). Cancelled/sent reminders are not editable.",
+      "params": {
+        "reminderId": "ID of the reminder to update.",
+        "time": "New time expression (natural or ISO).",
+        "message": "New message text (max 4000 chars).",
+        "timezone": "IANA timezone (default env).",
+        "locale": "Parser locale.",
+        "allowPast": "Allow scheduling in the past."
+      }
+    },
+    "snooze-reminder": {
+      "name": "snooze-reminder",
+      "description": "Postpone a pending reminder of the current user by a delay (e.g. \"30m\", \"2h\", \"1d\"). Adds delay on top of current time.",
+      "params": {
+        "reminderId": "ID of the reminder to snooze.",
+        "delay": "Delay expression (e.g. \"30m\", \"2h\", \"1d\").",
+        "timezone": "IANA timezone for humanReadable (default env)."
+      }
+    },
+    "cancel-reminder": {
+      "name": "cancel-reminder",
+      "description": "Cancel a pending reminder of the current user. Idempotent (returns noop if already cancelled). Cleans up channel subscription if last one.",
+      "params": {
+        "reminderId": "ID of the reminder to cancel.",
+        "timezone": "IANA timezone for humanReadable (default env)."
+      }
+    },
+    "bulk-cancel": {
+      "name": "bulk-cancel",
+      "description": "Bulk-cancel pending reminders of the current user. Filter by channelId, before (ISO or epoch ms), or ids[]. Returns cancelled IDs and cleans subs for channels with no remaining pending.",
+      "params": {
+        "channelId": "Cancel all pending in this channel.",
+        "before": "Cancel pending scheduled before this time (ISO 8601 or epoch ms).",
+        "ids": "Cancel by IDs (max 500).",
+        "timezone": "IANA timezone for humanReadable."
+      }
+    },
+    "create-recurring-task": {
+      "name": "create-recurring-task",
+      "description": "Create a recurring task using a 5-field cron expression. Examples: \"0 9 * * *\", \"*/15 * * * *\", \"0 10-22 * * 1-5\". timezone defaults to env.",
+      "params": {
+        "cronExpression": "Cron 5 fields: \"min hour day month weekday\".",
+        "message": "Message delivered on each run (max 4000 chars).",
+        "channelId": "Channel that receives the wake event (must be owned by user).",
+        "timezone": "IANA timezone (default: env MCA_DEFAULT_TIMEZONE).",
+        "idempotencyKey": "Optional idempotency key. If a recurring task with the same key+user already exists, returns it instead of creating a duplicate."
+      }
+    },
+    "list-recurring-tasks": {
+      "name": "list-recurring-tasks",
+      "description": "List recurring tasks of the current user, paginated. Filter by channelId or enabled. Returns {items[], nextCursor?}.",
+      "params": {
+        "channelId": "Filter by channel.",
+        "enabled": "Filter by enabled state.",
+        "limit": "Max results (default 50, max 200).",
+        "cursor": "Pagination cursor."
+      }
+    },
+    "get-recurring-task": {
+      "name": "get-recurring-task",
+      "description": "Get a recurring task by ID (must belong to current user). Returns full task with cronDescription and humanReadable next-run.",
+      "params": {
+        "taskId": "Recurring task ID."
+      }
+    },
+    "update-recurring-task": {
+      "name": "update-recurring-task",
+      "description": "Update a recurring task of the current user. Provide cronExpression (re-validates and recomputes nextRun), message, or timezone.",
+      "params": {
+        "taskId": "ID of the recurring task.",
+        "cronExpression": "New cron expression (5 fields).",
+        "message": "New message text (max 4000 chars).",
+        "timezone": "New IANA timezone."
+      }
+    },
+    "enable-recurring-task": {
+      "name": "enable-recurring-task",
+      "description": "Enable (resume) a recurring task of the current user. Recomputes nextRun. Idempotent if already enabled.",
+      "params": {
+        "taskId": "Recurring task ID."
+      }
+    },
+    "disable-recurring-task": {
+      "name": "disable-recurring-task",
+      "description": "Disable (pause) a recurring task of the current user. Idempotent if already disabled.",
+      "params": {
+        "taskId": "Recurring task ID."
+      }
+    },
+    "delete-recurring-task": {
+      "name": "delete-recurring-task",
+      "description": "Permanently delete a recurring task of the current user. Cleans up channel subscription if last one for the channel.",
+      "params": {
+        "taskId": "Recurring task ID."
+      }
+    },
+    "list-executions": {
+      "name": "list-executions",
+      "description": "List execution history of a recurring task of the current user. Most recent first. Returns {items[], nextCursor?}.",
+      "params": {
+        "taskId": "Recurring task ID.",
+        "limit": "Max results (default 50, max 200).",
+        "cursor": "Pagination cursor."
+      }
+    }
+  },
+  "name": "Scheduler & Reminders",
+  "description": "Schedule reminders and recurring tasks. Natural language times (chrono-node, en+es) and cron expressions (croner). Timezone-aware.",
+  "changelog": [
+    {
+      "notes": "Initial release — schedule, snooze, and cancel one-time reminders and recurring tasks using plain-language or cron times, timezone-aware"
+    }
+  ]
+}

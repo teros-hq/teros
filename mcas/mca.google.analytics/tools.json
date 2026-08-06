@@ -1,0 +1,502 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.google.analytics",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies OAuth credentials and GA4 API connectivity.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "analytics-list-accounts",
+      "description": "List GA4 accounts accessible to the user. Returns { accounts: [{ accountId, name, displayName, regionCode, createTime }], count }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "pageSize": {
+            "type": "number",
+            "description": "Max results per page (default 50, max 200)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Pagination token from previous response"
+          }
+        }
+      }
+    },
+    {
+      "name": "analytics-list-properties",
+      "description": "List GA4 properties under an account. Returns { properties: [{ propertyId, displayName, propertyType, currencyCode, timeZone, industryCategory }], count }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "GA4 account ID (numeric or \"accounts/{id}\")"
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Max results per page (default 50, max 200)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Pagination token from previous response"
+          },
+          "showDeleted": {
+            "type": "boolean",
+            "description": "Include soft-deleted properties (default false)"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-get-property",
+      "description": "Get a GA4 property's details. Returns { property: { propertyId, displayName, propertyType, parent, timeZone, currencyCode, industryCategory, serviceLevel, createTime, updateTime } }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          }
+        },
+        "required": [
+          "propertyId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-list-data-streams",
+      "description": "List data streams (web/iOS/Android) for a property. Returns { streams: [{ streamId, displayName, type, webStreamData, androidAppStreamData, iosAppStreamData }], count }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "Max results per page (default 50)"
+          },
+          "pageToken": {
+            "type": "string",
+            "description": "Pagination token from previous response"
+          }
+        },
+        "required": [
+          "propertyId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-get-data-stream",
+      "description": "Get a single data stream's details. Returns { stream: { streamId, displayName, type, webStreamData?, androidAppStreamData?, iosAppStreamData? } }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "streamId": {
+            "type": "string",
+            "description": "Data stream ID (numeric)"
+          }
+        },
+        "required": [
+          "propertyId",
+          "streamId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-run-report",
+      "description": "Run a GA4 report. Returns { dimensionHeaders, metricHeaders, rows, rowCount, totals?, metadata, propertyQuota? }. Dates accept ISO (\"2024-01-01\") or relative (\"7daysAgo\", \"yesterday\", \"today\").",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "dimensions": {
+            "type": "array",
+            "description": "Dimension API names, e.g. [\"country\", \"deviceCategory\"]",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "description": "Metric API names, e.g. [\"activeUsers\", \"sessions\"]",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dateRanges": {
+            "type": "array",
+            "description": "Date ranges, e.g. [{ \"startDate\": \"7daysAgo\", \"endDate\": \"yesterday\" }]",
+            "items": {
+              "type": "object",
+              "properties": {
+                "startDate": {
+                  "type": "string"
+                },
+                "endDate": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "startDate",
+                "endDate"
+              ]
+            }
+          },
+          "dimensionFilter": {
+            "type": "object",
+            "description": "GA4 FilterExpression for dimensions (see GA4 Data API docs)"
+          },
+          "metricFilter": {
+            "type": "object",
+            "description": "GA4 FilterExpression for metrics (applied after aggregation)"
+          },
+          "orderBys": {
+            "type": "array",
+            "description": "Order by config, e.g. [{ \"metric\": { \"metricName\": \"sessions\" }, \"desc\": true }]",
+            "items": {
+              "type": "object"
+            }
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max rows (default 10000, max 250000)"
+          },
+          "offset": {
+            "type": "number",
+            "description": "Row offset (default 0)"
+          },
+          "keepEmptyRows": {
+            "type": "boolean",
+            "description": "Include rows where all metrics are zero"
+          },
+          "returnPropertyQuota": {
+            "type": "boolean",
+            "description": "Include quota info in response"
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "ISO 4217 currency override (e.g. \"USD\")"
+          },
+          "metricAggregations": {
+            "type": "array",
+            "description": "Aggregations: TOTAL, MINIMUM, MAXIMUM",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "propertyId",
+          "metrics",
+          "dateRanges"
+        ]
+      }
+    },
+    {
+      "name": "analytics-batch-run-reports",
+      "description": "Run up to 5 GA4 reports against the same property in one call. Returns { reports: [<RunReportResponse>...] }. Useful for dashboards.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "requests": {
+            "type": "array",
+            "description": "Array of report requests (same shape as analytics-run-report parameters minus propertyId)",
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": [
+          "propertyId",
+          "requests"
+        ]
+      }
+    },
+    {
+      "name": "analytics-run-realtime-report",
+      "description": "Run a GA4 realtime report (last 30 minutes of activity). Returns { dimensionHeaders, metricHeaders, rows, rowCount, propertyQuota? }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "dimensions": {
+            "type": "array",
+            "description": "Realtime dimension API names, e.g. [\"country\", \"unifiedScreenName\"]",
+            "items": {
+              "type": "string"
+            }
+          },
+          "metrics": {
+            "type": "array",
+            "description": "Realtime metric API names, e.g. [\"activeUsers\"]",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dimensionFilter": {
+            "type": "object",
+            "description": "FilterExpression for dimensions"
+          },
+          "metricFilter": {
+            "type": "object",
+            "description": "FilterExpression for metrics"
+          },
+          "orderBys": {
+            "type": "array",
+            "description": "Order by config",
+            "items": {
+              "type": "object"
+            }
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max rows (default 10000)"
+          },
+          "returnPropertyQuota": {
+            "type": "boolean",
+            "description": "Include quota info in response"
+          }
+        },
+        "required": [
+          "propertyId",
+          "metrics"
+        ]
+      }
+    },
+    {
+      "name": "analytics-get-metadata",
+      "description": "Get all dimensions and metrics available for a property, including custom ones. Returns { dimensions: [{ apiName, uiName, description, customDefinition }], metrics: [{ apiName, uiName, description, type, customDefinition }] }.",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          }
+        },
+        "required": [
+          "propertyId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-create-property",
+      "description": "Create a new GA4 property under an account. Returns { property: { propertyId, displayName, parent, timeZone, currencyCode, ... } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "GA4 account ID (numeric or \"accounts/{id}\")"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-readable property name"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "IANA time zone, e.g. \"America/Los_Angeles\""
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "ISO 4217 currency, e.g. \"USD\""
+          },
+          "industryCategory": {
+            "type": "string",
+            "description": "GA4 industry enum, e.g. \"TECHNOLOGY\", \"RETAIL\", \"FINANCE\""
+          }
+        },
+        "required": [
+          "accountId",
+          "displayName",
+          "timeZone"
+        ]
+      }
+    },
+    {
+      "name": "analytics-update-property",
+      "description": "Update mutable fields of a GA4 property (displayName, timeZone, currencyCode, industryCategory). Returns { property: <updated> }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "New display name"
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "New IANA time zone"
+          },
+          "currencyCode": {
+            "type": "string",
+            "description": "New ISO 4217 currency code"
+          },
+          "industryCategory": {
+            "type": "string",
+            "description": "New industry enum"
+          }
+        },
+        "required": [
+          "propertyId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-delete-property",
+      "description": "Soft-delete a GA4 property (recoverable for ~7 days from Google Analytics UI). Returns { property: { propertyId, deleteTime, ... } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          }
+        },
+        "required": [
+          "propertyId"
+        ]
+      }
+    },
+    {
+      "name": "analytics-create-data-stream",
+      "description": "Create a web/iOS/Android data stream under a property. Returns { stream: { streamId, displayName, type, webStreamData? } }.",
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true
+      },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "description": "GA4 property ID (numeric or \"properties/{id}\")"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-readable stream name"
+          },
+          "type": {
+            "type": "string",
+            "description": "Stream type: WEB_DATA_STREAM | ANDROID_APP_DATA_STREAM | IOS_APP_DATA_STREAM"
+          },
+          "webStreamData": {
+            "type": "object",
+            "description": "Required for WEB_DATA_STREAM: { defaultUri }",
+            "properties": {
+              "defaultUri": {
+                "type": "string"
+              }
+            }
+          },
+          "androidAppStreamData": {
+            "type": "object",
+            "description": "Required for ANDROID_APP_DATA_STREAM: { packageName }",
+            "properties": {
+              "packageName": {
+                "type": "string"
+              }
+            }
+          },
+          "iosAppStreamData": {
+            "type": "object",
+            "description": "Required for IOS_APP_DATA_STREAM: { bundleId }",
+            "properties": {
+              "bundleId": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "required": [
+          "propertyId",
+          "displayName",
+          "type"
+        ]
+      }
+    }
+  ]
+}

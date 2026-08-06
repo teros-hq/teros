@@ -1,12 +1,17 @@
 /**
  * board.assign-task — Assign or unassign an agent to a task
+ *
+ * Triggers autoplay scheduling for the newly assigned agent (if any).
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import { BoardSubscriptionService as BSS } from '../../../services/board-subscription-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
-import type { SessionManager } from '../../../services/session-manager'
+import type { PubSubService } from '../../../services/pubsub-service'
+import type { AutoplayService } from '../../../services/autoplay-service'
 
 interface AssignTaskData {
   taskId: string
@@ -16,19 +21,10 @@ interface AssignTaskData {
 export function createAssignTaskHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
-  sessionManager: SessionManager,
+  pubSubService: PubSubService,
+  autoplayService?: AutoplayService,
+  boardSubscriptionService?: BoardSubscriptionService,
 ) {
-  function broadcastBoardEvent(boardId: string, event: Record<string, any>): void {
-    const subscribers = sessionManager.getBoardSubscribers(boardId)
-    if (subscribers.length === 0) return
-    const payload = JSON.stringify(event)
-    for (const session of subscribers) {
-      if (session.ws && session.ws.readyState === 1) {
-        session.ws.send(payload)
-      }
-    }
-  }
-
   return async function assignTask(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as AssignTaskData
     const { taskId, agentId } = data
@@ -58,7 +54,29 @@ export function createAssignTaskHandler(
       throw new HandlerError('NOT_FOUND', 'Task not found')
     }
 
-    broadcastBoardEvent(task.boardId, { type: 'board_task_updated', task })
+    pubSubService.broadcastToTopic(`board:${task.boardId}`, { type: 'board_task_updated', task })
+
+    // Emit board.task_assigned to subscribers
+    if (boardSubscriptionService) {
+      const payload = {
+        taskId: task.taskId,
+        taskTitle: task.title,
+        assignedAgentId: task.assignedAgentId,
+        tags: task.tags,
+        columnId: task.columnId,
+      }
+      boardSubscriptionService.notifySubscribers(task.boardId, {
+        eventType: 'board.task_assigned',
+        boardId: task.boardId,
+        formattedMessage: BSS.formatEventMessage({ eventType: 'board.task_assigned', boardId: task.boardId, payload }),
+        payload,
+      })
+    }
+
+    // Trigger scheduling for the newly assigned agent (may have available slots)
+    if (autoplayService && agentId) {
+      autoplayService.scheduleAgentTasks(project.projectId, agentId)
+    }
 
     return { task }
   }

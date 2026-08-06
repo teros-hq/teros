@@ -1,0 +1,43 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.admin-infra",
+  "name": "Teros Admin Infra",
+  "version": "3.0.0",
+  "description": "Infrastructure tools for managing the Teros backend: backend status, restart, sync, and MCA process management (status, kill, cleanup, health checks).",
+  "type": "system",
+  "icon": "icon.svg",
+  "category": "system",
+  "entrypoint": "./src/index.ts",
+  "author": {
+    "name": "Alice Evergreen",
+    "email": "alice@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "admin"
+  },
+  "systemSecrets": ["ADMIN_API_URL", "ADMIN_API_KEY"],
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": ["admin", "infra", "restart", "status", "sync", "mca", "processes", "health", "management"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "3.0.0",
+      "date": "2026-05-19",
+      "notes": "Check backend status, restart and sync the server, and monitor, kill, clean up and health-check app processes"
+    }
+  ]
+}

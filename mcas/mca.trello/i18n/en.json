@@ -1,0 +1,178 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies Trello credentials and API connectivity."
+    },
+    "list-boards": {
+      "name": "list-boards",
+      "description": "List all boards accessible to authenticated user",
+      "params": {
+        "filter": "Filter boards: all, open, closed, members, organization, public, starred"
+      }
+    },
+    "create-board": {
+      "name": "create-board",
+      "description": "Create a new board",
+      "params": {
+        "name": "Name of board",
+        "desc": "Description of board (optional)",
+        "defaultLists": "Whether to create default lists (To Do, Doing, Done). Default: true",
+        "prefs_background": "Background color or image (optional, e.g., \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "get-board": {
+      "name": "get-board",
+      "description": "Get details of a specific board",
+      "params": {
+        "boardId": "The ID or short URL of board"
+      }
+    },
+    "update-board": {
+      "name": "update-board",
+      "description": "Update board properties (name, description, background, etc)",
+      "params": {
+        "boardId": "The ID of board to update",
+        "name": "New name for board (optional)",
+        "desc": "New description for board (optional)",
+        "prefs_background": "Background color or image (optional, e.g., \"blue\", \"orange\", \"gradient-rainbow\")"
+      }
+    },
+    "delete-board": {
+      "name": "delete-board",
+      "description": "Delete a board permanently",
+      "params": {
+        "boardId": "The ID of board to delete"
+      }
+    },
+    "list-board-lists": {
+      "name": "list-board-lists",
+      "description": "Get all lists in a board",
+      "params": {
+        "boardId": "The ID or short URL of board"
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Create a new list in a board",
+      "params": {
+        "boardId": "The ID of board",
+        "name": "Name of list",
+        "pos": "Position: top, bottom, or a positive number (optional)"
+      }
+    },
+    "update-list": {
+      "name": "update-list",
+      "description": "Update a list (change color, name, position, etc)",
+      "params": {
+        "listId": "The ID of list to update",
+        "name": "New name for list (optional)",
+        "color": "Color for list (optional): pink, yellow, lime, blue, black, orange, red, purple, sky, green",
+        "pos": "New position: top, bottom, or a positive number (optional)",
+        "closed": "Whether to archive the list (optional)"
+      }
+    },
+    "list-cards": {
+      "name": "list-cards",
+      "description": "Get all cards in a list",
+      "params": {
+        "listId": "The ID of list"
+      }
+    },
+    "get-card": {
+      "name": "get-card",
+      "description": "Get details of a specific card",
+      "params": {
+        "cardId": "The ID or short URL of card"
+      }
+    },
+    "create-card": {
+      "name": "create-card",
+      "description": "Create a new card in a list",
+      "params": {
+        "listId": "The ID of list to create card in",
+        "name": "The name/title of card",
+        "desc": "The description of card (optional)",
+        "pos": "Position of card: top, bottom, or a positive number (optional)",
+        "due": "Due date in ISO 8601 format (optional)",
+        "labels": "Comma-separated list of label IDs (optional)"
+      }
+    },
+    "update-card": {
+      "name": "update-card",
+      "description": "Update a card (move to different list, change name, description, etc)",
+      "params": {
+        "cardId": "The ID of card to update",
+        "name": "New name for card (optional)",
+        "desc": "New description for card (optional)",
+        "idList": "ID of list to move card to (optional)",
+        "due": "New due date in ISO 8601 format (optional)",
+        "closed": "Whether to archive card (optional)"
+      }
+    },
+    "add-comment": {
+      "name": "add-comment",
+      "description": "Add a comment to a card",
+      "params": {
+        "cardId": "The ID of card",
+        "text": "The comment text"
+      }
+    },
+    "get-card-actions": {
+      "name": "get-card-actions",
+      "description": "Get actions/activity history for a card",
+      "params": {
+        "cardId": "The ID of card",
+        "filter": "Filter actions: all, commentCard, updateCard, createCard, etc"
+      }
+    },
+    "list-labels": {
+      "name": "list-labels",
+      "description": "List all labels on a board",
+      "params": {
+        "boardId": "The ID of board"
+      }
+    },
+    "create-label": {
+      "name": "create-label",
+      "description": "Create a label on a board",
+      "params": {
+        "boardId": "The ID of board",
+        "name": "Name of label",
+        "color": "Color of label: yellow, purple, blue, red, green, orange, black, sky, pink, lime"
+      }
+    },
+    "add-label-to-card": {
+      "name": "add-label-to-card",
+      "description": "Add a label to a card",
+      "params": {
+        "cardId": "The ID of card",
+        "labelId": "The ID of label to add"
+      }
+    },
+    "remove-label-from-card": {
+      "name": "remove-label-from-card",
+      "description": "Remove a label from a card",
+      "params": {
+        "cardId": "The ID of card",
+        "labelId": "The ID of label to remove"
+      }
+    },
+    "search": {
+      "name": "search",
+      "description": "Search for cards across all boards",
+      "params": {
+        "query": "Search query",
+        "modelTypes": "Comma-separated list: cards, boards, members (default: cards)",
+        "partial": "Whether to match partial words (default: false)"
+      }
+    }
+  },
+  "name": "Trello",
+  "description": "Trello project management - boards, lists, cards, labels, members",
+  "changelog": [
+    {
+      "notes": "Initial release — manage boards, lists and cards, add comments and labels, and search across your Trello workspace"
+    }
+  ]
+}

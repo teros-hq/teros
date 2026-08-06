@@ -5,7 +5,7 @@
  * to provide context enrichment and learning.
  */
 
-import type { IMemoryHooks, ResponseMetadata } from '@teros/core';
+import type { IMemoryHooks, MemoryHookOptions, ResponseMetadata } from '@teros/core';
 import type { McaToolExecutor } from './mca-tool-executor';
 
 export class McaMemoryHooks implements IMemoryHooks {
@@ -18,14 +18,14 @@ export class McaMemoryHooks implements IMemoryHooks {
    * Get memory context before generating response
    * Uses the memory_memory-get-context-for-query tool with bypassPermissions
    */
-  async beforeResponse(userMessage: string): Promise<string> {
+  async beforeResponse(userMessage: string, opts?: MemoryHookOptions): Promise<string> {
     try {
       console.log(`[McaMemoryHooks] 🔍 Fetching memory context for agent ${this.agentId}`);
 
       const result = await this.toolExecutor.executeTool(
         'memory_memory-get-context-for-query',
         { query: userMessage },
-        { bypassPermissions: true },
+        { bypassPermissions: true, signal: opts?.signal },
       );
 
       if (result.isError) {
@@ -60,6 +60,7 @@ export class McaMemoryHooks implements IMemoryHooks {
     userMessage: string,
     assistantResponse: string,
     metadata?: ResponseMetadata,
+    opts?: MemoryHookOptions,
   ): Promise<void> {
     try {
       console.log('[McaMemoryHooks] 💾 Saving conversation to memory...');
@@ -72,7 +73,7 @@ export class McaMemoryHooks implements IMemoryHooks {
           filesModified: metadata?.filesModified || [],
           commandsRun: metadata?.commandsRun || [],
         },
-        { bypassPermissions: true },
+        { bypassPermissions: true, signal: opts?.signal },
       );
 
       console.log('[McaMemoryHooks] ✅ Conversation saved to memory');

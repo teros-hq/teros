@@ -1,0 +1,35 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the Hunter API key presence and connectivity."
+    },
+    "domain-search": {
+      "name": "domain-search",
+      "description": "Find professional email addresses for a company domain. Returns the domain pattern, organization, and a list of emails with confidence, name, position and department. Returns { domain, organization, pattern, total, emails[] }.",
+      "params": {
+        "domain": "Company domain to search (e.g. \"stripe.com\"). A full URL is also accepted.",
+        "limit": "Max number of emails to return (1-100, default 10).",
+        "offset": "Number of emails to skip for pagination (>= 0, default 0)."
+      }
+    },
+    "email-finder": {
+      "name": "email-finder",
+      "description": "Guess a specific person's professional email from their first/last name and company domain. Returns the most likely email with a confidence score (0-100). Returns { email, score, domain, firstName, lastName, position }.",
+      "params": {
+        "domain": "Company domain (e.g. \"stripe.com\"). A full URL is also accepted.",
+        "first_name": "The person's first name.",
+        "last_name": "The person's last name."
+      }
+    },
+    "email-verifier": {
+      "name": "email-verifier",
+      "description": "Verify whether an email address is deliverable. Returns a status (valid / invalid / accept_all / webmail / disposable / unknown), a result (deliverable / risky / undeliverable) and a 0-100 score plus the underlying checks. Returns { email, status, result, score }.",
+      "params": {
+        "email": "The email address to verify (e.g. \"patrick@stripe.com\")."
+      }
+    }
+  },
+  "name": "Hunter",
+  "description": "Hunter.io email finder - find professional email addresses by domain, guess a person's email from their name, and verify email deliverability."
+}

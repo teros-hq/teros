@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const appAccessList: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'List all agents that have access to an app.',
   parameters: {
     type: 'object',

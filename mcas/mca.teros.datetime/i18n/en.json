@@ -1,0 +1,78 @@
+{
+  "tools": {
+    "get-current": {
+      "name": "get-current",
+      "description": "Get current date and time in specified timezone",
+      "params": {
+        "timezone": "Timezone (e.g., 'Europe/Madrid', 'America/New_York'). Defaults to local",
+        "format": "Output format (e.g., 'yyyy-MM-dd HH:mm:ss'). Defaults to ISO"
+      }
+    },
+    "format": {
+      "name": "format",
+      "description": "Format a date/time string",
+      "params": {
+        "datetime": "Date/time string to format",
+        "format": "Output format (e.g., 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')",
+        "inputFormat": "Input format if datetime is not ISO (optional)"
+      }
+    },
+    "parse": {
+      "name": "parse",
+      "description": "Parse a date/time string",
+      "params": {
+        "datetime": "Date/time string to parse",
+        "format": "Expected format (e.g., 'yyyy-MM-dd HH:mm:ss'). Optional if ISO"
+      }
+    },
+    "convert-timezone": {
+      "name": "convert-timezone",
+      "description": "Convert time between timezones",
+      "params": {
+        "datetime": "Date/time string",
+        "fromTimezone": "Source timezone (e.g., 'Europe/Madrid')",
+        "toTimezone": "Target timezone (e.g., 'America/New_York')"
+      }
+    },
+    "add": {
+      "name": "add",
+      "description": "Add duration to a date/time",
+      "params": {
+        "datetime": "Base date/time string",
+        "duration": "Duration to add (e.g., {days: 5, hours: 2})"
+      }
+    },
+    "subtract": {
+      "name": "subtract",
+      "description": "Subtract duration from a date/time",
+      "params": {
+        "datetime": "Base date/time string",
+        "duration": "Duration to subtract (e.g., {days: 5, hours: 2})"
+      }
+    },
+    "diff": {
+      "name": "diff",
+      "description": "Calculate difference between two dates",
+      "params": {
+        "start": "Start date/time",
+        "end": "End date/time",
+        "unit": "Unit for the result (default: milliseconds)"
+      }
+    },
+    "is-valid": {
+      "name": "is-valid",
+      "description": "Validate a date/time string",
+      "params": {
+        "datetime": "Date/time string to validate",
+        "format": "Expected format (optional if ISO)"
+      }
+    }
+  },
+  "name": "DateTime",
+  "description": "Date and time utilities with timezone support. Provides clock, calendar, and time conversion tools.",
+  "changelog": [
+    {
+      "notes": "Initial release — format, parse and validate dates, convert between timezones, and add, subtract or compare times"
+    }
+  ]
+}

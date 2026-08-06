@@ -46,6 +46,9 @@
             "description": "Maximum number of results (default: 50)"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -62,6 +65,9 @@
         "required": [
           "feedbackId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -94,6 +100,9 @@
           "feedbackId",
           "status"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -121,6 +130,9 @@
           "feedbackId",
           "priority"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -142,6 +154,9 @@
           "feedbackId",
           "message"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -150,6 +165,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

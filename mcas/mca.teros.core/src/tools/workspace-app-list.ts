@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceAppList: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'List apps in a workspace.',
   parameters: {
     type: 'object',

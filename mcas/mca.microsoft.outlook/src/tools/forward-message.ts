@@ -3,6 +3,7 @@ import { createGraphClient, buildRecipients } from '../lib'
 import type { OutlookSecrets } from '../lib'
 
 export const forwardMessage: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Forward an email message to other recipients.',
   parameters: {
     type: 'object',

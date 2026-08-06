@@ -1,38 +1,19 @@
 /**
  * Default Agent Service
  *
- * Creates a default agent (Iria) for new users who have no agents.
- * This ensures every user has at least one agent to start with.
+ * Owns the onboarding policy: create a default agent (Iria) for new users who
+ * have none. The actual creation + app provisioning is delegated to
+ * AgentProvisioningService so onboarding and agent.create share one code path.
+ *
+ * Iria is a global/personal agent (no workspace), so the provisioning service
+ * resolves it to the 'super-agent' core. The user never picks a core.
  */
 
-import { generateAgentId } from '@teros/core';
 import type { Collection, Db } from 'mongodb';
+import type { AgentInstance } from '../types/database';
+import type { AgentProvisioningService } from '../services/agent-provisioning-service';
 
-interface Agent {
-  agentId: string;
-  coreId: string;
-  ownerId: string;
-  name: string;
-  fullName: string;
-  role: string;
-  intro: string;
-  avatarUrl?: string;
-  status: string;
-  context?: string;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-interface AgentCore {
-  coreId: string;
-  name: string;
-  fullName: string;
-  avatarUrl?: string;
-}
-
-// Default agent configuration
-const DEFAULT_AGENT_CORE_ID = 'iria';
-const DEFAULT_AGENT_CONFIG = {
+const DEFAULT_AGENT_PROFILE = {
   name: 'Iria',
   fullName: 'Iria Devon',
   role: 'Personal Assistant',
@@ -46,27 +27,31 @@ I can assist you with:
 - And much more!
 
 Feel free to ask me anything. I'm here to help!`,
-  responseStyle: 'friendly',
 };
 
 export class DefaultAgentService {
-  private agents: Collection<Agent>;
-  private agentCores: Collection<AgentCore>;
+  private agents: Collection<AgentInstance>;
+  private provisioningService?: AgentProvisioningService;
 
   constructor(private db: Db) {
-    this.agents = db.collection<Agent>('agents');
-    this.agentCores = db.collection<AgentCore>('agent_cores');
+    this.agents = db.collection<AgentInstance>('agents');
+  }
+
+  /**
+   * Late-bind the provisioning service after the DI container is ready
+   * (AgentProvisioningService depends on McaService, built later).
+   */
+  setProvisioningService(provisioningService: AgentProvisioningService): void {
+    this.provisioningService = provisioningService;
   }
 
   /**
    * Create a default agent for a user if they have no agents.
-   * This is called after user registration/creation.
+   * Called after user registration/creation.
    *
-   * @param userId - The user ID to create the agent for
-   * @returns The created agent or null if user already has agents
+   * @returns The created agent or null if the user already has agents
    */
-  async createDefaultAgentIfNeeded(userId: string): Promise<Agent | null> {
-    // Check if user already has any agents
+  async createDefaultAgentIfNeeded(userId: string): Promise<AgentInstance | null> {
     const existingAgentCount = await this.agents.countDocuments({
       ownerId: userId,
       status: 'active',
@@ -79,37 +64,24 @@ export class DefaultAgentService {
       return null;
     }
 
-    // Verify the default core exists
-    const core = await this.agentCores.findOne({ coreId: DEFAULT_AGENT_CORE_ID });
-    if (!core) {
-      console.error(
-        `[DefaultAgentService] Default agent core '${DEFAULT_AGENT_CORE_ID}' not found!`,
+    if (!this.provisioningService) {
+      throw new Error(
+        'DefaultAgentService: provisioning service not bound. Call setProvisioningService() at startup.',
       );
-      return null;
     }
 
-    // Create the default agent
-    const now = new Date().toISOString();
-    const newAgent: Agent = {
-      agentId: generateAgentId(),
-      coreId: DEFAULT_AGENT_CORE_ID,
+    // Global agent (no workspace) → 'super-agent' core, resolved server-side.
+    const agent = await this.provisioningService.createAgentFromCore({
       ownerId: userId,
-      name: DEFAULT_AGENT_CONFIG.name,
-      fullName: DEFAULT_AGENT_CONFIG.fullName,
-      role: DEFAULT_AGENT_CONFIG.role,
-      intro: DEFAULT_AGENT_CONFIG.intro,
-      avatarUrl: core.avatarUrl,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    };
+      workspaceId: undefined,
+      profile: DEFAULT_AGENT_PROFILE,
+    });
 
-    await this.agents.insertOne(newAgent);
     console.log(
-      `[DefaultAgentService] Created default agent ${newAgent.agentId} (${newAgent.fullName}) for user ${userId}`,
+      `[DefaultAgentService] Created default agent ${agent.agentId} (${agent.fullName}) for user ${userId}`,
     );
 
-    return newAgent;
+    return agent;
   }
 }
 

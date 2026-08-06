@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { adminRequest, isWsConnected } from '../lib';
 
 export const catalogList: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'List all MCAs in the catalog (available MCAs that can be installed).',
   parameters: {
     type: 'object',

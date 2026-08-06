@@ -1,0 +1,78 @@
+{
+  "tools": {
+    "get-current": {
+      "name": "get-current",
+      "description": "Obtener la fecha y hora actuales en la zona horaria especificada",
+      "params": {
+        "timezone": "Zona horaria (ej., 'Europe/Madrid', 'America/New_York'). Por defecto, local",
+        "format": "Formato de salida (ej., 'yyyy-MM-dd HH:mm:ss'). Por defecto, ISO"
+      }
+    },
+    "format": {
+      "name": "format",
+      "description": "Dar formato a una cadena de fecha/hora",
+      "params": {
+        "datetime": "Cadena de fecha/hora a formatear",
+        "format": "Formato de salida (ej., 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')",
+        "inputFormat": "Formato de entrada si la fecha/hora no es ISO (opcional)"
+      }
+    },
+    "parse": {
+      "name": "parse",
+      "description": "Analizar una cadena de fecha/hora",
+      "params": {
+        "datetime": "Cadena de fecha/hora a analizar",
+        "format": "Formato esperado (ej., 'yyyy-MM-dd HH:mm:ss'). Opcional si es ISO"
+      }
+    },
+    "convert-timezone": {
+      "name": "convert-timezone",
+      "description": "Convertir hora entre zonas horarias",
+      "params": {
+        "datetime": "Cadena de fecha/hora",
+        "fromTimezone": "Zona horaria de origen (ej., 'Europe/Madrid')",
+        "toTimezone": "Zona horaria de destino (ej., 'America/New_York')"
+      }
+    },
+    "add": {
+      "name": "add",
+      "description": "Sumar una duración a una fecha/hora",
+      "params": {
+        "datetime": "Cadena de fecha/hora base",
+        "duration": "Duración a sumar (ej., {days: 5, hours: 2})"
+      }
+    },
+    "subtract": {
+      "name": "subtract",
+      "description": "Restar una duración a una fecha/hora",
+      "params": {
+        "datetime": "Cadena de fecha/hora base",
+        "duration": "Duración a restar (ej., {days: 5, hours: 2})"
+      }
+    },
+    "diff": {
+      "name": "diff",
+      "description": "Calcular la diferencia entre dos fechas",
+      "params": {
+        "start": "Fecha/hora de inicio",
+        "end": "Fecha/hora de fin",
+        "unit": "Unidad del resultado (por defecto: milisegundos)"
+      }
+    },
+    "is-valid": {
+      "name": "is-valid",
+      "description": "Validar una cadena de fecha/hora",
+      "params": {
+        "datetime": "Cadena de fecha/hora a validar",
+        "format": "Formato esperado (opcional si es ISO)"
+      }
+    }
+  },
+  "name": "DateTime",
+  "description": "Utilidades de fecha y hora con soporte de zonas horarias. Proporciona herramientas de reloj, calendario y conversión de tiempo.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — formatear, analizar y validar fechas, convertir entre zonas horarias, y sumar, restar o comparar horas"
+    }
+  ]
+}

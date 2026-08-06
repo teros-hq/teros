@@ -1,0 +1,42 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Granola API key and connectivity."
+    },
+    "list-notes": {
+      "name": "list-notes",
+      "description": "List Granola meeting notes with optional filters. Returns notes with id, title, owner, created_at, updated_at. The API only returns notes that have an AI summary and transcript generated.",
+      "params": {
+        "created_before": "ISO date or datetime. Only notes created before this date are returned.",
+        "created_after": "ISO date or datetime. Only notes created after this date are returned.",
+        "updated_after": "ISO date or datetime. Only notes updated after this date are returned.",
+        "cursor": "Pagination cursor from a previous response.",
+        "page_size": "Results per page (default: 10, max: 30)"
+      }
+    },
+    "get-note": {
+      "name": "get-note",
+      "description": "Get full details of a Granola meeting note by ID, including summary, attendees, calendar event, and optionally the transcript. The API only returns notes that have an AI summary and transcript generated.",
+      "params": {
+        "noteId": "Note ID (format: not_XXXXXXXXXXXXXX)",
+        "includeTranscript": "Whether to include the full transcript segments"
+      }
+    },
+    "list-folders": {
+      "name": "list-folders",
+      "description": "List Granola folders accessible to the user. Returns folder hierarchy via parent_folder_id.",
+      "params": {
+        "cursor": "Pagination cursor from a previous response.",
+        "page_size": "Results per page (default: 10, max: 30)"
+      }
+    }
+  },
+  "name": "Granola",
+  "description": "Access your Granola meeting notes, transcripts, and AI summaries.",
+  "changelog": [
+    {
+      "notes": "Initial release — browse your Granola meeting notes, read transcripts and AI summaries, and explore folders"
+    }
+  ]
+}

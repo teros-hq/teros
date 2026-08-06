@@ -1,0 +1,86 @@
+{
+  "tools": {
+    "memory-health-check": {
+      "name": "memory-health-check",
+      "description": "내부 상태 점검. Qdrant 연결 및 OpenAI 키 존재 여부를 확인합니다."
+    },
+    "memory-search-conversations": {
+      "name": "memory-search-conversations",
+      "description": "의미 기반 검색을 사용하여 대화 기록을 검색합니다.",
+      "params": {
+        "query": "관련 대화를 찾기 위한 검색 쿼리",
+        "limit": "반환할 최대 결과 수"
+      }
+    },
+    "memory-get-recent-conversations": {
+      "name": "memory-get-recent-conversations",
+      "description": "가장 최근의 대화를 가져옵니다.",
+      "params": {
+        "limit": "반환할 최대 대화 수"
+      }
+    },
+    "memory-save-conversation": {
+      "name": "memory-save-conversation",
+      "description": "중요도 점수를 부여하여 대화를 메모리에 저장합니다.",
+      "params": {
+        "userMessage": "사용자의 메시지",
+        "assistantResponse": "어시스턴트의 응답",
+        "filesModified": "수정된 파일 목록",
+        "commandsRun": "실행된 명령 목록"
+      }
+    },
+    "memory-save-knowledge": {
+      "name": "memory-save-knowledge",
+      "description": "지식 베이스에 지식 조각을 저장합니다.",
+      "params": {
+        "content": "저장할 지식 내용",
+        "category": "지식의 범주",
+        "confidence": "신뢰도 점수 (0-1)"
+      }
+    },
+    "memory-search-knowledge": {
+      "name": "memory-search-knowledge",
+      "description": "지식 베이스를 검색합니다.",
+      "params": {
+        "query": "검색 쿼리",
+        "category": "선택적 범주 필터",
+        "limit": "최대 결과 수"
+      }
+    },
+    "memory-get-knowledge-by-category": {
+      "name": "memory-get-knowledge-by-category",
+      "description": "특정 범주에 있는 모든 지식 항목을 가져옵니다.",
+      "params": {
+        "category": "지식 범주"
+      }
+    },
+    "memory-calculate-importance": {
+      "name": "memory-calculate-importance",
+      "description": "메시지에 대한 중요도 점수를 계산합니다.",
+      "params": {
+        "userMessage": "사용자의 메시지",
+        "assistantResponse": "어시스턴트의 응답",
+        "filesModified": "수정된 파일 목록",
+        "commandsRun": "실행된 명령 목록"
+      }
+    },
+    "memory-get-context-for-query": {
+      "name": "memory-get-context-for-query",
+      "description": "사용자 쿼리에 대한 관련 메모리 컨텍스트를 가져옵니다 (프롬프트에 주입될 내용).",
+      "params": {
+        "query": "사용자의 쿼리"
+      }
+    },
+    "memory-stats": {
+      "name": "memory-stats",
+      "description": "현재 에이전트에 대한 메모리 통계를 가져옵니다 (컬렉션 크기, 포인트 수)"
+    }
+  },
+  "name": "메모리 및 벡터 DB",
+  "description": "벡터 검색이 포함된 다중 에이전트 메모리 시스템. 각 에이전트는 격리된 메모리 컬렉션을 가집니다.",
+  "changelog": [
+    {
+      "notes": "과거 대화를 의미적으로 검색하고, 분류된 지식을 저장 및 탐색하며, 에이전트별 메모리 사용량을 추적합니다."
+    }
+  ]
+}

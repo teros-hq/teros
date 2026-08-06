@@ -1,0 +1,125 @@
+{
+  "tools": {
+    "todoist_list_tasks": {
+      "name": "todoist_list_tasks",
+      "description": "선택적 필터링으로 작업 목록",
+      "params": {
+        "projectId": "프로젝트 ID로 필터링",
+        "filter": "필터 문자열 (예: '오늘', '연체')",
+        "limit": "반환할 작업 수"
+      }
+    },
+    "todoist_get_task": {
+      "name": "todoist_get_task",
+      "description": "특정 작업 가져오기",
+      "params": {
+        "taskId": "가져올 작업 ID"
+      }
+    },
+    "todoist_create_task": {
+      "name": "todoist_create_task",
+      "description": "새 작업 생성",
+      "params": {
+        "content": "작업 내용/설명",
+        "projectId": "프로젝트 ID (기본값: 받은 편지함)",
+        "dueString": "마감일 (예: '내일', '2025-01-01')",
+        "priority": "우선순위 (1=긴급, 4=없음)",
+        "labels": "라벨 ID"
+      }
+    },
+    "todoist_update_task": {
+      "name": "todoist_update_task",
+      "description": "기존 작업 업데이트",
+      "params": {
+        "taskId": "업데이트할 작업 ID",
+        "content": "업데이트된 작업 내용",
+        "dueString": "업데이트된 마감일",
+        "priority": "업데이트된 우선순위"
+      }
+    },
+    "todoist_complete_task": {
+      "name": "todoist_complete_task",
+      "description": "작업을 완료로 표시",
+      "params": {
+        "taskId": "완료할 작업 ID"
+      }
+    },
+    "todoist_delete_task": {
+      "name": "todoist_delete_task",
+      "description": "작업 삭제",
+      "params": {
+        "taskId": "삭제할 작업 ID"
+      }
+    },
+    "todoist_list_projects": {
+      "name": "todoist_list_projects",
+      "description": "모든 프로젝트 목록"
+    },
+    "todoist_get_project": {
+      "name": "todoist_get_project",
+      "description": "특정 프로젝트 가져오기",
+      "params": {
+        "projectId": "가져올 프로젝트 ID"
+      }
+    },
+    "todoist_create_project": {
+      "name": "todoist_create_project",
+      "description": "새 프로젝트 생성",
+      "params": {
+        "name": "프로젝트 이름",
+        "parentId": "하위 프로젝트를 위한 부모 프로젝트 ID",
+        "color": "프로젝트 색상"
+      }
+    },
+    "todoist_update_project": {
+      "name": "todoist_update_project",
+      "description": "기존 프로젝트 업데이트",
+      "params": {
+        "projectId": "업데이트할 프로젝트 ID",
+        "name": "업데이트된 프로젝트 이름",
+        "color": "업데이트된 프로젝트 색상"
+      }
+    },
+    "todoist_delete_project": {
+      "name": "todoist_delete_project",
+      "description": "프로젝트 삭제",
+      "params": {
+        "projectId": "삭제할 프로젝트 ID"
+      }
+    },
+    "todoist_list_labels": {
+      "name": "todoist_list_labels",
+      "description": "모든 라벨 목록"
+    },
+    "todoist_create_label": {
+      "name": "todoist_create_label",
+      "description": "새 라벨 생성",
+      "params": {
+        "name": "라벨 이름",
+        "color": "라벨 색상"
+      }
+    },
+    "todoist_add_comment": {
+      "name": "todoist_add_comment",
+      "description": "작업에 댓글 추가",
+      "params": {
+        "taskId": "댓글을 달 작업 ID",
+        "content": "댓글 내용"
+      }
+    },
+    "todoist_list_sections": {
+      "name": "todoist_list_sections",
+      "description": "프로젝트의 섹션 목록",
+      "params": {
+        "projectId": "프로젝트 ID"
+      }
+    }
+  },
+  "name": "Todoist",
+  "description": "Todoist 작업 관리 - 작업, 프로젝트, 라벨, 댓글",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 작업 생성, 업데이트, 완료 및 삭제, 프로젝트, 섹션, 라벨 및 댓글 정리"
+    }
+  ]
+}

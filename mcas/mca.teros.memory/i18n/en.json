@@ -1,0 +1,86 @@
+{
+  "tools": {
+    "memory-health-check": {
+      "name": "memory-health-check",
+      "description": "Internal health check. Verifies Qdrant connectivity and OpenAI key presence."
+    },
+    "memory-search-conversations": {
+      "name": "memory-search-conversations",
+      "description": "Search through conversation history using semantic search",
+      "params": {
+        "query": "Search query to find relevant conversations",
+        "limit": "Maximum number of results to return"
+      }
+    },
+    "memory-get-recent-conversations": {
+      "name": "memory-get-recent-conversations",
+      "description": "Get most recent conversations",
+      "params": {
+        "limit": "Maximum number of conversations to return"
+      }
+    },
+    "memory-save-conversation": {
+      "name": "memory-save-conversation",
+      "description": "Save a conversation to memory with importance scoring",
+      "params": {
+        "userMessage": "The user's message",
+        "assistantResponse": "The assistant's response",
+        "filesModified": "List of files that were modified",
+        "commandsRun": "List of commands that were executed"
+      }
+    },
+    "memory-save-knowledge": {
+      "name": "memory-save-knowledge",
+      "description": "Save a piece of knowledge to the knowledge base",
+      "params": {
+        "content": "The knowledge content to save",
+        "category": "Category of knowledge",
+        "confidence": "Confidence score (0-1)"
+      }
+    },
+    "memory-search-knowledge": {
+      "name": "memory-search-knowledge",
+      "description": "Search through the knowledge base",
+      "params": {
+        "query": "Search query",
+        "category": "Optional category filter",
+        "limit": "Maximum number of results"
+      }
+    },
+    "memory-get-knowledge-by-category": {
+      "name": "memory-get-knowledge-by-category",
+      "description": "Get all knowledge items in a specific category",
+      "params": {
+        "category": "Knowledge category"
+      }
+    },
+    "memory-calculate-importance": {
+      "name": "memory-calculate-importance",
+      "description": "Calculate importance score for a message",
+      "params": {
+        "userMessage": "The user's message",
+        "assistantResponse": "The assistant's response",
+        "filesModified": "List of files modified",
+        "commandsRun": "List of commands run"
+      }
+    },
+    "memory-get-context-for-query": {
+      "name": "memory-get-context-for-query",
+      "description": "Get relevant memory context for a user query (what would be injected into the prompt)",
+      "params": {
+        "query": "The user's query"
+      }
+    },
+    "memory-stats": {
+      "name": "memory-stats",
+      "description": "Get memory statistics for the current agent (collection sizes, point counts)"
+    }
+  },
+  "name": "Memory & Vector DB",
+  "description": "Multi-agent memory system with vector search. Each agent has isolated memory collections.",
+  "changelog": [
+    {
+      "notes": "Semantically search past conversations, save and browse categorized knowledge, and track per-agent memory usage"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
+import type { HttpToolConfig as ToolConfig, ToolContext } from '@teros/mca-sdk';
 import {
   CURRENT_CHANNEL_ID,
   type GetChannelMessagesResult,
@@ -7,6 +7,7 @@ import {
 } from '../lib';
 
 export const getChannelMessages: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Get messages from a specific past conversation. Supports pagination.',
   parameters: {
     type: 'object',
@@ -30,7 +31,7 @@ export const getChannelMessages: ToolConfig = {
     },
     required: ['channelId'],
   },
-  handler: async (args) => {
+  handler: async (args, context: ToolContext) => {
     const wsClient = getWsClient();
     if (!isWsConnected()) {
       throw new Error('Not connected to backend. Please try again in a moment.');
@@ -59,6 +60,7 @@ export const getChannelMessages: ToolConfig = {
         limit,
         before,
         textOnly,
+        agentId: context.execution.agentId,
       },
     );
 

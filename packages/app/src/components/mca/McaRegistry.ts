@@ -12,9 +12,19 @@
 import * as Sentry from '@sentry/react-native';
 import { DefaultToolCallRenderer } from './DefaultToolCallRenderer';
 import type { RegisteredMca, ToolCallRendererComponent } from './types';
+import { withPermissionSupport } from './withPermissionSupport';
 
 // Track which tools have already been warned about to avoid spam
 const warnedTools = new Set<string>();
+
+/**
+ * Default renderer wrapped with permission support, so even MCAs without a
+ * custom renderer show the Allow/Deny ControlsBar on `pending_permission`.
+ * Wrapped once for a stable component identity. `withPermissionSupport` is
+ * idempotent, so the double-wrap with DefaultToolCallRenderer's own self-wrap
+ * is a no-op.
+ */
+const WrappedDefaultRenderer = withPermissionSupport(DefaultToolCallRenderer);
 
 class McaRegistryClass {
   private mcas: Map<string, RegisteredMca> = new Map();
@@ -25,7 +35,14 @@ class McaRegistryClass {
    * @param mca - The MCA configuration including mcaId and renderer
    */
   register(mca: RegisteredMca): void {
-    this.mcas.set(mca.mcaId, mca);
+    // Apply permission support centrally so EVERY registered MCA shows the
+    // ControlsBar on `pending_permission`, regardless of whether its renderer
+    // composes ToolCallCard or low-level primitives (HeaderRow/ExpandedContainer).
+    // Idempotent: harmless if the renderer already self-wraps.
+    const registered: RegisteredMca = mca.ToolCallRenderer
+      ? { ...mca, ToolCallRenderer: withPermissionSupport(mca.ToolCallRenderer) }
+      : mca;
+    this.mcas.set(mca.mcaId, registered);
     console.log(`[McaRegistry] Registered MCA: ${mca.mcaId} (${mca.name})`);
   }
 
@@ -52,7 +69,7 @@ class McaRegistryClass {
   ): ToolCallRendererComponent {
     if (!mcaId) {
       this.warnDefaultRenderer(mcaId, toolName);
-      return DefaultToolCallRenderer;
+      return WrappedDefaultRenderer;
     }
 
     const mca = this.mcas.get(mcaId);
@@ -62,7 +79,7 @@ class McaRegistryClass {
 
     // Fallback to default renderer - emit warning
     this.warnDefaultRenderer(mcaId, toolName);
-    return DefaultToolCallRenderer;
+    return WrappedDefaultRenderer;
   }
 
   /**

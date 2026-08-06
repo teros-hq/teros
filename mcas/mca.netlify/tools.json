@@ -1,0 +1,76 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.netlify",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the Netlify Personal Access Token via GET /user.",
+      "annotations": { "version": "1.0.0", "stability": "stable", "readOnlyHint": true },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "deploy-site",
+      "description": "Deploy a static site (HTML/CSS/JS) from a workspace directory to Netlify and return the public URL. WARNING: every file under `dir` becomes PUBLICLY readable on the internet — never deploy a directory that contains secrets (.env), credentials, or private data. Pass siteId or siteName to deploy to an existing site; omit both to create a new site. Deploying the whole workspace root is refused unless allowWorkspaceRoot is true. Returns { url, deployId, state, siteId }.",
+      "annotations": { "version": "1.0.0", "stability": "stable", "readOnlyHint": false, "destructiveHint": true, "openWorldHint": true },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "dir": {
+            "type": "string",
+            "description": "Directory to deploy, relative to /workspace (e.g. \"site\" or \"build\"). Must contain an index.html. Its entire contents become PUBLIC — point it at a build output dir, not the workspace root."
+          },
+          "siteId": {
+            "type": "string",
+            "description": "Existing Netlify site id to deploy to. Takes precedence over siteName."
+          },
+          "siteName": {
+            "type": "string",
+            "description": "Netlify site name. Deploys to the matching site if it exists, otherwise creates it."
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "If true, create a draft deploy (preview URL) instead of publishing to production. Default false.",
+            "default": false
+          },
+          "allowWorkspaceRoot": {
+            "type": "boolean",
+            "description": "Safety confirmation. Deploying `dir: \".\"` (the whole workspace root) is refused by default because the root usually holds private files. Set true only when the user explicitly wants the entire workspace public. Default false.",
+            "default": false
+          }
+        },
+        "required": ["dir"]
+      }
+    },
+    {
+      "name": "list-sites",
+      "description": "List the Netlify sites reachable with the configured token. Returns { sites: [{ id, name, url, ssl_url }] }.",
+      "annotations": { "version": "1.0.0", "stability": "stable", "readOnlyHint": true, "openWorldHint": true },
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get-deploy-status",
+      "description": "Get the current state of a Netlify deploy. Returns { state, url, errorMessage? }.",
+      "annotations": { "version": "1.0.0", "stability": "stable", "readOnlyHint": true, "openWorldHint": true },
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "siteId": {
+            "type": "string",
+            "description": "The Netlify site id the deploy belongs to."
+          },
+          "deployId": {
+            "type": "string",
+            "description": "The deploy id to check."
+          }
+        },
+        "required": ["siteId", "deployId"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales API de Higgsfield y la conectividad."
+    },
+    "higgsfield-run": {
+      "name": "higgsfield-run",
+      "description": "Ejecuta cualquier modelo en Higgsfield. Soporta texto-a-imagen, imagen-a-video y otros modelos de generación con IA.",
+      "params": {
+        "model": "Identificador del modelo/endpoint (ej., 'bytedance/seedream/v4/text-to-image')",
+        "input": "Parámetros de entrada para el modelo",
+        "wait": "Esperar a que se complete (por defecto: false)"
+      }
+    },
+    "higgsfield-text-to-image": {
+      "name": "higgsfield-text-to-image",
+      "description": "Genera imágenes a partir de prompts de texto usando Seedream v4.",
+      "params": {
+        "prompt": "Descripción de texto de la imagen a generar",
+        "resolution": "Resolución de salida",
+        "aspect_ratio": "Relación de aspecto de la imagen generada",
+        "style": "Preset de estilo opcional",
+        "wait": "Esperar a que se complete (por defecto: false)"
+      }
+    },
+    "higgsfield-image-to-video": {
+      "name": "higgsfield-image-to-video",
+      "description": "Convierte una imagen en video con movimiento. Soporta varios estilos de movimiento y movimientos de cámara.",
+      "params": {
+        "image_url": "URL de la imagen de entrada",
+        "prompt": "Descripción del movimiento/video deseado",
+        "duration": "Duración del video en segundos (por defecto: 5)",
+        "motion_strength": "Intensidad del movimiento (0.0-1.0)",
+        "camera_motion": "Tipo de movimiento de cámara",
+        "wait": "Esperar a que se complete (por defecto: false)"
+      }
+    },
+    "higgsfield-text-to-video": {
+      "name": "higgsfield-text-to-video",
+      "description": "Genera video a partir de un prompt de texto.",
+      "params": {
+        "prompt": "Descripción de texto del video a generar",
+        "duration": "Duración del video en segundos (por defecto: 5)",
+        "resolution": "Resolución de salida",
+        "aspect_ratio": "Relación de aspecto",
+        "wait": "Esperar a que se complete (por defecto: false)"
+      }
+    },
+    "higgsfield-soul-generate": {
+      "name": "higgsfield-soul-generate",
+      "description": "Genera imágenes con apariencia de personaje consistente usando Soul. Ideal para crear múltiples imágenes del mismo personaje.",
+      "params": {
+        "prompt": "Descripción de texto de la escena/pose para el personaje",
+        "reference_image": "URL de la imagen de referencia para mantener la consistencia del personaje",
+        "style": "Preset de estilo opcional",
+        "wait": "Esperar a que se complete (por defecto: false)"
+      }
+    },
+    "higgsfield-get-prediction": {
+      "name": "higgsfield-get-prediction",
+      "description": "Obtiene el estado y resultado de una predicción por ID.",
+      "params": {
+        "prediction_id": "El ID de la predicción a consultar",
+        "wait": "Esperar a que se complete si sigue procesándose (por defecto: false)"
+      }
+    },
+    "higgsfield-cancel-prediction": {
+      "name": "higgsfield-cancel-prediction",
+      "description": "Cancela una predicción en cola o en proceso.",
+      "params": {
+        "prediction_id": "El ID de la predicción a cancelar"
+      }
+    },
+    "higgsfield-list-models": {
+      "name": "higgsfield-list-models",
+      "description": "Lista los modelos disponibles y sus capacidades.",
+      "params": {
+        "type": "Filtra modelos por tipo"
+      }
+    }
+  },
+  "name": "Higgsfield",
+  "description": "Genera imágenes y videos con IA usando Higgsfield — texto-a-imagen, imagen-a-video y generación de personajes consistentes con Soul.",
+  "changelog": [
+    {
+      "notes": "Versión inicial — genera imágenes a partir de texto, convierte imágenes en videos y crea personajes consistentes con Soul"
+    }
+  ]
+}

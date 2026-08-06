@@ -1,0 +1,64 @@
+{
+  "name": "Google Forms",
+  "description": "Gestiona Google Forms: crea formularios, añade preguntas y lee respuestas mediante la API de Google Forms",
+  "changelog": [
+    {
+      "notes": "Versión inicial — crea y edita formularios, añade preguntas, lista tus formularios y lee las respuestas enviadas"
+    }
+  ],
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth de Google y la conectividad con la API de Forms."
+    },
+    "create-form": {
+      "name": "create-form",
+      "description": "Crea un nuevo formulario de Google con un título. Devuelve el ID del formulario y la URL para responder.",
+      "params": {
+        "title": "El título del formulario (visible para los encuestados)",
+        "documentTitle": "Opcional: el título del documento mostrado en Google Drive (por defecto usa el título del formulario si no se proporciona)"
+      }
+    },
+    "get-form": {
+      "name": "get-form",
+      "description": "Obtiene la estructura completa de un formulario de Google por su ID, incluyendo todos los elementos y preguntas.",
+      "params": {
+        "formId": "El ID del formulario a recuperar"
+      }
+    },
+    "update-form": {
+      "name": "update-form",
+      "description": "Actualiza un formulario de Google mediante solicitudes de actualización por lotes. Soporta añadir, editar y eliminar elementos, así como actualizar la información y los ajustes del formulario.\n\nTipos de solicitud disponibles en el array `requests`:\n\n- **createItem**: Añade un nuevo elemento (pregunta, sección, etc.) en una ubicación específica.\n  `{ createItem: { item: { title, questionItem: { question: { required, choiceQuestion | textQuestion | scaleQuestion | dateQuestion | timeQuestion } } }, location: { index: 0 } } }`\n\n- **updateItem**: Modifica un elemento existente por su ID.\n  `{ updateItem: { item: { itemId, title, ... }, location: { index: 0 }, updateMask: \"title,description\" } }`\n\n- **deleteItem**: Elimina un elemento por su índice de ubicación.\n  `{ deleteItem: { location: { index: 0 } } }`\n\n- **updateFormInfo**: Actualiza el título, la descripción o el título del documento del formulario.\n  `{ updateFormInfo: { info: { title, description, documentTitle }, updateMask: \"title,description\" } }`\n\n- **updateSettings**: Cambia los ajustes del formulario, como el modo cuestionario o la recopilación de respuestas.\n  `{ updateSettings: { settings: { quizSettings: { isQuiz: true } }, updateMask: \"quizSettings.isQuiz\" } }`\n\nConsulta https://developers.google.com/forms/api/reference/rest/v1/forms/batchUpdate para ver los esquemas completos.",
+      "params": {
+        "formId": "El ID del formulario a actualizar",
+        "requests": "Array de solicitudes de actualización. Cada solicitud es una de: createItem, updateItem, deleteItem, updateFormInfo o updateSettings."
+      }
+    },
+    "list-forms": {
+      "name": "list-forms",
+      "description": "Lista todos los formularios de Google en tu Drive. Usa la API de Drive para encontrar archivos con el tipo MIME de Google Forms.",
+      "params": {
+        "pageSize": "Número máximo de formularios a devolver (por defecto: 10, máximo: 100)",
+        "pageToken": "Token de paginación de una respuesta anterior para obtener la siguiente página"
+      }
+    },
+    "list-responses": {
+      "name": "list-responses",
+      "description": "Lista las respuestas enviadas a un formulario de Google. Soporta paginación y filtrado por marca de tiempo de envío.",
+      "params": {
+        "formId": "El ID del formulario del que recuperar las respuestas",
+        "pageSize": "Número máximo de respuestas a devolver (por defecto: 10, máximo: 5000)",
+        "pageToken": "Token de paginación de una respuesta anterior para obtener la siguiente página",
+        "filter": "Filtro opcional de marca de tiempo en formato RFC3339. Ejemplo: \"timestamp > 2024-01-01T00:00:00Z\" — devuelve solo las respuestas enviadas después de esa fecha."
+      }
+    },
+    "get-response": {
+      "name": "get-response",
+      "description": "Obtiene una respuesta específica a un formulario de Google por su ID de respuesta.",
+      "params": {
+        "formId": "El ID del formulario",
+        "responseId": "El ID de la respuesta a recuperar"
+      }
+    }
+  }
+}

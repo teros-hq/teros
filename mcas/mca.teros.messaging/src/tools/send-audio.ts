@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { resolveUrl } from '../lib';
 
 export const sendAudio: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Send an audio file to the user. The audio will be playable in the chat. Supports public URLs or local file paths.',
   parameters: {

@@ -1,0 +1,18 @@
+{
+  "tools": {
+    "http-request": {
+      "name": "http-request",
+      "description": "Make an HTTP request to any public REST API (GET/POST/PUT/PATCH/DELETE) and return { status, ok, headers, body }. To use an API key without exposing it, save it once in this app's settings and reference it as {{NAME}} in the url, a query value, or a header value (e.g. header \"api-key: {{BREVO_API_KEY}}\", query api_key=\"{{HUNTER_API_KEY}}\", or url \".../{{MAKE_WEBHOOK_TOKEN}}\"). Private/internal addresses are blocked (SSRF-safe).",
+      "params": {
+        "method": "HTTP method. Defaults to GET.",
+        "url": "Full https:// URL (may contain {{SECRET}} placeholders). In production, plain http:// is refused for requests that carry secrets.",
+        "headers": "Request headers. Values may contain {{SECRET}} placeholders. Content-Type defaults to application/json when a body is sent.",
+        "query": "Query-string parameters appended to the URL. Values may contain {{SECRET}} placeholders.",
+        "body": "Raw request body (e.g. a JSON string). Ignored for GET. May contain {{SECRET}} placeholders.",
+        "timeoutMs": "Request timeout in milliseconds (default 30000, min 1000, max 120000)."
+      }
+    }
+  },
+  "name": "HTTP Request",
+  "description": "Call any public REST API (GET/POST/PUT/PATCH/DELETE) from your agent. Reference stored API keys as {{PLACEHOLDER}} so they never reach the model. Private/internal addresses are blocked (SSRF-safe)."
+}

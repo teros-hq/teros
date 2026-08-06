@@ -16,6 +16,8 @@ import type { WebSocket } from 'ws';
 import type { Db } from 'mongodb';
 import type { AuthManager } from '../../auth/auth-manager';
 import type { ProviderService, UserProviderRecord } from '../../services/provider-service';
+import { PROVIDER_TYPES_WITHOUT_SECRETS } from '../../services/provider-service';
+import { VALID_PROVIDER_TYPES } from '../domains/provider/add';
 import type { CommandDeps } from './types';
 
 export interface ProviderCommandsDeps extends CommandDeps {
@@ -82,17 +84,8 @@ export function createProviderCommands(deps: ProviderCommandsDeps) {
           return;
         }
 
-        // Validate providerType
-        const validTypes = [
-          'anthropic',
-          'anthropic-oauth',
-          'openai',
-          'openrouter',
-          'zhipu',
-          'zhipu-coding',
-          'ollama',
-        ];
-        if (!validTypes.includes(providerType)) {
+        // Validate providerType — import VALID_TYPES from add.ts keeps a single list
+        if (!VALID_PROVIDER_TYPES.includes(providerType)) {
           sendError(ws, 'INVALID_PROVIDER_TYPE', `Invalid providerType: ${providerType}`);
           return;
         }
@@ -104,8 +97,8 @@ export function createProviderCommands(deps: ProviderCommandsDeps) {
           config,
         });
 
-        // Ollama doesn't need an API key - just test the connection and discover models
-        if (providerType === 'ollama') {
+        // Credential-free providers — test immediately to discover models
+        if (PROVIDER_TYPES_WITHOUT_SECRETS.includes(providerType as any)) {
           try {
             const testResult = await providerService.testProvider(provider.providerId);
             sendMessage(ws, {

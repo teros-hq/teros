@@ -1,0 +1,35 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba la presencia de la clave API de Hunter y la conectividad."
+    },
+    "domain-search": {
+      "name": "domain-search",
+      "description": "Busca direcciones de correo profesional de una empresa a partir de su dominio. Devuelve el patrón del dominio, la organización y una lista de correos con confianza, nombre, puesto y departamento. Devuelve { domain, organization, pattern, total, emails[] }.",
+      "params": {
+        "domain": "Dominio de la empresa a buscar (ej. \"stripe.com\"). También se acepta una URL completa.",
+        "limit": "Número máximo de correos a devolver (1-100, por defecto 10).",
+        "offset": "Número de correos a omitir para paginación (>= 0, por defecto 0)."
+      }
+    },
+    "email-finder": {
+      "name": "email-finder",
+      "description": "Adivina el correo profesional de una persona concreta a partir de su nombre y apellidos y el dominio de la empresa. Devuelve el correo más probable con una puntuación de confianza (0-100). Devuelve { email, score, domain, firstName, lastName, position }.",
+      "params": {
+        "domain": "Dominio de la empresa (ej. \"stripe.com\"). También se acepta una URL completa.",
+        "first_name": "El nombre de la persona.",
+        "last_name": "El apellido de la persona."
+      }
+    },
+    "email-verifier": {
+      "name": "email-verifier",
+      "description": "Verifica si una dirección de correo es entregable. Devuelve un estado (valid / invalid / accept_all / webmail / disposable / unknown), un resultado (deliverable / risky / undeliverable) y una puntuación de 0-100 además de las comprobaciones subyacentes. Devuelve { email, status, result, score }.",
+      "params": {
+        "email": "La dirección de correo a verificar (ej. \"patrick@stripe.com\")."
+      }
+    }
+  },
+  "name": "Hunter",
+  "description": "Hunter.io — busca correos profesionales por dominio, adivina el correo de una persona a partir de su nombre y verifica la entregabilidad de correos."
+}

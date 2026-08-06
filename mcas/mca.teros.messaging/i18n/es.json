@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "send-image": {
+      "name": "send-image",
+      "description": "Envía una imagen al usuario. La imagen se mostrará en el chat. Admite URLs públicas o rutas de archivos locales.",
+      "params": {
+        "url": "URL pública de la imagen (usa esto O filePath)",
+        "filePath": "Ruta del archivo en /workspace/ (ej., '/workspace/image.png'). Este es el volumen compartido accesible por todos los MCAs. Usa esto O url.",
+        "caption": "Pie/caption opcional para la imagen",
+        "width": "Ancho opcional en píxeles",
+        "height": "Alto opcional en píxeles"
+      }
+    },
+    "send-audio": {
+      "name": "send-audio",
+      "description": "Envía un archivo de audio al usuario. El audio será reproducible en el chat. Admite URLs públicas o rutas de archivos locales.",
+      "params": {
+        "url": "URL pública del archivo de audio (usa esto O filePath)",
+        "filePath": "Ruta del archivo en /workspace/ (ej., '/workspace/audio.mp3'). Este es el volumen compartido accesible por todos los MCAs. Usa esto O url.",
+        "caption": "Pie/caption opcional para el audio",
+        "duration": "Duración opcional en segundos",
+        "mimeType": "Tipo MIME opcional (ej., 'audio/mp3')"
+      }
+    },
+    "send-video": {
+      "name": "send-video",
+      "description": "Envía un vídeo al usuario. El vídeo será reproducible en el chat. Admite URLs públicas o rutas de archivos locales.",
+      "params": {
+        "url": "URL pública del vídeo (usa esto O filePath)",
+        "filePath": "Ruta del archivo en /workspace/ (ej., '/workspace/video.mp4'). Este es el volumen compartido accesible por todos los MCAs. Usa esto O url.",
+        "caption": "Pie/caption opcional para el vídeo",
+        "duration": "Duración opcional en segundos",
+        "width": "Ancho opcional en píxeles",
+        "height": "Alto opcional en píxeles",
+        "thumbnailUrl": "URL opcional para la miniatura/imagen de vista previa del vídeo",
+        "mimeType": "Tipo MIME opcional (ej., 'video/mp4')"
+      }
+    },
+    "send-file": {
+      "name": "send-file",
+      "description": "Envía un documento o archivo al usuario. El archivo será descargable desde el chat. Admite URLs públicas o rutas de archivos locales.",
+      "params": {
+        "url": "URL pública del archivo (usa esto O filePath)",
+        "filePath": "Ruta del archivo en /workspace/ (ej., '/workspace/document.pdf'). Este es el volumen compartido accesible por todos los MCAs. Usa esto O url.",
+        "filename": "Nombre visible del archivo (ej., 'report.pdf'). Obligatorio si se usa url, opcional para filePath.",
+        "caption": "Pie/caption opcional para el archivo",
+        "mimeType": "Tipo MIME opcional (ej., 'application/pdf')",
+        "size": "Tamaño opcional del archivo en bytes"
+      }
+    },
+    "send-html": {
+      "name": "send-html",
+      "description": "Envía un widget HTML al usuario. El HTML se renderizará directamente en el chat. Úsalo para mostrar mockups de UI, vistas previas interactivas, tablas con estilos, diagramas o cualquier contenido visual que pueda representarse con HTML/CSS. El HTML está aislado (sandboxed) por seguridad.",
+      "params": {
+        "html": "Contenido HTML a renderizar. Puede incluir etiquetas <style> inline para CSS.",
+        "caption": "Pie/caption opcional para el widget",
+        "height": "Alto fijo opcional en píxeles. Si no se proporciona, el alto se calculará automáticamente."
+      }
+    },
+    "send-html-file": {
+      "name": "send-html-file",
+      "description": "Envía un archivo HTML al usuario. El archivo se renderizará inline en el chat (obtenido desde su ruta) Y puede abrirse en una ventana dedicada de FileViewer que se actualiza automáticamente cuando el archivo cambia. Úsalo cuando quieras que el usuario vea una vista previa en vivo de un archivo HTML que estás editando.",
+      "params": {
+        "filePath": "Ruta absoluta al archivo HTML (ej., '/workspace/mockup.html'). El archivo debe existir en el volumen compartido.",
+        "caption": "Pie/caption opcional para el widget"
+      }
+    },
+    "notify-by-email": {
+      "name": "notify-by-email",
+      "description": "Envía un email de notificación al usuario actual. El email se envía a través de Resend desde una dirección de notificación de Teros (notifications@teros.ai). Úsalo en lugar de Gmail cuando quieras entregar un informe o alerta al usuario por email — no requiere ninguna conexión de cuenta de correo. El email del usuario se resuelve automáticamente desde su cuenta de Teros. El backend añade automáticamente un banner de Teros con un CTA a os.teros.ai al final — NO incluyas tu propio pie de página ni branding de Teros. GUÍAS HTML PARA EMAIL: Usa layouts basados en tablas (no divs/flexbox/grid). Pon TODOS los estilos inline (sin bloques <style>, ni atributos class). Usa un documento HTML completo: <!DOCTYPE html><html><head><meta charset=\"UTF-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"></head><body>...</body></html>. Ancho máximo 560px para el contenido. Usa fuentes del sistema: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif. Para encabezados usa Georgia, serif. Fondo vía <body> o tabla exterior con bgcolor. Usa <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"> para el layout. Espaciadores: <tr><td style=\"height: Npx;\"></td></tr>. Botones: <a> con display:inline-block inline, padding, background-color, border-radius. Imágenes: solo URLs absolutas, atributos width/height, style=\"display:block\". Sin JavaScript, sin <form>, sin CSS externo, sin web fonts. Colores: tema oscuro #0A0A0F (fondo), #FAFAFA (texto), #A1A1AA (secundario), #5E6AD2 (acento/CTA). Tema claro: #EFE9DB (fondo), #18181B (texto). Mantenlo limpio y minimal.",
+      "params": {
+        "subject": "Línea de asunto del email",
+        "content": "Cuerpo del email en HTML compatible con clientes de correo. El backend lo envía tal cual (sin plantilla de envoltura) y añade un banner de Teros al final. Consulta la descripción de la herramienta para las guías de formato HTML. Si contentType es \"text\", los saltos de línea se convierten en etiquetas <br>.",
+        "contentType": "Formato del contenido. \"text\" = texto plano (se convertirá a HTML con saltos de línea). \"html\" = HTML en bruto (se incrustará tal cual). Por defecto: \"html\"."
+      }
+    }
+  },
+  "name": "Messaging",
+  "description": "Envía mensajes multimedia al usuario: imágenes, audio, vídeo, documentos, widgets HTML y emails de notificación vía Resend",
+  "changelog": [
+    {
+      "notes": "Versión inicial — envía imágenes, audio, vídeo y documentos al chat, más vistas previas HTML en vivo"
+    }
+  ]
+}

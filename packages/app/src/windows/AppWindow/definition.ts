@@ -7,6 +7,7 @@
 import { Box } from '@tamagui/lucide-icons';
 import type { WindowTypeDefinition } from '../../services/windowRegistry';
 import { AppWindowContent } from './AppWindowContent';
+import i18n from '../../i18n';
 
 export interface AppWindowProps {
   context?: string;
@@ -26,7 +27,7 @@ export const appWindowDefinition: WindowTypeDefinition<AppWindowProps> = {
 
   getKey: (props) => props.appId,
 
-  getTitle: () => 'Configurar App',
+  getTitle: () => i18n.t("windows.configureApp"),
   getSubtitle: (props) => props.appId,
 
   serialize: (props) => ({

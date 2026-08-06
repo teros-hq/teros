@@ -1,9 +1,8 @@
 import { readFile, stat } from 'fs/promises';
 import { basename, extname } from 'path';
 
-// Backend URL for media uploads — must be set via MCA_BACKEND_URL
-const BACKEND_URL = process.env.MCA_BACKEND_URL;
-if (!BACKEND_URL) throw new Error('MCA_BACKEND_URL environment variable is required');
+// Backend URL for media uploads (from environment or default)
+const BACKEND_URL = process.env.MCA_BACKEND_URL || 'https://be.teros.ai';
 
 // Extension to MIME type mapping
 const EXT_TO_MIME: Record<string, string> = {
@@ -30,6 +29,8 @@ const EXT_TO_MIME: Record<string, string> = {
   '.txt': 'text/plain',
   '.csv': 'text/csv',
   '.html': 'text/html',
+  '.md': 'text/markdown',
+  '.markdown': 'text/markdown',
   '.zip': 'application/zip',
 };
 
@@ -52,10 +53,13 @@ export async function uploadLocalFile(
   const base64Data = fileBuffer.toString('base64');
 
   // Upload to backend as base64 data
+  // Include MCA_CALLBACK_TOKEN for authentication (MCAs don't have user session tokens)
+  const callbackToken = process.env.MCA_CALLBACK_TOKEN;
   const response = await fetch(`${BACKEND_URL}/api/media/upload`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(callbackToken && { Authorization: `Bearer ${callbackToken}` }),
     },
     body: JSON.stringify({
       data: base64Data,

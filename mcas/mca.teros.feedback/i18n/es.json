@@ -1,0 +1,28 @@
+{
+  "tools": {
+    "report-bug": {
+      "name": "report-bug",
+      "description": "Reporta un bug o problema técnico con la plataforma",
+      "params": {
+        "title": "Resumen breve del bug",
+        "description": "Descripción detallada, pasos para reproducirlo, comportamiento esperado vs actual",
+        "severity": "¿Cuál es la gravedad del bug? (opcional)"
+      }
+    },
+    "report-suggestion": {
+      "name": "report-suggestion",
+      "description": "Envía una sugerencia o petición de funcionalidad para mejorar la plataforma",
+      "params": {
+        "title": "Tu idea en una frase",
+        "description": "Descripción detallada de tu sugerencia"
+      }
+    }
+  },
+  "name": "Feedback",
+  "description": "Reporta bugs y sugerencias para mejorar Teros. Sigue el estado de tus reportes y recibe actualizaciones del equipo.",
+  "changelog": [
+    {
+      "notes": "Reporta bugs y sugerencias de funcionalidades, revisa tus reportes anteriores y sigue su estado con las actualizaciones del equipo"
+    }
+  ]
+}

@@ -6,6 +6,7 @@ import { calculateImportance } from '@teros/shared/memory/importance';
 
 export const memorySaveConversation: HttpToolConfig = {
   description: 'Save a conversation to memory with importance scoring',
+  annotations: { readOnlyHint: false, version: '2.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {

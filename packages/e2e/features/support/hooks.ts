@@ -1,17 +1,17 @@
 import { After, AfterAll, Before, BeforeAll, Status } from '@cucumber/cucumber';
-import { closeDb, waitForBackend } from '../../src/utils/setup';
+import { startTestServer, stopTestServer } from './server';
 import type { CustomWorld } from './world';
 
 BeforeAll(async () => {
-  console.log('🚀 Starting E2E test suite...');
-  await waitForBackend();
-  console.log('✅ Backend is ready');
+  console.log('🚀 Starting embedded TestServer for Cucumber suite...');
+  await startTestServer();
+  console.log('✅ TestServer is ready');
 });
 
 AfterAll(async () => {
-  console.log('🧹 Cleaning up E2E test suite...');
-  await closeDb();
-  console.log('✅ Cleanup complete');
+  console.log('🧹 Stopping TestServer...');
+  await stopTestServer();
+  console.log('✅ TestServer stopped');
 });
 
 Before(async function (this: CustomWorld) {

@@ -9,6 +9,7 @@
 
 import { McaServer } from '@teros/mca-sdk';
 import {
+  memoryHealthCheck,
   memorySearchConversations,
   memoryGetRecentConversations,
   memorySaveConversation,
@@ -34,6 +35,7 @@ const server = new McaServer({
 // REGISTER MEMORY TOOLS
 // =============================================================================
 
+server.tool('memory-health-check', memoryHealthCheck);
 server.tool('memory-search-conversations', memorySearchConversations);
 server.tool('memory-get-recent-conversations', memoryGetRecentConversations);
 server.tool('memory-save-conversation', memorySaveConversation);

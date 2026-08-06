@@ -5,7 +5,6 @@ import {
   Code,
   FileText,
   Headphones,
-  type LucideIcon,
   Megaphone,
   Palette,
   Server,
@@ -14,6 +13,10 @@ import {
   Workflow,
 } from '@tamagui/lucide-icons';
 import React from 'react';
+
+// Local type for lucide icon components (tamagui no longer exports this)
+type LucideIcon = React.ComponentType<{ size?: number; color?: string }>;
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Platform,
@@ -24,6 +27,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { colors, surface } from './mca/primitives/colors';
 
 // ============================================================================
 // AGENT ROLE TEMPLATES
@@ -264,13 +268,15 @@ export function SelectAgentRoleModal({
   onSelectRole,
   onSelectCustom,
 }: SelectAgentRoleModalProps) {
+  const { t } = useTranslation();
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose}>
         <Pressable style={styles.modal} onPress={(e) => e.stopPropagation()}>
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.title}>Create New Agent</Text>
+            <Text style={styles.title}>{t('agent.createNewAgent')}</Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <Text style={styles.closeButtonText}>✕</Text>
             </TouchableOpacity>
@@ -278,7 +284,7 @@ export function SelectAgentRoleModal({
 
           {/* Content */}
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.subtitle}>Choose a role for your agent</Text>
+            <Text style={styles.subtitle}>{t('agent.chooseRole')}</Text>
 
             <View style={styles.rolesGrid}>
               {AGENT_ROLE_TEMPLATES.map((template) => {
@@ -294,8 +300,8 @@ export function SelectAgentRoleModal({
                       <Icon size={20} color={template.color} />
                     </View>
                     <View style={styles.roleInfo}>
-                      <Text style={styles.roleName}>{template.name}</Text>
-                      <Text style={styles.roleDescription}>{template.description}</Text>
+                      <Text style={styles.roleName}>{t(`agent.roles.${template.id}`)}</Text>
+                      <Text style={styles.roleDescription}>{t(`agent.roles.${template.id}Desc`)}</Text>
                     </View>
                   </TouchableOpacity>
                 );
@@ -310,7 +316,7 @@ export function SelectAgentRoleModal({
               onPress={onSelectCustom}
               activeOpacity={0.7}
             >
-              <Text style={styles.customButtonText}>Or create a custom agent...</Text>
+              <Text style={styles.customButtonText}>{t('agent.orCreateCustom')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>
@@ -326,24 +332,24 @@ export function SelectAgentRoleModal({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: surface.dark.bgInner,
     justifyContent: 'center',
     alignItems: 'center',
   },
   modal: {
-    backgroundColor: '#18181B',
+    backgroundColor: surface.dark.bgCard,
     borderRadius: 12,
     width: '90%',
     maxWidth: 560,
     maxHeight: '85%',
     borderWidth: 1,
-    borderColor: 'rgba(113, 113, 122, 0.3)',
+    borderColor: surface.dark.borderStrong,
     ...Platform.select({
       web: {
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+        boxShadow: surface.dark.shadow,
       },
       default: {
-        shadowColor: '#000',
+        shadowColor: surface.dark.bgPage,
         shadowOffset: { width: 0, height: 25 },
         shadowOpacity: 0.5,
         shadowRadius: 50,
@@ -357,10 +363,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(113, 113, 122, 0.2)',
+    borderBottomColor: surface.dark.border,
   },
   title: {
-    color: '#F4F4F5',
+    color: surface.dark.text,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -368,7 +374,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   closeButtonText: {
-    color: '#71717A',
+    color: surface.dark.text3,
     fontSize: 20,
   },
   content: {
@@ -376,7 +382,7 @@ const styles = StyleSheet.create({
     maxHeight: 450,
   },
   subtitle: {
-    color: '#A1A1AA',
+    color: surface.dark.text2,
     fontSize: 14,
     marginBottom: 16,
   },
@@ -388,11 +394,11 @@ const styles = StyleSheet.create({
   roleCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(113, 113, 122, 0.1)',
+    backgroundColor: surface.dark.bgInner,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(113, 113, 122, 0.2)',
+    borderColor: surface.dark.border,
     width: '48.5%',
     minWidth: 200,
   },
@@ -408,26 +414,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   roleName: {
-    color: '#F4F4F5',
+    color: surface.dark.text,
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 2,
   },
   roleDescription: {
-    color: '#71717A',
+    color: surface.dark.text3,
     fontSize: 11,
   },
   footer: {
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(113, 113, 122, 0.2)',
+    borderTopColor: surface.dark.border,
     alignItems: 'center',
   },
   customButton: {
     paddingVertical: 8,
   },
   customButtonText: {
-    color: '#8B5CF6',
+    color: colors.violet,
     fontSize: 13,
   },
 });

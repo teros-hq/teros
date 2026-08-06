@@ -1,0 +1,13 @@
+# Configuración de gitleaks para Teros.
+# Extiende el ruleset por defecto (NO desactiva ninguna regla) y añade un
+# allowlist para un falso positivo conocido.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "i18nKey es una clave del catálogo i18n (errors.*), no un secreto. Falso positivo de la regla generic-api-key: el nombre del campo contiene 'key' y la línea tiene entropía suficiente. Origen: normalizeError() en packages/backend/src/handlers/message/agent-loop.ts (TER-397)."
+regexTarget = "line"
+regexes = [
+  '''i18nKey:''',
+]

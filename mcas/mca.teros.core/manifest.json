@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "description": "Manage Teros platform resources: agents, workspaces, apps, and access control. Provides tools to create, update, and configure the platform.",
   "type": "system",
-  "icon": "icon.png",
+  "icon": "icon.svg",
   "category": "system",
   "entrypoint": "src/index.ts",
   "author": {
@@ -36,5 +36,21 @@
     "port": 3000,
     "healthCheck": "/health"
   },
-  "keywords": ["admin", "agents", "workspaces", "apps", "access", "management", "platform"]
+  "keywords": ["admin", "agents", "workspaces", "apps", "access", "management", "platform"],
+  "tagline": "Manage every Teros resource — agents, workspaces, apps and access — from one place.",
+  "verified": true,
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-05-04",
+      "notes": "Initial release — 40 tools across agents, workspaces, apps and access control."
+    }
+  ],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-06-09",
+      "notes": "Initial release — create and manage agents, workspaces, apps, and skills, with member roles and access control"
+    }
+  ]
 }

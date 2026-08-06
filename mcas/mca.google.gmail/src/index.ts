@@ -9,12 +9,25 @@
  * Deployment: per-app (each installed app gets its own process)
  */
 
-import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
+import { HealthCheckBuilder, McaBackendClient, McaServer } from '@teros/mca-sdk';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
-import { marked } from 'marked';
 import { join } from 'path';
+import {
+  getWatcherStatus,
+  startEmailWatcher,
+  stopEmailWatcher,
+} from './email-watcher.js';
+import {
+  createRawEmail,
+  encodeAddressDisplayName,
+  encodeSubject,
+  findAttachments,
+  findTextPart,
+  getDisplayName,
+  processEmailBody,
+  resolveBodyFromFile,
+} from './helpers.js';
 
 // =============================================================================
 // TYPES
@@ -34,9 +47,6 @@ interface GmailSecrets {
 // GMAIL CLIENT FACTORY
 // =============================================================================
 
-/**
- * Creates an authenticated Gmail client from secrets
- */
 async function createGmailClient(secrets: GmailSecrets) {
   const clientId = secrets.CLIENT_ID;
   const clientSecret = secrets.CLIENT_SECRET;
@@ -48,7 +58,6 @@ async function createGmailClient(secrets: GmailSecrets) {
     );
   }
 
-  // Parse redirect_uris
   let redirectUri: string;
   try {
     const uris = JSON.parse(redirectUrisRaw);
@@ -59,216 +68,24 @@ async function createGmailClient(secrets: GmailSecrets) {
 
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
 
-  // Set tokens
+  // El backend es el único dueño del refresh_token y sirve siempre un
+  // access_token fresco (refresh lazy en /secrets/user, rotation-safe — TER-388).
+  // El contenedor NO refresca por su cuenta: pasamos solo el access_token para
+  // que googleapis no auto-refresque y reintroduzca el antipatrón de doble dueño
+  // (que invalidaba el refresh_token de Google al rotar). Si el token está
+  // vencido, la API devuelve 401 y el siguiente getSecrets traerá uno fresco.
   const accessToken = secrets.ACCESS_TOKEN;
-  const refreshToken = secrets.REFRESH_TOKEN;
-  const expiryDate = secrets.EXPIRY_DATE ? parseInt(secrets.EXPIRY_DATE, 10) : undefined;
-
-  if (!accessToken || !refreshToken) {
+  if (!accessToken) {
     throw new Error('Gmail account not connected. Please connect your Google account.');
   }
 
-  oauth2Client.setCredentials({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-    expiry_date: expiryDate,
-  });
-
-  // Check if token needs refresh
-  const needsRefresh = !accessToken || (expiryDate && expiryDate < Date.now() + 60000);
-  if (needsRefresh && refreshToken) {
-    try {
-      const { credentials } = await oauth2Client.refreshAccessToken();
-      oauth2Client.setCredentials(credentials);
-    } catch (error: any) {
-      throw new Error(`Failed to refresh token: ${error.message}`);
-    }
-  }
+  oauth2Client.setCredentials({ access_token: accessToken });
 
   return {
     gmail: google.gmail({ version: 'v1', auth: oauth2Client }),
     email: secrets.EMAIL || 'unknown@gmail.com',
     displayName: getDisplayName(secrets.EMAIL),
   };
-}
-
-function getDisplayName(email?: string): string | undefined {
-  if (!email) return undefined;
-  const localPart = email.split('@')[0];
-  return localPart
-    .split(/[._-]/)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-}
-
-// =============================================================================
-// MARKDOWN TO HTML CONVERSION
-// =============================================================================
-
-/**
- * Detects if text contains Markdown formatting
- */
-function containsMarkdown(text: string): boolean {
-  const markdownPatterns = [
-    /^#{1,6}\s/m, // Headers: # ## ### etc
-    /\*\*[^*]+\*\*/, // Bold: **text**
-    /\*[^*]+\*/, // Italic: *text*
-    /__[^_]+__/, // Bold: __text__
-    /_[^_]+_/, // Italic: _text_
-    /\[.+\]\(.+\)/, // Links: [text](url)
-    /^[-*+]\s/m, // Unordered lists: - item, * item
-    /^\d+\.\s/m, // Ordered lists: 1. item
-    /^>\s/m, // Blockquotes: > text
-    /`[^`]+`/, // Inline code: `code`
-    /```[\s\S]*?```/, // Code blocks: ```code```
-    /^\|.+\|$/m, // Tables: | col | col |
-    /^---+$/m, // Horizontal rules
-  ];
-
-  return markdownPatterns.some((pattern) => pattern.test(text));
-}
-
-/**
- * Converts Markdown to styled HTML email
- */
-async function markdownToHtmlEmail(markdown: string): Promise<string> {
-  // Configure marked for email-safe HTML
-  marked.setOptions({
-    gfm: true, // GitHub Flavored Markdown
-    breaks: true, // Convert \n to <br>
-  });
-
-  const htmlContent = await marked.parse(markdown);
-
-  // Wrap in email-friendly HTML with inline styles
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-</head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <style>
-    h1 { font-size: 24px; font-weight: 600; margin: 24px 0 16px 0; color: #1a1a1a; }
-    h2 { font-size: 20px; font-weight: 600; margin: 20px 0 12px 0; color: #1a1a1a; }
-    h3 { font-size: 16px; font-weight: 600; margin: 16px 0 8px 0; color: #1a1a1a; }
-    p { margin: 0 0 16px 0; }
-    ul, ol { margin: 0 0 16px 0; padding-left: 24px; }
-    li { margin: 4px 0; }
-    a { color: #0066cc; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    code { background-color: #f4f4f4; padding: 2px 6px; border-radius: 3px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size: 13px; }
-    pre { background-color: #f4f4f4; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 0 0 16px 0; }
-    pre code { background: none; padding: 0; }
-    blockquote { border-left: 4px solid #ddd; margin: 0 0 16px 0; padding: 8px 16px; color: #666; }
-    table { border-collapse: collapse; width: 100%; margin: 0 0 16px 0; }
-    th, td { border: 1px solid #ddd; padding: 8px 12px; text-align: left; }
-    th { background-color: #f4f4f4; font-weight: 600; }
-    hr { border: none; border-top: 1px solid #ddd; margin: 24px 0; }
-    strong { font-weight: 600; }
-  </style>
-  ${htmlContent}
-</body>
-</html>`;
-}
-
-/**
- * Resolves the email body from either a raw string or a file path.
- * Auto-detects type from file extension: .html → HTML, .md → Markdown, .txt → plain text.
- * Returns { body, isHtml } ready to be passed to processEmailBody.
- */
-function resolveBodyFromFile(filePath: string): { body: string; isHtml?: boolean } {
-  const absolutePath = filePath.startsWith('/') ? filePath : join(process.cwd(), filePath);
-
-  if (!existsSync(absolutePath)) {
-    throw new Error(`bodyFile not found: ${absolutePath}`);
-  }
-
-  const content = readFileSync(absolutePath, 'utf-8');
-  const ext = absolutePath.split('.').pop()?.toLowerCase();
-
-  if (ext === 'html' || ext === 'htm') {
-    return { body: content, isHtml: true };
-  } else if (ext === 'md' || ext === 'markdown') {
-    return { body: content, isHtml: undefined }; // processEmailBody will auto-convert
-  } else {
-    // .txt or unknown → plain text
-    return { body: content, isHtml: false };
-  }
-}
-
-/**
- * Processes email body: converts Markdown to HTML if detected
- * Returns { body, isHtml } where isHtml indicates if conversion happened
- */
-async function processEmailBody(
-  body: string,
-  explicitIsHtml?: boolean,
-): Promise<{ body: string; isHtml: boolean }> {
-  // If explicitly marked as HTML, return as-is
-  if (explicitIsHtml === true) {
-    return { body, isHtml: true };
-  }
-
-  // If explicitly marked as NOT HTML and no markdown, return as plain text
-  if (explicitIsHtml === false && !containsMarkdown(body)) {
-    return { body, isHtml: false };
-  }
-
-  // Auto-detect: if contains Markdown, convert to HTML
-  if (containsMarkdown(body)) {
-    const htmlBody = await markdownToHtmlEmail(body);
-    return { body: htmlBody, isHtml: true };
-  }
-
-  // Default: plain text
-  return { body, isHtml: false };
-}
-
-// =============================================================================
-// EMAIL HELPERS
-// =============================================================================
-
-function encodeSubject(subject: string): string {
-  const needsEncoding = /[^\x00-\x7F]/.test(subject);
-  if (!needsEncoding) return subject;
-  const encoded = Buffer.from(subject, 'utf-8').toString('base64');
-  return `=?UTF-8?B?${encoded}?=`;
-}
-
-function createRawEmail(
-  to: string,
-  subject: string,
-  body: string,
-  from: string,
-  options: {
-    cc?: string;
-    bcc?: string;
-    isHtml?: boolean;
-    inReplyTo?: string;
-    references?: string;
-    fromName?: string;
-  } = {},
-): string {
-  const fromHeader = options.fromName ? `"${options.fromName}" <${from}>` : from;
-  const lines = [`From: ${fromHeader}`, `To: ${to}`, `Subject: ${encodeSubject(subject)}`];
-
-  if (options.cc) lines.push(`Cc: ${options.cc}`);
-  if (options.bcc) lines.push(`Bcc: ${options.bcc}`);
-  if (options.inReplyTo) lines.push(`In-Reply-To: ${options.inReplyTo}`);
-  if (options.references) lines.push(`References: ${options.references}`);
-
-  lines.push(`Content-Type: text/${options.isHtml ? 'html' : 'plain'}; charset=utf-8`);
-  lines.push(`MIME-Version: 1.0`);
-  lines.push('');
-  lines.push(body);
-
-  const email = lines.join('\r\n');
-  return Buffer.from(email)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
 }
 
 function createRawEmailWithAttachments(
@@ -286,13 +103,13 @@ function createRawEmailWithAttachments(
     fromName?: string;
   } = {},
 ): string {
-  const fromHeader = options.fromName ? `"${options.fromName}" <${from}>` : from;
+  const fromHeader = options.fromName ? encodeAddressDisplayName(`"${options.fromName}" <${from}>`) : from;
   const boundary = `boundary_${Date.now()}_${Math.random().toString(36).substring(2)}`;
 
-  const lines = [`From: ${fromHeader}`, `To: ${to}`, `Subject: ${encodeSubject(subject)}`];
+  const lines = [`From: ${fromHeader}`, `To: ${encodeAddressDisplayName(to)}`, `Subject: ${encodeSubject(subject)}`];
 
-  if (options.cc) lines.push(`Cc: ${options.cc}`);
-  if (options.bcc) lines.push(`Bcc: ${options.bcc}`);
+  if (options.cc) lines.push(`Cc: ${encodeAddressDisplayName(options.cc)}`);
+  if (options.bcc) lines.push(`Bcc: ${encodeAddressDisplayName(options.bcc)}`);
   if (options.inReplyTo) lines.push(`In-Reply-To: ${options.inReplyTo}`);
   if (options.references) lines.push(`References: ${options.references}`);
 
@@ -358,52 +175,6 @@ function createRawEmailWithAttachments(
     .replace(/=+$/, '');
 }
 
-function findTextPart(part: any): string {
-  if (part.body?.data) {
-    return Buffer.from(part.body.data, 'base64').toString();
-  }
-
-  if (part.parts) {
-    const plainPart = part.parts.find((p: any) => p.mimeType === 'text/plain');
-    if (plainPart?.body?.data) {
-      return Buffer.from(plainPart.body.data, 'base64').toString();
-    }
-
-    const htmlPart = part.parts.find((p: any) => p.mimeType === 'text/html');
-    if (htmlPart?.body?.data) {
-      return Buffer.from(htmlPart.body.data, 'base64').toString();
-    }
-
-    for (const subPart of part.parts) {
-      const result = findTextPart(subPart);
-      if (result) return result;
-    }
-  }
-
-  return '';
-}
-
-function findAttachments(part: any): any[] {
-  const attachments: any[] = [];
-
-  if (part.filename && part.body?.attachmentId) {
-    attachments.push({
-      filename: part.filename,
-      mimeType: part.mimeType,
-      attachmentId: part.body.attachmentId,
-      size: part.body.size,
-    });
-  }
-
-  if (part.parts) {
-    for (const subPart of part.parts) {
-      attachments.push(...findAttachments(subPart));
-    }
-  }
-
-  return attachments;
-}
-
 // =============================================================================
 // MCA SERVER
 // =============================================================================
@@ -418,6 +189,26 @@ const server = new McaServer({
 // Health Check Tool
 // -----------------------------------------------------------------------------
 
+/**
+ * Fetch user secrets treating the backend's "no credentials stored" reply as
+ * an empty set: that just means the account is not connected, which the
+ * checks below report as AUTH_REQUIRED (user action). Without this, the
+ * throw fell through to the catch-all and surfaced as SYSTEM_CONFIG_MISSING
+ * (admin action), hiding the connect-account flow from the user
+ * (2026-07-06 Teros HQ incident). Real transport/config failures still throw.
+ */
+async function getUserSecretsOrEmpty(context: {
+  getUserSecrets: () => Promise<Record<string, string>>;
+}): Promise<Record<string, string>> {
+  try {
+    return await context.getUserSecrets();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (/no user credentials configured/i.test(message)) return {};
+    throw error;
+  }
+}
+
 server.tool('-health-check', {
   description: 'Internal health check tool. Verifies OAuth credentials and connectivity.',
   parameters: {
@@ -429,7 +220,7 @@ server.tool('-health-check', {
 
     try {
       const systemSecrets = await context.getSystemSecrets();
-      const userSecrets = await context.getUserSecrets();
+      const userSecrets = await getUserSecretsOrEmpty(context);
       const secrets = { ...systemSecrets, ...userSecrets } as GmailSecrets;
 
       // Check system secrets
@@ -491,6 +282,7 @@ server.tool('-health-check', {
 // -----------------------------------------------------------------------------
 
 server.tool('list-messages', {
+  annotations: { readOnlyHint: true },
   description:
     'List email messages from inbox or specific labels. Supports filtering by unread, starred, etc.',
   parameters: {
@@ -555,6 +347,7 @@ server.tool('list-messages', {
 // -----------------------------------------------------------------------------
 
 server.tool('get-message', {
+  annotations: { readOnlyHint: true },
   description: 'Get full details of a specific email message by ID.',
   parameters: {
     type: 'object',
@@ -602,6 +395,7 @@ server.tool('get-message', {
 // -----------------------------------------------------------------------------
 
 server.tool('send-message', {
+  annotations: { readOnlyHint: false },
   description: 'Send an email message from the specified account.',
   parameters: {
     type: 'object',
@@ -699,6 +493,7 @@ server.tool('send-message', {
 // -----------------------------------------------------------------------------
 
 server.tool('reply-message', {
+  annotations: { readOnlyHint: false },
   description: 'Reply to an existing email message.',
   parameters: {
     type: 'object',
@@ -773,6 +568,7 @@ server.tool('reply-message', {
 // -----------------------------------------------------------------------------
 
 server.tool('search-messages', {
+  annotations: { readOnlyHint: true },
   description: "Search for email messages using Gmail's search syntax.",
   parameters: {
     type: 'object',
@@ -830,6 +626,7 @@ server.tool('search-messages', {
 // -----------------------------------------------------------------------------
 
 server.tool('modify-labels', {
+  annotations: { readOnlyHint: false },
   description: 'Add or remove labels from a message (e.g., mark as read/unread, archive, star).',
   parameters: {
     type: 'object',
@@ -872,6 +669,7 @@ server.tool('modify-labels', {
 // -----------------------------------------------------------------------------
 
 server.tool('list-drafts', {
+  annotations: { readOnlyHint: true },
   description: 'List all draft emails in the account.',
   parameters: {
     type: 'object',
@@ -928,6 +726,7 @@ server.tool('list-drafts', {
 // -----------------------------------------------------------------------------
 
 server.tool('create-draft', {
+  annotations: { readOnlyHint: false },
   description: 'Create a draft email message.',
   parameters: {
     type: 'object',
@@ -1015,6 +814,7 @@ server.tool('create-draft', {
 // -----------------------------------------------------------------------------
 
 server.tool('delete-draft', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a draft email by its draft ID.',
   parameters: {
     type: 'object',
@@ -1042,6 +842,7 @@ server.tool('delete-draft', {
 // -----------------------------------------------------------------------------
 
 server.tool('update-draft', {
+  annotations: { readOnlyHint: false },
   description: 'Update an existing draft email by replacing its content.',
   parameters: {
     type: 'object',
@@ -1132,6 +933,7 @@ server.tool('update-draft', {
 // -----------------------------------------------------------------------------
 
 server.tool('get-attachment', {
+  annotations: { readOnlyHint: true },
   description: 'Get the content of an email attachment by its attachment ID.',
   parameters: {
     type: 'object',
@@ -1225,6 +1027,7 @@ server.tool('get-attachment', {
 // -----------------------------------------------------------------------------
 
 server.tool('store-attachment', {
+  annotations: { readOnlyHint: false },
   description: 'Download and store an email attachment to the local filesystem.',
   parameters: {
     type: 'object',
@@ -1306,6 +1109,7 @@ server.tool('store-attachment', {
 // -----------------------------------------------------------------------------
 
 server.tool('list-labels', {
+  annotations: { readOnlyHint: true },
   description: 'List all Gmail labels (both system and custom labels) for the account.',
   parameters: {
     type: 'object',
@@ -1341,6 +1145,7 @@ server.tool('list-labels', {
 // -----------------------------------------------------------------------------
 
 server.tool('create-label', {
+  annotations: { readOnlyHint: false },
   description: 'Create a new Gmail label.',
   parameters: {
     type: 'object',
@@ -1396,6 +1201,7 @@ server.tool('create-label', {
 // -----------------------------------------------------------------------------
 
 server.tool('update-label', {
+  annotations: { readOnlyHint: false },
   description: 'Update an existing Gmail label (name, colors, visibility).',
   parameters: {
     type: 'object',
@@ -1451,6 +1257,7 @@ server.tool('update-label', {
 // -----------------------------------------------------------------------------
 
 server.tool('delete-label', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a Gmail label. This does NOT delete the emails with this label.',
   parameters: {
     type: 'object',
@@ -1478,6 +1285,7 @@ server.tool('delete-label', {
 // -----------------------------------------------------------------------------
 
 server.tool('list-filters', {
+  annotations: { readOnlyHint: true },
   description: 'List all Gmail filters for the account.',
   parameters: {
     type: 'object',
@@ -1502,6 +1310,7 @@ server.tool('list-filters', {
 // -----------------------------------------------------------------------------
 
 server.tool('create-filter', {
+  annotations: { readOnlyHint: false },
   description: 'Create a new Gmail filter to automatically organize emails.',
   parameters: {
     type: 'object',
@@ -1554,6 +1363,7 @@ server.tool('create-filter', {
 // -----------------------------------------------------------------------------
 
 server.tool('delete-filter', {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a Gmail filter by its ID.',
   parameters: {
     type: 'object',
@@ -1573,6 +1383,94 @@ server.tool('delete-filter', {
     await gmail.users.settings.filters.delete({ userId: 'me', id: filterId });
 
     return { success: true, account: email, filterId, message: 'Filter deleted successfully' };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Email Watcher Tools
+// ---------------------------------------------------------------------------
+
+server.tool('start-email-watcher', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Start a background polling loop that detects new unread emails and emits `gmail.email.received` events to the backend. The watcher polls the Gmail API at a configurable interval (default: 5 minutes). Only one watcher can be active per MCA process.',
+  parameters: {
+    type: 'object',
+    properties: {
+      intervalMinutes: {
+        type: 'number',
+        description:
+          'Polling interval in minutes (default: 5, minimum: 1). Lower values consume more Gmail API quota.',
+        minimum: 1,
+      },
+    },
+  },
+  handler: async (args, context) => {
+    const intervalMinutes =
+      typeof args.intervalMinutes === 'number' && args.intervalMinutes >= 1
+        ? args.intervalMinutes
+        : 5;
+
+    // Build a backend client from the execution context callbackUrl
+    const callbackUrl = context.execution?.callbackUrl;
+    const appId = context.execution?.appId;
+    const backendClient =
+      callbackUrl && appId
+        ? new McaBackendClient({
+            callbackUrl,
+            appId,
+            mcaId: 'mca.google.gmail',
+            callbackToken: process.env.MCA_CALLBACK_TOKEN,
+          })
+        : null;
+
+    if (!backendClient) {
+      return {
+        success: false,
+        error:
+          'No callbackUrl available in execution context. The watcher cannot emit events to the backend.',
+      };
+    }
+
+    const result = await startEmailWatcher(backendClient, intervalMinutes);
+    return {
+      success: result.started,
+      intervalMs: result.intervalMs,
+      message: result.message,
+    };
+  },
+});
+
+server.tool('stop-email-watcher', {
+  annotations: { readOnlyHint: false },
+  description: 'Stop the background email polling loop. No more events will be emitted.',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  handler: async (_args, _context) => {
+    const result = stopEmailWatcher();
+    return {
+      success: result.stopped,
+      message: result.message,
+    };
+  },
+});
+
+server.tool('get-watcher-status', {
+  annotations: { readOnlyHint: true },
+  description:
+    'Get the current status of the email watcher: whether it is active, when it last checked, how many message IDs are tracked, and the polling interval.',
+  parameters: {
+    type: 'object',
+    properties: {},
+  },
+  handler: async (_args, _context) => {
+    const status = getWatcherStatus();
+    return {
+      success: true,
+      ...status,
+    };
   },
 });
 

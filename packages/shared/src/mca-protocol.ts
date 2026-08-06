@@ -4,7 +4,7 @@
  * Communication protocol between Teros Backend and MCAs (Model Context Apps).
  * Transport-agnostic: works over WebSocket, HTTP, stdio, or any future transport.
  *
- * @see docs/RFC-001-mca-protocol.md
+ *
  */
 
 import { z } from 'zod';
@@ -45,6 +45,84 @@ export type McaMessageBase = z.infer<typeof McaMessageBaseSchema>;
 export const JsonSchemaSchema: z.ZodType<Record<string, unknown>> = z.record(z.unknown());
 
 /**
+ * Optional metadata attached to a tool. Enables clients to handle
+ * versioning, deprecation and staged rollout.
+ */
+export const McaToolAnnotationsSchema = z.object({
+  /** Semver-like string (e.g. '1.0.0'). No enforcement — informational. */
+  version: z.string().optional(),
+  /** Stability signal. Clients MAY down-rank 'experimental' / 'deprecated'. */
+  stability: z.enum(['experimental', 'stable', 'deprecated']).optional(),
+  /** Human-readable note explaining the deprecation and suggesting a replacement. */
+  deprecationMessage: z.string().optional(),
+  /**
+   * Binary irreversibility marker (Renderer UX Guide v2 §8). When `true`,
+   * frontend renders an Irreversibility Indicator badge in the Tool Call
+   * Card header during `pending_permission`. No risk levels — tool is
+   * either irreversible (delete, send-email-no-undo, drop-table) or it
+   * isn't.
+   *
+   * Schema is `optional()` without `.default(false)` deliberately:
+   *
+   *   - `.default(false)` would change the inferred output type from
+   *     `boolean | undefined` to `boolean`, while the raw input type
+   *     (what manifest authors write) stays `boolean | undefined`.
+   *     That asymmetry was the source of build errors after manifests
+   *     started dropping the field (commits Z + b5d0adad).
+   *   - All call sites that read the flag already use `?? false`
+   *     (mca-tool-executor.ts) or `if (options.irreversible)` (streaming
+   *     -state.ts), so the default is unnecessary.
+   *
+   * Backend validation still rejects truthy non-boolean (e.g. `"true"`)
+   * via the Zod parse at manifest load time.
+   */
+  irreversible: z.boolean().optional(),
+  /**
+   * Policy flag (not a hint) — when `true` the tool can NEVER run without
+   * explicit human confirmation. `getEffectiveToolPermission` clamps the
+   * effective permission to 'ask' even when the user configured 'allow'
+   * (only 'forbid' wins, being more restrictive), and the read-only
+   * auto-allow policy (TER-369) never applies. Reserved for actions that
+   * are forbidden-by-design to auto-run: app self-installation and
+   * granting/setting agent permissions.
+   *
+   * Same `optional()`-without-default rationale as `irreversible` above.
+   */
+  alwaysAsk: z.boolean().optional(),
+
+  // MCP canonical annotations (Phase 2.7 — TER-348). Aligned with MCP spec
+  // and with the `ToolAnnotations` interface in `@teros/mca-sdk`'s
+  // http-server / stdio-server. Used by the turn redesign's
+  // `wait_for_irreversible` policy and the §4.4 side-effect handling.
+  /** MCP spec hint — tool only reads, never mutates state. */
+  readOnlyHint: z.boolean().optional(),
+  /** MCP spec hint — tool may modify or delete state irreversibly. */
+  destructiveHint: z.boolean().optional(),
+  /** MCP spec hint — repeating with same args has no extra effect. */
+  idempotentHint: z.boolean().optional(),
+  /** MCP spec hint — tool reaches external services (network). */
+  openWorldHint: z.boolean().optional(),
+
+  // Catalog presentation (TER-538). Optional, author-curated. When present the
+  // sync materialises these into `mca_catalog.toolsDetailed` for the catalog
+  // detail view; when absent it falls back to a heuristic derived from the
+  // technical description / tool name. They never reach the LLM (the model
+  // reads `description`).
+  /** Short, human-readable summary of the tool for the catalog (1 sentence). */
+  summary: z.string().optional(),
+  /** Domain group label for the catalog Actions list (e.g. 'Pages', 'Drafts'). */
+  group: z.string().optional(),
+});
+
+export type McaToolAnnotations = z.infer<typeof McaToolAnnotationsSchema>;
+
+// NOTE: the name-based annotation heuristic (inferToolAnnotations /
+// resolveToolAnnotations, Phase 2.7 — TER-348) was removed 2026-07-04.
+// Annotations are now always explicit in each tool's ToolConfig (baked
+// once into every MCA source + tools.json). A tool without explicit
+// `readOnlyHint: true` is treated as a mutation — no inference.
+
+/**
  * Tool definition as exposed by MCAs
  */
 export const McaToolDefinitionSchema = z.object({
@@ -58,6 +136,8 @@ export const McaToolDefinitionSchema = z.object({
     properties: z.record(z.unknown()),
     required: z.array(z.string()).optional(),
   }),
+  /** Optional annotations (version, stability, deprecation) */
+  annotations: McaToolAnnotationsSchema.optional(),
 });
 
 export type McaToolDefinition = z.infer<typeof McaToolDefinitionSchema>;
@@ -86,6 +166,10 @@ export const McaExecutionContextSchema = z.object({
   requestId: z.string().optional(),
   /** Callback URL for MCA → Backend communication */
   callbackUrl: z.string().optional(),
+  /** Display name of the initiating user (sent by mca-manager.tools; optional) */
+  userDisplayName: z.string().optional(),
+  /** Avatar URL of the initiating user (sent by mca-manager.tools; optional) */
+  userAvatarUrl: z.string().optional(),
 });
 
 export type McaExecutionContext = z.infer<typeof McaExecutionContextSchema>;
@@ -219,6 +303,25 @@ export const McaToolResultResponseSchema = McaMessageBaseSchema.extend({
   success: z.boolean(),
   /** Tool output (if success) */
   result: z.unknown().optional(),
+  /**
+   * Typed JSON object exposing the same data as `result` in a shape
+   * clients can consume without re-parsing text. Populated when the
+   * handler returns `{ content, structuredContent }` explicitly.
+   * Optional — omitted for legacy handlers that return plain values.
+   *
+   * See MCP spec 2025-11-25 §structuredContent.
+   */
+  structuredContent: z.unknown().optional(),
+  /** Attachments (images, files) generated by the tool */
+  attachments: z
+    .array(
+      z.object({
+        url: z.string(),
+        mime: z.string(),
+        filename: z.string().optional(),
+      }),
+    )
+    .optional(),
   /** Error details (if !success) */
   error: McaErrorSchema.optional(),
   /** Execution time in milliseconds */
@@ -642,6 +745,30 @@ export const McaSecretResponseSchema = z.discriminatedUnion('type', [
 ]);
 
 export type McaSecretResponse = z.infer<typeof McaSecretResponseSchema>;
+
+// ============================================================================
+// TOOL-EXECUTION PROXY META-TOOLS
+// ============================================================================
+
+/**
+ * Names of the tool-execution proxy meta-tools injected by the backend's
+ * McaToolExecutor. Shared so
+ * the frontend can special-case them (the two list tools render as nothing;
+ * execute-tool calls are tunneled to the target tool's renderer backend-side).
+ * Invariant: these names contain NO underscore, so they can never collide
+ * with namespaced app tools (`${appName}_${tool}`).
+ */
+export const PROXY_TOOL_NAMES = {
+  listInstalledApps: 'list-installed-apps',
+  listAppTools: 'list-app-tools',
+  execute: 'execute-tool',
+} as const;
+
+/** Meta-tools that the chat UI hides entirely (discovery is invisible). */
+export const UI_HIDDEN_PROXY_TOOLS: readonly string[] = [
+  PROXY_TOOL_NAMES.listInstalledApps,
+  PROXY_TOOL_NAMES.listAppTools,
+];
 
 // ============================================================================
 // ERROR CODES

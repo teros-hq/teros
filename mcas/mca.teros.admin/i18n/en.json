@@ -1,0 +1,305 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies WebSocket connectivity to backend."
+    },
+    "admin-agents-list": {
+      "name": "admin-agents-list",
+      "description": "List all agents in the system. Super admin only."
+    },
+    "admin-agents-get": {
+      "name": "admin-agents-get",
+      "description": "Get a single agent by ID. Super admin only.",
+      "params": {
+        "agentId": "Agent ID"
+      }
+    },
+    "admin-agents-create": {
+      "name": "admin-agents-create",
+      "description": "Create a new agent. Super admin only.",
+      "params": {
+        "name": "Agent name",
+        "coreId": "Agent core ID",
+        "workspaceId": "Workspace ID",
+        "description": "Optional description"
+      }
+    },
+    "admin-agents-update": {
+      "name": "admin-agents-update",
+      "description": "Update an existing agent. Super admin only.",
+      "params": {
+        "agentId": "Agent ID to update",
+        "name": "New name",
+        "description": "New description",
+        "active": "Active state"
+      }
+    },
+    "admin-agents-delete": {
+      "name": "admin-agents-delete",
+      "description": "Delete an agent. Super admin only. DESTRUCTIVE — use with caution.",
+      "params": {
+        "agentId": "Agent ID to delete",
+        "confirm": "Must be true to confirm deletion"
+      }
+    },
+    "admin-workspaces-list": {
+      "name": "admin-workspaces-list",
+      "description": "List all workspaces. Super admin only."
+    },
+    "admin-workspaces-get": {
+      "name": "admin-workspaces-get",
+      "description": "Get a workspace by ID. Super admin only.",
+      "params": {
+        "workspaceId": "Workspace ID"
+      }
+    },
+    "admin-workspaces-create": {
+      "name": "admin-workspaces-create",
+      "description": "Create a new workspace. Super admin only.",
+      "params": {
+        "name": "Workspace name",
+        "description": "Optional description"
+      }
+    },
+    "admin-workspaces-update": {
+      "name": "admin-workspaces-update",
+      "description": "Update a workspace. Super admin only.",
+      "params": {
+        "workspaceId": "Workspace ID",
+        "name": "New name",
+        "description": "New description"
+      }
+    },
+    "admin-workspaces-archive": {
+      "name": "admin-workspaces-archive",
+      "description": "Archive (soft-delete) a workspace. Super admin only. DESTRUCTIVE — use with caution.",
+      "params": {
+        "workspaceId": "Workspace ID",
+        "confirm": "Must be true to confirm"
+      }
+    },
+    "admin-workspaces-members-add": {
+      "name": "admin-workspaces-members-add",
+      "description": "Add a member to a workspace. Super admin only.",
+      "params": {
+        "workspaceId": "Workspace ID",
+        "userId": "User ID to add",
+        "role": "Role (e.g. member, admin)"
+      }
+    },
+    "admin-workspaces-members-remove": {
+      "name": "admin-workspaces-members-remove",
+      "description": "Remove a member from a workspace. Super admin only.",
+      "params": {
+        "workspaceId": "Workspace ID",
+        "userId": "User ID to remove"
+      }
+    },
+    "admin-workspaces-members-update": {
+      "name": "admin-workspaces-members-update",
+      "description": "Update a workspace member role. Super admin only.",
+      "params": {
+        "workspaceId": "Workspace ID",
+        "userId": "User ID",
+        "role": "New role"
+      }
+    },
+    "admin-apps-list": {
+      "name": "admin-apps-list",
+      "description": "List all installed apps. Super admin only."
+    },
+    "admin-apps-get": {
+      "name": "admin-apps-get",
+      "description": "Get an installed app by ID. Super admin only.",
+      "params": {
+        "appId": "App ID"
+      }
+    },
+    "admin-apps-create": {
+      "name": "admin-apps-create",
+      "description": "Install/create an app instance. Super admin only.",
+      "params": {
+        "mcaId": "MCA ID to install",
+        "ownerId": "Owner user ID",
+        "name": "App instance name",
+        "config": "App configuration"
+      }
+    },
+    "admin-apps-update": {
+      "name": "admin-apps-update",
+      "description": "Update an installed app. Super admin only.",
+      "params": {
+        "appId": "App ID",
+        "name": "New name",
+        "config": "Updated configuration",
+        "active": "Active state"
+      }
+    },
+    "admin-apps-delete": {
+      "name": "admin-apps-delete",
+      "description": "Delete an installed app. Super admin only. DESTRUCTIVE — use with caution.",
+      "params": {
+        "appId": "App ID to delete",
+        "confirm": "Must be true to confirm"
+      }
+    },
+    "admin-apps-get-access": {
+      "name": "admin-apps-get-access",
+      "description": "Get agents that have access to an app. Super admin only.",
+      "params": {
+        "appId": "App ID"
+      }
+    },
+    "admin-apps-set-permissions": {
+      "name": "admin-apps-set-permissions",
+      "description": "Set permissions for an app (which agents can use it). Super admin only.",
+      "params": {
+        "appId": "App ID",
+        "agentIds": "List of agent IDs allowed to use this app"
+      }
+    },
+    "admin-access-list": {
+      "name": "admin-access-list",
+      "description": "List all agent-app access grants. Super admin only."
+    },
+    "admin-access-grant": {
+      "name": "admin-access-grant",
+      "description": "Grant an agent access to an app. Super admin only.",
+      "params": {
+        "agentId": "Agent ID",
+        "appId": "App ID"
+      }
+    },
+    "admin-access-revoke": {
+      "name": "admin-access-revoke",
+      "description": "Revoke an agent access to an app. Super admin only.",
+      "params": {
+        "agentId": "Agent ID",
+        "appId": "App ID"
+      }
+    },
+    "admin-catalog-list": {
+      "name": "admin-catalog-list",
+      "description": "List all available MCAs in the catalog. Super admin only."
+    },
+    "admin-usage-summary": {
+      "name": "admin-usage-summary",
+      "description": "Get overall usage summary (messages, tokens, costs). Super admin only."
+    },
+    "admin-usage-by-user": {
+      "name": "admin-usage-by-user",
+      "description": "Get usage breakdown by user. Super admin only.",
+      "params": {
+        "limit": "Max results",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-usage-by-workspace": {
+      "name": "admin-usage-by-workspace",
+      "description": "Get usage breakdown by workspace. Super admin only.",
+      "params": {
+        "limit": "Max results",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-usage-by-agent": {
+      "name": "admin-usage-by-agent",
+      "description": "Get usage breakdown by agent. Super admin only.",
+      "params": {
+        "limit": "Max results",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-usage-by-model": {
+      "name": "admin-usage-by-model",
+      "description": "Get usage breakdown by LLM model. Super admin only.",
+      "params": {
+        "limit": "Max results",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-usage-expensive-conversations": {
+      "name": "admin-usage-expensive-conversations",
+      "description": "List most expensive conversations by cost. Super admin only.",
+      "params": {
+        "limit": "Max results (default 50)",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-usage-timeline": {
+      "name": "admin-usage-timeline",
+      "description": "Get usage timeline (daily/weekly aggregates). Super admin only.",
+      "params": {
+        "granularity": "Time granularity",
+        "startDate": "Start date (ISO)",
+        "endDate": "End date (ISO)"
+      }
+    },
+    "admin-feature-flags-list": {
+      "name": "admin-feature-flags-list",
+      "description": "List all registered feature flags with their DB defaults and override counts. Super admin only."
+    },
+    "admin-feature-flags-get": {
+      "name": "admin-feature-flags-get",
+      "description": "Get a single feature flag by key, including its current default value and all overrides. Super admin only.",
+      "params": {
+        "key": "Feature flag key"
+      }
+    },
+    "admin-feature-flags-update": {
+      "name": "admin-feature-flags-update",
+      "description": "Update the default value of a feature flag. Super admin only.",
+      "params": {
+        "key": "Feature flag key",
+        "defaultValue": "New default value (boolean, number, or string)"
+      }
+    },
+    "admin-feature-flags-reset-default": {
+      "name": "admin-feature-flags-reset-default",
+      "description": "Reset a feature flag default value to the code-defined registry default. Super admin only.",
+      "params": {
+        "key": "Feature flag key to reset"
+      }
+    },
+    "admin-feature-flags-get-overrides": {
+      "name": "admin-feature-flags-get-overrides",
+      "description": "List all overrides for a specific feature flag. Super admin only.",
+      "params": {
+        "key": "Feature flag key"
+      }
+    },
+    "admin-feature-flags-set-override": {
+      "name": "admin-feature-flags-set-override",
+      "description": "Create or update an override for a feature flag. Overrides apply to a specific user, workspace, or company. Super admin only.",
+      "params": {
+        "key": "Feature flag key",
+        "targetType": "Scope of the override",
+        "targetId": "ID of the target",
+        "value": "Override value",
+        "note": "Optional note explaining the override"
+      }
+    },
+    "admin-feature-flags-delete-override": {
+      "name": "admin-feature-flags-delete-override",
+      "description": "Delete an existing override for a feature flag. Super admin only.",
+      "params": {
+        "key": "Feature flag key",
+        "targetType": "Scope of the override to delete",
+        "targetId": "ID of the target"
+      }
+    }
+  },
+  "name": "Teros Admin",
+  "description": "Full admin panel via chat — manage agents, workspaces, apps, access, usage, feature flags, and catalog browsing.",
+  "changelog": [
+    {
+      "notes": "Manage agents, workspaces, members and apps, control access and feature flags, and track usage and costs"
+    }
+  ]
+}

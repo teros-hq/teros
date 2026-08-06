@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { intercomRequest } from '../lib';
 
 export const tagConversation: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description:
     'Add or remove tags from an Intercom conversation.',
   parameters: {

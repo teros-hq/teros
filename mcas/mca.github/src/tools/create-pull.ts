@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
 
 export const createPull: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new pull request',
   parameters: {
     type: 'object',

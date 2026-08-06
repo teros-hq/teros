@@ -1,0 +1,70 @@
+{
+  "tools": {
+    "sentry-list-organizations": {
+      "name": "sentry-list-organizations",
+      "description": "List all organizations the authenticated user has access to"
+    },
+    "sentry-list-projects": {
+      "name": "sentry-list-projects",
+      "description": "List all projects in an organization",
+      "params": {
+        "organization": "Organization slug (e.g., 'my-org'). Optional if configured in credentials."
+      }
+    },
+    "sentry-list-issues": {
+      "name": "sentry-list-issues",
+      "description": "List issues (errors/problems) for a project. Can filter by status and query.",
+      "params": {
+        "organization": "Organization slug. Optional if configured in credentials.",
+        "project": "Project slug (optional, lists all if not provided)",
+        "query": "Search query (e.g., 'is:unresolved', 'is:resolved', 'level:error')",
+        "limit": "Maximum number of issues to return (default: 25)"
+      }
+    },
+    "sentry-get-issue": {
+      "name": "sentry-get-issue",
+      "description": "Get detailed information about a specific issue",
+      "params": {
+        "issueId": "The issue ID"
+      }
+    },
+    "sentry-list-events": {
+      "name": "sentry-list-events",
+      "description": "List events (individual error occurrences) for an issue",
+      "params": {
+        "issueId": "The issue ID to get events for",
+        "limit": "Maximum number of events to return (default: 25)"
+      }
+    },
+    "sentry-get-event": {
+      "name": "sentry-get-event",
+      "description": "Get detailed information about a specific event including full stack trace",
+      "params": {
+        "organization": "Organization slug. Optional if configured in credentials.",
+        "project": "Project slug",
+        "eventId": "The event ID"
+      }
+    },
+    "sentry-resolve-issue": {
+      "name": "sentry-resolve-issue",
+      "description": "Mark an issue as resolved",
+      "params": {
+        "issueId": "The issue ID to resolve"
+      }
+    },
+    "sentry-ignore-issue": {
+      "name": "sentry-ignore-issue",
+      "description": "Ignore an issue (stop notifications)",
+      "params": {
+        "issueId": "The issue ID to ignore"
+      }
+    }
+  },
+  "name": "Sentry Error Monitoring",
+  "description": "Monitor errors, issues, and performance in your applications using Sentry API. List projects, view issues, and manage error states.",
+  "changelog": [
+    {
+      "notes": "Initial release — browse projects, track error issues with stack traces, and resolve or mute alerts"
+    }
+  ]
+}

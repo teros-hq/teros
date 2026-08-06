@@ -26,6 +26,7 @@ import {
 // Import sub-renderers
 import {
   CopyFileRenderer,
+  CreateDocumentRenderer,
   DeleteFileRenderer,
   DownloadFileRenderer,
   GetFileContentRenderer,
@@ -43,7 +44,8 @@ import {
   ListSheetTabsRenderer,
   ReadSheetRangeRenderer,
 } from './drive/SheetsRenderer';
-import { Badge, getShortToolName, HeaderRow } from './drive/shared';
+import { ToolCallCard } from '../primitives';
+import { Badge, getShortToolName } from './drive/shared';
 
 // ============================================================================
 // Tool Name to Renderer Mapping
@@ -57,6 +59,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
   'get-file-content': GetFileContentRenderer,
   'download-file': DownloadFileRenderer,
   'upload-file': UploadFileRenderer,
+  'create-document': CreateDocumentRenderer,
   'move-file': MoveFileRenderer,
   'copy-file': CopyFileRenderer,
   'delete-file': DeleteFileRenderer,
@@ -92,7 +95,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // Fallback Renderer
 // ============================================================================
 
-function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps) {
+function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps) {
   const shortName = getShortToolName(toolName);
 
   let badge: React.ReactNode = null;
@@ -103,13 +106,11 @@ function FallbackRenderer({ toolName, status, duration }: ToolCallRendererProps)
   }
 
   return (
-    <HeaderRow
+    <ToolCallCard
       status={status}
-      description={shortName}
-      duration={duration}
+      verb={shortName.replace(/-/g, ' ')}
       badge={badge}
-      expanded={false}
-      onToggle={() => {}}
+      iconUri={appIcon}
     />
   );
 }

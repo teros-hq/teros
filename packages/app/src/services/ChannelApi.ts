@@ -5,7 +5,7 @@
  * operations. Uses the WsFramework request/response protocol via WsTransport.
  */
 
-import type { WsTransport } from './WsTransport'
+import type { Transport } from './transport/types'
 
 /** Minimal event-emitter interface required by ChannelApi */
 export interface IEventEmitter {
@@ -37,6 +37,8 @@ export interface MessageContent {
   mimeType?: string
   size?: number
   duration?: number
+  /** Optional caption sent alongside a file/image (merged into the agent turn). */
+  caption?: string
 }
 
 export interface MessageData {
@@ -66,12 +68,16 @@ export interface SearchResult {
 // ============================================================================
 
 export class ChannelApi {
+  /** Per-channel tail used to serialize getMessages (see getMessages). */
+  private readonly getMessagesChain = new Map<string, Promise<unknown>>()
+
   constructor(
-    private readonly transport: WsTransport,
+    private readonly transport: Transport,
     private readonly emitter?: IEventEmitter,
   ) {}
 
-  /** List channels for the current user, optionally filtered by workspace or status */
+  /** List channels for the current user, optionally filtered by workspace or status.
+   *  @param workspaceId - null/undefined returns all channels in accessible workspaces; string filters to a specific workspace */
   list(
     workspaceId?: string | null,
     status?: string,
@@ -101,6 +107,9 @@ export class ChannelApi {
     content: MessageContent
     workspaceId?: string
     metadata?: Record<string, any>
+    /** When false, the channel is created and the message saved without waking the
+     *  agent — used to batch multiple first-message attachments before a single turn. */
+    wakeUpAgent?: boolean
   }): Promise<{ channelId: string; agentId: string; channel: ChannelData }> {
     return this.transport.request('channel.create-with-message', data as Record<string, unknown>)
   }
@@ -135,7 +144,7 @@ export class ChannelApi {
 
   /** Auto-generate a channel name via LLM based on conversation content */
   autoname(channelId: string): Promise<{ channelId: string; name: string }> {
-    return this.transport.request('channel.autoname', { channelId }, 30_000)
+    return this.transport.request('channel.autoname', { channelId }, { timeout: 30_000 })
   }
 
   /** Mark a channel as read for the current user */
@@ -158,7 +167,7 @@ export class ChannelApi {
     query: string,
     limit = 50,
   ): Promise<{ query: string; results: SearchResult[]; totalMatches: number }> {
-    return this.transport.request('channel.search', { query, limit }, 15_000)
+    return this.transport.request('channel.search', { query, limit }, { timeout: 15_000 })
   }
 
   /** Broadcast typing started indicator */
@@ -175,14 +184,54 @@ export class ChannelApi {
   sendMessage(
     channelId: string,
     content: MessageContent,
+    options?: { wakeUpAgent?: boolean },
   ): Promise<Record<string, never>> {
     return this.transport.request('channel.send-message', {
       channelId,
       content: content as unknown as Record<string, unknown>,
+      ...(options?.wakeUpAgent !== undefined ? { wakeUpAgent: options.wakeUpAgent } : {}),
     })
   }
 
-  /** Retrieve paginated message history for a channel */
+  /**
+   * Stop the active agent generation in a channel.
+   *
+   * - `soft` (default): interrupt at next natural boundary. Respects wait_for_irreversible policy.
+   * - `hard`: abort immediately. UI MUST show modal confirm before dispatching.
+   * - `queue_only`: clear pending message queue without touching the active turn.
+   */
+  stopMessage(
+    channelId: string,
+    kind: 'soft' | 'hard' | 'queue_only' = 'soft',
+  ): Promise<Record<string, never>> {
+    return this.transport.request('channel.stop-message', {
+      channelId,
+      kind,
+    })
+  }
+
+  /** Transcribe audio data and return text (no message created, no agent triggered) */
+  transcribeAudio(
+    data: string,
+    mimeType?: string,
+  ): Promise<{ text: string }> {
+    return this.transport.request('channel.transcribe-audio', { data, mimeType }, { timeout: 30_000 })
+  }
+
+  /** Retry transcription for a voice message that previously failed */
+  retryTranscription(
+    channelId: string,
+    messageId: string,
+  ): Promise<Record<string, never>> {
+    return this.transport.request('channel.retry-transcription', { channelId, messageId }, { timeout: 30_000 })
+  }
+
+  /** Retrieve paginated message history for a channel.
+   *
+   *  Resolution rides on the `messages_history` event, which is filtered only by
+   *  channelId and carries no request discriminator. Two concurrent calls for the
+   *  same channel would otherwise both settle on the first response. We serialize
+   *  per channel so each call's listener is the only one in flight while it waits. */
   getMessages(
     channelId: string,
     limit = 50,
@@ -191,31 +240,47 @@ export class ChannelApi {
     const data: Record<string, unknown> = { channelId, limit }
     if (before) data.before = before
 
-    return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        this.emitter?.off('messages_history', handler)
-        reject(new Error('Request timeout'))
-      }, 10_000)
+    const run = () =>
+      new Promise<{ messages: any[]; hasMore: boolean; tokenBudget?: any }>((resolve, reject) => {
+        const timeoutId = setTimeout(() => {
+          this.emitter?.off('messages_history', handler)
+          reject(new Error('Request timeout'))
+        }, 10_000)
 
-      const handler = (response: any) => {
-        if (response.channelId === channelId) {
+        const handler = (response: any) => {
+          if (response.channelId === channelId) {
+            clearTimeout(timeoutId)
+            this.emitter?.off('messages_history', handler)
+            resolve({
+              messages: response.messages || [],
+              hasMore: response.hasMore ?? false,
+              tokenBudget: response.tokenBudget,
+            })
+          }
+        }
+
+        this.emitter?.on('messages_history', handler)
+
+        this.transport.request('channel.get-messages', data).catch((err) => {
           clearTimeout(timeoutId)
           this.emitter?.off('messages_history', handler)
-          resolve({
-            messages: response.messages || [],
-            hasMore: response.hasMore ?? false,
-            tokenBudget: response.tokenBudget,
-          })
-        }
-      }
-
-      this.emitter?.on('messages_history', handler)
-
-      this.transport.request('channel.get-messages', data).catch((err) => {
-        clearTimeout(timeoutId)
-        this.emitter?.off('messages_history', handler)
-        reject(err)
+          reject(err)
+        })
       })
-    })
+
+    // Run immediately when the channel is idle (preserves synchronous request
+    // dispatch); otherwise wait for the in-flight call to settle first, so each
+    // call's listener is the only one alive while it waits for its response.
+    const prev = this.getMessagesChain.get(channelId)
+    const result = prev ? prev.then(run, run) : run()
+    // The tail must never reject (would be an unhandled rejection); it only sequences.
+    this.getMessagesChain.set(
+      channelId,
+      result.then(
+        () => {},
+        () => {},
+      ),
+    )
+    return result
   }
 }

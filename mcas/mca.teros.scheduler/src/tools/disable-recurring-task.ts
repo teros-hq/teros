@@ -1,48 +1,42 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { db, formatRecurringTask } from '../lib';
+import { z } from 'zod';
+import { db, formatRecurringTask, SchedulerError } from '../lib';
+import {
+  requireUserId,
+  structured,
+  type SchedulerTool,
+  toToolError,
+  validateInput,
+} from './_shared';
 
-export const disableRecurringTask: ToolConfig = {
-  description: 'Disable (pause) a recurring task',
+const Schema = z.object({ taskId: z.number().int().positive() });
+
+export const disableRecurringTask: SchedulerTool = {
+  description: 'Disable (pause) a recurring task of the current user. Idempotent if already disabled.',
   parameters: {
     type: 'object',
-    properties: {
-      taskId: {
-        type: 'number',
-        description: 'The ID of the task to disable',
-      },
-    },
+    properties: { taskId: { type: 'number', description: 'Recurring task ID.' } },
     required: ['taskId'],
   },
-  handler: async (args) => {
-    const { taskId } = args as { taskId: number };
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable', idempotentHint: true },
+  handler: async (args, context) => {
+    try {
+      const userId = requireUserId(context);
+      const input = validateInput(Schema, args);
 
-    const task = await db.getRecurringTask(taskId);
-    if (!task) {
-      throw new Error(`Task ${taskId} not found`);
+      const updated = await db.setRecurringEnabled(input.taskId, userId, false);
+      if (!updated) {
+        throw new SchedulerError('NOT_FOUND', `Recurring task ${input.taskId} not found.`);
+      }
+      // Si ya estaba disabled, esto es noop. `updated.enabled` ya es false.
+      // No tenemos manera de saber si era enabled o disabled antes sin re-read
+      // — el doc post-update siempre tiene enabled:false. Reportamos 'disabled'
+      // como acción uniforme (idempotency hint cubre el caso).
+      return structured({
+        action: 'disabled' as const,
+        task: formatRecurringTask(updated),
+      });
+    } catch (error) {
+      toToolError(error);
     }
-
-    if (!task.enabled) {
-      return {
-        success: true,
-        message: `Task ${taskId} is already disabled`,
-        task: formatRecurringTask(task),
-      };
-    }
-
-    const disabled = await db.disableRecurringTask(taskId);
-    if (!disabled) {
-      throw new Error(`Failed to disable task ${taskId}`);
-    }
-
-    const updatedTask = (await db.getRecurringTask(taskId))!;
-    const allTasks = (await db.getAllRecurringTasks(task.channel_id)).map(formatRecurringTask);
-
-    return {
-      success: true,
-      message: 'Task disabled',
-      affectedTaskId: taskId,
-      task: formatRecurringTask(updatedTask),
-      tasks: allTasks,
-    };
   },
 };

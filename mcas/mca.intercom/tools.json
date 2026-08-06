@@ -5,12 +5,21 @@
     {
       "name": "-health-check",
       "description": "Internal health check tool. Verifies Intercom API token and connectivity.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
     },
     {
       "name": "get-workspace",
       "description": "Get information about the connected Intercom workspace: name, region, timezone, and the authenticated admin.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
     },
     {
       "name": "search-conversations",
@@ -18,14 +27,43 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "state": { "type": "string", "enum": ["open", "closed", "snoozed"], "description": "Filter by conversation state" },
-          "createdAfter": { "type": "number", "description": "Unix timestamp — only conversations created after this time" },
-          "createdBefore": { "type": "number", "description": "Unix timestamp — only conversations created before this time" },
-          "assigneeId": { "type": "string", "description": "Filter by assigned admin ID" },
-          "teamId": { "type": "string", "description": "Filter by assigned team ID" },
-          "perPage": { "type": "number", "description": "Results per page (default: 20, max: 50)" },
-          "startingAfter": { "type": "string", "description": "Pagination cursor from previous response" }
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "snoozed"
+            ],
+            "description": "Filter by conversation state"
+          },
+          "createdAfter": {
+            "type": "number",
+            "description": "Unix timestamp — only conversations created after this time"
+          },
+          "createdBefore": {
+            "type": "number",
+            "description": "Unix timestamp — only conversations created before this time"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "Filter by assigned admin ID"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Filter by assigned team ID"
+          },
+          "perPage": {
+            "type": "number",
+            "description": "Results per page (default: 20, max: 50)"
+          },
+          "startingAfter": {
+            "type": "string",
+            "description": "Pagination cursor from previous response"
+          }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -34,9 +72,17 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "conversationId": { "type": "string", "description": "The Intercom conversation ID" }
+          "conversationId": {
+            "type": "string",
+            "description": "The Intercom conversation ID"
+          }
         },
-        "required": ["conversationId"]
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -45,25 +91,61 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
-          "body": { "type": "string", "description": "The reply text (plain text or HTML)" },
-          "type": { "type": "string", "enum": ["comment", "note"], "description": "\"comment\" sends a public reply; \"note\" adds a private internal note (default: comment)" },
-          "adminId": { "type": "string", "description": "The admin ID to reply as. If omitted, uses the token owner." }
+          "conversationId": {
+            "type": "string",
+            "description": "The Intercom conversation ID"
+          },
+          "body": {
+            "type": "string",
+            "description": "The reply text (plain text or HTML)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "comment",
+              "note"
+            ],
+            "description": "\"comment\" sends a public reply to the customer; \"note\" adds a private internal note visible only to the team (default: comment)"
+          },
+          "adminId": {
+            "type": "string",
+            "description": "The admin ID to reply as. If omitted, uses the token owner."
+          }
         },
-        "required": ["conversationId", "body"]
+        "required": [
+          "conversationId",
+          "body"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "assign-conversation",
-      "description": "Assign an Intercom conversation to a specific admin or team.",
+      "description": "Assign an Intercom conversation to a specific admin or team. Can also unassign by omitting both.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
-          "adminId": { "type": "string", "description": "Admin ID to assign the conversation to" },
-          "teamId": { "type": "string", "description": "Team ID to assign the conversation to" }
+          "conversationId": {
+            "type": "string",
+            "description": "The Intercom conversation ID"
+          },
+          "adminId": {
+            "type": "string",
+            "description": "Admin ID to assign the conversation to"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Team ID to assign the conversation to"
+          }
         },
-        "required": ["conversationId"]
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -72,12 +154,38 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
-          "state": { "type": "string", "enum": ["open", "closed", "snoozed"], "description": "New state for the conversation" },
-          "priority": { "type": "string", "enum": ["priority", "not_priority"], "description": "Set or unset priority flag" },
-          "snoozedUntil": { "type": "number", "description": "Unix timestamp — required when state is \"snoozed\"" }
+          "conversationId": {
+            "type": "string",
+            "description": "The Intercom conversation ID"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "closed",
+              "snoozed"
+            ],
+            "description": "New state for the conversation"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "priority",
+              "not_priority"
+            ],
+            "description": "Set or unset priority flag"
+          },
+          "snoozedUntil": {
+            "type": "number",
+            "description": "Unix timestamp — required when state is \"snoozed\""
+          }
         },
-        "required": ["conversationId"]
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -86,27 +194,65 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "conversationId": { "type": "string", "description": "The Intercom conversation ID" },
-          "tagIds": { "type": "array", "items": { "type": "string" }, "description": "Tag IDs to add" },
-          "removeTagIds": { "type": "array", "items": { "type": "string" }, "description": "Tag IDs to remove" }
+          "conversationId": {
+            "type": "string",
+            "description": "The Intercom conversation ID"
+          },
+          "tagIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tag IDs to add to the conversation"
+          },
+          "removeTagIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tag IDs to remove from the conversation"
+          }
         },
-        "required": ["conversationId"]
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "list-admins",
       "description": "List all admins (agents) in the Intercom workspace with their IDs, names, emails, and seat status.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
     },
     {
       "name": "list-teams",
       "description": "List all teams in the Intercom workspace with their IDs, names, and member counts.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
     },
     {
       "name": "list-tags",
       "description": "List all tags defined in the Intercom workspace. Useful for finding tag IDs before tagging conversations.",
-      "inputSchema": { "type": "object", "properties": {} }
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
     },
     {
       "name": "get-contact",
@@ -114,9 +260,17 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "contactId": { "type": "string", "description": "The Intercom contact ID" }
+          "contactId": {
+            "type": "string",
+            "description": "The Intercom contact ID"
+          }
         },
-        "required": ["contactId"]
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -125,11 +279,26 @@
       "inputSchema": {
         "type": "object",
         "properties": {
-          "email": { "type": "string", "description": "Filter by exact email address" },
-          "name": { "type": "string", "description": "Filter by name (partial match)" },
-          "phone": { "type": "string", "description": "Filter by phone number" },
-          "perPage": { "type": "number", "description": "Results per page (default: 20, max: 50)" }
+          "email": {
+            "type": "string",
+            "description": "Filter by exact email address"
+          },
+          "name": {
+            "type": "string",
+            "description": "Filter by name (partial match)"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Filter by phone number"
+          },
+          "perPage": {
+            "type": "number",
+            "description": "Results per page (default: 20, max: 50)"
+          }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

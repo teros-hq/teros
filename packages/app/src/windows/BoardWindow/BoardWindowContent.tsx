@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  Eye,
   Filter,
   Folder,
   MessageSquare,
@@ -22,53 +23,326 @@ import {
   Play,
   Plus,
   Search,
+  Square,
   SquareKanban,
-  User,
   X,
 } from '@tamagui/lucide-icons';
+import type { AgentRelationship, BoardAgentInfo } from '../../services/BoardApi';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../../app/_layout';
+import { getTerosClient } from '../../services/terosClientSingleton';
 import { useToast } from '../../components/Toast';
 import {
   type Board,
-  type BoardColumn,
   destroyBoardStore,
   getTasksByColumn,
-  PRIORITY_CONFIG,
-  type ProgressNote,
   type Project,
   type Task,
-  type TaskStatus,
   useBoardStore,
 } from '../../store/boardStore';
 import { useTilingStore } from '../../store/tilingStore';
+import { useWorkspaceStore } from '../../store/workspaceStore';
 import type { BoardWindowProps } from './definition';
 import { KanbanColumn } from './KanbanColumn';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { AppSpinner } from '../../components/ui';
 import { computeDependencyHighlights, type DependencyHighlight } from './board-utils';
+import { colors } from '../../components/mca/primitives/colors';
+import { useColors } from '../../components/mca/primitives/useColors';
 
 // ============================================================================
-// CONSTANTS
+// HELPERS
 // ============================================================================
 
-const STATUS_CONFIG: Record<TaskStatus, { label: string; color: string; bg: string }> = {
-  idle: { label: 'Idle', color: '#9CA3AF', bg: 'rgba(156,163,175,0.15)' },
-  assigned: { label: 'Assigned', color: '#60A5FA', bg: 'rgba(96,165,250,0.15)' },
-  working: { label: 'Working', color: '#F59E0B', bg: 'rgba(245,158,11,0.15)' },
-  blocked: { label: 'Blocked', color: '#EF4444', bg: 'rgba(239,68,68,0.15)' },
-  review: { label: 'Review', color: '#A78BFA', bg: 'rgba(167,139,250,0.15)' },
-  done: { label: 'Done', color: '#22C55E', bg: 'rgba(34,197,94,0.15)' },
-};
+/** Small circular agent avatar: image if available, else initials fallback. */
+function AgentAvatar({
+  name,
+  avatarUrl,
+  size = 14,
+  color = colors.violet,
+  bgColor = colors.violetGlow,
+}: {
+  name: string;
+  avatarUrl?: string;
+  size?: number;
+  color?: string;
+  bgColor?: string;
+}) {
+  const radius = size / 2;
+  if (avatarUrl) {
+    return (
+      <View style={{ width: size, height: size, borderRadius: radius, overflow: 'hidden' }}>
+        <img src={avatarUrl} style={{ width: size, height: size, borderRadius: radius, objectFit: 'cover' }} />
+      </View>
+    );
+  }
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        backgroundColor: bgColor,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text fontSize={size * 0.57} color={color} fontWeight="700">
+        {name[0] || '?'}
+      </Text>
+    </View>
+  );
+}
+
+// ============================================================================
+// AUTOPLAY TYPES & PANEL
+// ============================================================================
+
+/** Local UI state for one agent's autoplay config in this project */
+interface AgentRelationshipState {
+  agentId: string;
+  agentName: string;
+  avatarUrl?: string;
+  slots: number;
+  playEnabled: boolean;
+  activeSlots: number;
+}
+
+/**
+ * AgentPlayPanel — horizontal row: [label] [agent chips...] [+ Add runner]
+ * Each chip: avatar + name | slots −/+ | ▶/⏹ | active/total.
+ * "+ Add runner" button is the last item in the row; opens a dropdown below it.
+ */
+function AgentPlayPanel({
+  relationships,
+  availableAgents,
+  onSetSlots,
+  onSetPlay,
+  onAddRunner,
+  onRemoveRunner,
+}: {
+  relationships: AgentRelationshipState[];
+  availableAgents: BoardAgentInfo[];
+  onSetSlots: (agentId: string, slots: number) => void;
+  onSetPlay: (agentId: string, enabled: boolean) => void;
+  onAddRunner: (agentId: string) => void;
+  onRemoveRunner: (agentId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const c = useColors();
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+  const [dropdownAnchor, setDropdownAnchor] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const addButtonRef = useRef<View>(null);
+
+  const addedIds = new Set(relationships.map((r) => r.agentId));
+  const candidates = availableAgents.filter((a) => !addedIds.has(a.agentId));
+
+  const openDropdown = () => {
+    if (addButtonRef.current) {
+      addButtonRef.current.measure((_fx, _fy, width, height, px, py) => {
+        setDropdownAnchor({ x: px, y: py, width, height });
+        setShowAddDropdown(true);
+      });
+    } else {
+      setShowAddDropdown(true);
+    }
+  };
+
+  return (
+    <YStack gap="$1">
+      {/* Label row */}
+      <Text fontSize={11} color={c.text3} fontWeight="600">
+        {t("board.autoplay")}
+      </Text>
+
+      {/* Single horizontal row: agent chips + "+ Add runner" button */}
+      <XStack gap="$1" alignItems="center" flexWrap="wrap">
+        {relationships.map((rel) => (
+          <XStack
+            key={rel.agentId}
+            alignItems="center"
+            gap="$2"
+            backgroundColor={c.bgInner}
+            borderRadius={6}
+            paddingHorizontal={8}
+            paddingVertical={5}
+            borderWidth={1}
+            borderColor={rel.playEnabled ? 'rgba(34,197,94,0.35)' : c.border}
+          >
+            {/* Avatar + name */}
+            <AgentAvatar
+              name={rel.agentName}
+              avatarUrl={rel.avatarUrl}
+              size={18}
+              color={rel.playEnabled ? colors.green : colors.violet}
+              bgColor={rel.playEnabled ? 'rgba(34,197,94,0.18)' : 'rgba(139,92,246,0.18)'}
+            />
+            <Text fontSize={11} color={c.text} numberOfLines={1} maxWidth={80}>
+              {rel.agentName}
+            </Text>
+
+            {/* Slots −/+ */}
+            <XStack alignItems="center" gap="$1">
+              <TouchableOpacity
+                onPress={() => onSetSlots(rel.agentId, Math.max(0, rel.slots - 1))}
+                style={{
+                  width: 18, height: 18, borderRadius: 4,
+                  backgroundColor: c.bgCardHover,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Minus size={10} color={c.text3} />
+              </TouchableOpacity>
+              <Text fontSize={11} color={c.text2} minWidth={14} textAlign="center">
+                {rel.slots}
+              </Text>
+              <TouchableOpacity
+                onPress={() => onSetSlots(rel.agentId, rel.slots + 1)}
+                style={{
+                  width: 18, height: 18, borderRadius: 4,
+                  backgroundColor: c.bgCardHover,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Plus size={10} color={c.text3} />
+              </TouchableOpacity>
+            </XStack>
+
+            {/* Play/Stop — active if slots >= 1, dimmed hint if slots === 0 */}
+            <TouchableOpacity
+              onPress={() => rel.slots >= 1 ? onSetPlay(rel.agentId, !rel.playEnabled) : undefined}
+              style={{
+                width: 22, height: 22, borderRadius: 5,
+                backgroundColor: rel.slots === 0
+                  ? c.bgInner
+                  : rel.playEnabled ? 'rgba(34,197,94,0.18)' : 'rgba(139,92,246,0.12)',
+                alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: rel.slots === 0
+                  ? c.border
+                  : rel.playEnabled ? 'rgba(34,197,94,0.4)' : 'rgba(139,92,246,0.3)',
+                opacity: rel.slots === 0 ? 0.45 : 1,
+              }}
+            >
+              {rel.playEnabled
+                ? <Square size={10} color={colors.green} />
+                : <Play size={10} color={rel.slots === 0 ? c.text3 : colors.violet} />}
+            </TouchableOpacity>
+
+            {/* Active/total */}
+            <Text fontSize={10} color={c.text3} minWidth={28} textAlign="right">
+              {rel.activeSlots}/{rel.slots}
+            </Text>
+
+            {/* ✕ remove button */}
+            <TouchableOpacity
+              onPress={() => onRemoveRunner(rel.agentId)}
+              style={{
+                width: 14, height: 14, borderRadius: 3,
+                alignItems: 'center', justifyContent: 'center',
+                marginLeft: 2, opacity: 0.6,
+              }}
+            >
+              <X size={9} color={c.text3} />
+            </TouchableOpacity>
+          </XStack>
+        ))}
+
+        {/* "+ Add runner" button — last item in the row */}
+        <View ref={addButtonRef} collapsable={false}>
+          <TouchableOpacity
+            onPress={openDropdown}
+            style={{
+              flexDirection: 'row', alignItems: 'center', gap: 3,
+              paddingHorizontal: 7, paddingVertical: 5,
+              borderRadius: 6,
+              backgroundColor: showAddDropdown ? colors.violetGlow : c.bgInner,
+              borderWidth: 1,
+              borderColor: showAddDropdown ? 'rgba(139,92,246,0.4)' : c.border,
+            }}
+          >
+            <Plus size={10} color={colors.violet} />
+            <Text fontSize={10} color={colors.violet} fontWeight="600">{t("board.addRunner")}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Dropdown rendered in a Modal so it floats above all other elements */}
+        <Modal
+          visible={showAddDropdown}
+          transparent
+          animationType="none"
+          onRequestClose={() => setShowAddDropdown(false)}
+        >
+          {/* Backdrop — tap outside to close */}
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() => setShowAddDropdown(false)}
+          >
+            {/* Dropdown panel anchored below the button */}
+            <View
+              style={{
+                position: 'absolute',
+                top: dropdownAnchor ? dropdownAnchor.y + dropdownAnchor.height + 4 : 100,
+                left: dropdownAnchor ? dropdownAnchor.x : 100,
+                backgroundColor: c.bgCard,
+                borderRadius: 7,
+                borderWidth: 1,
+                borderColor: 'rgba(139,92,246,0.25)',
+                paddingVertical: 4,
+                minWidth: 160,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.25,
+                shadowRadius: 12,
+                elevation: 20,
+              }}
+            >
+              {candidates.length === 0 ? (
+                <Text
+                  fontSize={11} color={c.text3}
+                  paddingHorizontal={10} paddingVertical={6}
+                >
+                  {t("board.noAgentsAvailable")}
+                </Text>
+              ) : (
+                candidates.map((agent) => (
+                  <TouchableOpacity
+                    key={agent.agentId}
+                    onPress={() => { onAddRunner(agent.agentId); setShowAddDropdown(false); }}
+                    style={{
+                      flexDirection: 'row', alignItems: 'center', gap: 8,
+                      paddingHorizontal: 10, paddingVertical: 7,
+                    }}
+                  >
+                    <AgentAvatar
+                      name={agent.name}
+                      avatarUrl={agent.avatarUrl}
+                      size={18}
+                      color={colors.violet}
+                      bgColor="rgba(139,92,246,0.18)"
+                    />
+                    <Text fontSize={12} color={c.text}>{agent.name}</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          </Pressable>
+        </Modal>
+      </XStack>
+    </YStack>
+  );
+}
 
 // ============================================================================
 // MAIN COMPONENT
@@ -83,6 +357,8 @@ export function BoardWindowContent({
   workspaceId: initialWorkspaceId,
   projectId: initialProjectId,
 }: BoardWindowContentProps) {
+  const { t } = useTranslation();
+  const c = useColors();
   const client = getTerosClient();
   const toast = useToast();
   const router = useRouter();
@@ -110,19 +386,67 @@ export function BoardWindowContent({
     setLoadingBoard,
     setCreatingTask,
     addProject,
-    removeProject,
   } = useBoardStore(windowId);
 
+  // workspaceId: single source of truth — prop takes priority, falls back to
+  // active workspace from Zustand store (handles late AsyncStorage hydration).
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
+  const workspaceId = initialWorkspaceId || activeWorkspaceId || '';
+
+  // WebSocket connection state — data loading must wait until connected.
+  // Initialized as false (not client.isConnected()) so that on remount
+  // (rotation / split view) the false→true transition always fires and
+  // triggers the data-loading effects even when the socket is already up.
+  const [connected, setConnected] = useState(false);
+
+  // Track WebSocket connection state so data loading waits until connected.
+  // This mirrors the pattern used by ConversationsWindow.
+  useEffect(() => {
+    const handleConnected = () => setConnected(true);
+    const handleDisconnected = () => setConnected(false);
+    client.on('connected', handleConnected);
+    client.on('disconnected', handleDisconnected);
+    // Sync current state in case the client connected before this effect ran
+    setConnected(client.isConnected());
+    return () => {
+      client.off('connected', handleConnected);
+      client.off('disconnected', handleDisconnected);
+    };
+  }, [client]);
+
   // Local UI state
-  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId || '');
   const [showProjectPicker, setShowProjectPicker] = useState(false);
   const [showCreateProject, setShowCreateProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [addingToColumn, setAddingToColumn] = useState<string | null>(null);
   const [showTaskDetail, setShowTaskDetail] = useState(false);
-  const [workspaces, setWorkspaces] = useState<Array<{ workspaceId: string; name: string }>>([]);
-  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
+  const boardRootRef = useRef<HTMLElement | null>(null);
+
+  // Click-outside detection for the task detail panel (web only).
+  // Closes the panel when clicking outside of it AND outside of task cards.
+  // Clicks on task cards are handled by their own onPress (selects that task).
+  useEffect(() => {
+    if (!showTaskDetail || Platform.OS !== 'web') return;
+
+    const root = boardRootRef.current;
+    if (!root) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // If the click is inside the detail panel, do nothing
+      if (target.closest('[data-task-detail-panel]')) return;
+      // If the click is on a task card, do nothing — the card's onPress handles it
+      if (target.closest('[data-task-card]')) return;
+      // Otherwise, close the panel
+      setShowTaskDetail(false);
+      setSelectedTask(null);
+    };
+
+    root.addEventListener('mousedown', handleClickOutside);
+    return () => root.removeEventListener('mousedown', handleClickOutside);
+  }, [showTaskDetail]);
 
   // Agent name/avatar cache
   const [agentMap, setAgentMap] = useState<Record<string, { name: string; avatarUrl?: string }>>(
@@ -132,24 +456,22 @@ export function BoardWindowContent({
     Record<string, { name: string; avatarUrl?: string }>
   >({});
 
-  // Auto-dispatcher state
-  const [workerSlots, setWorkerSlots] = useState<Record<string, number>>({}); // agentId -> max concurrent tasks
-  const [autoDispatchRunning, setAutoDispatchRunning] = useState(false);
-
-  // Supervisor state
-  const [selectedSupervisorId, setSelectedSupervisorId] = useState<string | null>(null);
-  const [activeSupervisorChannelId, setActiveSupervisorChannelId] = useState<string | null>(null);
-  const [showSupervisorPicker, setShowSupervisorPicker] = useState(false);
-
   // Tag filters state
   const [activeTagFilters, setActiveTagFilters] = useState<Set<string>>(new Set());
   const [showTagFilterDropdown, setShowTagFilterDropdown] = useState(false);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const tagSearchInputRef = useRef<any>(null);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
 
   // Dependency highlight: taskId being hovered triggers highlight on its dependents
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+
+  // Autoplay v2: agent relationships (slots, playEnabled, activeSlots)
+  const [agentRelationships, setAgentRelationships] = useState<AgentRelationshipState[]>([]);
+  // Autoplay v2: all board-capable agents in the workspace (for "+ Add runner" dropdown)
+  const [availableAgents, setAvailableAgents] = useState<BoardAgentInfo[]>([]);
 
   // Computed: unique tags from all tasks
   const allTags = useMemo(() => {
@@ -163,6 +485,13 @@ export function BoardWindowContent({
     }
     return Array.from(tagSet).sort();
   }, [tasks]);
+
+  // Computed: tags filtered by the search query inside the dropdown
+  const visibleTagsInDropdown = useMemo(() => {
+    if (!tagSearchQuery.trim()) return allTags;
+    const q = tagSearchQuery.trim().toLowerCase();
+    return allTags.filter((tag) => tag.toLowerCase().includes(q));
+  }, [allTags, tagSearchQuery]);
 
   // Computed: filtered tasks based on active tag filters AND search query
   const filteredTasks = useMemo(() => {
@@ -185,6 +514,8 @@ export function BoardWindowContent({
         if (task.title.toLowerCase().includes(query)) return true;
         // Search in description
         if (task.description && task.description.toLowerCase().includes(query)) return true;
+        // Search in instructions
+        if (task.instructions && task.instructions.toLowerCase().includes(query)) return true;
         // Search in tags
         if (task.tags && task.tags.some((tag) => tag.toLowerCase().includes(query))) return true;
         return false;
@@ -205,7 +536,6 @@ export function BoardWindowContent({
     return map;
   }, [tasks, board]);
 
-  // Computed
   const tasksByColumn = useMemo(() => {
     if (!board) return new Map<string, Task[]>();
     return getTasksByColumn(filteredTasks, board.columns);
@@ -237,6 +567,17 @@ export function BoardWindowContent({
     });
   }, []);
 
+  // Auto-focus tag search input when dropdown opens; reset search when it closes
+  useEffect(() => {
+    if (showTagFilterDropdown) {
+      setTagSearchQuery('');
+      // Small delay to ensure the input is rendered before focusing
+      setTimeout(() => {
+        tagSearchInputRef.current?.focus();
+      }, 50);
+    }
+  }, [showTagFilterDropdown]);
+
   const currentProject = useMemo(
     () => projects.find((p) => p.projectId === currentProjectId) || null,
     [projects, currentProjectId],
@@ -246,89 +587,67 @@ export function BoardWindowContent({
   // DATA LOADING
   // ========================================================================
 
-  // Load workspaces on mount
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await client.listWorkspaces();
-        setWorkspaces(data);
-        // Auto-select first workspace if none provided
-        if (!workspaceId && data.length > 0) {
-          setWorkspaceId(data[0].workspaceId);
+  // Load workspace agents filtered by MCA access (board-runner / board-manager).
+  const loadFilteredAgents = useCallback(async (wsId: string) => {
+    try {
+      const { agents } = await client.agent.listAgents(wsId);
+
+      // Fetch app access for all agents in parallel
+      const appsResults = await Promise.all(
+        agents.map((a) =>
+          client.getAgentApps(a.agentId).catch(() => [] as Array<{ mcaId: string }>),
+        ),
+      );
+
+      const workerMap: Record<string, { name: string; avatarUrl?: string }> = {};
+      const supervisorMap: Record<string, { name: string; avatarUrl?: string }> = {};
+
+      agents.forEach((agent, i) => {
+        const apps = appsResults[i];
+        const mcaIds = apps.map((app: any) => app.mcaId);
+        if (mcaIds.includes('mca.teros.board-runner')) {
+          workerMap[agent.agentId] = { name: agent.name, avatarUrl: agent.avatarUrl };
         }
-      } catch (err) {
-        console.error('Error loading workspaces:', err);
-      }
-    };
-    if (client.isConnected()) {
-      load();
-    } else {
-      const onConnected = () => {
-        client.off('connected', onConnected);
-        load();
-      };
-      client.on('connected', onConnected);
-      return () => client.off('connected', onConnected);
-    }
-  }, []);
+        if (mcaIds.includes('mca.teros.board-manager')) {
+          supervisorMap[agent.agentId] = { name: agent.name, avatarUrl: agent.avatarUrl };
+        }
+      });
 
-  // Load projects and agents when workspace changes
-  useEffect(() => {
-    if (!workspaceId) return;
-    loadProjects();
+      setAgentMap(workerMap);
+      setGlobalAgentMap(supervisorMap);
 
-    // Load workspace agents filtered by MCA access
-    const loadFilteredAgents = async () => {
+      // Load board-capable agents (workspace + superagents) for the "+ Add runner" dropdown
       try {
-        const { agents } = await client.agent.listAgents(workspaceId);
-
-        // Fetch app access for all agents in parallel
-        const appsResults = await Promise.all(
-          agents.map((a) =>
-            client.getAgentApps(a.agentId).catch(() => [] as Array<{ mcaId: string }>),
-          ),
-        );
-
-        const workerMap: Record<string, { name: string; avatarUrl?: string }> = {};
-        const supervisorMap: Record<string, { name: string; avatarUrl?: string }> = {};
-
-        agents.forEach((agent, i) => {
-          const apps = appsResults[i];
-          const mcaIds = apps.map((app: any) => app.mcaId);
-          if (mcaIds.includes('mca.teros.board-runner')) {
-            workerMap[agent.agentId] = { name: agent.name, avatarUrl: agent.avatarUrl };
-          }
-          if (mcaIds.includes('mca.teros.board-manager')) {
-            supervisorMap[agent.agentId] = { name: agent.name, avatarUrl: agent.avatarUrl };
-          }
-        });
-
-        setAgentMap(workerMap);
-        setGlobalAgentMap(supervisorMap);
+        const { agents: boardAgents } = await client.board.listBoardAgents(wsId);
+        setAvailableAgents(boardAgents);
       } catch (err) {
-        console.error('Error loading agents:', err);
+        console.error('Error loading board agents:', err);
       }
-    };
+    } catch (err) {
+      console.error('Error loading agents:', err);
+    }
+  }, [client]);
 
-    loadFilteredAgents();
-  }, [workspaceId]);
+  // Load projects (and select the initial one) + agents when workspaceId is available
+  // AND the WebSocket is connected. Without the connected guard, navigating directly
+  // to /board/[projectId] (e.g. on page reload) would call sendFrameworkRequest before
+  // the WebSocket handshake completes, causing a "Not connected to server" error.
+  useEffect(() => {
+    if (!workspaceId || !connected) return;
+    loadProjects(initialProjectId ?? null);
+    loadFilteredAgents(workspaceId);
+  }, [workspaceId, connected]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load board when project changes
+  // Load board when the selected project changes (also gated on connection).
   useEffect(() => {
     if (!currentProjectId) {
       setBoard(null);
       setTasks([]);
       return;
     }
+    if (!connected) return;
     loadBoard(currentProjectId);
-  }, [currentProjectId]);
-
-  // Auto-select initial project
-  useEffect(() => {
-    if (initialProjectId && !currentProjectId) {
-      setCurrentProject(initialProjectId);
-    }
-  }, [initialProjectId]);
+  }, [currentProjectId, connected]);
 
   // Destroy this window's board store on unmount to free memory
   useEffect(() => {
@@ -353,8 +672,6 @@ export function BoardWindowContent({
   // REAL-TIME BOARD SUBSCRIPTION
   // ========================================================================
 
-  const subscribedBoardRef = useRef<string | null>(null);
-
   useEffect(() => {
     if (!board) return;
 
@@ -364,7 +681,6 @@ export function BoardWindowContent({
     client.board.subscribeBoard(boardId).catch((err) => {
       console.warn('[BoardWindowContent] subscribeBoard error:', err);
     });
-    subscribedBoardRef.current = boardId;
 
     const onTaskCreated = (msg: any) => {
       if (msg.task) addTask(msg.task);
@@ -378,21 +694,51 @@ export function BoardWindowContent({
     const onTaskDeleted = (msg: any) => {
       if (msg.taskId) removeTask(msg.taskId);
     };
+    const onAgentConfigUpdated = (msg: any) => {
+      if (!msg.agentId) return;
+      setAgentRelationships((prev) => {
+        const exists = prev.some((r) => r.agentId === msg.agentId);
+        if (exists) {
+          return prev.map((r) =>
+            r.agentId === msg.agentId
+              ? {
+                  ...r,
+                  slots: msg.slots ?? r.slots,
+                  playEnabled: msg.playEnabled ?? r.playEnabled,
+                  activeSlots: msg.activeSlots ?? r.activeSlots,
+                }
+              : r,
+          );
+        }
+        // New agent relationship received — add it
+        return [
+          ...prev,
+          {
+            agentId: msg.agentId,
+            agentName: msg.agentId,
+            slots: msg.slots ?? 0,
+            playEnabled: msg.playEnabled ?? false,
+            activeSlots: msg.activeSlots ?? 0,
+          },
+        ];
+      });
+    };
 
     client.on('board_task_created', onTaskCreated);
     client.on('board_tasks_batch_created', onBatchCreated);
     client.on('board_task_updated', onTaskUpdated);
     client.on('board_task_deleted', onTaskDeleted);
+    client.on('board_agent_config_updated', onAgentConfigUpdated);
 
     return () => {
       client.board.unsubscribeBoard(boardId).catch((err) => {
         console.warn('[BoardWindowContent] unsubscribeBoard error:', err);
       });
-      subscribedBoardRef.current = null;
       client.off('board_task_created', onTaskCreated);
       client.off('board_tasks_batch_created', onBatchCreated);
       client.off('board_task_updated', onTaskUpdated);
       client.off('board_task_deleted', onTaskDeleted);
+      client.off('board_agent_config_updated', onAgentConfigUpdated);
     };
   }, [board?.boardId]);
 
@@ -400,23 +746,20 @@ export function BoardWindowContent({
   // DATA FETCHING
   // ========================================================================
 
-  const loadProjects = async () => {
+  const loadProjects = async (targetProjectId: string | null = null) => {
     setLoadingProjects(true);
     try {
       const result = await client.board.listProjects(workspaceId);
       setProjects((result.projects || []) as any);
-      // Auto-select project if none selected:
-      // Prefer initialProjectId (restored from props) over the first project
+      // Auto-select project if none is currently selected.
+      // Prefer targetProjectId (restored from props) over the first project in the list.
       if (!currentProjectId && result.projects?.length > 0) {
-        const restoredProject = initialProjectId
-          ? result.projects.find((p: any) => p.projectId === initialProjectId)
+        const restoredProject = targetProjectId
+          ? result.projects.find((p: any) => p.projectId === targetProjectId)
           : null;
         const projectToSelect = restoredProject || result.projects[0];
         setCurrentProject(projectToSelect.projectId);
-        // Update URL to reflect the selected project
-        if (workspaceId) {
-          router.push(`/workspace/${workspaceId}/board/${projectToSelect.projectId}`);
-        }
+        // URL sync is handled by the updateWindowProps effect (useUrlSync)
       }
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
@@ -428,17 +771,27 @@ export function BoardWindowContent({
   const loadBoard = async (projectId: string) => {
     setLoadingBoard(true);
     try {
-      const result = await client.board.getBoard(projectId);
+      const result = await client.board.getBoard(projectId) as any;
       setBoard(result.board as any);
       setTasks((result.tasks || []) as any);
-      
-      // Restore board config if it exists
-      if (result.board?.config) {
-        const config = result.board.config;
-        if (config.workerSlots) setWorkerSlots(config.workerSlots);
-        if (config.autoDispatchRunning !== undefined) setAutoDispatchRunning(config.autoDispatchRunning);
-        if (config.selectedSupervisorId !== undefined) setSelectedSupervisorId(config.selectedSupervisorId);
-        if (config.activeSupervisorChannelId !== undefined) setActiveSupervisorChannelId(config.activeSupervisorChannelId);
+
+      // Populate agentRelationships from board.get response (autoplay v2)
+      if (Array.isArray(result.agentRelationships)) {
+        const rels: AgentRelationshipState[] = result.agentRelationships.map((rel: any) => {
+          const agentInfo = globalAgentMap[rel.agentId] || agentMap[rel.agentId];
+          return {
+            agentId: rel.agentId,
+            // prefer local map name (already resolved), fall back to what backend sent
+            agentName: agentInfo?.name || rel.agentName || rel.agentId,
+            // prefer local map avatar, fall back to avatarUrl from backend (covers superagents
+            // and agents that don't appear in any task and thus aren't in the local map)
+            avatarUrl: agentInfo?.avatarUrl ?? rel.avatarUrl,
+            slots: rel.slots ?? 0,
+            playEnabled: rel.playEnabled ?? false,
+            activeSlots: rel.activeSlots ?? 0,
+          };
+        });
+        setAgentRelationships(rels);
       }
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
@@ -459,7 +812,7 @@ export function BoardWindowContent({
       setCurrentProject(result.project.projectId);
       setNewProjectName('');
       setShowCreateProject(false);
-      toast.success('Proyecto creado');
+      toast.success(t("board.projectCreated"));
       // Update URL to reflect the new project
       router.push(`/workspace/${workspaceId}/board/${result.project.projectId}`);
     } catch (err: any) {
@@ -552,7 +905,7 @@ export function BoardWindowContent({
         setSelectedTask(null);
         setShowTaskDetail(false);
       }
-      toast.success('Tarea eliminada');
+      toast.success(t("board.taskDeleted"));
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
     }
@@ -575,163 +928,126 @@ export function BoardWindowContent({
     try {
       const result = await client.board.startTask(taskId, agentId);
       updateTaskInStore(result.task as any);
-      toast.success('Tarea iniciada');
-      // Open the conversation that was created
-      if (result.task?.channelId) {
-        openWindow('chat', { channelId: result.task.channelId }, false, windowId);
-      }
+      toast.success(t("board.taskStarted"));
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
     }
   };
 
-  // Start supervisor: create conversation and send briefing
-  const handleStartSupervisor = async () => {
-    if (!selectedSupervisorId || !board || !currentProject) return;
-
+  const handleStopTask = async (taskId: string) => {
     try {
-      // Build briefing message
-      const todoCol = board.columns.find((c) => c.slug === 'todo');
-      const todoCount = todoCol ? tasks.filter((t) => t.columnId === todoCol.columnId).length : 0;
-
-      const workersList = Object.entries(workerSlots)
-        .filter(([_, slots]) => slots > 0)
-        .map(([agentId, slots]) => {
-          const agent = agentMap[agentId];
-          return `- ${agent?.name || agentId}: ${slots} slot${slots > 1 ? 's' : ''}`;
-        })
-        .join('\n');
-
-      const briefing = `# Board Supervisor Briefing
-
-**Workspace:** ${workspaces.find((w) => w.workspaceId === workspaceId)?.name || workspaceId} (workspaceId: \`${workspaceId}\`)
-**Project:** ${currentProject.name} (projectId: \`${currentProject.projectId}\`)
-**To Do tasks:** ${todoCount}
-
-**Available workers:**
-${workersList || '(none configured)'}
-
-You are now supervising this board. You have full control over task assignment and execution. Work independently — only stop to ask the user if you need explicit feedback or clarification on a specific aspect of the project that you cannot resolve on your own. If something seems like a reasonable decision, make it and move forward.
-
-**Your role is supervisor, not executor.** You do not implement tasks yourself. Your job is to assign tasks to the available workers, launch them, and monitor their progress through the task's linked conversation (channelId). If a worker reports a blocker or proposes something, evaluate it and act accordingly — reassign, create a new task, or unblock them.
-
-**Important rules:**
-- Only work on tasks in the **To Do** and **In Progress** columns. Never touch the Backlog.
-- When a task is completed, move it to **Review** (not Done). The user will review and close it.`;
-
-      // Create channel with initial briefing message
-      const result = await client.channel.createWithMessage({
-        agentId: selectedSupervisorId,
-        content: { type: "text", text: briefing },
-        workspaceId,
-      });
-
-      // Set active supervisor using channelId
-      const newChannelId = result.channelId;
-      setActiveSupervisorChannelId(newChannelId);
-
-      // Persist immediately (don't rely on debounce)
-      await client.board.updateBoardConfig(currentProject.projectId, {
-        workerSlots,
-        autoDispatchRunning,
-        selectedSupervisorId,
-        activeSupervisorChannelId: newChannelId,
-      });
-
-      toast.success('Supervisor iniciado');
-
-      // Open supervisor conversation in a new tab
-      openWindow('chat', { channelId: result.channelId }, true, windowId);
+      const result = await client.board.stopTask(taskId);
+      updateTaskInStore(result.task as any);
+      toast.success(t("board.stopRequested"));
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
     }
   };
 
-  // Auto-dispatcher: dispatch tasks from To Do to available agents
-  const dispatchingRef = useRef(false);
-  const dispatchNext = useCallback(async () => {
-    if (!board || dispatchingRef.current) return;
-    dispatchingRef.current = true;
-
-    try {
-      const todoCol = board.columns.find((c) => c.slug === 'todo');
-      const inProgressCol = board.columns.find((c) => c.slug === 'in_progress');
-      if (!todoCol) return;
-
-      const todoTasks = tasks
-        .filter((t) => t.columnId === todoCol.columnId)
-        .sort((a, b) => a.position - b.position);
-
-      if (todoTasks.length === 0) {
-        setAutoDispatchRunning(false);
-        return;
-      }
-
-      // Count busy slots: tasks that are running OR already in progress for this agent
-      const busyCount: Record<string, number> = {};
-      for (const t of tasks) {
-        if (
-          t.assignedAgentId &&
-          (t.running || (inProgressCol && t.columnId === inProgressCol.columnId))
-        ) {
-          busyCount[t.assignedAgentId] = (busyCount[t.assignedAgentId] || 0) + 1;
-        }
-      }
-
-      // Find agents with free slots
-      const availableAgents: string[] = [];
-      for (const [agentId, maxSlots] of Object.entries(workerSlots)) {
-        if (maxSlots <= 0) continue;
-        const busy = busyCount[agentId] || 0;
-        const free = maxSlots - busy;
-        for (let i = 0; i < free; i++) {
-          availableAgents.push(agentId);
-        }
-      }
-
-      if (availableAgents.length === 0) return;
-
-      // Dispatch ONE task at a time, then let the effect re-trigger for the next
-      const task = todoTasks[0];
-      const agentId = availableAgents[0];
-      try {
-        const result = await client.board.startTask(task.taskId, agentId);
-        updateTaskInStore(result.task as any);
-      } catch (err: any) {
-        toast.error(`Error dispatching ${task.title}: ${err.message}`);
-      }
-    } finally {
-      dispatchingRef.current = false;
+  // Complete task: move to Done column
+  const handleCompleteTask = async (taskId: string) => {
+    if (!board) return;
+    const doneCol = board.columns.find((c) => c.slug === 'done');
+    if (!doneCol) {
+      toast.error('Done column not found');
+      return;
     }
-  }, [board, tasks, workerSlots, updateTaskInStore, toast]);
+    try {
+      const result = await client.board.moveTask(taskId, doneCol.columnId);
+      updateTaskInStore(result.task as any);
+      toast.success('Task completed');
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+    }
+  };
 
-  // Auto-dispatch loop: watch for task changes and dispatch next
-  useEffect(() => {
-    if (!autoDispatchRunning) return;
-    // Small delay to let store settle after task updates
-    const timer = setTimeout(() => dispatchNext(), 500);
-    return () => clearTimeout(timer);
-  }, [autoDispatchRunning, tasks, dispatchNext]);
+  // Archive task (soft-delete). If reason is provided, add a progress note first.
+  const handleArchiveTask = async (taskId: string, reason?: string) => {
+    try {
+      if (reason && reason.trim()) {
+        await client.board.addProgressNote(taskId, `Cancelada: ${reason.trim()}`);
+      }
+      const result = await client.board.archiveTask(taskId, true);
+      updateTaskInStore(result.task as any);
+      if (selectedTaskId === taskId) {
+        setSelectedTask(null);
+        setShowTaskDetail(false);
+      }
+      toast.success('Task archived');
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+    }
+  };
 
-  // Persist board config when it changes (debounced)
-  useEffect(() => {
-    if (!currentProjectId || !board) return;
-    
-    const timer = setTimeout(() => {
-      const config = {
-        workerSlots,
-        autoDispatchRunning,
-        selectedSupervisorId,
-        activeSupervisorChannelId,
-      };
-      
-      client.board.updateBoardConfig(currentProjectId, config).catch((err) => {
-        console.error('Error saving board config:', err);
-      });
-    }, 500);
+  const handleSetSlots = async (agentId: string, slots: number) => {
+    if (!currentProjectId) return;
+    // Optimistic update
+    setAgentRelationships((prev) =>
+      prev.map((r) => (r.agentId === agentId ? { ...r, slots } : r)),
+    );
+    try {
+      await client.board.setAgentSlots(currentProjectId, agentId, slots);
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+      // Revert on error by reloading
+      loadBoard(currentProjectId);
+    }
+  };
 
-    return () => clearTimeout(timer);
-  }, [workerSlots, autoDispatchRunning, selectedSupervisorId, activeSupervisorChannelId, currentProjectId, board]);
+  const handleSetPlay = async (agentId: string, enabled: boolean) => {
+    if (!currentProjectId) return;
+    // Optimistic update
+    setAgentRelationships((prev) =>
+      prev.map((r) => (r.agentId === agentId ? { ...r, playEnabled: enabled } : r)),
+    );
+    try {
+      await client.board.setAgentPlay(currentProjectId, agentId, enabled);
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+      // Revert on error by reloading
+      loadBoard(currentProjectId);
+    }
+  };
+
+  const handleRemoveRunner = async (agentId: string) => {
+    if (!currentProjectId) return;
+    // Optimistic: remove from panel immediately
+    setAgentRelationships((prev) => prev.filter((r) => r.agentId !== agentId));
+    try {
+      await client.board.removeAgent(currentProjectId, agentId);
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+      // Revert on error
+      loadBoard(currentProjectId);
+    }
+  };
+
+  const handleAddRunner = async (agentId: string) => {
+    if (!currentProjectId) return;
+    // Find agent info from availableAgents for optimistic update
+    const agentInfo = availableAgents.find((a) => a.agentId === agentId);
+    if (!agentInfo) return;
+    // Optimistic: add to panel with slots:0, playEnabled:false
+    setAgentRelationships((prev) => [
+      ...prev,
+      {
+        agentId,
+        agentName: agentInfo.name,
+        avatarUrl: agentInfo.avatarUrl,
+        slots: 0,
+        playEnabled: false,
+        activeSlots: 0,
+      },
+    ]);
+    try {
+      // setAgentSlots with slots:0 creates the relationship in backend
+      await client.board.setAgentSlots(currentProjectId, agentId, 0);
+    } catch (err: any) {
+      toast.error(`Error: ${err.message}`);
+      // Revert on error
+      setAgentRelationships((prev) => prev.filter((r) => r.agentId !== agentId));
+    }
+  };
 
   // ========================================================================
   // RENDER: CONTENT BELOW HEADER (computed)
@@ -742,12 +1058,12 @@ You are now supervising this board. You have full control over task assignment a
     if (!workspaceId) {
       return (
         <YStack flex={1} alignItems="center" justifyContent="center" padding="$4">
-          <SquareKanban size={40} color="#8B5CF6" />
-          <Text fontSize={16} fontWeight="600" color="$color" marginTop="$3">
-            Selecciona un workspace
+          <SquareKanban size={40} color={colors.violet} />
+          <Text fontSize={16} fontWeight="600" color={c.text} marginTop="$3">
+            {t("board.selectWorkspace")}
           </Text>
-          <Text fontSize={13} color="$color" opacity={0.5} marginTop="$1">
-            Usa el selector de arriba para elegir uno
+          <Text fontSize={13} color={c.text2} marginTop="$1">
+            {t("board.selectWorkspaceHint")}
           </Text>
         </YStack>
       );
@@ -758,8 +1074,8 @@ You are now supervising this board. You have full control over task assignment a
       return (
         <YStack flex={1} alignItems="center" justifyContent="center">
           <AppSpinner size="lg" variant="board" />
-          <Text fontSize={13} color="$color" opacity={0.5} marginTop="$2">
-            Cargando proyectos...
+          <Text fontSize={13} color={c.text2} marginTop="$2">
+            {t("board.loadingProjects")}
           </Text>
         </YStack>
       );
@@ -769,26 +1085,26 @@ You are now supervising this board. You have full control over task assignment a
     if (projects.length === 0 && !isLoadingProjects && workspaceId) {
       return (
         <YStack flex={1} alignItems="center" justifyContent="center" padding="$4">
-          <Folder size={40} color="#8B5CF6" />
-          <Text fontSize={16} fontWeight="600" color="$color" marginTop="$3">
-            No hay proyectos
+          <Folder size={40} color={colors.violet} />
+          <Text fontSize={16} fontWeight="600" color={c.text} marginTop="$3">
+            {t("board.noProjects")}
           </Text>
-          <Text fontSize={13} color="$color" opacity={0.5} marginTop="$1" textAlign="center">
-            Crea un proyecto para empezar a organizar tareas
+          <Text fontSize={13} color={c.text2} marginTop="$1" textAlign="center">
+            {t("board.noProjectsHint")}
           </Text>
           {!showCreateProject ? (
             <TouchableOpacity
               onPress={() => setShowCreateProject(true)}
               style={{
                 marginTop: 16,
-                backgroundColor: '#8B5CF6',
+                backgroundColor: colors.violet,
                 paddingHorizontal: 20,
                 paddingVertical: 10,
                 borderRadius: 8,
               }}
             >
               <Text color="white" fontWeight="600" fontSize={14}>
-                Crear proyecto
+                {t("board.createProject")}
               </Text>
             </TouchableOpacity>
           ) : (
@@ -796,24 +1112,24 @@ You are now supervising this board. You have full control over task assignment a
               <TextInput
                 value={newProjectName}
                 onChangeText={setNewProjectName}
-                placeholder="Nombre del proyecto..."
-                placeholderTextColor="#999"
+                placeholder={t("board.projectNamePlaceholder")}
+                placeholderTextColor={c.text3}
                 autoFocus
                 onSubmitEditing={handleCreateProject}
                 style={{
-                  backgroundColor: 'rgba(255,255,255,0.08)',
+                  backgroundColor: c.bgInner,
                   borderRadius: 8,
                   paddingHorizontal: 12,
                   paddingVertical: 8,
-                  color: 'white',
+                  color: c.text,
                   fontSize: 14,
                   width: 200,
                   borderWidth: 1,
-                  borderColor: 'rgba(139,92,246,0.3)',
+                  borderColor: 'rgba(139,92,246,0.35)',
                 }}
               />
               <TouchableOpacity onPress={handleCreateProject}>
-                <Check size={20} color="#22C55E" />
+                <Check size={20} color={colors.green} />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => {
@@ -821,7 +1137,7 @@ You are now supervising this board. You have full control over task assignment a
                   setNewProjectName('');
                 }}
               >
-                <X size={20} color="#EF4444" />
+                <X size={20} color={colors.red} />
               </TouchableOpacity>
             </XStack>
           )}
@@ -840,10 +1156,6 @@ You are now supervising this board. You have full control over task assignment a
 
     // Board loaded
     if (board) {
-      const todoCol = board.columns.find((c) => c.slug === 'todo');
-      const todoCount = todoCol ? (tasksByColumn.get(todoCol.columnId) || []).length : 0;
-      const totalWorkerSlots = Object.values(workerSlots).reduce((a, b) => a + b, 0);
-
       return (
         <YStack flex={1}>
           <XStack
@@ -852,430 +1164,37 @@ You are now supervising this board. You have full control over task assignment a
             alignItems="flex-start"
             gap="$3"
             borderBottomWidth={1}
-            borderBottomColor="rgba(255,255,255,0.06)"
+            borderBottomColor={c.border}
             flexWrap="wrap"
           >
-            {/* Supervisor column */}
-            <YStack gap="$1">
-              <Text fontSize={11} color="$color" opacity={0.5} fontWeight="600">
-                Supervisor
-              </Text>
-              {(() => {
-                // Detect if there's any work happening
-                const hasRunningTasks = tasks.some((t) => t.running);
-                const inProgressCol = board?.columns.find((c) => c.slug === 'in_progress');
-                const hasInProgressTasks = inProgressCol
-                  ? tasks.some((t) => t.columnId === inProgressCol.columnId)
-                  : false;
-                const isWorking = hasRunningTasks || hasInProgressTasks;
+            {/* Left: Autoplay panel */}
+            <AgentPlayPanel
+              relationships={agentRelationships}
+              availableAgents={availableAgents}
+              onSetSlots={handleSetSlots}
+              onSetPlay={handleSetPlay}
+              onAddRunner={handleAddRunner}
+              onRemoveRunner={handleRemoveRunner}
+            />
 
-                // State a) No supervisor selected
-                if (!selectedSupervisorId) {
-                  return (
-                    <Pressable
-                      onPress={() => setShowSupervisorPicker(!showSupervisorPicker)}
-                      style={{
-                        backgroundColor: 'rgba(255,255,255,0.05)',
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
-                    >
-                      <User size={12} color="rgba(255,255,255,0.4)" />
-                      <Text fontSize={11} color="$color" opacity={0.5}>
-                        Seleccionar
-                      </Text>
-                      <ChevronDown size={10} color="rgba(255,255,255,0.4)" />
-                    </Pressable>
-                  );
-                }
+            {/* Spacer — pushes Tags + Search to the right */}
+            <XStack flex={1} />
 
-                // State b) Selected but not active
-                if (!activeSupervisorChannelId) {
-                  return (
-                    <XStack
-                      alignItems="center"
-                      gap={6}
-                      backgroundColor="rgba(255,255,255,0.05)"
-                      borderRadius={6}
-                      paddingHorizontal={8}
-                      paddingVertical={4}
-                    >
-                      {globalAgentMap[selectedSupervisorId]?.avatarUrl ? (
-                        <View
-                          style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden' }}
-                        >
-                          <img
-                            src={globalAgentMap[selectedSupervisorId].avatarUrl}
-                            style={{ width: 16, height: 16, borderRadius: 8, objectFit: 'cover' }}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            backgroundColor: 'rgba(139,92,246,0.25)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text fontSize={9} color="#8B5CF6" fontWeight="700">
-                            {globalAgentMap[selectedSupervisorId]?.name[0] || 'S'}
-                          </Text>
-                        </View>
-                      )}
-                      <Text fontSize={11} color="$color" opacity={0.7}>
-                        {globalAgentMap[selectedSupervisorId]?.name || 'Supervisor'}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => setSelectedSupervisorId(null)}
-                        style={{ padding: 2 }}
-                      >
-                        <X size={12} color="#9CA3AF" />
-                      </TouchableOpacity>
-                    </XStack>
-                  );
-                }
-
-                // State c) Active and working
-                if (isWorking) {
-                  return (
-                    <XStack
-                      alignItems="center"
-                      gap={6}
-                      backgroundColor="rgba(139,92,246,0.15)"
-                      borderRadius={6}
-                      paddingHorizontal={8}
-                      paddingVertical={4}
-                    >
-                      {globalAgentMap[selectedSupervisorId]?.avatarUrl ? (
-                        <View
-                          style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden' }}
-                        >
-                          <img
-                            src={globalAgentMap[selectedSupervisorId].avatarUrl}
-                            style={{ width: 16, height: 16, borderRadius: 8, objectFit: 'cover' }}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            backgroundColor: 'rgba(139,92,246,0.3)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text fontSize={9} color="#8B5CF6" fontWeight="700">
-                            {globalAgentMap[selectedSupervisorId]?.name[0] || 'S'}
-                          </Text>
-                        </View>
-                      )}
-                      <Text fontSize={11} color="#8B5CF6" fontWeight="600">
-                        {globalAgentMap[selectedSupervisorId]?.name || 'Supervisor'}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => handleOpenConversation(activeSupervisorChannelId)}
-                        style={{ padding: 2 }}
-                      >
-                        <MessageSquare size={12} color="#8B5CF6" />
-                      </TouchableOpacity>
-                    </XStack>
-                  );
-                }
-
-                // State d) Active but idle (needs attention)
-                if (autoDispatchRunning || activeSupervisorChannelId) {
-                  return (
-                    <XStack
-                      alignItems="center"
-                      gap={6}
-                      backgroundColor="rgba(245,158,11,0.15)"
-                      borderRadius={6}
-                      paddingHorizontal={8}
-                      paddingVertical={4}
-                    >
-                      {globalAgentMap[selectedSupervisorId]?.avatarUrl ? (
-                        <View
-                          style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden' }}
-                        >
-                          <img
-                            src={globalAgentMap[selectedSupervisorId].avatarUrl}
-                            style={{ width: 16, height: 16, borderRadius: 8, objectFit: 'cover' }}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            backgroundColor: 'rgba(245,158,11,0.3)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text fontSize={9} color="#F59E0B" fontWeight="700">
-                            {globalAgentMap[selectedSupervisorId]?.name[0] || 'S'}
-                          </Text>
-                        </View>
-                      )}
-                      <Text fontSize={11} color="#F59E0B" fontWeight="600">
-                        {globalAgentMap[selectedSupervisorId]?.name || 'Supervisor'}
-                      </Text>
-                      <View
-                        style={{
-                          animation: 'pulse 2s ease-in-out infinite',
-                        }}
-                      >
-                        <AlertTriangle size={12} color="#F59E0B" />
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => handleOpenConversation(activeSupervisorChannelId)}
-                        style={{ padding: 2 }}
-                      >
-                        <MessageSquare size={12} color="#F59E0B" />
-                      </TouchableOpacity>
-                    </XStack>
-                  );
-                }
-
-                // State e) Paused (shouldn't reach here, but fallback)
-                return (
-                  <XStack
-                    alignItems="center"
-                    gap={6}
-                    backgroundColor="rgba(255,255,255,0.05)"
-                    borderRadius={6}
-                    paddingHorizontal={8}
-                    paddingVertical={4}
-                  >
-                    {globalAgentMap[selectedSupervisorId]?.avatarUrl ? (
-                      <View style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden' }}>
-                        <img
-                          src={globalAgentMap[selectedSupervisorId].avatarUrl}
-                          style={{ width: 16, height: 16, borderRadius: 8, objectFit: 'cover' }}
-                        />
-                      </View>
-                    ) : (
-                      <View
-                        style={{
-                          width: 16,
-                          height: 16,
-                          borderRadius: 8,
-                          backgroundColor: 'rgba(139,92,246,0.25)',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <Text fontSize={9} color="#8B5CF6" fontWeight="700">
-                          {globalAgentMap[selectedSupervisorId]?.name[0] || 'S'}
-                        </Text>
-                      </View>
-                    )}
-                    <Text fontSize={11} color="$color" opacity={0.7}>
-                      {globalAgentMap[selectedSupervisorId]?.name || 'Supervisor'}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => handleOpenConversation(activeSupervisorChannelId)}
-                      style={{ padding: 2 }}
-                    >
-                      <MessageSquare size={12} color="#9CA3AF" />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={async () => {
-                        setActiveSupervisorChannelId(null);
-                        setAutoDispatchRunning(false);
-                        
-                        // Persist immediately
-                        if (currentProjectId) {
-                          await client.board.updateBoardConfig(currentProjectId, {
-                            workerSlots,
-                            autoDispatchRunning: false,
-                            selectedSupervisorId,
-                            activeSupervisorChannelId: null,
-                          }).catch((err) => {
-                            console.error('Error saving board config:', err);
-                          });
-                        }
-                      }}
-                      style={{ padding: 2 }}
-                    >
-                      <X size={12} color="#EF4444" />
-                    </TouchableOpacity>
-                  </XStack>
-                );
-              })()}
-            </YStack>
-
-            {/* Workers column */}
-            <YStack gap="$1">
-              <Text fontSize={11} color="$color" opacity={0.5} fontWeight="600">
-                Workers
-              </Text>
-              <XStack gap="$2" flexWrap="wrap" alignItems="center">
-                {Object.entries(agentMap).map(([agentId, agent]) => {
-                  const slots = workerSlots[agentId] || 0;
-                  return (
-                    <XStack
-                      key={agentId}
-                      alignItems="center"
-                      gap={4}
-                      backgroundColor="rgba(255,255,255,0.05)"
-                      borderRadius={6}
-                      paddingHorizontal={8}
-                      paddingVertical={4}
-                    >
-                      {agent.avatarUrl ? (
-                        <View
-                          style={{ width: 16, height: 16, borderRadius: 8, overflow: 'hidden' }}
-                        >
-                          <img
-                            src={agent.avatarUrl}
-                            style={{ width: 16, height: 16, borderRadius: 8, objectFit: 'cover' }}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: 16,
-                            height: 16,
-                            borderRadius: 8,
-                            backgroundColor: 'rgba(139,92,246,0.25)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text fontSize={9} color="#8B5CF6" fontWeight="700">
-                            {agent.name[0]}
-                          </Text>
-                        </View>
-                      )}
-                      <Text fontSize={11} color="$color" opacity={0.7}>
-                        {agent.name}
-                      </Text>
-                      <XStack alignItems="center" gap={2}>
-                        <TouchableOpacity
-                          onPress={() =>
-                            setWorkerSlots((prev) => ({
-                              ...prev,
-                              [agentId]: Math.max(0, (prev[agentId] || 0) - 1),
-                            }))
-                          }
-                          style={{ padding: 2 }}
-                        >
-                          <Minus size={10} color="#9CA3AF" />
-                        </TouchableOpacity>
-                        <Text
-                          fontSize={12}
-                          color={slots > 0 ? '#8B5CF6' : '$color'}
-                          opacity={slots > 0 ? 1 : 0.3}
-                          fontWeight="700"
-                          width={14}
-                          textAlign="center"
-                        >
-                          {slots}
-                        </Text>
-                        <TouchableOpacity
-                          onPress={() =>
-                            setWorkerSlots((prev) => ({
-                              ...prev,
-                              [agentId]: (prev[agentId] || 0) + 1,
-                            }))
-                          }
-                          style={{ padding: 2 }}
-                        >
-                          <Plus size={10} color="#9CA3AF" />
-                        </TouchableOpacity>
-                      </XStack>
-                    </XStack>
-                  );
-                })}
-
-                {/* Play/Pause button */}
-                <TouchableOpacity
-                  onPress={async () => {
-                    if (activeSupervisorChannelId) {
-                      setActiveSupervisorChannelId(null);
-                      setAutoDispatchRunning(false);
-                      
-                      // Persist immediately
-                      if (currentProjectId) {
-                        await client.board.updateBoardConfig(currentProjectId, {
-                          workerSlots,
-                          autoDispatchRunning: false,
-                          selectedSupervisorId,
-                          activeSupervisorChannelId: null,
-                        }).catch((err) => {
-                          console.error('Error saving board config:', err);
-                        });
-                      }
-                    } else if (selectedSupervisorId) {
-                      handleStartSupervisor();
-                    } else if (autoDispatchRunning) {
-                      setAutoDispatchRunning(false);
-                    } else if (totalWorkerSlots > 0 && todoCount > 0) {
-                      setAutoDispatchRunning(true);
-                    }
-                  }}
-                  style={{
-                    backgroundColor:
-                      activeSupervisorChannelId || autoDispatchRunning
-                        ? 'rgba(245,158,11,0.2)'
-                        : selectedSupervisorId || (totalWorkerSlots > 0 && todoCount > 0)
-                          ? 'rgba(34,197,94,0.2)'
-                          : 'rgba(255,255,255,0.05)',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 6,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 6,
-                    opacity:
-                      selectedSupervisorId || (totalWorkerSlots > 0 && todoCount > 0) ? 1 : 0.4,
-                  }}
-                >
-                  {activeSupervisorChannelId || autoDispatchRunning ? (
-                    <Pause size={12} color="#F59E0B" />
-                  ) : (
-                    <Play size={12} color="#22C55E" />
-                  )}
-                  <Text
-                    fontSize={11}
-                    fontWeight="600"
-                    color={activeSupervisorChannelId || autoDispatchRunning ? '#F59E0B' : '#22C55E'}
-                  >
-                    {activeSupervisorChannelId || autoDispatchRunning ? 'Pause' : 'Run'}
-                  </Text>
-                </TouchableOpacity>
-              </XStack>
-            </YStack>
-
-            {/* Spacer */}
-            <View style={{ flex: 1 }} />
-
-            {/* Right side: Tags + Search columns */}
+            {/* Right: Tags + Search */}
             <XStack gap="$3" alignItems="flex-start">
               {/* Tags column */}
               {allTags.length > 0 && (
                 <YStack gap="$1">
-                  <Text fontSize={11} color="$color" opacity={0.5} fontWeight="600">
-                    Tags
+                  <Text fontSize={11} color={c.text3} fontWeight="600">
+                    {t("board.tags")}
                   </Text>
                   <TouchableOpacity
                     onPress={() => setShowTagFilterDropdown(!showTagFilterDropdown)}
                     style={{
                       backgroundColor:
                         activeTagFilters.size > 0
-                          ? 'rgba(139,92,246,0.2)'
-                          : 'rgba(255,255,255,0.05)',
+                          ? colors.violetGlow
+                          : c.bgInner,
                       paddingHorizontal: 8,
                       paddingVertical: 6,
                       borderRadius: 6,
@@ -1286,14 +1205,14 @@ You are now supervising this board. You have full control over task assignment a
                       borderColor:
                         activeTagFilters.size > 0
                           ? 'rgba(139,92,246,0.4)'
-                          : 'rgba(255,255,255,0.1)',
+                          : c.border,
                     }}
                   >
-                    <Filter size={12} color={activeTagFilters.size > 0 ? '#A78BFA' : '#9CA3AF'} />
+                    <Filter size={12} color={activeTagFilters.size > 0 ? colors.violet : c.text3} />
                     {activeTagFilters.size > 0 && (
                       <View
                         style={{
-                          backgroundColor: '#8B5CF6',
+                          backgroundColor: colors.violet,
                           borderRadius: 10,
                           minWidth: 16,
                           height: 16,
@@ -1313,16 +1232,16 @@ You are now supervising this board. You have full control over task assignment a
 
               {/* Search column */}
               <YStack gap="$1">
-                <Text fontSize={11} color="$color" opacity={0.5} fontWeight="600">
-                  Search
+                <Text fontSize={11} color={c.text3} fontWeight="600">
+                  {t("board.search")}
                 </Text>
                 <XStack gap="$2" alignItems="center">
                   <View
                     style={{
-                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      backgroundColor: c.bgInner,
                       borderRadius: 6,
                       borderWidth: 1,
-                      borderColor: searchQuery ? 'rgba(139,92,246,0.4)' : 'rgba(255,255,255,0.1)',
+                      borderColor: searchQuery ? 'rgba(139,92,246,0.4)' : c.border,
                       flexDirection: 'row',
                       alignItems: 'center',
                       paddingHorizontal: 8,
@@ -1331,17 +1250,17 @@ You are now supervising this board. You have full control over task assignment a
                       minWidth: 150,
                     }}
                   >
-                    <Search size={12} color={searchQuery ? '#A78BFA' : '#9CA3AF'} />
+                    <Search size={12} color={searchQuery ? colors.violet : c.text3} />
                     <TextInput
                       value={searchQuery}
                       onChangeText={setSearchQuery}
-                      placeholder="Buscar..."
-                      placeholderTextColor="#666"
-                      style={{ flex: 1, fontSize: 11, color: 'white', padding: 0, outline: 'none' }}
+                      placeholder={t("board.searchPlaceholder")}
+                      placeholderTextColor={c.text3}
+                      style={{ flex: 1, fontSize: 11, color: c.text, padding: 0 } as any}
                     />
                     {searchQuery && (
                       <TouchableOpacity onPress={() => setSearchQuery('')} style={{ padding: 2 }}>
-                        <X size={10} color="#9CA3AF" />
+                        <X size={10} color={c.text3} />
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1354,109 +1273,45 @@ You are now supervising this board. You have full control over task assignment a
                         setSearchQuery('');
                       }}
                       style={{
-                        backgroundColor: 'rgba(239,68,68,0.15)',
+                        backgroundColor: c.badges.err.bg,
                         paddingHorizontal: 8,
                         paddingVertical: 6,
                         borderRadius: 6,
                       }}
                     >
-                      <X size={12} color="#EF4444" />
+                      <X size={12} color={colors.red} />
                     </TouchableOpacity>
                   )}
                 </XStack>
               </YStack>
             </XStack>
 
-            {/* Supervisor picker dropdown */}
-            {showSupervisorPicker && !activeSupervisorChannelId && (
-              <View
-                style={{
-                  position: 'absolute',
-                  top: 40,
-                  left: 12,
-                  backgroundColor: '#1F2937',
-                  borderRadius: 8,
-                  borderWidth: 1,
-                  borderColor: 'rgba(139,92,246,0.3)',
-                  maxHeight: 200,
-                  zIndex: 1000,
-                  shadowColor: '#000',
-                  shadowOffset: { width: 0, height: 4 },
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  minWidth: 200,
-                }}
-              >
-                <ScrollView>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setSelectedSupervisorId(null);
-                      setShowSupervisorPicker(false);
-                    }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 10,
-                      borderBottomWidth: 1,
-                      borderBottomColor: 'rgba(255,255,255,0.1)',
-                    }}
-                  >
-                    <Text fontSize={13} color="$color" opacity={0.5}>
-                      (Sin supervisor)
-                    </Text>
-                  </TouchableOpacity>
-                  {Object.entries(globalAgentMap).map(([agentId, agent]) => (
-                    <TouchableOpacity
-                      key={agentId}
-                      onPress={() => {
-                        setSelectedSupervisorId(agentId);
-                        setShowSupervisorPicker(false);
-                      }}
-                      style={{
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        borderBottomWidth: 1,
-                        borderBottomColor: 'rgba(255,255,255,0.1)',
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        backgroundColor:
-                          selectedSupervisorId === agentId ? 'rgba(139,92,246,0.1)' : 'transparent',
-                      }}
-                    >
-                      {agent.avatarUrl ? (
-                        <View
-                          style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden' }}
-                        >
-                          <img
-                            src={agent.avatarUrl}
-                            style={{ width: 20, height: 20, borderRadius: 10, objectFit: 'cover' }}
-                          />
-                        </View>
-                      ) : (
-                        <View
-                          style={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: 10,
-                            backgroundColor: 'rgba(139,92,246,0.25)',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                          }}
-                        >
-                          <Text fontSize={11} color="#8B5CF6" fontWeight="700">
-                            {agent.name[0]}
-                          </Text>
-                        </View>
-                      )}
-                      <Text fontSize={13} color="$color">
-                        {agent.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            )}
           </XStack>
+
+          {/* Blocked tasks notification — based on column position */}
+          {(() => {
+            const blockedCol = board.columns.find((c) => c.slug === 'blocked');
+            const blockedTasks = blockedCol
+              ? tasks.filter((t) => t.columnId === blockedCol.columnId)
+              : [];
+            if (blockedTasks.length === 0) return null;
+            return (
+              <XStack
+                paddingHorizontal="$3"
+                paddingVertical="$2"
+                alignItems="center"
+                gap="$2"
+                backgroundColor={c.badges.err.bg}
+                borderBottomWidth={1}
+                borderBottomColor={c.badges.err.border}
+              >
+                <AlertTriangle size={13} color={colors.red} />
+                <Text fontSize={12} color={c.badges.err.text} flex={1}>
+                  {t("board.blockedTaskCount", { count: blockedTasks.length })}
+                </Text>
+              </XStack>
+            );
+          })()}
 
           {/* Board columns */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }}>
@@ -1503,8 +1358,8 @@ You are now supervising this board. You have full control over task assignment a
     if (!currentProjectId) {
       return (
         <YStack flex={1} alignItems="center" justifyContent="center">
-          <Text fontSize={14} color="$color" opacity={0.4}>
-            Selecciona un proyecto
+          <Text fontSize={14} color={c.text3}>
+            {t("board.selectProject")}
           </Text>
         </YStack>
       );
@@ -1514,7 +1369,6 @@ You are now supervising this board. You have full control over task assignment a
   };
 
   const closeDropdowns = useCallback(() => {
-    setShowWorkspacePicker(false);
     setShowProjectPicker(false);
   }, []);
 
@@ -1523,7 +1377,13 @@ You are now supervising this board. You have full control over task assignment a
   // ========================================================================
 
   return (
-    <Pressable onPress={closeDropdowns} style={{ flex: 1 }}>
+    <Pressable
+      onPress={closeDropdowns}
+      style={{ flex: 1 }}
+      {...(Platform.OS === 'web'
+        ? { ref: (v: View | null) => { boardRootRef.current = v as unknown as HTMLElement | null; } } as any
+        : {})}
+    >
       <YStack flex={1} backgroundColor="$background">
         {/* ================================================================ */}
         {/* HEADER BAR */}
@@ -1533,49 +1393,13 @@ You are now supervising this board. You have full control over task assignment a
           paddingVertical="$2"
           alignItems="center"
           borderBottomWidth={1}
-          borderBottomColor="rgba(255,255,255,0.06)"
+          borderBottomColor={c.border}
           gap="$2"
         >
-          {/* Workspace selector */}
-          <TouchableOpacity
-            onPress={() => {
-              setShowWorkspacePicker(!showWorkspacePicker);
-              setShowProjectPicker(false);
-            }}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 5,
-              backgroundColor: 'rgba(255,255,255,0.06)',
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 6,
-            }}
-          >
-            <SquareKanban size={13} color="#8B5CF6" />
-            <Text
-              fontSize={12}
-              fontWeight="500"
-              color="$color"
-              opacity={0.7}
-              numberOfLines={1}
-              maxWidth={140}
-            >
-              {workspaces.find((w) => w.workspaceId === workspaceId)?.name || 'Workspace'}
-            </Text>
-            <ChevronDown size={12} color="#8B5CF6" />
-          </TouchableOpacity>
-
-          {/* Breadcrumb separator */}
-          <Text fontSize={12} color="$color" opacity={0.2}>
-            /
-          </Text>
-
           {/* Project selector */}
           <TouchableOpacity
             onPress={() => {
               setShowProjectPicker(!showProjectPicker);
-              setShowWorkspacePicker(false);
             }}
             style={{
               flexDirection: 'row',
@@ -1587,73 +1411,27 @@ You are now supervising this board. You have full control over task assignment a
               borderRadius: 6,
             }}
           >
-            <Folder size={13} color="#8B5CF6" />
-            <Text fontSize={12} fontWeight="600" color="$color" numberOfLines={1} maxWidth={160}>
-              {currentProject?.name || 'Seleccionar proyecto'}
+            <Folder size={13} color={colors.violet} />
+            <Text fontSize={12} fontWeight="600" color={c.text} numberOfLines={1} maxWidth={160}>
+              {currentProject?.name || t("board.selectProject")}
             </Text>
-            <ChevronDown size={12} color="#8B5CF6" />
+            <ChevronDown size={12} color={colors.violet} />
           </TouchableOpacity>
 
           <View style={{ flex: 1 }} />
 
           {/* Task count */}
           {board && (
-            <Text fontSize={12} color="$color" opacity={0.4}>
-              {tasks.length} tarea{tasks.length !== 1 ? 's' : ''}
+            <Text fontSize={12} color={c.text3}>
+              {t("board.taskCount", { count: tasks.length })}
             </Text>
           )}
 
           {/* New project button */}
           <TouchableOpacity onPress={() => setShowCreateProject(true)} style={{ padding: 4 }}>
-            <Plus size={16} color="#8B5CF6" />
+            <Plus size={16} color={colors.violet} />
           </TouchableOpacity>
         </XStack>
-
-        {/* Workspace picker dropdown */}
-        {showWorkspacePicker && (
-          <YStack
-            position="absolute"
-            top={44}
-            left={12}
-            zIndex={100}
-            backgroundColor="$background"
-            borderRadius={8}
-            borderWidth={1}
-            borderColor="rgba(255,255,255,0.1)"
-            padding="$1"
-            minWidth={220}
-            shadowColor="black"
-            shadowOpacity={0.3}
-            shadowRadius={8}
-            elevation={5}
-          >
-            {workspaces.map((w) => (
-              <TouchableOpacity
-                key={w.workspaceId}
-                onPress={() => {
-                  setWorkspaceId(w.workspaceId);
-                  setCurrentProject(null);
-                  setShowWorkspacePicker(false);
-                }}
-                style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 8,
-                  borderRadius: 6,
-                  backgroundColor:
-                    w.workspaceId === workspaceId ? 'rgba(139,92,246,0.15)' : 'transparent',
-                }}
-              >
-                <Text
-                  fontSize={13}
-                  color="$color"
-                  fontWeight={w.workspaceId === workspaceId ? '600' : '400'}
-                >
-                  {w.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </YStack>
-        )}
 
         {/* Project picker dropdown */}
         {showProjectPicker && (
@@ -1665,18 +1443,18 @@ You are now supervising this board. You have full control over task assignment a
             backgroundColor="$background"
             borderRadius={8}
             borderWidth={1}
-            borderColor="rgba(255,255,255,0.1)"
+            borderColor={c.borderStrong}
             padding="$1"
             minWidth={220}
-            shadowColor="black"
-            shadowOpacity={0.3}
+            shadowColor="#000"
+            shadowOpacity={0.2}
             shadowRadius={8}
             elevation={5}
           >
             {projects.length === 0 ? (
               <YStack paddingHorizontal={12} paddingVertical={8}>
-                <Text fontSize={12} color="$color" opacity={0.4}>
-                  No hay proyectos en este workspace
+                <Text fontSize={12} color={c.text3}>
+                  {t("board.noProjectsInWorkspace")}
                 </Text>
               </YStack>
             ) : (
@@ -1696,12 +1474,12 @@ You are now supervising this board. You have full control over task assignment a
                     paddingVertical: 8,
                     borderRadius: 6,
                     backgroundColor:
-                      p.projectId === currentProjectId ? 'rgba(139,92,246,0.15)' : 'transparent',
+                      p.projectId === currentProjectId ? 'rgba(139,92,246,0.12)' : 'transparent',
                   }}
                 >
                   <Text
                     fontSize={13}
-                    color="$color"
+                    color={c.text}
                     fontWeight={p.projectId === currentProjectId ? '600' : '400'}
                   >
                     {p.name}
@@ -1719,27 +1497,27 @@ You are now supervising this board. You have full control over task assignment a
             gap="$2"
             alignItems="center"
             borderBottomWidth={1}
-            borderBottomColor="rgba(255,255,255,0.06)"
+            borderBottomColor={c.border}
           >
             <TextInput
               value={newProjectName}
               onChangeText={setNewProjectName}
-              placeholder="Nombre del proyecto..."
-              placeholderTextColor="#999"
+              placeholder={t("board.projectNamePlaceholder")}
+              placeholderTextColor={c.text3}
               autoFocus
               onSubmitEditing={handleCreateProject}
               style={{
                 flex: 1,
-                backgroundColor: 'rgba(255,255,255,0.06)',
+                backgroundColor: c.bgInner,
                 borderRadius: 6,
                 paddingHorizontal: 10,
                 paddingVertical: 6,
-                color: 'white',
+                color: c.text,
                 fontSize: 13,
               }}
             />
             <TouchableOpacity onPress={handleCreateProject}>
-              <Check size={18} color="#22C55E" />
+              <Check size={18} color={colors.green} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -1747,16 +1525,18 @@ You are now supervising this board. You have full control over task assignment a
                 setNewProjectName('');
               }}
             >
-              <X size={18} color="#EF4444" />
+              <X size={18} color={colors.red} />
             </TouchableOpacity>
           </XStack>
         )}
 
         {/* ================================================================ */}
-        {/* BOARD CONTENT */}
+        {/* BOARD CONTENT — shrinks when detail panel is open so columns  */}
+        {/* remain fully scrollable instead of hiding behind the overlay   */}
         {/* ================================================================ */}
-
-        {renderBoardContent()}
+        <View style={{ flex: 1, paddingRight: showTaskDetail ? 320 : 0 }}>
+          {renderBoardContent()}
+        </View>
 
         {/* ================================================================ */}
         {/* TASK DETAIL PANEL */}
@@ -1771,10 +1551,12 @@ You are now supervising this board. You have full control over task assignment a
               setSelectedTask(null);
             }}
             onMoveTask={handleMoveTask}
-            onDeleteTask={handleDeleteTask}
             onOpenConversation={handleOpenConversation}
             onAssignTask={handleAssignTask}
             onStartTask={handleStartTask}
+            onStopTask={handleStopTask}
+            onCompleteTask={handleCompleteTask}
+            onArchiveTask={handleArchiveTask}
             agentMap={agentMap}
           />
         )}
@@ -1803,64 +1585,125 @@ You are now supervising this board. You have full control over task assignment a
               top: 88,
               left: 60,
               zIndex: 9999,
-              backgroundColor: '#111827',
+              backgroundColor: c.bgCard,
               borderRadius: 8,
               borderWidth: 1,
-              borderColor: 'rgba(139,92,246,0.3)',
+              borderColor: 'rgba(139,92,246,0.25)',
               shadowColor: '#000',
               shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.5,
+              shadowOpacity: 0.25,
               shadowRadius: 16,
               minWidth: 220,
-              maxHeight: 320,
+              maxHeight: 360,
               elevation: 20,
             }}
           >
-            <ScrollView style={{ maxHeight: 320 }}>
+            {/* Search input */}
+            <View
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 8,
+                borderBottomWidth: 1,
+                borderBottomColor: c.border,
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  backgroundColor: c.bgInner,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: 'rgba(139,92,246,0.25)',
+                  paddingHorizontal: 8,
+                  paddingVertical: 5,
+                  gap: 6,
+                }}
+              >
+                <Search size={12} color={c.text3} />
+                <TextInput
+                  ref={tagSearchInputRef}
+                  value={tagSearchQuery}
+                  onChangeText={setTagSearchQuery}
+                  placeholder={t("board.searchTags")}
+                  placeholderTextColor={c.text3}
+                  style={{
+                    flex: 1,
+                    color: c.text,
+                    fontSize: 13,
+                    backgroundColor: 'transparent',
+                    borderWidth: 0,
+                    padding: 0,
+                  }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {tagSearchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setTagSearchQuery('')}>
+                    <X size={12} color={c.text3} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            <ScrollView style={{ maxHeight: 280 }}>
               <YStack padding="$2" gap="$1">
-                {allTags.map((tag) => {
-                  const isActive = activeTagFilters.has(tag);
-                  return (
-                    <TouchableOpacity
-                      key={tag}
-                      onPress={() => toggleTagFilter(tag)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        borderRadius: 6,
-                        backgroundColor: isActive ? 'rgba(139,92,246,0.2)' : 'transparent',
-                      }}
-                    >
-                      {/* Checkbox */}
-                      <View
+                {visibleTagsInDropdown.length === 0 ? (
+                  <View
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 14,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text fontSize={13} color={c.text3}>
+                      {t("board.noMatchingTags")}
+                    </Text>
+                  </View>
+                ) : (
+                  visibleTagsInDropdown.map((tag) => {
+                    const isActive = activeTagFilters.has(tag);
+                    return (
+                      <TouchableOpacity
+                        key={tag}
+                        onPress={() => toggleTagFilter(tag)}
                         style={{
-                          width: 18,
-                          height: 18,
-                          borderRadius: 4,
-                          borderWidth: 2,
-                          borderColor: isActive ? '#8B5CF6' : 'rgba(255,255,255,0.3)',
-                          backgroundColor: isActive ? '#8B5CF6' : 'transparent',
+                          flexDirection: 'row',
                           alignItems: 'center',
-                          justifyContent: 'center',
+                          gap: 8,
+                          paddingHorizontal: 12,
+                          paddingVertical: 10,
+                          borderRadius: 6,
+                          backgroundColor: isActive ? 'rgba(139,92,246,0.12)' : 'transparent',
                         }}
                       >
-                        {isActive && <Check size={14} color="white" />}
-                      </View>
-                      <Text
-                        fontSize={13}
-                        color="$color"
-                        opacity={isActive ? 1 : 0.7}
-                        fontWeight={isActive ? '600' : '400'}
-                        flex={1}
-                      >
-                        {tag}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                        {/* Checkbox */}
+                        <View
+                          style={{
+                            width: 18,
+                            height: 18,
+                            borderRadius: 4,
+                            borderWidth: 2,
+                            borderColor: isActive ? colors.violet : c.borderStrong,
+                            backgroundColor: isActive ? colors.violet : 'transparent',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          {isActive && <Check size={14} color="white" />}
+                        </View>
+                        <Text
+                          fontSize={13}
+                          color={c.text}
+                          fontWeight={isActive ? '600' : '400'}
+                          flex={1}
+                        >
+                          {tag}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
               </YStack>
             </ScrollView>
           </View>
@@ -1869,4 +1712,3 @@ You are now supervising this board. You have full control over task assignment a
     </Pressable>
   );
 }
-

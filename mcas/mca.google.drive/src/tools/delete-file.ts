@@ -1,7 +1,8 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const deleteFile: ToolConfig = {
+  annotations: { readOnlyHint: false, irreversible: true },
   description: 'Delete a file or folder from Google Drive.',
   parameters: {
     type: 'object',
@@ -22,7 +23,7 @@ export const deleteFile: ToolConfig = {
     return withAuthRetry(
       context,
       async () => {
-        await clients.drive.files.delete({ fileId });
+        await clients.drive.files.delete({ ...ALL_DRIVES, fileId });
 
         return {
           success: true,

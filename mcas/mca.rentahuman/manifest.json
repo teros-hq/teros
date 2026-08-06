@@ -1,0 +1,47 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.rentahuman",
+  "name": "RentAHuman.ai",
+  "version": "1.0.0",
+  "description": "Hire humans for physical-world tasks. Search 657,000+ verified humans in 50+ countries, create bookings, and manage tasks that require real-world presence.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Jordan Blake",
+    "email": "jordan@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "userSecrets": ["RENTAHUMAN_API_KEY"]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "port": 3000,
+    "healthCheck": "/health"
+  },
+  "keywords": ["humans", "physical-tasks", "hire", "booking", "real-world", "errands", "workforce"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-04-22",
+      "notes": "Initial release — search verified humans worldwide, view their profiles, and book and track real-world tasks"
+    }
+  ]
+}

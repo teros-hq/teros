@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const addContactsToGroup: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Add one or more contacts to a contact group.',
   parameters: {
     type: 'object',

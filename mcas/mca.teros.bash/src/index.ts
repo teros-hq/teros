@@ -1,119 +1,93 @@
 #!/usr/bin/env npx tsx
 
 /**
- * mca.teros.bash - Bash command execution MCA
- *
- * Migrated to use @teros/mca-sdk McaServer.
+ * mca.teros.bash - Bash command execution MCA with Streaming support
  */
 
-import { McaServer } from '@teros/mca-sdk';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import { McaServer, spawnWithAbort } from '@teros/mca-sdk';
 
-const execAsync = promisify(exec);
+const DEFAULT_CWD = process.env.MCA_WORKSPACE_PATH || process.env.MCA_CWD || '/workspace';
 
-// Working directory resolution:
-// 1. MCA_WORKSPACE_PATH - workspace volume path (for workspace apps)
-// 2. MCA_CWD - MCA's configured working directory
-// 3. Fallback to teros-v2 root (../../ from mcas/mca.teros.bash/)
-const DEFAULT_CWD = process.env.MCA_WORKSPACE_PATH || process.env.MCA_CWD || '../../';
-
-// Create server
 const server = new McaServer({
   id: 'mca.teros.bash',
   name: 'Bash',
-  version: '1.0.0',
+  version: '1.2.0',
 });
 
-// Define bash tool
 server.tool('bash', {
-  description:
-    'Execute a bash command with timeout and working directory support. Returns stdout, stderr, and exit code.',
+  annotations: { readOnlyHint: false },
+  description: 'Execute a bash command with real-time streaming output.',
   parameters: {
     type: 'object',
     properties: {
-      command: {
-        type: 'string',
-        description: 'The bash command to execute',
-      },
-      description: {
-        type: 'string',
-        description: 'A 5-10 word description of what this command does',
-      },
-      timeout: {
-        type: 'number',
-        description:
-          'Timeout in milliseconds (default: 120000 / 2 minutes, max: 600000 / 10 minutes)',
-        default: 120000,
-      },
-      cwd: {
-        type: 'string',
-        description: 'Working directory to execute the command in (optional)',
-      },
+      command: { type: 'string', description: 'The bash command to execute' },
+      description: { type: 'string', description: 'Description of the command' },
+      cwd: { type: 'string', description: 'Working directory' },
+      stream: { type: 'boolean', description: 'Enable real-time streaming (default: true)', default: true },
     },
     required: ['command', 'description'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     const command = args.command as string;
-    const description = args.description as string;
-    const timeout = (args.timeout as number) || 120000;
     const cwd = (args.cwd as string) || DEFAULT_CWD;
+    const isStream = args.stream !== false;
+    const { channelId } = context.execution;
+    const backendClient = context.backend;
 
-    if (!command) {
-      throw new Error('command is required');
-    }
+    if (!command) throw new Error('command is required');
 
-    if (!description) {
-      throw new Error('description is required');
-    }
+    const startTime = Date.now();
+    let stdout = '';
+    let stderr = '';
 
-    // Validate timeout
-    const maxTimeout = 600000; // 10 minutes
-    const actualTimeout = Math.min(timeout, maxTimeout);
+    const sendChunk = async (type: 'stdout' | 'stderr', data: string) => {
+      if (!isStream || !backendClient || !channelId) return;
+      try {
+        const terminalId = channelId.startsWith('terminal:')
+          ? channelId.slice('terminal:'.length)
+          : channelId;
+        await backendClient.emitEvent({
+          event: 'terminal_output',
+          payload: { type, data, terminalId },
+        });
+      } catch {
+        // Silent fail on stream error
+      }
+    };
 
-    try {
-      const startTime = Date.now();
+    const result = await spawnWithAbort('/bin/bash', ['-c', command], {
+      cwd,
+      env: { ...process.env, TERM: 'xterm-256color', FORCE_COLOR: '1' },
+      signal: context.signal,
+      onStdout: (chunk) => { stdout += chunk; sendChunk('stdout', chunk); },
+      onStderr: (chunk) => { stderr += chunk; sendChunk('stderr', chunk); },
+    });
 
-      const { stdout, stderr } = await execAsync(command, {
-        timeout: actualTimeout,
-        cwd,
-        maxBuffer: 10 * 1024 * 1024, // 10MB
-        shell: '/bin/bash',
-      });
-
-      const duration = Date.now() - startTime;
-
+    const duration = Date.now() - startTime;
+    if (result.kind === 'spawnError') {
       return {
-        stdout: stdout || '(no output)',
-        stderr: stderr || '',
-        exitCode: 0,
+        stdout,
+        stderr: stderr + (result.error.message || 'Spawn error'),
+        exitCode: 1,
         duration: `${duration}ms`,
         command,
         cwd,
       };
-    } catch (error: unknown) {
-      const err = error as { stdout?: string; stderr?: string; code?: number; message?: string };
-
-      // Return error as result (not throwing - let MCA handle formatting)
-      return {
-        stdout: err.stdout || '',
-        stderr: err.stderr || err.message || '',
-        exitCode: err.code || 1,
-        error: err.message,
-        command,
-        cwd,
-      };
     }
+
+    return {
+      stdout: stdout || (result.exitCode === 0 ? '(no output)' : ''),
+      stderr,
+      exitCode: result.exitCode,
+      duration: `${duration}ms`,
+      command,
+      cwd,
+      ...(result.cancelled ? { cancelled: true, signal: result.signal } : {}),
+    };
   },
 });
 
-// Start server
-server
-  .start()
-  .then(() => {
-    console.error('Teros Bash MCA server running');
-  })
-  .catch((error) => {
-    console.error('Failed to start MCA:', error);
-    process.exit(1);
-  });
+server.start().catch((error) => {
+  console.error('Failed to start MCA:', error);
+  process.exit(1);
+});

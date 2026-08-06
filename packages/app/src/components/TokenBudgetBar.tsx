@@ -1,6 +1,7 @@
 import type { TokenBudget } from '@teros/shared';
 import { formatTokenCount, TOKEN_BUDGET_COLORS, TOKEN_BUDGET_ORDER } from '@teros/shared';
 import React, { useCallback, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   type LayoutRectangle,
   Modal,
@@ -11,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { colors, surface } from './mca/primitives/colors';
 
 interface TokenBudgetBarProps {
   budget: TokenBudget | null;
@@ -37,6 +39,7 @@ interface TokenBudgetBarProps {
  * 9. Output (dynamic)
  */
 export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const [buttonLayout, setButtonLayout] = useState<LayoutRectangle | null>(null);
   const buttonRef = useRef<View>(null);
@@ -232,29 +235,29 @@ export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
             <View style={styles.columnsContainer}>
               {/* Left column: Session Totals */}
               <View style={styles.column}>
-                <Text style={styles.columnTitle}>Session Totals</Text>
-                <Text style={styles.columnSubtitle}>Accumulated across all requests</Text>
+                <Text style={styles.columnTitle}>{t('conversation.sessionTotals')}</Text>
+                <Text style={styles.columnSubtitle}>{t('conversation.accumulatedAcrossRequests')}</Text>
 
                 <View style={styles.statsContainer}>
-                  <StatRow label="Cache Read" value={formatTokenCount(cost.tokens.cacheRead)} />
-                  <StatRow label="Cache Write" value={formatTokenCount(cost.tokens.cacheWrite)} />
-                  <StatRow label="Regular" value={formatTokenCount(cost.tokens.input)} />
+                  <StatRow label={t('conversation.cacheRead')} value={formatTokenCount(cost.tokens.cacheRead)} />
+                  <StatRow label={t('conversation.cacheWrite')} value={formatTokenCount(cost.tokens.cacheWrite)} />
+                  <StatRow label={t('conversation.regular')} value={formatTokenCount(cost.tokens.input)} />
                   <View style={styles.statDivider} />
                   <StatRow
-                    label="Total Input"
+                    label={t('conversation.totalInput')}
                     value={formatTokenCount(
                       cost.tokens.input + cost.tokens.cacheRead + cost.tokens.cacheWrite,
                     )}
                     bold
                   />
-                  <StatRow label="Total Output" value={formatTokenCount(cost.tokens.output)} bold />
+                  <StatRow label={t('conversation.totalOutput')} value={formatTokenCount(cost.tokens.output)} bold />
 
                   {cost.callCount && cost.callCount > 0 && (
                     <>
                       <View style={styles.statDivider} />
-                      <StatRow label="Requests" value={String(cost.callCount)} />
+                      <StatRow label={t('conversation.requests')} value={String(cost.callCount)} />
                       <StatRow
-                        label="Avg Input/Req"
+                        label={t('conversation.avgInputPerReq')}
                         value={formatTokenCount(
                           Math.round(
                             (cost.tokens.input + cost.tokens.cacheRead + cost.tokens.cacheWrite) /
@@ -263,7 +266,7 @@ export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
                         )}
                       />
                       <StatRow
-                        label="Avg Output/Req"
+                        label={t('conversation.avgOutputPerReq')}
                         value={formatTokenCount(Math.round(cost.tokens.output / cost.callCount))}
                       />
                     </>
@@ -272,7 +275,7 @@ export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
                   {cost.session > 0 && (
                     <>
                       <View style={styles.statDivider} />
-                      <StatRow label="Total Cost" value={`$${cost.session.toFixed(4)}`} bold />
+                      <StatRow label={t('conversation.totalCost')} value={`${cost.session.toFixed(4)}`} bold />
                     </>
                   )}
                 </View>
@@ -283,9 +286,9 @@ export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
 
               {/* Right column: Current Context */}
               <View style={styles.column}>
-                <Text style={styles.columnTitle}>Current Context</Text>
+                <Text style={styles.columnTitle}>{t('conversation.currentContext')}</Text>
                 <Text style={styles.columnSubtitle}>
-                  Last request ({formatTokenCount(currentContextTotal)})
+                  {t('conversation.lastRequest', { tokens: formatTokenCount(currentContextTotal) })}
                 </Text>
 
                 {/* Progress bar */}
@@ -418,71 +421,71 @@ export function TokenBudgetBar({ budget }: TokenBudgetBarProps) {
                 {/* Breakdown list - follows TOKEN_BUDGET_ORDER */}
                 <View style={styles.breakdownList}>
                   <BreakdownRow
-                    label="System"
+                    label={t('conversation.system')}
                     value={breakdown.system}
                     percent={getContextPercent(breakdown.system)}
                     color={TOKEN_BUDGET_COLORS.system}
                   />
                   <BreakdownRow
-                    label="Tools"
+                    label={t('conversation.tools')}
                     value={breakdown.tools}
                     percent={getContextPercent(breakdown.tools)}
                     color={TOKEN_BUDGET_COLORS.tools}
                   />
                   <BreakdownRow
-                    label="Examples"
+                    label={t('conversation.examples')}
                     value={breakdown.examples || 0}
                     percent={getContextPercent(breakdown.examples)}
                     color={TOKEN_BUDGET_COLORS.examples}
                   />
                   <BreakdownRow
-                    label="Summary"
+                    label={t('conversation.summary')}
                     value={breakdown.summary || 0}
                     percent={getContextPercent(breakdown.summary)}
                     color={TOKEN_BUDGET_COLORS.summary}
                   />
                   <BreakdownRow
-                    label="Previous"
+                    label={t('conversation.previous')}
                     value={breakdown.previous || 0}
                     percent={getContextPercent(breakdown.previous)}
                     color={TOKEN_BUDGET_COLORS.previous}
                     cached
                   />
                   <View style={styles.cacheBreakpoint}>
-                    <Text style={styles.cacheBreakpointText}>── cache ──</Text>
+                    <Text style={styles.cacheBreakpointText}>── {t('conversation.cache')} ──</Text>
                   </View>
                   <BreakdownRow
-                    label="Memory"
+                    label={t('conversation.memory')}
                     value={breakdown.memory}
                     percent={getContextPercent(breakdown.memory)}
                     color={TOKEN_BUDGET_COLORS.memory}
                   />
                   <BreakdownRow
-                    label="Context"
+                    label={t('conversation.context')}
                     value={breakdown.context || 0}
                     percent={getContextPercent(breakdown.context)}
                     color={TOKEN_BUDGET_COLORS.context}
                   />
                   <BreakdownRow
-                    label="Latest"
+                    label={t('conversation.latest')}
                     value={breakdown.latest || 0}
                     percent={getContextPercent(breakdown.latest)}
                     color={TOKEN_BUDGET_COLORS.latest}
                   />
                   <BreakdownRow
-                    label="Tool Calls"
+                    label={t('conversation.toolCalls')}
                     value={breakdown.toolCalls || 0}
                     percent={getContextPercent(breakdown.toolCalls)}
                     color={TOKEN_BUDGET_COLORS.toolCalls}
                   />
                   <BreakdownRow
-                    label="Tool Results"
+                    label={t('conversation.toolResults')}
                     value={breakdown.toolResults || 0}
                     percent={getContextPercent(breakdown.toolResults)}
                     color={TOKEN_BUDGET_COLORS.toolResults}
                   />
                   <BreakdownRow
-                    label="Output"
+                    label={t('conversation.output')}
                     value={breakdown.output || 0}
                     percent={getContextPercent(breakdown.output)}
                     color={TOKEN_BUDGET_COLORS.output}
@@ -521,6 +524,7 @@ function BreakdownRow({
   color: string;
   cached?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.breakdownRow}>
       <View style={styles.breakdownLabel}>
@@ -528,7 +532,7 @@ function BreakdownRow({
         <Text selectable style={styles.breakdownText}>
           {label}
         </Text>
-        {cached && <Text style={styles.cachedBadge}>cached</Text>}
+        {cached && <Text style={styles.cachedBadge}>{t('conversation.cached')}</Text>}
       </View>
       <Text selectable style={styles.breakdownValue}>
         {formatTokenCount(value)} ({percent.toFixed(1)}%)
@@ -560,22 +564,22 @@ const styles = StyleSheet.create({
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    backgroundColor: surface.dark.bgInner,
   },
   popoverContent: {
-    backgroundColor: '#18181B',
+    backgroundColor: surface.dark.bgCard,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: 'rgba(113, 113, 122, 0.3)',
+    borderColor: surface.dark.borderStrong,
     minWidth: 500,
     maxWidth: 600,
     ...Platform.select({
       web: {
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)',
+        boxShadow: surface.dark.shadow,
       },
       default: {
-        shadowColor: '#000',
+        shadowColor: surface.dark.bgPage,
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.5,
         shadowRadius: 25,
@@ -592,16 +596,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(113, 113, 122, 0.2)',
+    borderBottomColor: surface.dark.border,
   },
   summaryText: {
-    color: '#E4E4E7',
+    color: surface.dark.text,
     fontSize: 14,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   summaryCost: {
-    color: '#06B6D4',
+    color: colors.indigo,
     fontSize: 14,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -616,17 +620,17 @@ const styles = StyleSheet.create({
   },
   divider: {
     width: 1,
-    backgroundColor: 'rgba(113, 113, 122, 0.2)',
+    backgroundColor: surface.dark.border,
     marginHorizontal: 12,
   },
   columnTitle: {
-    color: '#E4E4E7',
+    color: surface.dark.text,
     fontSize: 11,
     fontWeight: '600',
     marginBottom: 2,
   },
   columnSubtitle: {
-    color: '#71717A',
+    color: surface.dark.text3,
     fontSize: 9,
     marginBottom: 8,
   },
@@ -642,25 +646,25 @@ const styles = StyleSheet.create({
   },
   statDivider: {
     height: 1,
-    backgroundColor: 'rgba(113, 113, 122, 0.15)',
+    backgroundColor: surface.dark.bgInner,
     marginVertical: 4,
   },
   statLabel: {
-    color: '#A1A1AA',
+    color: surface.dark.text2,
     fontSize: 10,
   },
   statValue: {
-    color: '#D4D4D8',
+    color: surface.dark.text2,
     fontSize: 10,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   statLabelBold: {
-    color: '#E4E4E7',
+    color: surface.dark.text,
     fontSize: 10,
     fontWeight: '600',
   },
   statValueBold: {
-    color: '#F4F4F5',
+    color: surface.dark.text,
     fontSize: 10,
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -699,16 +703,16 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   breakdownText: {
-    color: '#A1A1AA',
+    color: surface.dark.text2,
     fontSize: 10,
   },
   breakdownValue: {
-    color: '#71717A',
+    color: surface.dark.text3,
     fontSize: 10,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   cachedBadge: {
-    color: '#3fb950',
+    color: colors.green,
     fontSize: 8,
     marginLeft: 4,
     opacity: 0.7,
@@ -717,7 +721,7 @@ const styles = StyleSheet.create({
     marginVertical: 2,
   },
   cacheBreakpointText: {
-    color: '#f85149',
+    color: colors.red,
     fontSize: 8,
     textAlign: 'center',
     opacity: 0.5,

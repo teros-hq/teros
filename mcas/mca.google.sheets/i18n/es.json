@@ -1,0 +1,78 @@
+{
+  "name": "Google Sheets",
+  "description": "Crea, lee, escribe, añade, formatea y exporta hojas de cálculo de Google Sheets — crear, escribir datos, añadir filas, actualizaciones por lotes (formato, fórmulas, formato condicional), leer datos, rangos, listar pestañas, exportar a CSV/XLSX/PDF. Para eliminar una hoja de cálculo, usa el MCA de Google Drive.",
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba las credenciales OAuth y la conectividad con la API de Google Sheets."
+    },
+    "create-spreadsheet": {
+      "name": "create-spreadsheet",
+      "description": "Crea una nueva hoja de cálculo de Google con un título y datos iniciales opcionales. Devuelve el ID de la hoja y la URL.",
+      "params": {
+        "title": "Título de la nueva hoja de cálculo",
+        "sheets": "Opcional: nombres de las hojas (pestañas) a crear. Por defecto una sola \"Sheet1\"."
+      }
+    },
+    "write-values": {
+      "name": "write-values",
+      "description": "Escribe datos en un rango específico de una hoja de Google. Sobrescribe los valores existentes. Pasa un array 2D de filas (cada fila es un array de valores de celda). Soporta fórmulas (cadenas que empiezan con =).",
+      "params": {
+        "spreadsheetId": "El ID de la hoja de cálculo",
+        "range": "Rango en notación A1 donde escribir (ej. \"Sheet1!A1:C3\" o \"A1:C3\")",
+        "values": "Array 2D de filas. Cada fila es un array de valores de celda (cadena, número o booleano)."
+      }
+    },
+    "append-values": {
+      "name": "append-values",
+      "description": "Añade filas de datos al final de una hoja en una hoja de cálculo de Google. Encuentra la última fila con datos y añade debajo. Soporta fórmulas (cadenas que empiezan con =).",
+      "params": {
+        "spreadsheetId": "El ID de la hoja de cálculo",
+        "range": "Rango en notación A1 desde donde empezar a añadir (ej. \"Sheet1!A1\" o \"A1\"). La API encuentra la última fila con datos en este rango y añade debajo.",
+        "values": "Array 2D de filas a añadir. Cada fila es un array de valores de celda."
+      }
+    },
+    "batch-update": {
+      "name": "batch-update",
+      "description": "Ejecuta operaciones avanzadas en una hoja de cálculo de Google usando el endpoint batchUpdate de la API de Sheets. Soporta: añadir/eliminar/renombrar hojas, formato de celdas (negrita, colores, bordes, formato numérico), formato condicional, fórmulas, filas/columnas congeladas, validación de datos, rangos protegidos y más. Pasa un array de objetos de petición siguiendo el esquema batchUpdate de la API de Google Sheets.",
+      "params": {
+        "spreadsheetId": "El ID de la hoja de cálculo",
+        "requests": "Array de objetos de petición batchUpdate. Cada objeto es una clave mapeada a su tipo de petición. Tipos comunes: addSheet, deleteSheet, updateSheetProperties (renombrar, tabColor, gridProperties como frozenRowCount), repeatCell (formato: textFormat con bold/italic/fontSize/foregroundColor, backgroundColor, numberFormat, borders), addConditionalFormatRule, setDataValidation, addProtectedRange, autoResizeDimensions, updateBorders, mergeCells, unmergeCells, addChart, addPivotTable. Ver https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets/request para el esquema completo."
+      }
+    },
+    "read-spreadsheet": {
+      "name": "read-spreadsheet",
+      "description": "Lee datos de una hoja de Google.",
+      "params": {
+        "spreadsheetId": "El ID de la hoja de cálculo",
+        "range": "El rango a leer (ej., 'Sheet1!A1:D10', por defecto: primera hoja)"
+      }
+    },
+    "read-sheet-range": {
+      "name": "read-sheet-range",
+      "description": "Lee un rango específico de una hoja de Google. Más eficiente que leer toda la hoja.",
+      "params": {
+        "fileId": "ID del archivo de Google Sheet",
+        "range": "Rango a leer en notación A1 (ej., 'Sheet1!A1:D10', 'Sheet2!A:A')",
+        "valueRenderOption": "Cómo renderizar los valores: FORMATTED_VALUE (por defecto), UNFORMATTED_VALUE, o FORMULA"
+      }
+    },
+    "list-sheet-tabs": {
+      "name": "list-sheet-tabs",
+      "description": "Lista todas las hojas (pestañas) en una hoja de cálculo de Google con sus metadatos.",
+      "params": {
+        "fileId": "ID del archivo de Google Sheet"
+      }
+    },
+    "export-sheet": {
+      "name": "export-sheet",
+      "description": "Exporta una hoja de Google a un formato específico (CSV, XLSX, PDF, ODS, TSV). Descarga el archivo exportado al sistema de archivos local.",
+      "params": {
+        "fileId": "ID del archivo de Google Sheet a exportar",
+        "format": "Formato de exportación: csv, xlsx, pdf, ods, tsv (por defecto: csv)",
+        "outputPath": "Opcional: Ruta local donde guardar el archivo exportado. Por defecto: ~/Downloads/",
+        "sheetName": "Opcional: Nombre de la hoja específica a exportar (solo para CSV/TSV). Si no se proporciona, exporta la primera hoja."
+      }
+    }
+  }
+}

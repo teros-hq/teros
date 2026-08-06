@@ -2,6 +2,7 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { clickupRequest, formatTask } from '../lib';
 
 export const searchTasks: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Search for tasks across a ClickUp workspace.',
   parameters: {
     type: 'object',

@@ -30,16 +30,26 @@ export function createReopenChannelHandler(
 
     await channelManager.reopenChannel(data.channelId)
 
+    // Re-fetch + enrich so the reopened channel arrives in the conversation
+    // list with full agent identity, not a bare {channelId, status} payload.
+    const reopened = await channelManager.getChannel(data.channelId)
+    const channelData = await channelManager.enrichChannel({
+      channelId: reopened!.channelId,
+      agentId: reopened!.agentId,
+      title: reopened!.metadata?.name || 'Nuevo chat',
+      status: reopened!.status,
+      createdAt: reopened!.createdAt,
+      updatedAt: reopened!.updatedAt,
+      workspaceId: reopened!.workspaceId,
+    })
+
     // Broadcast to all user sessions (treat reopen as created for the list)
     const sessions = sessionManager.getUserSessions(ctx.userId)
     const broadcastMsg = JSON.stringify({
       type: 'channel_list_status',
       channelId: data.channelId,
       action: 'created',
-      channel: {
-        channelId: data.channelId,
-        status: 'active',
-      },
+      channel: channelData,
     })
     for (const session of sessions) {
       if (session.ws.readyState === session.ws.OPEN) {

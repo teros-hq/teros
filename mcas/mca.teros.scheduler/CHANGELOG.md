@@ -1,5 +1,72 @@
 # Changelog - Scheduler MCA
 
+## [1.1.0] - 2026-05-22 - User Isolation (TER-358)
+
+### 🔒 Security — cierre de la cadena de exploit cross-user
+
+El audit de seguridad sobre la v1.0.0 detectó 5 CRITICAL que formaban una
+cadena de RCE persistente cross-user. Esta versión los cierra con defensa
+en profundidad en 4 capas independientes.
+
+- **C-1 Wake-up cross-user con RCE**: cerrado. `mca-callback-routes.handleChannelSubscription` valida que `body.channelId` pertenece al user del callback token (Capa 2). `scheduler-service.ts` verifica `channel.userId === reminder.user_id` antes de cada dispatch (Capa 3). `mca-event-subscription-service.dispatch` re-valida `payload.userId === channel.userId` antes del wake-up (Capa 4).
+- **C-2 Lectura cross-user**: cerrado. Todas las queries (`listReminders`, `listRecurringTasks`, `list-upcoming`, `list-executions`, `get-reminder`, `get-recurring-task`, `get-stats`) exigen `userId` REQUIRED y filtran al level Mongo.
+- **C-3 Mutación cross-user no atómica**: cerrado. `cancelReminder`, `updateReminder`, `bulkCancelReminders`, `setRecurringEnabled`, `deleteRecurringTask`, `updateRecurringTask` usan `findOneAndUpdate`/`findOneAndDelete` con filter compuesto `{id, user_id, status?}` en una sola query atómica. Sin TOCTOU.
+- **C-4 IDs secuenciales globales**: cerrado. `scheduler_counters` ahora usa `_id: '<reminders|recurring_tasks>:<userId>'` — counter per-user. Ids cortos en prompts del LLM preservados.
+- **C-5 WsRouter simétricamente roto**: cerrado. `handlers/domains/scheduler/{_helpers,handlers,store}.ts` consumen `ctx.userId` en cada operación; espejo exacto del MCA (criterio 22).
+
+### 📦 Schema
+
+- Añadido `user_id: string` REQUIRED y `workspace_id?: string` opcional a `Reminder`, `RecurringTask`, `Execution`.
+- Tipos canónicos movidos a `packages/shared/src/scheduler.ts` (elimina la triple duplicación entre `db.ts`, `_helpers.ts` y `scheduler-service.ts`).
+- Composite indexes nuevos: `{user_id, status, scheduled_time}`, `{user_id, channel_id}`, `{user_id, enabled, next_run}`, `{user_id, task_id, ran_at:-1}`. Índices globales del executor se mantienen.
+
+### 🛠️ Migration `user_id_backfill_v1`
+
+`db.connect()` ejecuta una migration idempotente vía la collection `scheduler_migrations`:
+
+1. Para cada doc sin `user_id`: lookup `channels.findOne({_id: channel_id})` → `set user_id = channel.userId` (y `workspace_id` si existe).
+2. Channel huérfano (borrado o sin userId) → `set user_id = '__orphaned__'`.
+3. Idempotente: dos contenedores arrancando simultáneo solo procesan una vez.
+
+Sentinel `__orphaned__` excluido en queries normales y en el find del executor — los huérfanos nunca disparan.
+
+### ✨ UX
+
+- **Permission widget** ahora muestra descripción humana para las 19 tools del scheduler (cierra compliance #17). Las destructive (cancel, bulk-cancel, delete) llevan badge `irreversible`.
+- `channelId` validado con regex `^ch_[0-9a-f]{16}$` en boundary del handler.
+- `message` cap explícito a 4000 chars (evita storage/token exhaustion).
+- Tools de create (`schedule-reminder`, `create-recurring-task`) verifican ownership del channel via `context.backend.channelGet` antes de persistir.
+- Cleanup unificado de subscriptions: `cancel-reminder` y `delete-recurring-task` limpian ambos topics (`scheduler.reminder` y `scheduler.recurring_task`); `bulk-cancel` deduplica channels y limpia subs huérfanas.
+
+### 🧪 Tests
+
+- `test/isolation.test.ts` (13 tests): 2 users, cross-user list/get/mutate todos rechazados.
+- `test/migration.test.ts` (5 tests): backfill, idempotencia, orphan handling, cascada executions.
+- `test/ownership-atomic.test.ts` (12+ tests): race conditions cerradas, atomic compare-and-set, guards `status:'pending'` y `enabled:true`.
+- Total: 81/81 tests passing (36 originales + 45 nuevos).
+
+### 🔧 Robustez del executor (incluida en este PR)
+
+Atendiendo al bug reportado en paralelo ("recurring task no manda emails"):
+
+- **Subscription auto-recreate**: `MCAEventSubscriptionService.dispatch` ahora retorna `{channelMatched, agentMatched}`. Si el scheduler detecta `matched === 0` para `scheduler.*`, re-crea la subscription via `createChannelSubscription` y reintenta el dispatch una vez. Cubre el caso de TTL expiration silente.
+- **Atomic claim**: reminders pasan a `status: 'dispatching'` antes del dispatch via `findOneAndUpdate` CAS. Cierra double-dispatch (audit robustez C-1) y permite reaper futuro de docs huérfanos en `dispatching`.
+- **isChecking guard + setTimeout recursivo**: el siguiente tick se agenda en el `finally` del actual. Cero iteraciones solapadas (audit C-2).
+- **next_run avanza en `finally`**: incluso si el dispatch falla, `next_run` se avanza al siguiente ciclo. Sin atascos (audit C-3). `consecutive_failures` se incrementa; tras `RECURRING_FAILURE_CAP = 5` la task se deshabilita con log + Sentry.
+- **fail-loud cron**: si `getNextCronRun` lanza o devuelve null (ej. `0 31 2 * *` Feb-31), la task se deshabilita con `last_error: 'cron: …'`. Sin fallback silencioso a +1h (audit C-4).
+- **`recordExecution` wire-up**: cada iteración del executor registra una Execution (`success`/`failure` + error). La tool `list-executions` deja de ser feature muerta (audit m-7).
+- **MongoClient con retry opts**: `retryWrites`, `retryReads`, `serverSelectionTimeoutMS: 5000`, `maxPoolSize: 10`.
+- **TTL index para reminders terminales**: documentos con `terminal_at` (sent/cancelled/failed) se purgan tras `TERMINAL_REMINDER_TTL_SECONDS = 30 días`.
+- **Status `'dispatching'`** añadido a `ReminderStatus` para audit visibility.
+
+### ⏩ Follow-ups bajo TER-186
+
+- **Mongo direct → `context.backend`** (PR2, mini-RFC): elimina patch dev-only macOS, deja MCA portable.
+- **Reaper de docs huérfanos en `dispatching`**: tras crash del executor entre claim y mark, el doc queda en `dispatching`. Un reaper periódico debe revivirlos o marcarlos failed según TTL.
+- **Mejoras cosméticas TER-186** (PR3): `verb=` API en SchedulerToolShell, color tokens v2 en destructive renderers, idempotency declarativa.
+
+---
+
 ## [2.0.0] - MongoDB Migration
 
 ### 🎯 Breaking Changes

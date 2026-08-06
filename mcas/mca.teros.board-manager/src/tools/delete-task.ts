@@ -1,37 +1,30 @@
-import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { getWsClient, isWsConnected } from '../lib';
+import type { ToolConfig } from '@teros/mca-sdk';
+import { getWsClient } from '../lib';
+import { assertBackendConnected, withTimeout } from './utils';
 
 export const deleteTask: ToolConfig = {
-  description: 'Delete a task from the board. Sub-tasks become top-level tasks. Linked conversations are NOT deleted.',
+  description:
+    'Permanently delete a task. Sub-tasks become top-level tasks. Linked conversations are NOT deleted. Irreversible. Returns: { taskId, deleted: true }.',
+  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {
-      taskId: {
-        type: 'string',
-        description: 'The task ID to delete',
-      },
+      taskId: { type: 'string', description: 'Task ID to delete' },
     },
     required: ['taskId'],
   },
   handler: async (args) => {
+    assertBackendConnected();
     const wsClient = getWsClient();
-    if (!isWsConnected()) {
-      throw new Error('Not connected to backend. Please try again in a moment.');
-    }
-
     const taskId = args?.taskId as string;
-    if (!taskId) {
-      throw new Error('taskId is required');
-    }
+    if (!taskId) throw new Error('taskId is required');
 
-    const result = await wsClient.queryConversations<any>('delete_task', {
-      taskId,
-    });
+    await withTimeout(
+      wsClient.queryConversations<any>('delete_task', { taskId }),
+      15_000,
+      'delete_task',
+    );
 
-    return {
-      success: true,
-      taskId,
-      deleted: true,
-    };
+    return { taskId, deleted: true };
   },
 };

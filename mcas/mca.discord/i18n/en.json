@@ -1,0 +1,233 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies Discord OAuth credentials and API connectivity."
+    },
+    "list-guilds": {
+      "name": "list-guilds",
+      "description": "List guilds (servers) the bot/user is a member of. Supports pagination.",
+      "params": {
+        "limit": "Max guilds per page (1-200). Default: 100",
+        "before": "Get guilds before this guild ID (for pagination)",
+        "after": "Get guilds after this guild ID (for pagination)",
+        "withCounts": "Include approximate member and presence counts. Default: false"
+      }
+    },
+    "get-guild": {
+      "name": "get-guild",
+      "description": "Get detailed information about a specific guild (server) by ID.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "withCounts": "Include approximate member and presence counts. Default: false"
+      }
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "List channels in a guild. Returns text, voice, category, and other channel types.",
+      "params": {
+        "guildId": "Guild ID (snowflake)"
+      }
+    },
+    "get-channel": {
+      "name": "get-channel",
+      "description": "Get detailed information about a specific channel by ID.",
+      "params": {
+        "channelId": "Channel ID (snowflake)"
+      }
+    },
+    "create-channel": {
+      "name": "create-channel",
+      "description": "Create a new channel in a guild. Supports text, voice, category, announcement, and forum channels.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "name": "Channel name (1-100 characters)",
+        "type": "Channel type. Default: text",
+        "topic": "Channel topic/description (max 1024 chars for text, 4096 for forum)",
+        "parentId": "Parent category channel ID",
+        "nsfw": "Mark channel as NSFW. Default: false",
+        "rateLimitPerUser": "Slowmode in seconds (0-21600). Default: 0",
+        "bitrate": "Voice channel bitrate in bits (8000-96000/128000 for boosted guilds)",
+        "userLimit": "Voice channel user limit (0-99, 0 = unlimited). Default: 0",
+        "position": "Sorting position of the channel"
+      }
+    },
+    "delete-channel": {
+      "name": "delete-channel",
+      "description": "Delete a channel or close a DM. Requires Manage Channels permission for guild channels.",
+      "params": {
+        "channelId": "Channel ID (snowflake) to delete",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Send a message to a Discord channel. Supports text, embeds, mentions, and replies.",
+      "params": {
+        "channelId": "Channel ID (snowflake) to send the message to",
+        "content": "Message text content (max 2000 characters, 4000 for nitro)",
+        "embeds": "Optional JSON string of embed objects array. Use buildEmbed helper or pass raw JSON.",
+        "replyToMessageId": "Optional message ID to reply to",
+        "mentionEveryone": "Allow @everyone and @here mentions. Default: false",
+        "mentionRoles": "Allow @role mentions. Default: true",
+        "mentionUsers": "Allow @user mentions. Default: true",
+        "tts": "Send as text-to-speech. Default: false"
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "List messages in a channel. Supports pagination via before/after/around message IDs.",
+      "params": {
+        "channelId": "Channel ID (snowflake)",
+        "limit": "Number of messages to retrieve (1-100). Default: 50",
+        "before": "Get messages before this message ID",
+        "after": "Get messages after this message ID",
+        "around": "Get messages around this message ID"
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "Delete a message from a channel. Requires Manage Messages permission if not the message author.",
+      "params": {
+        "channelId": "Channel ID (snowflake)",
+        "messageId": "Message ID (snowflake) to delete",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "add-reaction": {
+      "name": "add-reaction",
+      "description": "Add a reaction (emoji) to a message. Use Unicode emoji or custom emoji format name:id.",
+      "params": {
+        "channelId": "Channel ID (snowflake)",
+        "messageId": "Message ID (snowflake)",
+        "emoji": "Emoji to react with. Unicode emoji (e.g. 👍) or custom emoji name:id format"
+      }
+    },
+    "list-members": {
+      "name": "list-members",
+      "description": "List members of a guild. Supports pagination via limit and after user ID.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "limit": "Max members to retrieve (1-1000). Default: 100",
+        "after": "Get members after this user ID (snowflake) for pagination"
+      }
+    },
+    "get-member": {
+      "name": "get-member",
+      "description": "Get a specific guild member by user ID.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) of the member"
+      }
+    },
+    "list-roles": {
+      "name": "list-roles",
+      "description": "List all roles in a guild, ordered by position (highest first).",
+      "params": {
+        "guildId": "Guild ID (snowflake)"
+      }
+    },
+    "create-role": {
+      "name": "create-role",
+      "description": "Create a new role in a guild. Requires Manage Roles permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "name": "Role name (max 100 characters)",
+        "color": "Role color as integer (0 = no color). Use RGB integer value.",
+        "hoist": "Display role members separately in online list. Default: false",
+        "icon": "Base64-encoded role icon image (PNG/JPEG, max 256x256)",
+        "unicodeEmoji": "Unicode emoji to use as role icon",
+        "mentionable": "Allow anyone to @mention this role. Default: false",
+        "permissions": "Permission bitfield as string. Default: '0'",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "assign-role": {
+      "name": "assign-role",
+      "description": "Add a role to a guild member. Requires Manage Roles permission with the bot's role above the target role.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) to assign the role to",
+        "roleId": "Role ID (snowflake) to assign",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "remove-role": {
+      "name": "remove-role",
+      "description": "Remove a role from a guild member. Requires Manage Roles permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) to remove the role from",
+        "roleId": "Role ID (snowflake) to remove",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "list-webhooks": {
+      "name": "list-webhooks",
+      "description": "List webhooks in a guild or channel. Requires Manage Webhooks permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake) to list all webhooks in the guild",
+        "channelId": "Channel ID (snowflake) to list webhooks in a specific channel"
+      }
+    },
+    "create-webhook": {
+      "name": "create-webhook",
+      "description": "Create a new webhook in a channel. Requires Manage Webhooks permission. Returns the webhook token for sending messages.",
+      "params": {
+        "channelId": "Channel ID (snowflake) to create the webhook in",
+        "name": "Webhook name (1-80 characters, cannot contain 'clyde' or 'discord')",
+        "avatar": "Base64-encoded avatar image (PNG/JPEG/GIF, max 128x128)",
+        "reason": "Optional audit log reason"
+      }
+    },
+    "send-webhook-message": {
+      "name": "send-webhook-message",
+      "description": "Send a message via a webhook using the webhook URL. Supports text, embeds, and usernames.",
+      "params": {
+        "webhookId": "Webhook ID (snowflake)",
+        "webhookToken": "Webhook token (from create-webhook response)",
+        "content": "Message text content (max 2000 characters)",
+        "username": "Override the webhook's default username",
+        "avatarUrl": "Override the webhook's default avatar URL",
+        "embeds": "Optional JSON string of embed objects array",
+        "threadId": "Optional thread ID to send the message in a forum thread"
+      }
+    },
+    "kick-member": {
+      "name": "kick-member",
+      "description": "Kick a member from a guild. Requires Kick Members permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) of the member to kick",
+        "reason": "Optional audit log reason for the kick"
+      }
+    },
+    "ban-member": {
+      "name": "ban-member",
+      "description": "Ban a member from a guild. Optionally delete their message history. Requires Ban Members permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) of the member to ban",
+        "deleteMessageSeconds": "Number of seconds to delete messages for (0-604800, 7 days max). Default: 0",
+        "reason": "Optional audit log reason for the ban"
+      }
+    },
+    "timeout-member": {
+      "name": "timeout-member",
+      "description": "Timeout (mute) a guild member for a specified duration. Requires Moderate Members permission.",
+      "params": {
+        "guildId": "Guild ID (snowflake)",
+        "userId": "User ID (snowflake) of the member to timeout",
+        "durationMinutes": "Timeout duration in minutes (max 40320 = 28 days). Default: 60",
+        "reason": "Optional audit log reason"
+      }
+    }
+  },
+  "name": "Discord",
+  "description": "Full Discord integration: guilds, channels, messages, members, roles, webhooks, threads, reactions, and moderation. Uses Discord REST API with OAuth 2.0 / Bot Token.",
+  "changelog": [
+    {
+      "notes": "Initial release — send and read messages, manage servers, channels, roles, members and webhooks, react, and moderate"
+    }
+  ]
+}

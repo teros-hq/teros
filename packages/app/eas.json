@@ -1,12 +1,13 @@
 {
   "cli": {
-    "version": ">= 16.28.0",
+    "version": ">= 21.0.1",
     "appVersionSource": "remote"
   },
   "build": {
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "node": "24.11.0",
       "ios": {
         "simulator": false
       },
@@ -17,14 +18,16 @@
     },
     "preview": {
       "distribution": "internal",
+      "node": "24.11.0",
       "env": {
-        "EXPO_PUBLIC_WS_URL": "wss://your-backend-domain.com/ws"
+        "EXPO_PUBLIC_WS_URL": "wss://localhost/ws"
       }
     },
     "production": {
       "autoIncrement": true,
+      "node": "24.11.0",
       "env": {
-        "EXPO_PUBLIC_WS_URL": "wss://your-backend-domain.com/ws"
+        "EXPO_PUBLIC_WS_URL": "wss://be.teros.ai/ws"
       }
     }
   },

@@ -14,6 +14,9 @@
             "default": 100
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -27,7 +30,12 @@
             "description": "Board ID to retrieve"
           }
         },
-        "required": ["boardId"]
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -49,7 +57,12 @@
             "description": "Template ID to use"
           }
         },
-        "required": ["name"]
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -72,7 +85,12 @@
             "default": 100
           }
         },
-        "required": ["boardId"]
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -90,7 +108,13 @@
             "description": "Board ID"
           }
         },
-        "required": ["itemId", "boardId"]
+        "required": [
+          "itemId",
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -116,7 +140,13 @@
             "description": "Column values (columnId: value)"
           }
         },
-        "required": ["boardId", "itemName"]
+        "required": [
+          "boardId",
+          "itemName"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -138,12 +168,22 @@
             "description": "Updated column values (columnId: value)"
           }
         },
-        "required": ["itemId", "boardId"]
+        "required": [
+          "itemId",
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
       "name": "monday_delete_item",
       "description": "Delete an item",
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
+      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -156,7 +196,10 @@
             "description": "Board ID"
           }
         },
-        "required": ["itemId", "boardId"]
+        "required": [
+          "itemId",
+          "boardId"
+        ]
       }
     },
     {
@@ -170,7 +213,12 @@
             "description": "Board ID"
           }
         },
-        "required": ["boardId"]
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -188,7 +236,13 @@
             "description": "Group name"
           }
         },
-        "required": ["boardId", "name"]
+        "required": [
+          "boardId",
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -202,7 +256,12 @@
             "description": "Board ID"
           }
         },
-        "required": ["boardId"]
+        "required": [
+          "boardId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -220,7 +279,13 @@
             "description": "Update text"
           }
         },
-        "required": ["itemId", "updateValue"]
+        "required": [
+          "itemId",
+          "updateValue"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -239,7 +304,12 @@
             "default": 50
           }
         },
-        "required": ["itemId"]
+        "required": [
+          "itemId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
       }
     },
     {
@@ -262,7 +332,12 @@
             "default": 100
           }
         },
-        "required": ["query"]
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -271,6 +346,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     }
   ]

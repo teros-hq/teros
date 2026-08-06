@@ -4,36 +4,45 @@
 
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
-import { config } from '../../../config'
+import { requireSystemAdmin } from '../../../auth/auth-helpers'
+import { buildAvatarUrl } from '../../../lib/avatar-url'
 import type { ModelService } from '../../../services/model-service'
 
-function buildAvatarUrl(avatarFilename?: string): string | undefined {
-  if (!avatarFilename) return undefined
-  return `${config.static.baseUrl}/${avatarFilename}`
-}
-
 interface ListCoresData {
+  /**
+   * Filter by core status. Defaults to 'active' — inactive cores are the
+   * deactivated legacy engines from the consolidation migration (no agent
+   * references them), so surfacing them in the admin list is pure noise. Pass
+   * 'inactive' explicitly to inspect them (e.g. before a purge).
+   */
   status?: 'active' | 'inactive'
 }
 
 export function createListCoresHandler(db: Db, modelService: ModelService) {
-  void db // kept for symmetry; modelService already has its own db reference
+  return async function listCores(ctx: WsHandlerContext, rawData: unknown) {
+    // Cores are internal infra (TER-412): only admins may list them. This was a
+    // public catalogue under the old user-facing model; internalizing cores
+    // makes it admin-only (TER-510 allowlist updated accordingly).
+    await requireSystemAdmin(db, ctx.userId)
 
-  return async function listCores(_ctx: WsHandlerContext, rawData: unknown) {
     const data = (rawData ?? {}) as ListCoresData
-    const status = data.status as 'active' | 'inactive' | undefined
+    // Default to active so the admin UI never lists the 16 deactivated legacy
+    // cores left behind (deactivated, not deleted) by the consolidation.
+    const status: 'active' | 'inactive' = data.status ?? 'active'
 
     const cores = await modelService.listAgentCores(status)
 
     return {
       cores: cores.map((c) => ({
         coreId: c.coreId,
+        coreType: c.coreType,
         name: c.name,
         fullName: c.fullName,
         version: c.version,
         systemPrompt: c.systemPrompt,
         personality: c.personality,
         capabilities: c.capabilities,
+        defaultApps: c.defaultApps,
         avatarUrl: buildAvatarUrl(c.avatarUrl),
         modelId: c.modelId,
         modelOverrides: c.modelOverrides,

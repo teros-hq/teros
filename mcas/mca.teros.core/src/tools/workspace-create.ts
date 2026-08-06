@@ -1,6 +1,7 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 
 export const workspaceCreate: ToolConfig = {
+  annotations: { readOnlyHint: false },
   description: 'Create a new workspace with its own volume.',
   parameters: {
     type: 'object',

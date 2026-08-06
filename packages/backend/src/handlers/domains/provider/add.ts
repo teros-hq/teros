@@ -4,6 +4,7 @@
 
 import type { WsHandlerContext } from "@teros/shared"
 import type { ProviderService } from "../../../services/provider-service"
+import { PROVIDER_TYPES_WITHOUT_SECRETS } from "../../../services/provider-service"
 import { HandlerError } from "../../../ws-framework/WsRouter"
 
 interface AddProviderData {
@@ -13,15 +14,28 @@ interface AddProviderData {
   auth?: { apiKey?: string }
 }
 
-const VALID_TYPES = [
+/**
+ * All provider types accepted by the add handler.
+ * Exported so other handlers (e.g. provider-commands.ts) can reuse this list
+ * instead of maintaining their own copy.
+ */
+export const VALID_PROVIDER_TYPES = [
   'anthropic',
   'anthropic-oauth',
   'openai',
   'openai-codex-oauth',
   'openrouter',
+  'google',
   'zhipu',
   'zhipu-coding',
   'ollama',
+  'ollama-cloud',
+  'minimax',
+  'openai-compatible',
+  'teros',
+  'cloudflare',
+  'fireworks',
+  'together',
 ]
 
 export function createAddProviderHandler(providerService: ProviderService) {
@@ -33,7 +47,7 @@ export function createAddProviderHandler(providerService: ProviderService) {
       throw new HandlerError("INVALID_INPUT", "providerType and displayName are required")
     }
 
-    if (!VALID_TYPES.includes(providerType)) {
+    if (!VALID_PROVIDER_TYPES.includes(providerType as any)) {
       throw new HandlerError("INVALID_PROVIDER_TYPE", `Invalid providerType: ${providerType}`)
     }
 
@@ -43,10 +57,10 @@ export function createAddProviderHandler(providerService: ProviderService) {
       config,
     })
 
-    // Ollama doesn't need an API key — test immediately to discover models
-    if (providerType === "ollama") {
+    // Credential-free providers — test immediately to discover models
+    if (PROVIDER_TYPES_WITHOUT_SECRETS.includes(providerType as any)) {
       const testResult = await providerService.testProvider(provider.providerId)
-      console.log(`[provider.add] Added Ollama provider ${provider.providerId}`)
+      console.log(`[provider.add] Added credential-free provider ${provider.providerId} (${providerType})`)
       return {
         provider: {
           providerId: provider.providerId,

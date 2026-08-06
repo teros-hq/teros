@@ -1,0 +1,263 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Odoo API 키 및 연결성을 확인합니다."
+    },
+    "list-models": {
+      "name": "list-models",
+      "description": "사용 가능한 모든 Odoo 모델(ir.model)을 나열합니다.",
+      "params": {
+        "limit": "결과의 최대 수(기본값: 100)",
+        "offset": "페이지 매김 오프셋"
+      }
+    },
+    "search-records": {
+      "name": "search-records",
+      "description": "모든 Odoo 모델에서 레코드를 검색하고 읽습니다. \"is_company=true,name=Acme\"와 같은 필터를 사용합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름, 예: res.partner",
+        "filters": "쉼표로 구분된 필터: field=value, field!=value, field>value 등.",
+        "fields": "반환할 필드(기본값: 모든 저장된 필드)",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: name asc"
+      }
+    },
+    "get-record": {
+      "name": "get-record",
+      "description": "모델 및 ID로 단일 Odoo 레코드를 읽습니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "id": "레코드 ID",
+        "fields": "반환할 필드"
+      }
+    },
+    "create-record": {
+      "name": "create-record",
+      "description": "모든 Odoo 모델에 새 레코드를 생성합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "values": "새 레코드의 필드 값"
+      }
+    },
+    "update-record": {
+      "name": "update-record",
+      "description": "모델 및 ID로 기존 Odoo 레코드를 업데이트합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "id": "레코드 ID",
+        "values": "업데이트할 필드 값"
+      }
+    },
+    "delete-record": {
+      "name": "delete-record",
+      "description": "모델 및 ID로 Odoo 레코드를 삭제합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "id": "레코드 ID"
+      }
+    },
+    "count-records": {
+      "name": "count-records",
+      "description": "주어진 필터와 일치하는 Odoo 모델의 레코드를 계산합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "filters": "쉼표로 구분된 필터: field=value, field!=value 등."
+      }
+    },
+    "call-method": {
+      "name": "call-method",
+      "description": "Odoo 모델에서 모든 공개 메서드를 호출합니다.",
+      "params": {
+        "model": "Odoo 모델 기술 이름",
+        "method": "호출할 메서드 이름",
+        "args": "메서드에 전달된 위치 인수",
+        "kwargs": "메서드에 전달된 키워드 인수"
+      }
+    },
+    "list-partners": {
+      "name": "list-partners",
+      "description": "Odoo 파트너(연락처 / 회사)를 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터, 예: is_company=true,name=Acme",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: name asc"
+      }
+    },
+    "get-partner": {
+      "name": "get-partner",
+      "description": "ID로 특정 Odoo 파트너를 가져옵니다.",
+      "params": {
+        "id": "파트너 ID"
+      }
+    },
+    "create-partner": {
+      "name": "create-partner",
+      "description": "새 Odoo 파트너(연락처 또는 회사)를 생성합니다.",
+      "params": {
+        "name": "파트너 이름",
+        "email": "이메일 주소",
+        "phone": "전화번호",
+        "isCompany": "회사인지 여부",
+        "street": "거리 주소",
+        "city": "도시",
+        "zip": "우편번호",
+        "countryId": "국가 ID",
+        "parentId": "모회사 ID",
+        "values": "추가 필드 값"
+      }
+    },
+    "update-partner": {
+      "name": "update-partner",
+      "description": "ID로 기존 Odoo 파트너를 업데이트합니다.",
+      "params": {
+        "id": "파트너 ID",
+        "values": "업데이트할 필드 값"
+      }
+    },
+    "list-products": {
+      "name": "list-products",
+      "description": "Odoo 제품(product.template)을 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터, 예: sale_ok=true",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: name asc"
+      }
+    },
+    "list-sale-orders": {
+      "name": "list-sale-orders",
+      "description": "Odoo 판매 주문을 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터, 예: state=sale",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: date_order desc"
+      }
+    },
+    "get-sale-order": {
+      "name": "get-sale-order",
+      "description": "ID로 특정 Odoo 판매 주문을 가져옵니다. 주문 라인을 포함합니다.",
+      "params": {
+        "id": "판매 주문 ID"
+      }
+    },
+    "create-sale-order": {
+      "name": "create-sale-order",
+      "description": "선택적 주문 라인과 함께 새 Odoo 판매 주문을 생성합니다.",
+      "params": {
+        "partnerId": "고객 파트너 ID",
+        "orderLines": "productId, quantity, priceUnit가 포함된 객체로서의 주문 라인",
+        "dateOrder": "주문 날짜(ISO 8601)",
+        "note": "내부 메모"
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "Odoo 고객 송장(account.move)을 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터, 예: state=posted",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: invoice_date desc"
+      }
+    },
+    "list-projects": {
+      "name": "list-projects",
+      "description": "Odoo 프로젝트를 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: name asc"
+      }
+    },
+    "list-tasks": {
+      "name": "list-tasks",
+      "description": "Odoo 프로젝트 작업을 나열합니다.",
+      "params": {
+        "projectId": "프로젝트 ID로 필터링",
+        "filters": "추가 쉼표로 구분된 필터",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: date_deadline asc"
+      }
+    },
+    "create-project-task": {
+      "name": "create-project-task",
+      "description": "Odoo 프로젝트에 새 작업을 생성합니다.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "name": "작업 이름",
+        "userId": "배정된 사용자 ID",
+        "dateDeadline": "마감일(ISO 8601)",
+        "description": "작업 설명(HTML 지원)",
+        "values": "추가 필드 값"
+      }
+    },
+    "list-employees": {
+      "name": "list-employees",
+      "description": "Odoo 직원(hr.employee)을 나열합니다.",
+      "params": {
+        "filters": "쉼표로 구분된 필터",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: name asc"
+      }
+    },
+    "list-leaves": {
+      "name": "list-leaves",
+      "description": "Odoo 휴가 요청(hr.leave)을 나열합니다.",
+      "params": {
+        "employeeId": "직원 ID로 필터링",
+        "state": "상태로 필터링: draft, confirm, validate, refuse",
+        "filters": "추가 쉼표로 구분된 필터",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: date_from desc"
+      }
+    },
+    "create-leave": {
+      "name": "create-leave",
+      "description": "새 Odoo 휴가 요청(hr.leave)을 생성합니다.",
+      "params": {
+        "employeeId": "직원 ID",
+        "holidayStatusId": "휴가 유형 ID",
+        "dateFrom": "시작 날짜/시간(ISO 8601)",
+        "dateTo": "종료 날짜/시간(ISO 8601)",
+        "name": "이유 / 설명"
+      }
+    },
+    "list-timesheets": {
+      "name": "list-timesheets",
+      "description": "Odoo 타임시트 항목(account.analytic.line)을 나열합니다.",
+      "params": {
+        "projectId": "프로젝트 ID로 필터링",
+        "taskId": "작업 ID로 필터링",
+        "employeeId": "직원 ID로 필터링",
+        "dateFrom": "시작 날짜(YYYY-MM-DD)",
+        "dateTo": "종료 날짜(YYYY-MM-DD)",
+        "filters": "추가 쉼표로 구분된 필터",
+        "limit": "최대 결과(기본값: 50)",
+        "offset": "페이지 매김 오프셋",
+        "order": "정렬 절, 예: date desc"
+      }
+    },
+    "create-timesheet": {
+      "name": "create-timesheet",
+      "description": "새 Odoo 타임시트 항목(account.analytic.line)을 생성합니다.",
+      "params": {
+        "projectId": "프로젝트 ID",
+        "taskId": "작업 ID(선택 사항)",
+        "employeeId": "직원 ID",
+        "date": "날짜(YYYY-MM-DD)",
+        "name": "수행한 작업의 설명",
+        "hours": "소요된 시간"
+      }
+    }
+  },
+  "name": "Odoo",
+  "description": "Odoo ERP 통합 — API 키를 사용하여 Odoo JSON-RPC API를 통해 파트너, 제품, 판매 주문, 송장, 프로젝트, 작업, 직원, 휴가 및 타임시트를 관리합니다."
+}

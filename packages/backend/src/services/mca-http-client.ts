@@ -4,7 +4,7 @@
  * Client for communicating with MCAs running as HTTP services.
  * Used by McaManager to call containerized MCAs.
  *
- * @see docs/RFC-001-mca-protocol.md
+ *
  */
 
 import type {
@@ -16,6 +16,7 @@ import type {
   McaToolsListResponse,
 } from '@teros/shared';
 import { generateMessageId, MCA_PROTOCOL_VERSION } from '@teros/shared';
+import { HttpClient, HttpClientError } from '../lib/HttpClient';
 
 // ============================================================================
 // TYPES
@@ -33,6 +34,8 @@ export interface McaHttpClientConfig {
 export interface ToolCallOptions {
   /** Override timeout for this call */
   timeout?: number;
+  /** When aborted, `callTool` rejects with `McaHttpError(499, 'ABORTED')`. */
+  signal?: AbortSignal;
 }
 
 // ============================================================================
@@ -41,6 +44,7 @@ export interface ToolCallOptions {
 
 export class McaHttpClient {
   private config: Required<McaHttpClientConfig>;
+  private http: HttpClient;
 
   constructor(config: McaHttpClientConfig) {
     this.config = {
@@ -48,6 +52,14 @@ export class McaHttpClient {
       timeout: config.timeout ?? 120000,
       maxRetries: config.maxRetries ?? 3,
     };
+    this.http = new HttpClient({
+      baseUrl: this.config.baseUrl,
+      timeout: this.config.timeout,
+      maxRetries: this.config.maxRetries,
+      retryStatusCodes: [503, 504, 429],
+      logging: false,
+      logLabel: 'McaHttpClient',
+    });
   }
 
   /**
@@ -72,7 +84,12 @@ export class McaHttpClient {
       context,
     };
 
-    const response = await this.post<McaToolResultResponse>('/tools/call', request, timeout);
+    const response = await this.post<McaToolResultResponse>(
+      '/tools/call',
+      request,
+      timeout,
+      options?.signal,
+    );
     return response;
   }
 
@@ -113,73 +130,61 @@ export class McaHttpClient {
   // HTTP HELPERS
   // ==========================================================================
 
-  private async get<T>(path: string, timeout?: number): Promise<T> {
-    return this.request<T>('GET', path, undefined, timeout);
+  private async get<T>(path: string, timeout?: number, signal?: AbortSignal): Promise<T> {
+    return this.httpRequest<T>('GET', path, undefined, timeout, signal);
   }
 
-  private async post<T>(path: string, body: unknown, timeout?: number): Promise<T> {
-    return this.request<T>('POST', path, body, timeout);
+  private async post<T>(
+    path: string,
+    body: unknown,
+    timeout?: number,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.httpRequest<T>('POST', path, body, timeout, signal);
   }
 
-  private async request<T>(
+  /**
+   * Delegates to the centralised HttpClient and maps generic HttpClientErrors
+   * to MCA-specific McaHttpErrors so callers keep the same error contract.
+   */
+  private async httpRequest<T>(
     method: 'GET' | 'POST',
     path: string,
     body?: unknown,
     timeout?: number,
+    signal?: AbortSignal,
   ): Promise<T> {
-    const url = `${this.config.baseUrl}${path}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout ?? this.config.timeout);
-
     try {
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorBody = await response.text();
+      if (method === 'GET') {
+        return await this.http.get<T>(path, { timeout, signal });
+      }
+      return await this.http.post<T>(path, body, { timeout, signal });
+    } catch (error: unknown) {
+      if (error instanceof HttpClientError) {
+        // Attempt to parse MCA error envelope from the raw body
         let errorData: McaErrorResponse | undefined;
-        try {
-          errorData = JSON.parse(errorBody);
-        } catch {
-          // Not JSON
+        if (error.body) {
+          try {
+            errorData = JSON.parse(error.body);
+          } catch {
+            // Not JSON — ignore
+          }
         }
-
         throw new McaHttpError(
-          response.status,
-          errorData?.error?.code || 'HTTP_ERROR',
-          errorData?.error?.message || `HTTP ${response.status}: ${response.statusText}`,
+          error.statusCode,
+          errorData?.error?.code || error.code,
+          errorData?.error?.message || error.message,
           errorData,
         );
       }
-
-      return (await response.json()) as T;
-    } catch (error: unknown) {
-      clearTimeout(timeoutId);
-
-      if (error instanceof McaHttpError) {
-        throw error;
+      // Caller-abort wins over any low-level fetch error.
+      if (signal?.aborted) {
+        throw new McaHttpError(499, 'ABORTED', `Request aborted by caller`);
       }
-
-      if (error instanceof Error) {
-        if (error.name === 'AbortError') {
-          throw new McaHttpError(
-            504,
-            'TIMEOUT',
-            `Request timeout after ${timeout ?? this.config.timeout}ms`,
-          );
-        }
-        throw new McaHttpError(503, 'CONNECTION_FAILED', error.message);
+      // Native fetch AbortError without HttpClientError wrapper = timeout.
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new McaHttpError(504, 'TIMEOUT', `Request timeout: ${error.message}`);
       }
-
       throw new McaHttpError(500, 'UNKNOWN_ERROR', String(error));
     }
   }

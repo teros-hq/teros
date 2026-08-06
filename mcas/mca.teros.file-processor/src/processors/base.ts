@@ -9,7 +9,7 @@ import { type FileType, SUPPORTED_EXTENSIONS } from '../types.js';
  * Detect file type based on extension
  */
 export function detectFileType(filePath: string): FileType | null {
-  const ext = extname(filePath).toLowerCase().replace('.', '');
+  const ext = getExtension(filePath);
 
   for (const [type, extensions] of Object.entries(SUPPORTED_EXTENSIONS)) {
     if ((extensions as readonly string[]).includes(ext)) {
@@ -18,6 +18,13 @@ export function detectFileType(filePath: string): FileType | null {
   }
 
   return null;
+}
+
+/**
+ * Normalized lowercase file extension without the leading dot (e.g. "docx").
+ */
+export function getExtension(filePath: string): string {
+  return extname(filePath).toLowerCase().replace('.', '');
 }
 
 /**

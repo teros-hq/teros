@@ -1,0 +1,913 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 점검. Slack OAuth 자격 증명 및 auth.test를 통한 API 접근 가능성을 검사합니다."
+    },
+    "list-channels": {
+      "name": "list-channels",
+      "description": "채널 목록. 정리된 행 { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created } + nextCursor를 반환합니다. 매개변수: types? (CSV public_channel|private_channel|mpim|im), limit (1-1000, 기본 100), cursor, excludeArchived (기본 true), fields?, includeRaw.",
+      "params": {
+        "types": "public_channel, private_channel, mpim, im에서 오는 쉼표로 구분된 채널 유형. 기본값: public_channel,private_channel.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 1000, 기본 100.",
+        "cursor": "이전 응답의 Slack 커서.nextCursor.",
+        "excludeArchived": "아카이브된 채널 제외. 기본값 true.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 채널 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "get-channel": {
+      "name": "get-channel",
+      "description": "단일 채널을 가져옵니다. { id, name, isPrivate, isArchived, isMember, numMembers, topic, purpose, created, creator, isGeneral, isShared } + 추가 정보를 반환합니다. 매개변수: channelId, fields?, includeRaw.",
+      "params": {
+        "channelId": "Slack 채널 ID (C... / G... / D... / M...).",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 채널 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "create-channel": {
+      "name": "create-channel",
+      "description": "채널을 생성합니다. Slack은 이름을 정규화합니다 (소문자, 공백 없음, [a-z0-9_-]만 사용, ≤80). 정리된 채널 + ActionBadge('created')를 반환합니다. 재시도 불가. 매개변수: name, isPrivate? (기본 false), topic?, fields?, includeRaw.",
+      "params": {
+        "name": "채널 이름 (소문자, ≤80자, 문자/숫자/밑줄/하이픈만 사용).",
+        "isPrivate": "비공개로 생성합니다. 기본값 false.",
+        "topic": "생성 후 설정할 선택적 채널 주제.",
+        "fields": "반환된 채널의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 채널 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "archive-channel": {
+      "name": "archive-channel",
+      "description": "채널을 아카이브합니다 (이후 읽기 전용). 후속 정보 호출에서 { id, name }을 반환합니다. 재시도 불가. 매개변수: channelId.",
+      "params": {
+        "channelId": "Slack 채널 ID (C... / G...)."
+      }
+    },
+    "join-channel": {
+      "name": "join-channel",
+      "description": "공개 채널에 가입합니다. 정리된 채널을 반환합니다. 멱등성 (already_in_channel은 BUSINESS_RULE을 발생시킵니다). 매개변수: channelId.",
+      "params": {
+        "channelId": "Slack 채널 ID (C...)."
+      }
+    },
+    "invite-to-channel": {
+      "name": "invite-to-channel",
+      "description": "사용자를 채널에 초대합니다. { channel, invitedUserIds, alreadyInChannel? }를 반환합니다. 재시도 불가. 매개변수: channelId, userIds[].",
+      "params": {
+        "channelId": "Slack 채널 ID (C... / G...).",
+        "userIds": "초대할 Slack 사용자 ID (U... / W...)."
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "채널, DM 또는 최상위 메시지로 메시지를 게시합니다. { ts, channel, message, permalink }를 반환합니다. 재시도 불가 (멱등성 키 없음 — 재시도 시 중복 메시지 발생). 매개변수: channel, text, blocks? (JSON), threadTs?, unfurlLinks (기본 true), unfurlMedia (기본 true).",
+      "params": {
+        "channel": "채널 ID (C... / G... / D... / M...) 또는 사용자 ID (DM의 경우 U...).",
+        "text": "일반 텍스트 본문. 블록이 제공될 때도 필수입니다 (대체로 사용됨).",
+        "blocks": "선택적 Slack Block Kit JSON 문자열 (구문 분석됩니다).",
+        "threadTs": "스레드 답글로 게시할 부모 메시지 ts. 정식 스레드 API에 대해 send-thread-reply를 사용합니다.",
+        "unfurlLinks": "메시지의 링크를 펼칩니다. 기본값 true.",
+        "unfurlMedia": "메시지의 미디어를 펼칩니다. 기본값 true."
+      }
+    },
+    "send-thread-reply": {
+      "name": "send-thread-reply",
+      "description": "Slack 스레드 내에서 답글을 보냅니다. { ts, channel, threadTs, broadcast, message }를 반환합니다. 재시도 불가 (멱등성 키 없음). 매개변수: channel, threadTs, text, blocks? (JSON), broadcast (기본 false).",
+      "params": {
+        "channel": "부모 메시지가 있는 채널 ID.",
+        "threadTs": "부모 메시지 ts (1234567890.123456).",
+        "text": "일반 텍스트 답글 본문.",
+        "blocks": "선택적 Slack Block Kit JSON 문자열.",
+        "broadcast": "답글을 채널에 방송합니다. 기본값 false."
+      }
+    },
+    "list-messages": {
+      "name": "list-messages",
+      "description": "채널 또는 스레드의 메시지를 나열합니다 (threadTs를 전달하여 답글을 가져옵니다). 정리된 행 { ts, channel, user, text, threadTs, replyCount, reactions, permalink, createdAt } + nextCursor + isThread를 반환합니다. 매개변수: channel, threadTs?, limit (1-200, 기본 50), cursor, oldest, latest, inclusive, fields?, includeRaw.",
+      "params": {
+        "channel": "Slack 채널 ID (C... / G... / D... / M...).",
+        "threadTs": "스레드 답글을 가져오기 위한 부모 메시지 ts. 형식 1234567890.123456.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 50.",
+        "cursor": "이전 응답의 Slack 커서.nextCursor.",
+        "oldest": "시간 범위의 시작 (Unix 초).",
+        "latest": "시간 범위의 끝 (Unix 초).",
+        "inclusive": "경계 타임스탬프를 포함합니다. 기본값 false.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 메시지 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "add-reaction": {
+      "name": "add-reaction",
+      "description": "메시지에 이모지 반응을 추가합니다. { channel, timestamp, name }을 반환합니다. 멱등성 (already_reacted는 BUSINESS_RULE을 발생시킵니다). 매개변수: channel, timestamp, name (콜론 없음).",
+      "params": {
+        "channel": "메시지가 있는 채널 ID.",
+        "timestamp": "메시지 ts (1234567890.123456).",
+        "name": "콜론 없는 이모지 이름 (예: 'thumbsup', 'fire')."
+      }
+    },
+    "remove-reaction": {
+      "name": "remove-reaction",
+      "description": "메시지에서 이모지 반응을 제거합니다. { channel, timestamp, name }을 반환합니다. 멱등성 (no_reaction은 BUSINESS_RULE을 발생시킵니다). 매개변수: channel, timestamp, name (콜론 없음).",
+      "params": {
+        "channel": "메시지가 있는 채널 ID.",
+        "timestamp": "메시지 ts (1234567890.123456).",
+        "name": "콜론 없는 이모지 이름 (예: 'thumbsup')."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "작업 공간 사용자를 나열합니다. 정리된 행 { id, name, realName, displayName, email, imageUrl, isBot, isAdmin, isOwner, deleted, tz } + nextCursor를 반환합니다. 매개변수: limit (1-200, 기본 100), cursor, includeDeleted (기본 false), includeBots (기본 true), fields?, includeRaw.",
+      "params": {
+        "limit": "페이지당 결과 수. 최소 1, 최대 200, 기본 100.",
+        "cursor": "이전 응답의 Slack 커서.nextCursor.",
+        "includeDeleted": "비활성화된 사용자를 포함합니다. 기본값 false.",
+        "includeBots": "봇 사용자를 포함합니다. 기본값 true.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 사용자 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "ID 또는 이메일로 단일 사용자를 가져옵니다. 정리된 사용자 (id, name, realName, displayName, email, imageUrl, profile, tz)를 반환합니다. userId/email 중 하나를 제공해야 합니다. 매개변수: userId?, email?, fields?, includeRaw.",
+      "params": {
+        "userId": "Slack 사용자 ID (U... / W...). 이메일과 뮤텍스.",
+        "email": "사용자 이메일. userId와 뮤텍스.",
+        "fields": "기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 사용자 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "get-user-presence": {
+      "name": "get-user-presence",
+      "description": "Slack 사용자의 존재 상태를 가져옵니다. { user, presence, online, autoAway, manualAway, connectionCount, lastActivity }를 반환합니다. 매개변수: userId.",
+      "params": {
+        "userId": "Slack 사용자 ID (U... 또는 W...).",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "upload-file": {
+      "name": "upload-file",
+      "description": "로컬 파일을 Slack에 업로드하고 선택적으로 공유합니다. 정리된 파일 (id, name, mimetype, size, permalink, thumbUrl)을 반환합니다. 경로는 절대 경로로 해결되어야 합니다. 재시도 불가. 매개변수: filePath, channels?[], title?, initialComment?, threadTs?, fields?, includeRaw.",
+      "params": {
+        "filePath": "로컬 파일에 대한 절대 경로 (≤100 MB).",
+        "channels": "공유할 Slack 채널 ID. 단일 ID도 괜찮습니다.",
+        "title": "선택적 파일 제목 (기본값은 기본 이름).",
+        "initialComment": "파일과 함께 게시된 선택적 댓글.",
+        "threadTs": "스레드 내에서 공유할 선택적 부모 메시지 ts.",
+        "fields": "반환된 파일의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 파일 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "업로드된 파일을 나열합니다. 정리된 행 { id, name, title, mimetype, prettyType, size, user, urlPrivate, permalink, thumbUrl, createdAt } + 페이징을 반환합니다. 매개변수: channel?, user?, limit (1-100, 기본 20), page (기본 1), tsFrom, tsTo, types? (CSV all|spaces|snippets|images|gdocs|zips|pdfs), fields?, includeRaw.",
+      "params": {
+        "channel": "채널 ID로 필터링합니다.",
+        "user": "업로더 사용자 ID로 필터링합니다.",
+        "limit": "페이지당 결과 수. 최소 1, 최대 100, 기본 20.",
+        "page": "페이지 번호 (1 인덱스). 기본값 1.",
+        "tsFrom": "이 Unix 타임스탬프 이후에 생성된 파일을 필터링합니다.",
+        "tsTo": "이 Unix 타임스탬프 이전에 생성된 파일을 필터링합니다.",
+        "types": "all, spaces, snippets, images, gdocs, zips, pdfs에서 오는 쉼표로 구분된 유형. 기본값 all.",
+        "fields": "행당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 파일 객체를 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서."
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "작업 공간 전체에서 메시지를 검색합니다. Slack 검색 구문을 지원합니다 (in:#channel, from:@user, before/after). 정리된 히트 { ts, channel, channelName, user, userName, text, permalink, score } + total + page를 반환합니다. 매개변수: query, sort? (score|timestamp), sortDirection? (asc|desc), count (1-100, 기본 20), page, highlight, fields?, includeRaw.",
+      "params": {
+        "query": "Slack 검색 쿼리 (in:#channel, from:@user와 같은 연산자를 지원합니다).",
+        "sort": "관련성 또는 시간으로 정렬합니다. 기본값 score.",
+        "sortDirection": "정렬 방향. 기본값 desc.",
+        "count": "페이지당 결과 수. 최소 1, 최대 100, 기본 20.",
+        "page": "페이지 번호 (1 인덱스). 기본값 1.",
+        "highlight": "반환된 텍스트에서 일치하는 용어를 강조 표시합니다. 기본값 false.",
+        "fields": "히트당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack search.matches[]. 반환합니다. 기본값 false."
+      }
+    },
+    "search-files": {
+      "name": "search-files",
+      "description": "작업 공간 전체에서 파일을 검색합니다. Slack 검색 구문을 지원합니다 (in:#channel, from:@user, type:pdf). 정리된 히트 { id, name, title, mimetype, permalink, thumbUrl, score, createdAt } + total + page를 반환합니다. 매개변수: query, sort? (score|timestamp), sortDirection?, count (1-100, 기본 20), page, highlight, fields?, includeRaw.",
+      "params": {
+        "query": "Slack 검색 쿼리 (type:pdf, in:#channel과 같은 연산자를 지원합니다).",
+        "sort": "관련성 또는 시간으로 정렬합니다. 기본값 score.",
+        "sortDirection": "정렬 방향. 기본값 desc.",
+        "count": "페이지당 결과 수. 최소 1, 최대 100, 기본 20.",
+        "page": "페이지 번호 (1 인덱스). 기본값 1.",
+        "highlight": "일치하는 용어를 강조 표시합니다. 기본값 false.",
+        "fields": "히트당 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack search.files.matches[]. 반환합니다. 기본값 false."
+      }
+    },
+    "get-team-info": {
+      "name": "get-team-info",
+      "description": "연결된 Slack 작업 공간 정보를 가져옵니다. { id, name, domain, emailDomain, iconUrl, enterpriseId, enterpriseName }를 반환합니다. 매개변수: fields?, includeRaw.",
+      "params": {
+        "fields": "반환된 팀의 기본 화이트리스트를 재정의합니다.",
+        "includeRaw": "원시 Slack 팀 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "update-message": {
+      "name": "update-message",
+      "description": "기존 메시지를 편집합니다. 토큰 사용자는 작성자여야 합니다. { ts, channel, text, message }를 반환합니다. 재시도 불가. 매개변수: channel, ts, text? 또는 blocks? (하나 이상 필수), attachments? (JSON).",
+      "params": {
+        "channel": "메시지가 있는 채널 ID (C... / G... / D... / M...).",
+        "ts": "편집할 메시지의 타임스탬프 (\"1234567890.123456\").",
+        "text": "새 일반 텍스트 본문. text/blocks 중 하나 이상이 제공되어야 합니다.",
+        "blocks": "새 Slack Block Kit JSON 문자열 (구문 분석됩니다). 기존 블록을 대체합니다.",
+        "attachments": "새 첨부 JSON 문자열 (레거시). []를 전달하여 지웁니다."
+      }
+    },
+    "delete-message": {
+      "name": "delete-message",
+      "description": "메시지를 삭제합니다. 토큰 사용자는 작성자 또는 작업 공간 관리자여야 합니다. { channel, ts, deleted: true }를 반환합니다. 재시도 불가. 매개변수: channel, ts, asUser? (기본 true).",
+      "params": {
+        "channel": "메시지가 있는 채널 ID.",
+        "ts": "삭제할 메시지의 타임스탬프.",
+        "asUser": "인증된 사용자로 삭제합니다 (기본 true). 토큰에 관리자 범위가 있는 경우에만 false로 설정합니다."
+      }
+    },
+    "get-permalink": {
+      "name": "get-permalink",
+      "description": "메시지에 대한 영구 URL을 가져옵니다. { channel, ts, permalink }를 반환합니다. 멱등성, 재시도 가능. 매개변수: channel, ts.",
+      "params": {
+        "channel": "채널 ID.",
+        "ts": "메시지 타임스탬프.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "schedule-message": {
+      "name": "schedule-message",
+      "description": "미래의 Unix 초 타임스탬프에 게시될 메시지를 예약합니다. { channel, scheduledMessageId, postAt }를 반환합니다. Slack은 postAt이 120일 이상인 경우 거부합니다. 재시도 불가. 매개변수: channel, text, postAt (Unix 초), blocks?, threadTs?, unfurlLinks (기본 true), unfurlMedia (기본 true).",
+      "params": {
+        "channel": "채널 ID 또는 사용자 ID (DM).",
+        "text": "일반 텍스트 본문 (블록의 대체용).",
+        "postAt": "메시지가 게시되어야 하는 Unix 초. 미래여야 하며 ≤120일 이내여야 합니다.",
+        "blocks": "선택적 Slack Block Kit JSON 문자열.",
+        "threadTs": "스레드 답글을 위한 부모 메시지 ts.",
+        "unfurlLinks": "링크를 펼칩니다. 기본값 true.",
+        "unfurlMedia": "미디어를 펼칩니다. 기본값 true."
+      }
+    },
+    "list-scheduled-messages": {
+      "name": "list-scheduled-messages",
+      "description": "인증된 사용자의 보류 중인 예약 메시지를 나열합니다. { messages: [{ id, channelId, postAt, postAtIso, text }], nextCursor, hasMore }를 반환합니다. 재시도 가능. 매개변수: channel?, latest?, oldest? (Unix 초 범위), limit (1-100, 기본 100), cursor?.",
+      "params": {
+        "channel": "단일 채널 ID로 필터링합니다.",
+        "latest": "상한 (Unix 초 문자열).",
+        "oldest": "하한 (Unix 초 문자열).",
+        "limit": "최대 항목 (1-100, 기본 100).",
+        "cursor": "이전 호출의 페이징 커서.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "delete-scheduled-message": {
+      "name": "delete-scheduled-message",
+      "description": "예약된 메시지를 취소합니다. { channel, scheduledMessageId, deleted: true }를 반환합니다. 재시도 불가. 매개변수: channel, scheduledMessageId, asUser? (기본 true).",
+      "params": {
+        "channel": "메시지가 예약된 채널 ID.",
+        "scheduledMessageId": "chat.scheduleMessage / list-scheduled-messages에서 반환된 ID.",
+        "asUser": "인증된 사용자로 삭제합니다 (기본 true)."
+      }
+    },
+    "send-ephemeral": {
+      "name": "send-ephemeral",
+      "description": "채널에서 한 사용자에게만 보이는 일시적인 메시지를 게시합니다. { channel, user, messageTs }를 반환합니다. 재시도 불가. 매개변수: channel, user (수신자), text, blocks?, threadTs?.",
+      "params": {
+        "channel": "채널 ID.",
+        "user": "수신자의 사용자 ID (U... / W...). 오직 그들만 볼 수 있습니다.",
+        "text": "일반 텍스트 본문 (블록의 대체용).",
+        "blocks": "선택적 Block Kit JSON 문자열.",
+        "threadTs": "일시적인 스레드 답글을 위한 부모 메시지 ts."
+      }
+    },
+    "pin-message": {
+      "name": "pin-message",
+      "description": "메시지를 채널에 고정합니다. { channel, timestamp, pinned: true }를 반환합니다. 멱등성 (already_pinned는 오류로 처리되지 않습니다). 매개변수: channel, timestamp.",
+      "params": {
+        "channel": "채널 ID (C... / G... / D... / M...).",
+        "timestamp": "메시지 타임스탬프 (\"1234567890.123456\")."
+      }
+    },
+    "unpin-message": {
+      "name": "unpin-message",
+      "description": "메시지의 고정을 해제합니다. { channel, timestamp, unpinned: true }를 반환합니다. 멱등성 (no_pin은 오류로 처리되지 않습니다). 매개변수: channel, timestamp.",
+      "params": {
+        "channel": "채널 ID.",
+        "timestamp": "메시지 타임스탬프."
+      }
+    },
+    "list-pins": {
+      "name": "list-pins",
+      "description": "채널에 고정된 항목 (메시지 및 파일)을 나열합니다. { pins: [{ type, createdAt, createdBy, message? | file? }], count }를 반환합니다. 재시도 가능. 매개변수: channel.",
+      "params": {
+        "channel": "고정된 항목을 나열할 채널 ID.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "add-bookmark": {
+      "name": "add-bookmark",
+      "description": "채널에 북마크를 추가합니다 (링크가 채널 헤더에 표시됨). 정리된 북마크를 반환합니다. 재시도 불가. 매개변수: channel, title, link (URL), emoji? (예: ':notebook:').",
+      "params": {
+        "channel": "채널 ID.",
+        "title": "표시 제목.",
+        "link": "북마크가 가리키는 URL (http/https만 해당).",
+        "emoji": "북마크 아이콘에 대한 선택적 이모지 단축 코드."
+      }
+    },
+    "remove-bookmark": {
+      "name": "remove-bookmark",
+      "description": "ID로 채널 북마크를 제거합니다. { channel, bookmarkId, removed: true }를 반환합니다. 재시도 불가. 매개변수: channel, bookmarkId.",
+      "params": {
+        "channel": "채널 ID.",
+        "bookmarkId": "add-bookmark / list-bookmarks에서 반환된 북마크 ID."
+      }
+    },
+    "list-bookmarks": {
+      "name": "list-bookmarks",
+      "description": "채널에 첨부된 북마크를 나열합니다. { bookmarks: [{ id, channelId, title, link, emoji, type, dateCreated, dateUpdated, rank }], count }를 반환합니다. 재시도 가능. 매개변수: channel.",
+      "params": {
+        "channel": "채널 ID.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "get-file": {
+      "name": "get-file",
+      "description": "파일에 대한 전체 정보를 가져옵니다 (공유된 채널, 영구 링크, 선택적 댓글). 정리된 파일 + comments?[]를 반환합니다. 재시도 가능. 매개변수: fileId (F...), includeComments (기본 false), includeRaw.",
+      "params": {
+        "fileId": "Slack 파일 ID (F...).",
+        "includeComments": "댓글 목록을 포함합니다 (레거시 API). 기본값 false.",
+        "includeRaw": "원시 Slack 파일 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "파일을 삭제합니다. 토큰 사용자는 소유자 또는 작업 공간 관리자여야 합니다. { fileId, deleted: true }를 반환합니다. 재시도 불가. 매개변수: fileId (F...).",
+      "params": {
+        "fileId": "Slack 파일 ID (F...)."
+      }
+    },
+    "leave-channel": {
+      "name": "leave-channel",
+      "description": "공개 또는 비공개 채널을 떠납니다. { channelId, notInChannel }을 반환합니다. 재시도 불가. 매개변수: channelId.",
+      "params": {
+        "channelId": "Slack 채널 ID (C... / G...)."
+      }
+    },
+    "list-channel-members": {
+      "name": "list-channel-members",
+      "description": "채널의 구성원인 사용자 ID를 나열합니다. { channelId, members: string[], nextCursor, hasMore }를 반환합니다. 재시도 가능. 프로필 정보가 필요한 경우 list-users + lookup을 사용하세요. 매개변수: channelId, limit (1-1000, 기본 200), cursor?.",
+      "params": {
+        "channelId": "채널 ID (C... / G... / D... / M...).",
+        "limit": "페이지당 최대 구성원 수 (1-1000, 기본 200).",
+        "cursor": "페이징 커서.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "open-dm": {
+      "name": "open-dm",
+      "description": "직접 대화를 열거나 가져옵니다. 단일 사용자 → IM (D...); 여러 사용자 → MPIM (M...). 멱등성 (기존 채널을 다시 엽니다). 정리된 채널을 반환합니다. 매개변수: users[] (1+ U.../W... ID), returnIm (기본 true).",
+      "params": {
+        "users": "Slack 사용자 ID의 배열. 1 사용자 → IM. 2-8 사용자 → MPIM.",
+        "returnIm": "전체 채널 객체를 반환합니다 (기본 true)."
+      }
+    },
+    "get-user-profile": {
+      "name": "get-user-profile",
+      "description": "사용자에 대한 전체 Slack 프로필을 가져옵니다 (상태, 사용자 정의 필드, 이미지, 전화, 제목, 시간대). 정리된 프로필을 반환합니다. 재시도 가능. 매개변수: userId? (기본값: 인증된 사용자), includeLabels (기본 false), includeRaw.",
+      "params": {
+        "userId": "사용자 ID (U... / W...). 인증된 사용자의 프로필을 가져오려면 생략합니다.",
+        "includeLabels": "응답에 사용자 정의 필드 레이블을 포함합니다. 기본값 false.",
+        "includeRaw": "원시 Slack 프로필 객체를 반환합니다. 기본값 false."
+      }
+    },
+    "update-user-profile": {
+      "name": "update-user-profile",
+      "description": "인증된 사용자의 Slack 프로필을 업데이트합니다 (상태, 이름 필드, 전화, 제목, 사용자 정의 필드). 업데이트된 프로필 객체를 반환합니다. 재시도 불가. 매개변수: statusText?, statusEmoji?, statusExpiration? (Unix 초), realName?, displayName?, phone?, title?, customFields? (field_id → {value, alt?}의 JSON 맵), userId? (관리자 전용).",
+      "params": {
+        "statusText": "짧은 상태 (≤100자). 비어 있는 문자열을 전달하여 지웁니다.",
+        "statusEmoji": "상태에 대한 이모지 단축 코드. 비어 있는 문자열을 전달하여 지웁니다.",
+        "statusExpiration": "상태가 자동으로 지워지는 Unix 초. 0 = 만료되지 않음.",
+        "realName": "실제 이름.",
+        "displayName": "표시 이름 (메시지에 표시됨).",
+        "phone": "전화번호.",
+        "title": "직함.",
+        "customFields": "사용자 정의 필드 ID를 {value, alt?}에 매핑하는 JSON 문자열.",
+        "userId": "관리자 전용: 다른 사용자의 프로필을 타겟팅합니다 (관리자 범위 필요)."
+      }
+    },
+    "set-dnd": {
+      "name": "set-dnd",
+      "description": "인증된 사용자에 대해 N 분 동안 방해 금지 모드를 활성화합니다. { snoozeEnabled, snoozeEndtime, snoozeRemaining }를 반환합니다. 재시도 불가. 매개변수: numMinutes (1-1440).",
+      "params": {
+        "numMinutes": "스누즈할 시간 (분 단위). 최소 1, 최대 1440 (24시간)."
+      }
+    },
+    "end-dnd": {
+      "name": "end-dnd",
+      "description": "현재 스누즈를 종료합니다. { snoozeEnabled: false }를 반환합니다. 멱등성. 매개변수 없음."
+    },
+    "get-dnd": {
+      "name": "get-dnd",
+      "description": "사용자의 DND 상태를 가져옵니다. { snoozeEnabled, snoozeEndtime, snoozeRemaining, nextDndStart, nextDndEnd }를 반환합니다. 재시도 가능. 매개변수: userId? (기본값: 인증된 사용자).",
+      "params": {
+        "userId": "사용자 ID (U... / W...). 인증된 사용자의 경우 생략합니다.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "get-reactions": {
+      "name": "get-reactions",
+      "description": "메시지 또는 파일의 반응을 가져옵니다. 메시지의 경우 (channel+timestamp) 또는 파일의 경우 (file)를 제공해야 합니다. { reactions: [{ name, count, users }], type, target }를 반환합니다. 재시도 가능. 매개변수: channel?+timestamp? | file?, full (기본 true).",
+      "params": {
+        "channel": "메시지의 경우 타임스탬프와 쌍을 이루는 채널 ID.",
+        "timestamp": "메시지 타임스탬프.",
+        "file": "파일 ID (F...) — channel+timestamp의 대안.",
+        "full": "true인 경우 모든 반응자를 반환합니다. 기본값 true.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "get-team-preferences": {
+      "name": "get-team-preferences",
+      "description": "작업 공간 정책 기본 설정을 가져옵니다 (로케일, 기본 채널, 채널 생성/아카이브 권한, 메시지 편집 창, 통화/허들 활성화). 정리된 기본 설정을 반환합니다. 재시도 가능. 매개변수 없음.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "create-list": {
+      "name": "create-list",
+      "description": "Slack 목록 (협업 테이블)을 생성합니다. 정리된 목록을 스키마와 함께 반환합니다. 실험적. 매개변수: name, description?, schema? (JSON 배열 {name, type}), todoMode (기본 false).",
+      "params": {
+        "name": "표시 이름.",
+        "description": "선택적 설명.",
+        "schema": "열의 JSON 배열: [{\"name\":\"Title\",\"type\":\"text\"}, ...]. 유형: text|number|date|user|checkbox|select|multi_select.",
+        "todoMode": "할 일 모드를 활성화합니다. 기본값 false."
+      }
+    },
+    "update-list": {
+      "name": "update-list",
+      "description": "목록 메타데이터 또는 스키마를 업데이트합니다. 부분 업데이트. 정리된 목록을 반환합니다. 실험적. 매개변수: listId, name?, description?, schema?, todoMode?.",
+      "params": {
+        "listId": "목록 ID.",
+        "schema": "새 스키마 JSON 배열."
+      }
+    },
+    "delete-list": {
+      "name": "delete-list",
+      "description": "Slack 목록 (및 모든 항목)을 삭제합니다. { listId, deleted: true }를 반환합니다. 재시도 불가. 실험적. 매개변수: listId.",
+      "params": {
+        "listId": "목록 ID."
+      }
+    },
+    "get-list": {
+      "name": "get-list",
+      "description": "목록 세부정보 + 스키마를 가져옵니다. 정리된 목록을 반환합니다. 재시도 가능. 실험적. 매개변수: listId.",
+      "params": {
+        "listId": "목록 ID.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "list-list-items": {
+      "name": "list-list-items",
+      "description": "커서 페이징으로 Slack 목록의 항목을 나열합니다. { listId, items, nextCursor, hasMore }를 반환합니다. 재시도 가능. 실험적. 매개변수: listId, limit (1-100, 기본 50), cursor?.",
+      "params": {
+        "listId": "목록 ID.",
+        "limit": "페이지당 항목 수 (1-100, 기본 50).",
+        "cursor": "페이징 커서.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "create-list-item": {
+      "name": "create-list-item",
+      "description": "Slack 목록에 행을 추가합니다. fields는 열 ID → 값의 JSON 객체입니다. 정리된 항목을 반환합니다. 재시도 불가. 실험적. 매개변수: listId, fields (JSON).",
+      "params": {
+        "listId": "목록 ID.",
+        "fields": "열 ID를 값에 매핑하는 JSON 객체."
+      }
+    },
+    "update-list-item": {
+      "name": "update-list-item",
+      "description": "목록 항목의 필드를 업데이트합니다. 부분 업데이트. 정리된 항목을 반환합니다. 재시도 불가. 실험적. 매개변수: listId, itemId, fields (JSON).",
+      "params": {
+        "listId": "목록 ID.",
+        "itemId": "항목 ID.",
+        "fields": "JSON 객체 — 부분 업데이트."
+      }
+    },
+    "delete-list-item": {
+      "name": "delete-list-item",
+      "description": "목록 항목을 삭제합니다. { listId, itemId, deleted: true }를 반환합니다. 재시도 불가. 실험적. 매개변수: listId, itemId.",
+      "params": {
+        "listId": "목록 ID.",
+        "itemId": "항목 ID."
+      }
+    },
+    "create-canvas": {
+      "name": "create-canvas",
+      "description": "독립형 Slack 캔버스 (리치 텍스트 문서)를 생성합니다. 정리된 캔버스를 반환합니다. 실험적. 매개변수: title, contentMarkdown? (초기 콘텐츠).",
+      "params": {
+        "title": "캔버스 제목.",
+        "contentMarkdown": "초기 마크다운 콘텐츠."
+      }
+    },
+    "edit-canvas": {
+      "name": "edit-canvas",
+      "description": "변경 사항 목록으로 캔버스를 편집합니다. changes는 작업의 JSON 배열입니다: [{operation:insert|replace|delete, sectionId?, document_content?:{type:markdown,markdown}}]. 정리된 캔버스를 반환합니다. 재시도 불가. 실험적.",
+      "params": {
+        "canvasId": "캔버스 ID.",
+        "changes": "작업의 JSON 배열."
+      }
+    },
+    "delete-canvas": {
+      "name": "delete-canvas",
+      "description": "캔버스를 삭제합니다. { canvasId, deleted: true }를 반환합니다. 재시도 불가. 실험적. 매개변수: canvasId.",
+      "params": {
+        "canvasId": "캔버스 ID."
+      }
+    },
+    "create-channel-canvas": {
+      "name": "create-channel-canvas",
+      "description": "채널에 첨부된 캔버스를 생성합니다 (모든 구성원이 볼 수 있음). 정리된 캔버스를 반환합니다. 실험적. 매개변수: channelId, title?, contentMarkdown?.",
+      "params": {
+        "channelId": "채널 ID.",
+        "title": "선택적 제목 (기본 채널 이름).",
+        "contentMarkdown": "초기 마크다운 콘텐츠."
+      }
+    },
+    "start-stream": {
+      "name": "start-stream",
+      "description": "스트리밍 메시지를 시작합니다 (AI 응답이 실시간으로 청크 단위로 전달됨). { streamId, channel }을 반환합니다. append-stream + stop-stream을 사용하여 완료합니다. 실험적. 매개변수: channel, threadTs?, recipientTeamId?.",
+      "params": {
+        "channel": "채널 ID.",
+        "threadTs": "선택적 부모 스레드 ts.",
+        "recipientTeamId": "Slack Connect 크로스 팀 대상 ID."
+      }
+    },
+    "append-stream": {
+      "name": "append-stream",
+      "description": "활성 스트리밍 메시지에 콘텐츠 청크를 추가합니다. { streamId, appended: true, length }를 반환합니다. 재시도 불가. 실험적. 매개변수: streamId, content.",
+      "params": {
+        "streamId": "start-stream에서 가져온 스트림 ID.",
+        "content": "추가할 마크다운 청크."
+      }
+    },
+    "stop-stream": {
+      "name": "stop-stream",
+      "description": "스트리밍 메시지를 중지합니다 (최종 상태를 플러시합니다). { streamId, stopped: true }를 반환합니다. 멱등성. 실험적. 매개변수: streamId.",
+      "params": {
+        "streamId": "start-stream에서 가져온 스트림 ID."
+      }
+    },
+    "add-call": {
+      "name": "add-call",
+      "description": "Slack에 호출 (외부 제공자)를 등록합니다. 정리된 호출을 반환합니다. 실험적. 매개변수: externalUniqueId, joinUrl, desktopAppJoinUrl?, externalDisplayId?, title?, users? (JSON 배열), dateStart? (Unix 초).",
+      "params": {
+        "externalUniqueId": "외부 제공자에서 호출의 고유 ID.",
+        "joinUrl": "호출에 참여하기 위한 URL.",
+        "desktopAppJoinUrl": "데스크톱 앱을 위한 딥 링크.",
+        "externalDisplayId": "사용자에게 표시되는 ID.",
+        "title": "호출 제목.",
+        "users": "참여자의 JSON 배열.",
+        "dateStart": "호출이 시작된 Unix 초."
+      }
+    },
+    "end-call": {
+      "name": "end-call",
+      "description": "호출을 종료된 것으로 표시합니다. { callId, ended: true }를 반환합니다. 재시도 불가. 실험적. 매개변수: callId, duration? (초).",
+      "params": {
+        "callId": "Slack 호출 ID.",
+        "duration": "호출 지속 시간 (초)."
+      }
+    },
+    "update-call": {
+      "name": "update-call",
+      "description": "호출 메타데이터 (제목 또는 참여 URL)를 업데이트합니다. 정리된 호출을 반환합니다. 재시도 불가. 실험적. 매개변수: callId, title?, joinUrl?, desktopAppJoinUrl?.",
+      "params": {
+        "callId": "Slack 호출 ID."
+      }
+    },
+    "get-call": {
+      "name": "get-call",
+      "description": "호출 세부정보 (참여자, 지속 시간, 상태)를 가져옵니다. 정리된 호출을 반환합니다. 재시도 가능. 실험적. 매개변수: callId.",
+      "params": {
+        "callId": "Slack 호출 ID.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "add-call-participants": {
+      "name": "add-call-participants",
+      "description": "활성 호출에 참여자를 추가합니다. users는 {slackId|externalId, displayName?, avatarUrl?}의 JSON 배열입니다. { callId, added: count }를 반환합니다. 재시도 불가. 실험적.",
+      "params": {
+        "callId": "Slack 호출 ID.",
+        "users": "참여자의 JSON 배열."
+      }
+    },
+    "remove-call-participants": {
+      "name": "remove-call-participants",
+      "description": "호출에서 참여자를 제거합니다. users는 {slackId|externalId}의 JSON 배열입니다. { callId, removed: count }를 반환합니다. 재시도 불가. 실험적.",
+      "params": {
+        "callId": "Slack 호출 ID.",
+        "users": "제거할 참여자의 JSON 배열."
+      }
+    },
+    "rename-channel": {
+      "name": "rename-channel",
+      "description": "채널 이름을 변경합니다. 이름 ≤80자, 소문자, 공백/마침표 없음 (Slack에서 정규화됨). 정리된 채널을 반환합니다. 재시도 불가. 매개변수: channelId, name.",
+      "params": {
+        "channelId": "채널 ID (C... / G...).",
+        "name": "새 이름."
+      }
+    },
+    "set-channel-purpose": {
+      "name": "set-channel-purpose",
+      "description": "채널의 목적을 설정합니다 (장문 설명). 최대 250자. { channelId, purpose }를 반환합니다. 재시도 불가. 매개변수: channelId, purpose.",
+      "params": {
+        "channelId": "채널 ID.",
+        "purpose": "채널 목적 (≤250자)."
+      }
+    },
+    "set-channel-topic": {
+      "name": "set-channel-topic",
+      "description": "채널의 주제를 설정합니다 (헤더의 짧은 설명). 최대 250자. { channelId, topic }를 반환합니다. 재시도 불가. 매개변수: channelId, topic.",
+      "params": {
+        "channelId": "채널 ID.",
+        "topic": "채널 주제 (≤250자)."
+      }
+    },
+    "kick-from-channel": {
+      "name": "kick-from-channel",
+      "description": "채널에서 사용자를 제거합니다. 관리자 또는 채널 소유자 권한이 필요합니다. { channelId, userId, kicked: true }를 반환합니다. 재시도 불가. 매개변수: channelId, userId.",
+      "params": {
+        "channelId": "채널 ID.",
+        "userId": "제거할 사용자 ID."
+      }
+    },
+    "unarchive-channel": {
+      "name": "unarchive-channel",
+      "description": "이전에 아카이브된 채널을 복원합니다. 정리된 채널을 반환합니다. 재시도 불가. 매개변수: channelId.",
+      "params": {
+        "channelId": "채널 ID."
+      }
+    },
+    "mark-channel-read": {
+      "name": "mark-channel-read",
+      "description": "타임스탬프까지 모든 메시지를 읽음으로 표시합니다. { channelId, timestamp, marked: true }를 반환합니다. 멱등성. 매개변수: channelId, timestamp.",
+      "params": {
+        "channelId": "채널 ID.",
+        "timestamp": "읽기 커서로서의 메시지 ts."
+      }
+    },
+    "get-upload-url": {
+      "name": "get-upload-url",
+      "description": "현대 다단계 업로드의 1단계: 사전 서명된 외부 URL을 가져옵니다. 바이트를 PUT한 후 complete-upload를 호출합니다. { uploadUrl, fileId, filename, length }를 반환합니다. 매개변수: filename, length (바이트), altTxt?, snippetType?.",
+      "params": {
+        "filename": "로컬 파일 이름.",
+        "length": "파일 크기 (바이트).",
+        "altTxt": "이미지에 대한 대체 텍스트.",
+        "snippetType": "코드 스니펫의 언어.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "complete-upload": {
+      "name": "complete-upload",
+      "description": "현대 업로드의 2단계: 바이트를 PUT한 후 마무리합니다. files=[{id, title?}]. 선택적으로 채널/스레드에 공유합니다. 정리된 파일을 반환합니다. 재시도 불가. 매개변수: files (JSON 배열), channelId?, initialComment?, threadTs?.",
+      "params": {
+        "files": "JSON 배열 {id, title?}.",
+        "channelId": "선택적으로 공유할 채널.",
+        "initialComment": "선택적 메시지.",
+        "threadTs": "선택적 부모 스레드 ts."
+      }
+    },
+    "share-file-public": {
+      "name": "share-file-public",
+      "description": "파일을 URL을 통해 공개적으로 접근 가능하게 만듭니다. { fileId, permalinkPublic }를 반환합니다. 재시도 불가. 매개변수: fileId.",
+      "params": {
+        "fileId": "Slack 파일 ID."
+      }
+    },
+    "revoke-file-public": {
+      "name": "revoke-file-public",
+      "description": "파일의 공개 URL을 취소합니다. { fileId, revoked: true }를 반환합니다. 재시도 불가. 매개변수: fileId.",
+      "params": {
+        "fileId": "Slack 파일 ID."
+      }
+    },
+    "list-remote-files": {
+      "name": "list-remote-files",
+      "description": "원격 파일 목록 (Google Drive와 같은 외부 저장소). { files, nextCursor, hasMore }를 반환합니다. 재시도 가능. 매개변수: channel?, tsFrom?, tsTo?, limit (1-200, 기본 100), cursor?.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "add-remote-file": {
+      "name": "add-remote-file",
+      "description": "Slack에 외부 파일 (Google Drive, Dropbox)을 등록합니다. 정리된 원격 파일을 반환합니다. 재시도 불가. 매개변수: externalId, externalUrl, title, fileType?, previewImage?, indexableFileContents?."
+    },
+    "update-remote-file": {
+      "name": "update-remote-file",
+      "description": "원격 파일의 메타데이터를 업데이트합니다. externalId XOR fileId를 제공해야 합니다. 정리된 원격 파일을 반환합니다. 재시도 불가."
+    },
+    "remove-remote-file": {
+      "name": "remove-remote-file",
+      "description": "원격 파일 참조를 제거합니다 (외부 제공자에서 삭제되지 않음). externalId XOR fileId를 제공해야 합니다. { removed: true }를 반환합니다. 재시도 불가."
+    },
+    "share-remote-file": {
+      "name": "share-remote-file",
+      "description": "원격 파일을 채널에 공유합니다. externalId XOR fileId를 제공해야 합니다. 정리된 원격 파일을 반환합니다. 재시도 불가. 매개변수: channels (csv), externalId? | fileId?.",
+      "params": {
+        "channels": "쉼표로 구분된 채널 ID."
+      }
+    },
+    "get-remote-file": {
+      "name": "get-remote-file",
+      "description": "원격 파일의 세부정보를 가져옵니다. externalId XOR fileId를 제공해야 합니다. 정리된 원격 파일을 반환합니다. 재시도 가능.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "send-me-message": {
+      "name": "send-me-message",
+      "description": "/me 액션 메시지를 보냅니다 (3인칭 이탤릭체). { ts, channel }을 반환합니다. 재시도 불가. 매개변수: channel, text.",
+      "params": {
+        "channel": "채널 ID.",
+        "text": "액션 텍스트."
+      }
+    },
+    "unfurl-link": {
+      "name": "unfurl-link",
+      "description": "메시지의 링크에 대한 사용자 정의 펼치기. unfurls는 JSON 맵 url→{blocks, text}입니다. { channel, ts, unfurled: true, links }를 반환합니다. 재시도 불가.",
+      "params": {
+        "unfurls": "JSON 맵 url → {blocks, text}."
+      }
+    },
+    "list-user-channels": {
+      "name": "list-user-channels",
+      "description": "사용자가 구성원인 채널을 나열합니다. { channels, nextCursor, hasMore }를 반환합니다. 재시도 가능. 매개변수: userId? (기본 인증), types? (csv), excludeArchived (기본 true), limit (1-1000, 기본 200), cursor?.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "delete-user-photo": {
+      "name": "delete-user-photo",
+      "description": "인증된 사용자의 프로필 사진을 삭제합니다. { deleted: true }를 반환합니다. 재시도 불가. 매개변수 없음."
+    },
+    "get-user-identity": {
+      "name": "get-user-identity",
+      "description": "OAuth에서 인증된 사용자의 신원을 가져옵니다 (범위 identity.basic). 정리된 신원을 반환합니다. 재시도 가능. 매개변수 없음.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "list-my-reactions": {
+      "name": "list-my-reactions",
+      "description": "사용자가 반응한 모든 항목을 나열합니다. { items, paging }를 반환합니다. 재시도 가능. 매개변수: userId? (기본 인증), count (1-1000, 기본 100), page, full (기본 true).",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "get-team-dnd": {
+      "name": "get-team-dnd",
+      "description": "한 번에 여러 사용자의 DND 상태를 가져옵니다. { users: [{ userId, snoozeEnabled, snoozeEndtime, nextDndStart, nextDndEnd }] }를 반환합니다. 재시도 가능. 매개변수: users (사용자 ID의 csv).",
+      "params": {
+        "users": "쉼표로 구분된 사용자 ID.",
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "star-item": {
+      "name": "star-item",
+      "description": "메시지 / 파일 / 파일 댓글을 저장 (별표). (channel+timestamp), file, fileComment 중 하나를 제공해야 합니다. { type, target, starred: true }를 반환합니다. 멱등성."
+    },
+    "unstar-item": {
+      "name": "unstar-item",
+      "description": "저장된 항목을 제거합니다. star-item과 동일한 배타적 선택 계약. { type, target, unstarred: true }를 반환합니다. 멱등성."
+    },
+    "list-stars": {
+      "name": "list-stars",
+      "description": "사용자가 저장한 항목을 나열합니다. { items, nextCursor, hasMore }를 반환합니다. 재시도 가능. 매개변수: count (1-1000, 기본 100), cursor?.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "list-emoji": {
+      "name": "list-emoji",
+      "description": "사용자 정의 작업 공간 이모지를 나열합니다. { emojis: [{ name, url, isAlias, aliasFor }], count }를 반환합니다. 재시도 가능.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "add-emoji": {
+      "name": "add-emoji",
+      "description": "사용자 정의 작업 공간 이모지를 추가합니다. url 또는 aliasFor 중 하나를 제공해야 합니다. { name, isAlias, aliasFor?, ok: true }를 반환합니다. 작업 공간 관리자 전용. 재시도 불가.",
+      "params": {
+        "name": "이모지 이름 (콜론 없음).",
+        "url": "이미지 URL (PNG/JPG/GIF, ≤128KB).",
+        "aliasFor": "별칭으로 사용할 기존 이모지 이름."
+      }
+    },
+    "remove-emoji": {
+      "name": "remove-emoji",
+      "description": "사용자 정의 작업 공간 이모지를 제거합니다. 작업 공간 관리자 전용. { name, removed: true }를 반환합니다. 재시도 불가.",
+      "params": {
+        "name": "이모지 이름."
+      }
+    },
+    "get-access-logs": {
+      "name": "get-access-logs",
+      "description": "작업 공간 로그인 감사 기록 (유료 요금제). { logs, paging }를 반환합니다. 재시도 가능. 매개변수: before? (Unix), count (1-1000, 기본 100), page.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "get-integration-logs": {
+      "name": "get-integration-logs",
+      "description": "통합 감사 기록 (설치된 앱/범위 변경). 유료 요금제. { logs, paging }를 반환합니다. 재시도 가능.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "get-team-profile": {
+      "name": "get-team-profile",
+      "description": "작업 공간의 사용자 정의 프로필 필드 스키마. { fields }를 반환합니다. 재시도 가능. 매개변수: visibility (all|visible|hidden).",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    },
+    "edit-bookmark": {
+      "name": "edit-bookmark",
+      "description": "채널 북마크를 편집합니다 (부분). 업데이트된 북마크를 반환합니다. 재시도 불가. 매개변수: channel, bookmarkId, title?, link?, emoji?."
+    },
+    "list-list-fields": {
+      "name": "list-list-fields",
+      "description": "Slack 목록의 스키마를 개별 필드로 나열합니다. { fields, count }를 반환합니다. 재시도 가능. 실험적. 매개변수: listId.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "cursor": "이전 응답의 페이징 커서.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "create-list-field": {
+      "name": "create-list-field",
+      "description": "Slack 목록에 열을 추가합니다. 실험적. 매개변수: listId, name, type, required (기본 false)."
+    },
+    "update-list-field": {
+      "name": "update-list-field",
+      "description": "목록 열 이름을 변경하거나 필수 여부를 전환합니다. 유형은 불변입니다. 실험적. 매개변수: listId, fieldId, name?, required?."
+    },
+    "delete-list-field": {
+      "name": "delete-list-field",
+      "description": "Slack 목록에서 열을 삭제합니다 (모든 값을 삭제합니다). 실험적. 매개변수: listId, fieldId."
+    },
+    "list-connect-invites": {
+      "name": "list-connect-invites",
+      "description": "보류 중인 Slack Connect 채널 초대. { invites, nextCursor, hasMore }를 반환합니다. 재시도 가능.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false.",
+        "limit": "페이지당 최대 결과."
+      }
+    },
+    "invite-shared": {
+      "name": "invite-shared",
+      "description": "Slack Connect 초대를 보냅니다. emails (csv) 또는 userIds (csv). { channel, inviteId, link }를 반환합니다."
+    },
+    "accept-shared-invite": {
+      "name": "accept-shared-invite",
+      "description": "Slack Connect 초대를 수락합니다. inviteId XOR channelId를 제공해야 합니다."
+    },
+    "decline-shared-invite": {
+      "name": "decline-shared-invite",
+      "description": "Slack Connect 초대를 거부합니다."
+    },
+    "approve-shared-invite": {
+      "name": "approve-shared-invite",
+      "description": "작업 공간 관리자로서 Slack Connect 초대를 승인합니다."
+    },
+    "revoke-auth": {
+      "name": "revoke-auth",
+      "description": "현재 OAuth 토큰을 취소합니다. 파괴적입니다. 매개변수: test (기본 false)."
+    },
+    "list-auth-teams": {
+      "name": "list-auth-teams",
+      "description": "현재 토큰이 접근할 수 있는 Slack 작업 공간 (Enterprise Grid). 재시도 가능.",
+      "params": {
+        "includeRaw": "원시 API 응답을 반환합니다. 기본값 false."
+      }
+    }
+  },
+  "name": "Slack",
+  "description": "전체 Slack 작업 공간 통합: 채널, 메시지, 스레드, 반응, 파일, 사용자, 검색 및 존재 상태. Slack Web API와 OAuth 2.0을 사용합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — 메시지 전송 및 읽기, 채널, 스레드, 파일, 반응, 사용자 및 검색 관리"
+    }
+  ]
+}

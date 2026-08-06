@@ -1,0 +1,42 @@
+# Dockerfile.test
+#
+# Idle test environment container. Does NOT run tests on startup.
+# Tests are executed on-demand via:
+#   docker compose -f docker-compose.test.yml exec backend <command>
+#
+# Resolution notes:
+#   @teros/core  — "main": "./src/index.ts"  → bun reads TS directly, no build
+#   @teros/shared — resolved via "bun" export condition → dist/
+#   All tests use bun:test (no vitest in this repo — @teros/core has vitest
+#   declared but no .test.ts files written yet).
+
+FROM oven/bun:1.3.4-alpine
+
+# yarn is required for workspace-aware dependency installation
+RUN apk add --no-cache nodejs npm && npm install -g yarn
+
+WORKDIR /app
+
+# ── Dependency layer (cached unless manifests change) ────────────────────────
+COPY package.json yarn.lock ./
+COPY packages/shared/package.json   ./packages/shared/
+COPY packages/core/package.json     ./packages/core/
+COPY packages/backend/package.json  ./packages/backend/
+COPY packages/mca-sdk/package.json  ./packages/mca-sdk/
+COPY packages/testing/package.json  ./packages/testing/
+
+RUN yarn install --frozen-lockfile
+
+# ── Source code ───────────────────────────────────────────────────────────────
+COPY packages/shared   ./packages/shared
+COPY packages/core     ./packages/core
+COPY packages/backend  ./packages/backend
+COPY packages/testing  ./packages/testing
+COPY packages/mca-sdk  ./packages/mca-sdk
+# MCAs — needed by regression tests that import tool handlers directly
+COPY mcas              ./mcas
+# Root-level test suites (unit, acceptance) — referenced by yarn test:unit
+COPY tests             ./tests
+
+# Stay alive — tests are run via `docker compose exec`
+CMD ["sleep", "infinity"]

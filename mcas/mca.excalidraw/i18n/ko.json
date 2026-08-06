@@ -1,0 +1,214 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 건강 검사 도구. Excalidraw API 키와 연결성을 확인합니다."
+    },
+    "list-scenes": {
+      "name": "list-scenes",
+      "description": "메타데이터와 링크가 포함된 작업 공간의 모든 Excalidraw 장면을 나열합니다. 커서를 통한 페이지 매김을 지원합니다.",
+      "params": {
+        "cursor": "다음 페이지를 가져오기 위한 이전 응답의 페이지 매김 커서.",
+        "limit": "페이지당 반환할 최대 장면 수 (기본값: 50)."
+      }
+    },
+    "get-scene": {
+      "name": "get-scene",
+      "description": "ID로 특정 Excalidraw 장면의 자세한 메타데이터를 가져옵니다. 링크 및 공유 설정을 포함합니다.",
+      "params": {
+        "sceneId": "가져올 장면 ID."
+      }
+    },
+    "get-scene-content": {
+      "name": "get-scene-content",
+      "description": "Excalidraw 장면의 전체 드로잉 콘텐츠를 검색합니다: 모든 요소(모양, 텍스트, 화살표 등), 앱 상태 및 포함된 파일.",
+      "params": {
+        "sceneId": "가져올 콘텐츠의 장면 ID."
+      }
+    },
+    "create-scene": {
+      "name": "create-scene",
+      "description": "지정된 메타데이터로 새로운 빈 Excalidraw 장면을 생성합니다. 선택적으로 컬렉션에 할당하고 고정할 수 있습니다. 생성된 장면과 그 ID 및 공유 링크를 반환합니다.",
+      "params": {
+        "name": "새 장면의 이름.",
+        "collectionId": "장면을 배치할 컬렉션의 ID.",
+        "pinned": "장면을 고정할지 여부 (기본값: false)."
+      }
+    },
+    "update-scene": {
+      "name": "update-scene",
+      "description": "기존 Excalidraw 장면의 메타데이터(이름, 고정 상태, 컬렉션 할당)를 업데이트합니다.",
+      "params": {
+        "sceneId": "업데이트할 장면 ID.",
+        "name": "장면의 새 이름.",
+        "pinned": "장면을 고정할지 여부.",
+        "collectionId": "장면을 다른 컬렉션으로 이동하려면 그 ID를 제공합니다."
+      }
+    },
+    "update-scene-content": {
+      "name": "update-scene-content",
+      "description": "새 요소로 Excalidraw 장면의 전체 드로잉 콘텐츠를 교체합니다. 경고: 이것은 전체 교체입니다 — 기존 콘텐츠가 덮어씌워집니다. 장면에 포함할 요소의 전체 배열을 전달하십시오.",
+      "params": {
+        "sceneId": "업데이트할 장면 ID.",
+        "elements": "Excalidraw 요소 객체 배열(모양, 텍스트, 화살표 등). 이는 모든 기존 요소를 교체합니다.",
+        "appState": "선택적 Excalidraw 앱 상태(뷰포트, 테마 등).",
+        "files": "선택적 포함된 파일 맵(예: 장면에서 참조된 이미지)."
+      }
+    },
+    "delete-scene": {
+      "name": "delete-scene",
+      "description": "장면을 휴지통으로 이동하여 Excalidraw 장면을 소프트 삭제합니다. 장면은 Excalidraw Plus UI에서 복구할 수 있습니다.",
+      "params": {
+        "sceneId": "삭제할 장면 ID."
+      }
+    },
+    "list-collections": {
+      "name": "list-collections",
+      "description": "Excalidraw Plus 작업 공간의 모든 컬렉션을 나열합니다. 컬렉션은 관련 장면을 함께 그룹화하는 폴더입니다.",
+      "params": {
+        "cursor": "이전 응답의 페이지 매김 커서.",
+        "limit": "반환할 최대 컬렉션 수 (기본값: 50)."
+      }
+    },
+    "get-collection": {
+      "name": "get-collection",
+      "description": "ID로 특정 Excalidraw 컬렉션에 대한 자세한 정보를 가져옵니다.",
+      "params": {
+        "collectionId": "가져올 컬렉션 ID."
+      }
+    },
+    "get-collection-scenes": {
+      "name": "get-collection-scenes",
+      "description": "특정 Excalidraw 컬렉션에 속하는 모든 장면을 나열합니다.",
+      "params": {
+        "collectionId": "장면을 나열할 컬렉션 ID."
+      }
+    },
+    "create-collection": {
+      "name": "create-collection",
+      "description": "관련 장면을 그룹화하기 위해 Excalidraw Plus 작업 공간에 새로운 컬렉션(폴더)을 생성합니다.",
+      "params": {
+        "name": "새 컬렉션의 이름."
+      }
+    },
+    "create-collection-scene": {
+      "name": "create-collection-scene",
+      "description": "특정 Excalidraw 컬렉션 내에서 직접 새로운 장면을 생성합니다.",
+      "params": {
+        "collectionId": "장면을 생성할 컬렉션 ID.",
+        "name": "새 장면의 이름.",
+        "pinned": "장면을 고정할지 여부 (기본값: false)."
+      }
+    },
+    "update-collection": {
+      "name": "update-collection",
+      "description": "기존 Excalidraw 컬렉션의 메타데이터를 업데이트합니다(예: 이름 변경).",
+      "params": {
+        "collectionId": "업데이트할 컬렉션 ID.",
+        "name": "컬렉션의 새 이름."
+      }
+    },
+    "delete-collection": {
+      "name": "delete-collection",
+      "description": "장면이 삭제되지 않고 휴지통으로 이동하여 Excalidraw 컬렉션을 소프트 삭제합니다.",
+      "params": {
+        "collectionId": "삭제할 컬렉션 ID."
+      }
+    },
+    "get-workspace": {
+      "name": "get-workspace",
+      "description": "현재 Excalidraw Plus 작업 공간의 메타데이터를 검색합니다. 이름, 사용자 및 초대가 포함됩니다."
+    },
+    "update-workspace": {
+      "name": "update-workspace",
+      "description": "현재 Excalidraw Plus 작업 공간의 메타데이터를 업데이트합니다(예: 이름 변경).",
+      "params": {
+        "name": "작업 공간의 새 이름."
+      }
+    },
+    "list-users": {
+      "name": "list-users",
+      "description": "역할 및 메타데이터와 함께 Excalidraw Plus 작업 공간의 모든 사용자를 나열합니다.",
+      "params": {
+        "cursor": "이전 응답의 페이지 매김 커서.",
+        "limit": "반환할 최대 사용자 수 (기본값: 50)."
+      }
+    },
+    "get-user": {
+      "name": "get-user",
+      "description": "사용자 ID로 Excalidraw Plus 작업 공간의 특정 사용자에 대한 세부정보를 가져옵니다.",
+      "params": {
+        "userId": "가져올 사용자 ID."
+      }
+    },
+    "update-user": {
+      "name": "update-user",
+      "description": "Excalidraw Plus에서 작업 공간 사용자를 업데이트합니다(예: 역할 또는 이름 변경).",
+      "params": {
+        "userId": "업데이트할 사용자 ID.",
+        "role": "사용자에게 할당할 새 역할(예: \"admin\", \"member\").",
+        "name": "사용자의 새 표시 이름."
+      }
+    },
+    "remove-user": {
+      "name": "remove-user",
+      "description": "Excalidraw Plus 작업 공간에서 사용자의 접근 권한을 취소하여 제거합니다.",
+      "params": {
+        "userId": "작업 공간에서 제거할 사용자 ID."
+      }
+    },
+    "list-invites": {
+      "name": "list-invites",
+      "description": "Excalidraw Plus 작업 공간의 모든 대기 중 및 활성 초대를 나열합니다.",
+      "params": {
+        "cursor": "이전 응답의 페이지 매김 커서.",
+        "limit": "반환할 최대 초대 수 (기본값: 50)."
+      }
+    },
+    "create-invite": {
+      "name": "create-invite",
+      "description": "이메일로 Excalidraw Plus 작업 공간에 사용자를 초대합니다. 선택적으로 역할을 지정할 수 있습니다.",
+      "params": {
+        "email": "초대할 사람의 이메일 주소.",
+        "role": "할당할 역할(예: \"admin\", \"member\"). 기본값은 작업 공간 기본값입니다."
+      }
+    },
+    "get-invite": {
+      "name": "get-invite",
+      "description": "ID로 특정 Excalidraw Plus 작업 공간 초대에 대한 세부정보를 가져옵니다.",
+      "params": {
+        "inviteId": "가져올 초대 ID."
+      }
+    },
+    "update-invite": {
+      "name": "update-invite",
+      "description": "기존 Excalidraw Plus 작업 공간 초대를 업데이트합니다(예: 할당된 역할 변경).",
+      "params": {
+        "inviteId": "업데이트할 초대 ID.",
+        "role": "초대받는 사람에게 할당할 새 역할."
+      }
+    },
+    "delete-invite": {
+      "name": "delete-invite",
+      "description": "대기 중인 Excalidraw Plus 작업 공간 초대를 삭제하여 초대를 취소합니다.",
+      "params": {
+        "inviteId": "삭제할 초대 ID."
+      }
+    },
+    "list-logs": {
+      "name": "list-logs",
+      "description": "Excalidraw Plus에서 작업 공간 감사 로그를 검색합니다. 활동, 변경 사항 및 접근 기록을 추적하는 데 유용합니다.",
+      "params": {
+        "cursor": "이전 응답의 페이지 매김 커서.",
+        "limit": "반환할 최대 로그 항목 수 (기본값: 50)."
+      }
+    }
+  },
+  "name": "Excalidraw",
+  "description": "Excalidraw Plus와 통합하여 장면, 컬렉션, 작업 공간, 사용자 및 초대를 프로그래밍 방식으로 관리합니다. Excalidraw Plus REST API를 통해 다이어그램, 와이어프레임 및 화이트보드를 생성하고 업데이트합니다.",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — Excalidraw 화이트보드를 폴더에 생성, 편집 및 구성하고 작업 공간 구성원 및 초대를 관리합니다."
+    }
+  ]
+}

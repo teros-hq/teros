@@ -49,5 +49,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "0.9.0",
+      "date": "2026-01-23",
+      "notes": "Initial release — manage buckets, upload, download, copy and delete files, and create temporary shareable links"
+    }
+  ]
 }

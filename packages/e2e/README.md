@@ -126,17 +126,14 @@ const client = new TestClient({ url: 'ws://localhost:3002/ws' });
 await client.connect();
 await client.authenticate('user@test.local', 'password');
 
-// Enviar y esperar respuesta
-const response = await client.sendAndWait(
-  { type: 'create_channel', agentId: 'agent_123' },
-  'channel_created'
-);
+// Enviar una acción y esperar su respuesta (envelope WsRequest, correlada por requestId)
+const response = await client.request('channel.create', { agentId: 'agent_123' });
 
-// Esperar múltiples tipos posibles
-const response = await client.sendAndWait(
-  { type: 'some_action' },
-  ['success', 'error']
-);
+// Atajo: lanza en {type:'error'} y devuelve response.data ya desempaquetado
+const channel = await client.requestOk('channel.create', { agentId: 'agent_123' });
+
+// Esperar un push del servidor (evento)
+const evt = await client.waitForEvent('channel.created');
 
 // Desconectar
 await client.disconnect();

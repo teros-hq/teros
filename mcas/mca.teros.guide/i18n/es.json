@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba que el contenido de la guía de la plataforma está cargado."
+    },
+    "list-guide-topics": {
+      "name": "list-guide-topics",
+      "description": "Índice de la guía de la plataforma Teros (secciones + resúmenes de una línea). La interfaz, ventanas y pasos exactos de Teros NO están en tus datos de entrenamiento — responder preguntas sobre cómo usar Teros desde la memoria suele ser incorrecto. Siempre que el usuario pregunte cómo hacer algo en Teros (crear un agente, conectar una app, configurar un tablero, providers, archivos…), llama esto PRIMERO, luego get-guide-section, y responde desde la guía. Devuelve {topics:[{id,title,summary}], count}."
+    },
+    "search-guide": {
+      "name": "search-guide",
+      "description": "Busca en la guía de la plataforma Teros por texto libre y obtiene la(s) sección(es) más relevante(s) con un fragmento — la forma más rápida de responder preguntas sobre cómo usar Teros. Los detalles de Teros NO están en tus datos de entrenamiento; busca aquí en lugar de adivinar. Devuelve {query, results:[{id,title,summary,score,snippet}], count}. Usa get-guide-section para el cuerpo completo de un resultado.",
+      "params": {
+        "query": "Consulta de texto libre, ej. \"cómo creo un agente\" o \"conectar gmail\".",
+        "limit": "Máximo de resultados a devolver (por defecto 5, máximo 13)."
+      }
+    },
+    "get-guide-section": {
+      "name": "get-guide-section",
+      "description": "Obtiene una sección de la guía de la plataforma Teros por id de tema (de list-guide-topics). Usa esto para responder preguntas sobre cómo usar Teros en lugar de adivinar — los detalles de Teros no están en tus datos de entrenamiento. Devuelve {id,title,summary,body(markdown),related}. Lee el cuerpo y guía al usuario por los pasos reales en su propio idioma; no lo pegues literalmente.",
+      "params": {
+        "topic": "Id del tema a obtener. Debe ser uno de los ids devueltos por `list-guide-topics`."
+      }
+    }
+  },
+  "name": "Teros Guide",
+  "description": "Conocimiento propio de la plataforma para agentes. Permite a un agente consultar cómo funciona Teros bajo demanda (agentes, apps, tableros, providers, workspaces, archivos…) para poder guiar al usuario por los pasos reales. Dos herramientas de solo lectura: list-guide-topics y get-guide-section."
+}

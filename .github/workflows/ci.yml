@@ -1,0 +1,372 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  pull_request:
+    branches:
+      - dev
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  # Manual trigger for the behavioural prompt-regression gate (F4·C3). It runs a
+  # REAL agent over the golden set → flaky + costs a provider call, so it is NOT
+  # per-PR (the deterministic contract gate covers per-PR in the Tests job). Run
+  # it on demand; add a `schedule:` here once a provider key secret is wired.
+  workflow_dispatch:
+
+# Cancela runs obsoletos por rama: un push nuevo mata el run anterior de esa rama.
+# NUNCA en main (cancel-in-progress=false cuando ref==refs/heads/main) → protege el
+# deploy a prod. Detonante: el 11-jun, 34 pushes a dev = 34 runs completos sin cancelar,
+# agotando los 3000 min/mes del plan. github.head_ref (PRs) con fallback a github.ref
+# (push). TER-548.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    # Red de seguridad: un step patológico (p.ej. un cache que se atasca) muere a los 30 min
+    # en vez del default de 360. TER-548.
+    timeout-minutes: 30
+    # Cache de capas en GHCR (registry): el push del cache requiere packages:write. TER-557.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The ubuntu runner boots with only ~17GB free (72G disk, 56G used by
+      # preinstalled SDKs). Building the docker-compose test stack on top
+      # (backend + e2e/Expo image + mongo + qdrant) exceeds it and dies with
+      # "ENOSPC: no space left on device" during yarn install — every PR (and
+      # dev/main) fails at "Start test environment".
+      #
+      # Measured reclaim on our runner (workflow disk-diag, run 26813898856):
+      #   android 11G + dotnet 5G + ghcup 3.7G + CodeQL 1.7G  →  17G free → 37G.
+      # (/opt/ghc and /usr/local/share/boost don't exist on ubuntu-24.04.)
+      - name: Free disk space
+        run: |
+          before=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          after=$(df --output=avail -BG / | tail -1 | tr -dc '0-9')
+          echo "Disk freed: $((after - before))G  (was ${before}G free, now ${after}G)"
+          df -h /
+
+      # `bake` construye los servicios con `build:` del compose y `up` los reusa (sin --build).
+      # Las imágenes ya van adelgazadas (yarn cache clean ~4.8GB + COPY --parents → backend 11→~4GB,
+      # TER-548); el cache de capas se externaliza a GHCR (registry) en el step de build. TER-557.
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Login a GHCR para el registry cache (type=registry). El GITHUB_TOKEN del run trae
+      # packages:write por el bloque permissions del job. TER-557.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cache de capas en GHCR con mode=max: cachea TODAS las capas intermedias (no solo la imagen
+      # final como el mode=min de TER-548) → sin el techo de 10GB de la GHA cache. Un ref POR imagen
+      # (varios targets al mismo ref se pisan); backend+browser son los únicos con `build:`
+      # (mongo/qdrant son `image:`). TER-557.
+      - name: Build test images (registry cache, mode=max)
+        run: |
+          CACHE=ghcr.io/teros-hq/teros/ci-cache
+          docker buildx bake -f docker-compose.test.yml \
+            --set "backend.cache-from=type=registry,ref=$CACHE:tests-backend" \
+            --set "backend.cache-to=type=registry,ref=$CACHE:tests-backend,mode=max" \
+            --set "browser.cache-from=type=registry,ref=$CACHE:tests-browser" \
+            --set "browser.cache-to=type=registry,ref=$CACHE:tests-browser,mode=max" \
+            --load
+
+      - name: Start test environment
+        run: docker compose -f docker-compose.test.yml up -d
+
+      # SEC-7 (TER-726): security exploit golden set, run ISOLATED and BEFORE
+      # the broad unit suite below. These files pass fine inside the
+      # `tests/unit/` glob too, but that step's exit code is entangled with
+      # ~2500 other backend tests — if any of those has an unrelated
+      # pre-existing failure, the broad step (and everything sequenced after
+      # it) never signals whether the security golden set itself is green.
+      # Confirmed on this PR's first CI run: 7 unrelated pre-existing failures
+      # elsewhere in tests/unit/ failed that step, which would have silently
+      # skipped this check had it been sequenced after it (as it originally
+      # was). Running it first, on its own, gives it an undiluted verdict.
+      # Tolerant of SEC-N branches not merged yet (see script header);
+      # becomes a real 100% gate once SEC-1..6 all land on dev.
+      - name: Run security golden set (SEC-1..4, SEC-7 invariant)
+        run: docker compose -f docker-compose.test.yml exec -T backend sh /app/scripts/run-security-golden-set.sh
+
+      - name: Run unit tests
+        run: docker compose -f docker-compose.test.yml exec -T backend bun test tests/unit/
+
+      # @teros/core billing tests are bun:test files (core's own `test` script is
+      # vitest, which does not run them), so they were never gated. They cover the
+      # FASE 0.5 mid-turn cut (TurnDriver) and the prompt-leak invariant. Run them
+      # from the backend container (COPY . . brings the whole monorepo; bun's
+      # "bun"→src export resolves @teros/* without a build). TER-billing FASE 3f.
+      # TER-707/CTX-016 adds: the tool-arg elision unit suite + its structural
+      # G1/G2 choke-point guards, and the cross-adapter request-shape tests
+      # (Gemini signed-part round-trip, OpenAI-family elided-input round-trip)
+      # — same gotcha, these are bun:test files vitest never runs either.
+      - name: Run core billing unit tests
+        run: >-
+          docker compose -f docker-compose.test.yml exec -T backend
+          bun test ../core/src/conversation/TurnDriver.test.ts ../core/src/prompts/billing-invariant.test.ts
+          ../core/src/prompts/tool-arg-eviction.test.ts
+          ../core/src/prompts/tool-arg-eviction-choke-point.invariant.test.ts
+          ../core/src/llm/GeminiLLMAdapter.test.ts
+          ../core/src/llm/OpenAICompatibleLLMAdapter.test.ts
+          ../core/src/compaction/compaction.test.ts
+
+      - name: Run integration tests
+        run: docker compose -f docker-compose.test.yml exec -T backend bun test tests/integration/
+
+      # @todo alice - 2026-04-04: re-enable sanity tests once seed-test-data.ts script is created
+      # - name: Seed test users for sanity
+      #   run: docker compose -f docker-compose.test.yml exec -T browser bun run src/scripts/seed-test-data.ts
+      # - name: Run sanity tests (Cucumber)
+      #   run: docker compose -f docker-compose.test.yml exec -T browser yarn sanity
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "=== backend logs ===" && docker compose -f docker-compose.test.yml logs backend || true
+          echo "=== browser logs ===" && docker compose -f docker-compose.test.yml logs browser || true
+          echo "=== mongodb logs ===" && docker compose -f docker-compose.test.yml logs mongodb || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.test.yml down -v
+
+  frontend:
+    name: Frontend (types + render)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      # The app resolves @teros/* from dist, so build the deps before type-checking.
+      - name: Build workspace deps
+        run: yarn workspace @teros/shared build && yarn workspace @teros/core build
+
+      # Static layer (Testing Trophy): type-check the WHOLE frontend — the
+      # broadest, cheapest catch (every file, not just tested components).
+      - name: Type-check
+        run: yarn workspace @teros/app typecheck
+
+      # React Native for Web render harness (TER-385): Vitest + jsdom against the
+      # exact code that ships in the PWA. Runs the *.render.test.tsx suite.
+      - name: Run render harness
+        run: yarn workspace @teros/app test:render
+
+  backend-types:
+    name: Backend (types)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      # Backend resolves @teros/* from dist, so build the deps before type-checking.
+      - name: Build workspace deps
+        run: yarn workspace @teros/shared build && yarn workspace @teros/core build
+
+      # Static layer: type-check the WHOLE backend — catches the handler-signature
+      # drift that today only surfaces at runtime.
+      - name: Type-check backend
+        run: yarn workspace @teros/backend typecheck
+
+  # End-to-end: la suite Playwright (scripts/playwright-smoke, TER-533/TER-550) contra el
+  # stack real containerizado — backend + frontend (Expo→nginx) + mongo + qdrant. Job
+  # separado para no bloquear los rápidos (types/render). TER-553.
+  e2e:
+    name: E2E (Playwright)
+    runs-on: ubuntu-latest
+    # COSTE: el job E2E (3 imágenes + suite) cuesta ~12-27 min. Para NO quemar minutos en cada push
+    # de cada rama, corre SOLO al INTEGRAR a dev/main (evento `push`), no en los PRs (pull_request)
+    # — las ramas de feature se validan en local. Es una red de seguridad post-merge, no un gate
+    # por-commit. Esto recupera el objetivo de ahorro de TER-548. TER-553.
+    if: github.event_name == 'push'
+    # Suite completa (incl. @llm) + 3 imágenes → más lento que Tests. Red de seguridad a 40 min
+    # (vs 30 de Tests) por el build del frontend + la suite. TER-553.
+    timeout-minutes: 40
+    # Cache de capas en GHCR (registry): el push del cache requiere packages:write. TER-557.
+    permissions:
+      contents: read
+      packages: write
+    # El base (docker-compose.test.yml) lo comparte el job Tests; el override e2e añade el frontend,
+    # el secret del provider y el replay. COMPOSE_FILE hace que todos los `docker compose` usen ambos
+    # (el bake no lee COMPOSE_FILE → lleva -f explícito).
+    env:
+      COMPOSE_FILE: docker-compose.test.yml:docker-compose.e2e.yml
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # El runner no tiene disco para 3 imágenes + node_modules (mismo motivo que Tests).
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+            /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      # Los specs @llm corren en REPLAY determinista (TEROS_LLM_REPLAY en el compose → MockLLMAdapter
+      # reproduce scripts/playwright-smoke/recordings/llm.json). El mock NO llama al provider real,
+      # así que NO hace falta ninguna API key: basta un valor dummy para que el provider `teros` se
+      # resuelva (resolveProviderForAgent rechaza key vacía con "No AI provider"). Cero secrets, cero
+      # coste, cero flakiness. Para RE-grabar cassettes: en local, override con TEROS_LLM_RECORD + key
+      # real (scripts/playwright-smoke/recordings/README). TER-553.
+      - name: Write dummy provider key (replay no usa el key real)
+        run: |
+          mkdir -p .secrets-ci/system
+          echo '{"apiKey":"dummy-key-replay-ignored-by-mock"}' > .secrets-ci/system/fireworks.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # Login a GHCR para el registry cache. packages:write viene del bloque permissions. TER-557.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # GITHUB_TOKEN al build vía secret (no a ninguna capa): @vscode/ripgrep y otras deps descargan
+      # binarios de GitHub en su postinstall → sin token, GitHub limita a 60 req/h → 504; con el token
+      # de Actions, 1000 req/h.
+      #
+      # Cache de capas en GHCR con mode=max (TER-557, sustituye el gha/mode=min de TER-553): cachea las
+      # capas intermedias → el builder multi-stage del frontend Expo (el step más caro) SÍ se cachea.
+      # Un ref POR imagen (varios targets al mismo ref se pisan); refs e2e-* aislados de los tests-*.
+      # El package de cache es PRIVADO (los packages GHCR nuevos nacen privados; al estar vinculado a
+      # un repo privado, hereda su visibilidad). TER-557.
+      - name: Build images (registry cache, mode=max)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CACHE=ghcr.io/teros-hq/teros/ci-cache
+          docker buildx bake -f docker-compose.test.yml -f docker-compose.e2e.yml \
+            --set "backend.cache-from=type=registry,ref=$CACHE:e2e-backend" \
+            --set "backend.cache-to=type=registry,ref=$CACHE:e2e-backend,mode=max" \
+            --set "browser.cache-from=type=registry,ref=$CACHE:e2e-browser" \
+            --set "browser.cache-to=type=registry,ref=$CACHE:e2e-browser,mode=max" \
+            --set "frontend.cache-from=type=registry,ref=$CACHE:e2e-frontend" \
+            --set "frontend.cache-to=type=registry,ref=$CACHE:e2e-frontend,mode=max" \
+            --load
+
+      - name: Start stack
+        run: docker compose up -d
+
+      # El catálogo de MCAs (mca_catalog) no se siembra al arrancar el backend en modo test
+      # → app.install/list-tools fallan con MCA_NOT_FOUND. Carga los MCAs desde mcas/ (60, ~4s).
+      # Con BUN (no `yarn sync`, que usa tsx): el script importa @teros/shared, que con node/tsx
+      # resuelve a dist/ (gitignored, ausente en CI → ERR_MODULE_NOT_FOUND). bun usa el export
+      # "bun"→src, igual que el backend en runtime — sin necesidad de buildear dist. TER-553.
+      - name: Sync MCA catalog
+        run: |
+          docker compose exec -T backend bun run src/scripts/sync-mcas.ts
+          docker compose exec -T backend bun run src/scripts/sync-models.ts
+
+      # -w /app: el WORKDIR del browser es /app/packages/e2e (Cucumber legacy), pero el
+      # seed y los scripts `smoke` viven en el package.json raíz (/app).
+      - name: Seed test users
+        run: docker compose exec -T -w /app browser node scripts/playwright-smoke/seed.mjs
+
+      # Suite completa. Los @llm corren en REPLAY determinista (no Kimi real): el backend lleva
+      # TEROS_LLM_REPLAY + TEROS_DETERMINISTIC (docker-compose.e2e.yml) → MockLLMAdapter reproduce
+      # las cassettes con reloj/IDs congelados (TER-563). retries:2 (playwright.config.ts) absorbe
+      # flakiness de UI/multi-usuario (p.ej. el setup de la segunda página), NO latencia de LLM.
+      # TARGET_URL/BACKEND_URL se inyectan por env al browser.
+      - name: Run e2e suite (Playwright)
+        run: docker compose exec -T -w /app browser yarn smoke
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: scripts/playwright-smoke/.report
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "=== backend ===" && docker compose logs backend || true
+          echo "=== frontend ===" && docker compose logs frontend || true
+          echo "=== browser ===" && docker compose logs browser || true
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  # Behavioural prompt-regression gate (F4·C3). Runs the golden set through a REAL
+  # agent turn and reports pass@1 / pass-rate vs baseline. Informative (never
+  # blocks) — the deterministic contract gate (Tests job → core-prompt-contract)
+  # is the per-PR blocker. Manual-only (`workflow_dispatch`) because it needs a
+  # provider call; SKIPS (green) until a key is wired. To enable: set repo vars
+  # EVAL_PROVIDER + EVAL_MODEL and secret EVAL_API_KEY, then run this workflow.
+  prompt-regression:
+    name: Prompt regression (behavioural, informative)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile --ignore-engines
+
+      # The script resolves @teros/core from dist.
+      - name: Build workspace deps
+        run: yarn workspace @teros/shared build && yarn workspace @teros/core build
+
+      # Informative: no --block. Skips with exit 0 when EVAL_* is unset, so this
+      # job stays green until a provider key is wired.
+      - name: Run behavioural gate
+        env:
+          EVAL_PROVIDER: ${{ vars.EVAL_PROVIDER }}
+          EVAL_MODEL: ${{ vars.EVAL_MODEL }}
+          EVAL_API_KEY: ${{ secrets.EVAL_API_KEY }}
+        run: npx tsx --tsconfig packages/backend/tsconfig.json scripts/prompt-regression-gate.ts --k=3
