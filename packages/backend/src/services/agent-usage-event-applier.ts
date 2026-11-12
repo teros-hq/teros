@@ -13,7 +13,7 @@
  * when an event is replayed outside the applier path (e.g. manual Mongo shell
  * replay after `agent_usage_event_applications` was wiped operationally).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §6 — Event sourcing
  */
 
 import type { Logger } from "pino"
@@ -23,6 +23,17 @@ import type { AgentUsageSessionRepository } from "./agent-usage-session-reposito
 import type { LatitudeScoreEmitter } from "./latitude-score-emitter.js"
 import type { SessionTraceExporter } from "./session-trace-export-service.js"
 import type { ToolExecutionRepository } from "./tool-execution-repository.js"
+
+/**
+ * A session event arrived before its `session.started` was projected (events
+ * can land out of order: critical events bypass the buffer queue). Thrown so
+ * the claim is released and the event retried instead of silently no-op'ing.
+ */
+export class SessionNotProjectedYetError extends Error {
+  constructor(sessionUsageId: string, eventType: string) {
+    super(`${eventType} for ${sessionUsageId} arrived before session.started`)
+  }
+}
 
 export class AgentUsageEventApplier {
   constructor(
@@ -48,24 +59,66 @@ export class AgentUsageEventApplier {
    * Apply a batch of events. Each event is claimed individually; failures of
    * one event do not abort the rest.
    *
+   * A failed event has its claim RELEASED (MOD-7): it used to stay claimed, so
+   * the event was consumed without ever being applied (at-most-once). Now a
+   * retry — or a later replay/rebuild — applies it (at-least-once, made
+   * exactly-once by the claim).
+   *
    * Returns the count of newly applied events (those not previously claimed).
+   * Scripts use this; the live buffer uses applyAll so failures are retried.
    */
   async applyBatch(events: AgentUsageEvent[]): Promise<number> {
+    return (await this.applyEach(events)).applied
+  }
+
+  /**
+   * Like applyBatch, but throws when any event failed — after applying the
+   * rest — so the caller's retry/dead-letter path engages. Already-applied
+   * events are skipped on the retry by their claim.
+   */
+  async applyAll(events: AgentUsageEvent[]): Promise<number> {
+    const { applied, failed } = await this.applyEach(events)
+    if (failed > 0) {
+      throw new Error(`agent-usage-event-applier: ${failed} of ${events.length} event(s) failed to apply`)
+    }
+    return applied
+  }
+
+  private async applyEach(events: AgentUsageEvent[]): Promise<{ applied: number; failed: number }> {
     let applied = 0
+    let failed = 0
     for (const event of events) {
+      let claimed = false
       try {
-        const claimed = await this.applications.tryClaim(event.eventId)
+        claimed = await this.applications.tryClaim(event.eventId)
         if (!claimed) continue
         await this.applyOne(event)
         applied++
       } catch (err) {
-        this.log.error(
+        failed++
+        if (claimed) {
+          await this.applications.release(event.eventId).catch((releaseErr) => {
+            this.log.error(
+              { err: releaseErr, eventId: event.eventId },
+              "agent-usage-event-applier: could not release claim of a failed event",
+            )
+          })
+        }
+        const level = err instanceof SessionNotProjectedYetError ? "warn" : "error"
+        this.log[level](
           { err, eventId: event.eventId, type: event.type },
           "agent-usage-event-applier: apply failed",
         )
       }
     }
-    return applied
+    return { applied, failed }
+  }
+
+  /** Throw SessionNotProjectedYetError when the session doc doesn't exist yet. */
+  private async requireSession(sessionUsageId: string, eventType: string): Promise<void> {
+    if (!(await this.sessions.findById(sessionUsageId))) {
+      throw new SessionNotProjectedYetError(sessionUsageId, eventType)
+    }
   }
 
   private async applyOne(event: AgentUsageEvent): Promise<void> {
@@ -119,6 +172,8 @@ export class AgentUsageEventApplier {
       // (TER-616/C1). A successful turn overwrites these via onSessionDelta.
       actualModel: payload.actualModel,
       actualProvider: payload.actualProvider,
+      // TLANE-REQ-9: the lane of a Teros turn, recorded next to its upstream.
+      ...(payload.lane ? { lane: payload.lane } : {}),
       // The session opens `queued` with no execution anchor. `session.running`
       // sets the authoritative `startedAt` on turn start (TER-650/G1). A queued
       // session (startedAt=null) is excluded from the billing rollup by
@@ -172,10 +227,21 @@ export class AgentUsageEventApplier {
     // Only a `queued` session transitions to `running`. The `{status:'queued'}`
     // filter makes this idempotent (a replay or double markRunning is a no-op)
     // and ensures a session already closed by the reconciler is never revived.
-    await this.sessions.update(
+    const transitioned = await this.sessions.update(
       sessionUsageId,
       { $set: { status: "running", startedAt, updatedAt: event.appliedAt } },
       { status: "queued" },
+    )
+    if (transitioned) return
+
+    await this.requireSession(sessionUsageId, event.type)
+    // Applied after session.ended (out of order): the session is already
+    // terminal, so it must not be revived — but without its execution anchor
+    // the rollup never bills it (MOD-7). Fill startedAt only if missing.
+    await this.sessions.update(
+      sessionUsageId,
+      { $set: { startedAt, updatedAt: event.appliedAt } },
+      { startedAt: null },
     )
   }
 
@@ -218,7 +284,7 @@ export class AgentUsageEventApplier {
     // tryClaim makes this exactly-once; zombie billing stays guarded by the
     // rollup's isNonBillableSession errorKind check, not here. Do NOT re-add a
     // status filter — agent-usage-lifecycle-g1.test.ts goes red if you do.
-    await this.sessions.update(sessionUsageId, {
+    const deltaMatched = await this.sessions.update(sessionUsageId, {
       $inc: inc,
       $set: {
         ...(payload.actualModel ? { actualModel: payload.actualModel } : {}),
@@ -229,6 +295,7 @@ export class AgentUsageEventApplier {
         ...(payload.latencyMs !== undefined ? { latencyMs: payload.latencyMs } : {}),
         ...(payload.ttftMs !== undefined ? { ttftMs: payload.ttftMs } : {}),
         ...(payload.usagePartial !== undefined ? { usagePartial: payload.usagePartial } : {}),
+        ...(payload.usageEstimated !== undefined ? { usageEstimated: payload.usageEstimated } : {}),
         // Quality + failover proxies (§3.1 + TER-617/F3) — last-delta wins.
         ...(payload.stopReason ? { stopReason: payload.stopReason } : {}),
         ...(payload.fallbackUsed !== undefined ? { fallbackUsed: payload.fallbackUsed } : {}),
@@ -236,6 +303,7 @@ export class AgentUsageEventApplier {
         updatedAt: event.appliedAt,
       },
     })
+    if (!deltaMatched) await this.requireSession(sessionUsageId, event.type)
   }
 
   private async onSessionEnded(
@@ -251,6 +319,10 @@ export class AgentUsageEventApplier {
       endedAt: payload.endedAt,
       durationMs: payload.durationMs,
       durationSource: payload.durationSource,
+      // durationCapped (turn-deadline kill): projected verbatim. Reporting
+      // distinguishes watchdog-elapsed durations from real work via this flag
+      // (or the legacy [1_795_000–1_805_000] range for pre-flag rows).
+      ...(payload.durationCapped ? { durationCapped: true } : {}),
       status: payload.status,
       updatedAt: event.appliedAt,
     }
@@ -271,8 +343,12 @@ export class AgentUsageEventApplier {
     // GUARD: if the child was not in `running` (already closed by an earlier
     // event or by the reconciler), do NOT propagate descendant counters to
     // the parent — they were already propagated the first time this event
-    // succeeded, and reapplying would double-count.
-    if (!matched) return
+    // succeeded, and reapplying would double-count. A session that doesn't
+    // exist yet is a different case: retry once session.started lands (MOD-7).
+    if (!matched) {
+      await this.requireSession(sessionUsageId, event.type)
+      return
+    }
 
     // F3a — export this turn's trace to Latitude. Fire-and-forget: the trigger
     // returns immediately; the queries + assemble + build + export run detached

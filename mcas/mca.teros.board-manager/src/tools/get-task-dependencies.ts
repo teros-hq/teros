@@ -16,8 +16,10 @@ export const getTaskDependencies: ToolConfig = {
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     if (!taskId) throw new Error('taskId is required');
@@ -25,7 +27,7 @@ export const getTaskDependencies: ToolConfig = {
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('get_task', { taskId }),
+          wsClient.queryConversations<any>('get_task', { taskId, callerAgentId }),
           15_000,
           'get_task_dependencies',
         ),

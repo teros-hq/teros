@@ -57,7 +57,7 @@ test.afterAll(async () => {
 })
 
 test.describe("billing — perfil → plan I3 @billing", () => {
-  test("get-subscription expone UsageHero + PricingCards + tarjeta + boostPricing", async ({
+  test("get-subscription expone UsageHero + PricingCards + tarjeta + boostPricing @stripe", async ({
     user2Page,
   }) => {
     const r = await wsRequest<GetSubResult>(user2Page, "billing.get-subscription")
@@ -91,7 +91,8 @@ test.describe("billing — perfil → plan I3 @billing", () => {
     expect(sub).toBeTruthy()
 
     // Upgrade pro→ultra: cargo prorrateado real, estrictamente entre 0 y la
-    // diferencia completa (349-179=170) porque estamos a mitad de periodo.
+    // diferencia completa (349-159=190; Pro bajó de 179 a 159 el 2026-10-09) porque estamos
+    // a mitad de periodo.
     const up = await wsRequest<Preview>(user2Page, "billing.preview-plan-change", {
       planId: "plan_ultra",
     })
@@ -101,7 +102,7 @@ test.describe("billing — perfil → plan I3 @billing", () => {
     expect(up.newPlanName).toBe("Ultra")
     expect(up.prorationAmount, "proration > 0").toBeGreaterThan(0)
     expect(up.prorationAmount, "proration < diferencia completa (mitad de periodo)").toBeLessThan(
-      170,
+      190,
     )
 
     // Downgrade pro→growth: diferido al fin de periodo, sin cargo.

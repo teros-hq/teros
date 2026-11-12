@@ -1,16 +1,17 @@
 /**
- * OnboardingProgress — Progress pills header
+ * OnboardingProgress — the stepper strip of the OS prototype (`.stepper`).
  *
- * Matches the prototype design: horizontal pills with connectors.
- * Active pill is wider. Done pills use accent with reduced opacity.
+ * A small mono note "PASO 1 · 4 — Bienvenida" and a row of progress pills:
+ * done = violet at half strength, active = violet (wider), idle = washed.
  * Always visible at the top of the wizard.
  */
 
-import React from 'react'
-import { useTranslation } from 'react-i18next'
-import { Text, XStack, YStack } from 'tamagui'
-import { colors as semanticColors } from '../mca/primitives/colors'
-import { useColors } from '../mca/primitives/useColors'
+import React from "react"
+import { Platform, View } from "react-native"
+import { useTranslation } from "react-i18next"
+import { colors as semanticColors } from "../mca/primitives/colors"
+import { useColors } from "../mca/primitives/useColors"
+import { T } from "../ui/ds"
 
 export interface OnboardingStep {
   id: string
@@ -27,45 +28,60 @@ export function OnboardingProgress({ steps, currentStep }: OnboardingProgressPro
   const c = useColors()
   const stepNumber = currentStep + 1
   const totalSteps = steps.length
-  const currentLabel = steps[currentStep]?.label ?? ''
+  const currentLabel = steps[currentStep]?.label ?? ""
 
   return (
-    <YStack gap={8} paddingHorizontal={24} paddingTop={20} paddingBottom={0}>
+    <View
+      style={{ gap: 10, paddingHorizontal: 28, paddingTop: 24, paddingBottom: 0 }}
+      testID="onboarding-progress"
+    >
       {/* Pills row */}
-      <XStack alignItems="center" gap={6}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
         {steps.map((step, idx) => {
           const isDone = idx < currentStep
           const isActive = idx === currentStep
           return (
-            <React.Fragment key={step.id}>
-              <YStack
-                height={6}
-                borderRadius={3}
-                width={isActive ? 40 : 28}
-                backgroundColor={
-                  isDone
-                    ? `${semanticColors.indigo}80`
-                    : isActive
-                      ? semanticColors.indigo
-                      : c.borderStrong
-                }
-              />
-              {idx < steps.length - 1 && (
-                <YStack
-                  width={8}
-                  height={1}
-                  backgroundColor={c.border}
-                />
-              )}
-            </React.Fragment>
+            <View
+              key={step.id}
+              accessibilityLabel={step.label}
+              style={[
+                {
+                  height: 6,
+                  borderRadius: 3,
+                  flexGrow: isActive ? 2 : 1,
+                  flexBasis: 0,
+                  backgroundColor: isActive
+                    ? semanticColors.purple300
+                    : isDone
+                      ? semanticColors.purple300
+                      : c.wash2,
+                  opacity: isDone ? 0.45 : 1,
+                },
+                Platform.OS === "web"
+                  ? ({
+                      transition:
+                        "flex-grow 0.35s cubic-bezier(.16,1,.3,1), background-color 0.3s, opacity 0.3s",
+                    } as any)
+                  : null,
+              ]}
+            />
           )
         })}
-      </XStack>
+      </View>
 
-      {/* Step label */}
-      <Text fontSize={11} color={c.text2} letterSpacing={0.5}>
-        {t('onboarding.stepProgress', { stepNumber, totalSteps, label: currentLabel })}
-      </Text>
-    </YStack>
+      {/* Step note — "STEP 1 · 4 — Welcome" */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <T step="codenote" tone="accent">
+          {t("onboarding.stepNote", {
+            defaultValue: "Step {{n}} · {{total}}",
+            n: stepNumber,
+            total: totalSteps,
+          })}
+        </T>
+        <T step="xs" tone="text3">
+          {currentLabel}
+        </T>
+      </View>
+    </View>
   )
 }

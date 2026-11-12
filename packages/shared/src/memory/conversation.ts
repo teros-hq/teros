@@ -108,8 +108,8 @@ async function checkForDuplicate(
   const windowStart = new Date(now.getTime() - windowHours * 60 * 60 * 1000);
 
   try {
-    const results = await qdrant.search(collectionName, {
-      vector,
+    const results = await qdrant.query(collectionName, {
+      query: vector,
       limit: 5,
       filter: {
         must: [
@@ -124,11 +124,11 @@ async function checkForDuplicate(
       with_payload: true,
     });
 
-    const hasDuplicate = results.some((result) => result.score >= threshold);
+    const hasDuplicate = results.points.some((result) => result.score >= threshold);
 
-    if (hasDuplicate && results[0]) {
+    if (hasDuplicate && results.points[0]) {
       logger.debug(
-        `🔍 [${agentId}] Found duplicate: score ${results[0].score.toFixed(3)} (threshold: ${threshold})`
+        `🔍 [${agentId}] Found duplicate: score ${results.points[0].score.toFixed(3)} (threshold: ${threshold})`
       );
     }
 
@@ -180,14 +180,14 @@ export async function searchConversations(
   }
 
   try {
-    const results = await qdrant.search(collectionName, {
-      vector,
+    const results = await qdrant.query(collectionName, {
+      query: vector,
       limit,
       filter: qdrantFilter.must.length > 0 ? qdrantFilter : undefined,
       with_payload: true,
     });
 
-    return results.map((result) => ({
+    return results.points.map((result) => ({
       id: result.id,
       score: result.score,
       payload: result.payload as ConversationMemory,

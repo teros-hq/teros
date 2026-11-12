@@ -4,15 +4,63 @@
  * ModelHealthWindow is 4 lines — not worth coupling two windows over).
  */
 
+import { colors as semantic, type SurfaceTokens } from "../../components/mca/primitives/colors"
+import type { BadgeTone } from "../../components/ui/ds/Badge"
+
 export type TraceStatusLevel = "ok" | "warn" | "bad" | "muted" | "info"
 
-/** Colour-blind-safe palette, always paired with text/icon in the UI. */
+/**
+ * Colour-blind-safe palette (brand status ramp), always paired with text/icon
+ * in the UI. Static — for presentation inside a render prefer `statusColor(c, level)`
+ * so the colour follows the active theme.
+ */
 export const STATUS_COLORS: Record<TraceStatusLevel, string> = {
-  ok: "#3B82F6",
-  warn: "#F59E0B",
-  bad: "#EF4444",
-  muted: "#9CA3AF",
-  info: "#06B6D4",
+  ok: semantic.green,
+  warn: semantic.amber,
+  bad: semantic.red,
+  muted: semantic.main500,
+  info: semantic.purple300,
+}
+
+/** Level → `Badge` tone: ok green · warn amber · bad red · info violet · muted. */
+export const STATUS_TONE: Record<TraceStatusLevel, BadgeTone> = {
+  ok: "g",
+  warn: "a",
+  bad: "r",
+  muted: "muted",
+  info: "i",
+}
+
+/** Theme-aware level colour (`c.tint.*.tx`, `c.text3` for muted). */
+export function statusColor(c: SurfaceTokens, level: TraceStatusLevel): string {
+  switch (level) {
+    case "ok":
+      return c.tint.g.tx
+    case "warn":
+      return c.tint.a.tx
+    case "bad":
+      return c.tint.r.tx
+    case "info":
+      return c.tint.i.tx
+    default:
+      return c.text3
+  }
+}
+
+/** Theme-aware level fill for bars/tiles (`c.tint.*.bd` is the saturated edge; `c.accent` for info). */
+export function statusFill(c: SurfaceTokens, level: TraceStatusLevel): string {
+  switch (level) {
+    case "ok":
+      return semantic.green
+    case "warn":
+      return semantic.amber
+    case "bad":
+      return semantic.red
+    case "info":
+      return c.accent
+    default:
+      return c.text3
+  }
 }
 
 /** ms → human ("820ms", "3.40s", "12.1s"). */

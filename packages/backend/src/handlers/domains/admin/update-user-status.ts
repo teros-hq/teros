@@ -1,18 +1,23 @@
 /**
- * admin.update-user-status — Update a user's status (admin only)
+ * admin.update-user-status — Update a user's status (admin only, step-up required)
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { UserService } from '../../../auth/user-service'
+import type { SessionService } from '../../../auth/session-service'
 import type { User } from '../../../auth/types'
+import { requireStepUp } from './require-step-up'
 
 interface UpdateUserStatusData {
   targetUserId: string
   status: User['status']
 }
 
-export function createUpdateUserStatusHandler(userService: UserService) {
+export function createUpdateUserStatusHandler(
+  userService: UserService,
+  sessionService: SessionService,
+) {
   return async function updateUserStatus(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UpdateUserStatusData
 
@@ -33,6 +38,9 @@ export function createUpdateUserStatusHandler(userService: UserService) {
     if (targetUserId === ctx.userId && status === 'suspended') {
       throw new HandlerError('SELF_SUSPENSION', 'Cannot suspend yourself')
     }
+
+    // Step-up auth: require recent re-authentication (Req 2.4.1)
+    await requireStepUp(ctx, sessionService)
 
     const targetUser = await userService.getByUserId(targetUserId)
     if (!targetUser) {

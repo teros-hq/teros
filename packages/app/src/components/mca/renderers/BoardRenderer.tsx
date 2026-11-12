@@ -10,7 +10,7 @@
  *
  * Organización del archivo:
  *   1. Shared types (Task, Project, BoardAgent, …).
- *   2. Labels + helpers (humanize, StatusBadge, formatDate, unwrap, diffFields).
+ *   2. Helpers (useBoardDescription, formatDate, unwrap, diffFields).
  *   3. ToolShell common card-shell.
  *   4. Common task rendering helpers (TaskRow, TaskDetail, ProgressNoteList).
  *   5. Sub-renderers agrupados por operación (list, get, create, update, state, …).
@@ -28,11 +28,14 @@ import type React from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { useNavbarStore } from '../../../store/navbarStore';
 import {
   ActionBadge,
   Avatar,
   Badge,
   colors,
+  type DescriptionVars,
+  firstName,
   useColors,
   DualEntity,
   Empty,
@@ -50,11 +53,12 @@ import {
   PillList,
   ResourceCard,
   TaskStatusBadge,
-  tenseByStatus,
   ToolCallCard,
   truncate,
+  useToolDescription,
 } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
+import { normalizeTags } from '@teros/shared';
 import { withPermissionSupport } from '../withPermissionSupport';
 
 // ============================================================================
@@ -185,78 +189,25 @@ interface HealthCheckResult {
 // 2. LABELS + HELPERS
 // ============================================================================
 
-const TOOL_LABELS: Record<string, string> = {
-  // Board manager reads
-  'get-project': 'Project detail',
-  'list-projects': 'Projects',
-  'get-task': 'Task detail',
-  'list-tasks': 'Tasks',
-  'list-board-agents': 'Board agents',
-  'get-task-dependencies': 'Task dependencies',
-  'get-board-status': 'Board status',
-  'list-board-subscriptions': 'Board subscriptions',
-  // Board manager writes
-  'create-project': 'Create project',
-  'create-task': 'Create task',
-  'batch-create-tasks': 'Create tasks (batch)',
-  'update-task': 'Update task',
-  'update-project': 'Update project',
-  'assign-task': 'Assign task',
-  'move-task': 'Move task',
-  'archive-task': 'Archive task',
-  'start-task': 'Start task',
-  'stop-task': 'Stop task',
-  'delete-task': 'Delete task',
-  'link-conversation': 'Link conversation',
-  'add-progress-note': 'Progress note',
-  'add-task-dependency': 'Add dependency',
-  'remove-task-dependency': 'Remove dependency',
-  'set-agent-slots': 'Agent slots',
-  'set-agent-play': 'Agent autoplay',
-  'subscribe-to-board': 'Subscribe board',
-  'unsubscribe-from-board': 'Unsubscribe board',
-  // Board runner
-  'get-my-tasks': 'My tasks',
-  'get-my-task': 'My active task',
-  'complete-my-task': 'Complete task',
-  'block-my-task': 'Block task',
-  'cancel-my-task': 'Cancel task',
-  // Health
-  '-health-check': 'Health check',
-};
-
-function humanize(name: string): string {
-  if (!name) return '';
-  const joined = name.replace(/-/g, ' ');
-  return joined.charAt(0).toUpperCase() + joined.slice(1);
-}
-
-function getToolLabel(toolName: string): string {
-  const short = getShortToolName(toolName);
-  return TOOL_LABELS[short] ?? humanize(short);
-}
-
 /**
- * Best-effort tense derivation from the canonical tool label (guide §2).
- * Same shape as TerosCoreRenderer.
+ * Header copy lives in i18n under `mca.tools.board.<tool>` and follows the
+ * description standard (primitives/tool-description.ts): one string per
+ * phase, task/project/agent names — never ids — and `*Generic` variants when
+ * a name is unknown.
  */
-function getTenseForms(toolName: string): { future: string; present: string; past: string } {
-  const label = getToolLabel(toolName);
-  const lower = label.toLowerCase();
-  const [verb, ...rest] = lower.split(' ');
-  const tail = rest.join(' ');
-  if (!verb) return { future: lower, present: label, past: label };
-  const present = verb.endsWith('e') ? `${verb.slice(0, -1)}ing` : `${verb}ing`;
-  const past = verb.endsWith('e') ? `${verb}d` : `${verb}ed`;
-  return {
-    future: `${verb}${tail ? ` ${tail}` : ''}`,
-    present: capitalize(`${present}${tail ? ` ${tail}` : ''}`),
-    past: capitalize(`${past}${tail ? ` ${tail}` : ''}`),
-  };
+function useBoardDescription(
+  tool: string,
+  status: ToolCallRendererProps['status'],
+  vars?: DescriptionVars,
+): string {
+  return useToolDescription(`mca.tools.board.${tool}`, status, vars);
 }
 
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+/** Agent name from the navbar cache, for tools whose output carries only ids. */
+function useAgentName(agentId: unknown): string | undefined {
+  return useNavbarStore((s) =>
+    typeof agentId === 'string' ? s.agents.find((a) => a.agentId === agentId)?.name : undefined,
+  );
 }
 
 /**
@@ -369,14 +320,16 @@ function NextCursorHint({ cursor }: { cursor?: string }) {
 /**
  * Card-shell estándar para los renderers BoardManager/BoardRunner.
  * Guide §7 DON'T: no añadir badge que duplique el status dot.
- * Description pasa por `tenseByStatus`. `irreversible` se deriva del
- * toolName via `IRREVERSIBLE_TOOLS`.
+ * `description` is now an explicit prop — each renderer composes its own
+ * header via `useBoardDescription()`. `irreversible` is derived from
+ * the toolName via `IRREVERSIBLE_TOOLS`.
  */
 function ToolShell({
   toolName,
   status,
   error,
   appIcon,
+  description,
   children,
   irreversible,
 }: {
@@ -384,15 +337,15 @@ function ToolShell({
   status: ToolCallRendererProps['status'];
   error?: string;
   appIcon?: string;
+  description: string;
   children: React.ReactNode;
   irreversible?: boolean;
 }) {
-  const c = useColors();
   const isIrreversible = irreversible ?? isIrreversibleTool(toolName);
   return (
     <ToolCallCard
       status={status}
-      description={tenseByStatus(status, getTenseForms(toolName))}
+      description={description}
       iconUri={appIcon}
       defaultExpanded={false}
       irreversible={isIrreversible}
@@ -524,14 +477,17 @@ function TaskDetail({ task }: { task: Task }) {
           </Text>
         </YStack>
       )}
-      {task.tags && task.tags.length > 0 && (
-        <YStack gap={3} marginTop={4}>
-          <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
-            tags
-          </Text>
-          <PillList items={task.tags} />
-        </YStack>
-      )}
+      {(() => {
+        const tagArr = normalizeTags(task.tags);
+        return tagArr.length > 0 ? (
+          <YStack gap={3} marginTop={4}>
+            <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              tags
+            </Text>
+            <PillList items={tagArr} />
+          </YStack>
+        ) : null;
+      })()}
       {task.dependencies && task.dependencies.length > 0 && (
         <YStack gap={3} marginTop={4}>
           <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
@@ -551,17 +507,20 @@ function TaskDetail({ task }: { task: Task }) {
 
 function ListTasksRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: tasks, nextCursor, extra } = unwrapList<Task>(parsed, 'tasks');
   const projectName = extra.projectName as string | undefined;
+
+  const description = useBoardDescription('listTasks', status, { project: projectName });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {projectName && (
         <Text
@@ -593,16 +552,19 @@ function ListTasksRenderer(props: ToolCallRendererProps) {
 function ListMyTasksRenderer(props: ToolCallRendererProps) {
   const c = useColors();
   // Same shape as list-tasks (wrapped in `tasks`), no projectName header.
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: tasks, nextCursor } = unwrapList<Task>(parsed, 'tasks');
+
+  const description = useBoardDescription('getMyTasks', status);
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {tasks.length === 0 ? (
         <Empty message="No assigned tasks" />
@@ -622,16 +584,19 @@ function ListMyTasksRenderer(props: ToolCallRendererProps) {
 
 function ListProjectsRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: projects, nextCursor } = unwrapList<Project>(parsed, 'projects');
+
+  const description = useBoardDescription('listProjects', status);
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {projects.length === 0 ? (
         <Empty message="No projects" />
@@ -671,16 +636,19 @@ function ListProjectsRenderer(props: ToolCallRendererProps) {
 
 function ListBoardAgentsRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: agents, nextCursor } = unwrapList<ResolvedAgent>(parsed, 'agents');
+
+  const description = useBoardDescription('listBoardAgents', status);
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {agents.length === 0 ? (
         <Empty message="No board agents" />
@@ -710,16 +678,19 @@ function ListBoardAgentsRenderer(props: ToolCallRendererProps) {
 
 function ListBoardSubscriptionsRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: subs, nextCursor } = unwrapList<BoardSubscription>(parsed, 'subscriptions');
+
+  const description = useBoardDescription('listBoardSubscriptions', status);
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {subs.length === 0 ? (
         <Empty message="No active subscriptions" />
@@ -751,17 +722,20 @@ function ListBoardSubscriptionsRenderer(props: ToolCallRendererProps) {
 
 function GetTaskDependenciesRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: deps, nextCursor } = unwrapList<Task>(parsed, 'dependencies');
   const taskId = (parsed as { taskId?: string })?.taskId ?? (input?.taskId as string | undefined);
+
+  const description = useBoardDescription('getTaskDependencies', status, { task: undefined });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {taskId && (
         <Text
@@ -811,19 +785,22 @@ function GetTaskDependenciesRenderer(props: ToolCallRendererProps) {
 
 function GetTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const subTasks = Array.isArray((parsed as { subTasks?: Task[] })?.subTasks)
     ? ((parsed as { subTasks: Task[] }).subTasks as Task[])
     : [];
 
+  const description = useBoardDescription('getTask', status, { task: task?.title });
+
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {task && <TaskDetail task={task} />}
       {subTasks.length > 0 && (
@@ -842,12 +819,14 @@ function GetTaskRenderer(props: ToolCallRendererProps) {
 
 function GetMyTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
 
+  const description = useBoardDescription('getMyTask', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task ? (
         <TaskDetail task={task} />
       ) : (
@@ -859,17 +838,20 @@ function GetMyTaskRenderer(props: ToolCallRendererProps) {
 
 function GetProjectRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const project = unwrap<Project>(parsed, 'project', 'projectId');
   const board = (parsed as { board?: Board })?.board;
+
+  const description = useBoardDescription('getProject', status, { project: project?.name });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {project && (
         <ResourceCard
@@ -880,7 +862,7 @@ function GetProjectRenderer(props: ToolCallRendererProps) {
               radius={6}
             />
           }
-          title={project.name ?? project.projectId}
+          title={project.name ?? shortId(project.projectId)}
           subtitle={project.description ? truncate(project.description, 80) : undefined}
           meta={project.status === 'archived' ? <Badge text="archived" variant="gray" /> : undefined}
         >
@@ -928,7 +910,7 @@ function GetProjectRenderer(props: ToolCallRendererProps) {
 
 function GetBoardStatusRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed as {
     boardId?: string;
@@ -950,8 +932,10 @@ function GetBoardStatusRenderer(props: ToolCallRendererProps) {
     }
   }
 
+  const description = useBoardDescription('getBoardStatus', status, { board: data.boardName });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <ResourceCard
         leading={<IconTile label="▣" size={32} radius={6} />}
         title={data.boardName ?? shortId(data.boardId)}
@@ -1010,23 +994,28 @@ function GetBoardStatusRenderer(props: ToolCallRendererProps) {
 
 function CreateProjectRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const project = unwrap<Project>(parsed, 'project', 'projectId');
+
+  const description = useBoardDescription('createProject', status, {
+    project: firstName(project?.name, props.input?.name),
+  });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {project && (
         <ResourceCard
           leading={
             <IconTile label={(project.name ?? '·').slice(0, 1).toUpperCase()} size={32} radius={6} />
           }
-          title={project.name ?? project.projectId}
+          title={project.name ?? shortId(project.projectId)}
           subtitle={project.description ? truncate(project.description, 80) : undefined}
           verb="created"
         >
@@ -1045,12 +1034,16 @@ function CreateProjectRenderer(props: ToolCallRendererProps) {
 
 function CreateTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
 
+  const description = useBoardDescription('createTask', status, {
+    task: firstName(task?.title, props.input?.title),
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1069,8 +1062,8 @@ function CreateTaskRenderer(props: ToolCallRendererProps) {
             rows={[
               { key: 'taskId', value: shortId(task.taskId) },
               { key: 'priority', value: task.priority ?? '—' },
-              ...(task.tags && task.tags.length > 0
-                ? [{ key: 'tags', value: task.tags.join(', ') }]
+              ...(normalizeTags(task.tags).length > 0
+                ? [{ key: 'tags', value: normalizeTags(task.tags).join(', ') }]
                 : []),
             ]}
           />
@@ -1082,17 +1075,23 @@ function CreateTaskRenderer(props: ToolCallRendererProps) {
 
 function BatchCreateTasksRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed as { projectId?: string; tasks?: Task[]; count?: number }) ?? {};
   const tasks = data.tasks ?? [];
+
+  const description = useBoardDescription('batchCreateTasks', status, {
+    count:
+      data.count ?? (tasks.length || (Array.isArray(props.input?.tasks) ? props.input.tasks.length : undefined)),
+  });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       <XStack gap={4} alignItems="center" marginBottom={4}>
         <ActionBadge verb="created" />
@@ -1122,13 +1121,17 @@ function BatchCreateTasksRenderer(props: ToolCallRendererProps) {
 
 function UpdateTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const changes = diffFields(input, ['title', 'description', 'priority', 'tags']);
 
+  const description = useBoardDescription('updateTask', status, {
+    task: firstName(task?.title, input?.title),
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1159,24 +1162,29 @@ function UpdateTaskRenderer(props: ToolCallRendererProps) {
 
 function UpdateProjectRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const project = unwrap<Project>(parsed, 'project', 'projectId');
   const changes = diffFields(input, ['name', 'description', 'context']);
+
+  const description = useBoardDescription('updateProject', status, {
+    project: firstName(project?.name, input?.name),
+  });
 
   return (
     <ToolShell
       toolName={toolName}
       status={status}
       error={error}
-     
+      appIcon={props.appIcon}
+      description={description}
     >
       {project && (
         <ResourceCard
           leading={
             <IconTile label={(project.name ?? '·').slice(0, 1).toUpperCase()} size={32} radius={6} />
           }
-          title={project.name ?? project.projectId}
+          title={project.name ?? shortId(project.projectId)}
           subtitle={project.description ? truncate(project.description, 80) : undefined}
           verb="updated"
         >
@@ -1195,13 +1203,22 @@ function UpdateProjectRenderer(props: ToolCallRendererProps) {
 
 function AssignTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const isUnassign = !input?.agentId;
 
+  const storedAgent = useAgentName(input?.agentId);
+  const description = useBoardDescription(
+    isUnassign ? 'unassignTask' : 'assignTask',
+    status,
+    isUnassign
+      ? { task: task?.title }
+      : { task: task?.title, agent: firstName(task?.assigneeName, storedAgent) },
+  );
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task &&
         (isUnassign ? (
           <EntityCard
@@ -1236,12 +1253,17 @@ function AssignTaskRenderer(props: ToolCallRendererProps) {
 
 function MoveTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
 
+  const description = useBoardDescription('moveTask', status, {
+    task: task?.title,
+    column: task?.columnName,
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1263,13 +1285,15 @@ function MoveTaskRenderer(props: ToolCallRendererProps) {
 
 function StartTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const channelId = (parsed as { channelId?: string })?.channelId;
 
+  const description = useBoardDescription('startTask', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1295,14 +1319,16 @@ function StartTaskRenderer(props: ToolCallRendererProps) {
 
 function StopTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed as { taskId?: string; stopRequested?: boolean; reason?: string }) ?? {};
   const taskId = data.taskId ?? (input?.taskId as string | undefined);
   const reason = data.reason ?? (input?.reason as string | undefined);
 
+  const description = useBoardDescription('stopTask', status);
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <EntityCard
         leading={<IconTile label="⏸" size={22} radius={5} accent={colors.amber} />}
         title={shortId(taskId)}
@@ -1315,13 +1341,17 @@ function StopTaskRenderer(props: ToolCallRendererProps) {
 
 function ArchiveTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const isArchive = input?.archived === true;
 
+  const description = useBoardDescription(isArchive ? 'archiveTask' : 'restoreTask', status, {
+    task: task?.title,
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <EntityCard
           leading={taskLeadingAvatar(task, 22)}
@@ -1336,13 +1366,15 @@ function ArchiveTaskRenderer(props: ToolCallRendererProps) {
 
 function DeleteTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = (parsed as { taskId?: string; deleted?: boolean }) ?? {};
   const taskId = data.taskId ?? (input?.taskId as string | undefined);
 
+  const description = useBoardDescription('deleteTask', status);
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <EntityCard
         leading={<IconTile label="×" size={22} radius={5} accent={colors.red} />}
         title={shortId(taskId)}
@@ -1355,13 +1387,15 @@ function DeleteTaskRenderer(props: ToolCallRendererProps) {
 
 function LinkConversationRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const channelId = (input?.channelId as string | undefined) ?? task?.channelId;
 
+  const description = useBoardDescription('linkConversation', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <DualEntity
           left={{
@@ -1385,12 +1419,14 @@ function LinkConversationRenderer(props: ToolCallRendererProps) {
 // Runner state transitions
 function CompleteMyTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
 
+  const description = useBoardDescription('completeMyTask', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1406,13 +1442,15 @@ function CompleteMyTaskRenderer(props: ToolCallRendererProps) {
 
 function BlockMyTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const reason = (input?.reason as string | undefined) ?? '';
 
+  const description = useBoardDescription('blockMyTask', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1445,13 +1483,15 @@ function BlockMyTaskRenderer(props: ToolCallRendererProps) {
 
 function CancelMyTaskRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const reason = (input?.reason as string | undefined) ?? '';
 
+  const description = useBoardDescription('cancelMyTask', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <ResourceCard
           leading={taskLeadingAvatar(task, 32)}
@@ -1487,13 +1527,15 @@ function CancelMyTaskRenderer(props: ToolCallRendererProps) {
 
 function AddTaskDependencyRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const dependsOnTaskId = input?.dependsOnTaskId as string | undefined;
 
+  const description = useBoardDescription('addTaskDependency', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <DualEntity
           left={{
@@ -1516,13 +1558,15 @@ function AddTaskDependencyRenderer(props: ToolCallRendererProps) {
 
 function RemoveTaskDependencyRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const dependsOnTaskId = input?.dependsOnTaskId as string | undefined;
 
+  const description = useBoardDescription('removeTaskDependency', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <DualEntity
           left={{
@@ -1549,13 +1593,15 @@ function RemoveTaskDependencyRenderer(props: ToolCallRendererProps) {
 
 function AddProgressNoteRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const task = unwrap<Task>(parsed, 'task', 'taskId');
   const text = input?.text as string | undefined;
 
+  const description = useBoardDescription('addProgressNote', status, { task: task?.title });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {task && (
         <EntityCard
           leading={taskLeadingAvatar(task, 22)}
@@ -1594,13 +1640,19 @@ function agentLabel(relationship: AgentProjectRelationship, input?: Record<strin
 
 function SetAgentSlotsRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const rel = unwrap<AgentProjectRelationship>(parsed, 'relationship', 'agentId');
   const requestedSlots = input?.slots as number | undefined;
 
+  const storedAgent = useAgentName(input?.agentId ?? rel?.agentId);
+  const description = useBoardDescription('setAgentSlots', status, {
+    agent: storedAgent,
+    slots: rel?.slots ?? requestedSlots,
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {rel && (
         <ResourceCard
           leading={<Avatar name={agentLabel(rel, input)} size={32} />}
@@ -1632,14 +1684,19 @@ function SetAgentSlotsRenderer(props: ToolCallRendererProps) {
 
 function SetAgentPlayRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const rel = unwrap<AgentProjectRelationship>(parsed, 'relationship', 'agentId');
   const requestedEnabled = input?.enabled as boolean | undefined;
   const enabled = rel?.playEnabled ?? requestedEnabled ?? false;
 
+  const storedAgent = useAgentName(input?.agentId ?? rel?.agentId);
+  const description = useBoardDescription(enabled ? 'enableAgentPlay' : 'disableAgentPlay', status, {
+    agent: storedAgent,
+  });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       {rel && (
         <ResourceCard
           leading={<Avatar name={agentLabel(rel, input)} size={32} />}
@@ -1670,7 +1727,7 @@ function SetAgentPlayRenderer(props: ToolCallRendererProps) {
 
 function SubscribeToBoardRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const sub = unwrap<BoardSubscription>(parsed, 'subscription', 'subscriptionId');
   const boardId = sub?.boardId ?? (input?.boardId as string | undefined);
@@ -1682,8 +1739,10 @@ function SubscribeToBoardRenderer(props: ToolCallRendererProps) {
   if (filter?.tags?.length) filterPills.push(`tags:${filter.tags.length}`);
   if (filter?.eventTypes?.length) filterPills.push(`events:${filter.eventTypes.length}`);
 
+  const description = useBoardDescription('subscribeToBoard', status, { board: sub?.boardName });
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <DualEntity
         left={{
           visual: <IconTile label="💬" size={24} radius={5} />,
@@ -1712,13 +1771,15 @@ function SubscribeToBoardRenderer(props: ToolCallRendererProps) {
 
 function UnsubscribeFromBoardRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration, input } = props;
+  const { toolName, status, output, error, input } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
   const boardId =
     (parsed as { boardId?: string })?.boardId ?? (input?.boardId as string | undefined);
 
+  const description = useBoardDescription('unsubscribeFromBoard', status);
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <DualEntity
         left={{
           visual: <IconTile label="💬" size={24} radius={5} />,
@@ -1743,15 +1804,17 @@ function UnsubscribeFromBoardRenderer(props: ToolCallRendererProps) {
 
 function HealthCheckRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const raw = output ? parseOutput<unknown>(output) : null;
   const parsed: HealthCheckResult | null =
     raw && typeof raw === 'object' ? (raw as HealthCheckResult) : null;
   const healthStatus = parsed?.status ?? 'not_ready';
   const ok = healthStatus === 'ready';
 
+  const description = useBoardDescription('healthCheck', status);
+
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <EntityCard
         leading={<IconTile label={ok ? '✓' : '!'} size={22} radius={5} accent={ok ? colors.green : colors.red} />}
         title={ok ? 'ready' : healthStatus}
@@ -1782,12 +1845,49 @@ function HealthCheckRenderer(props: ToolCallRendererProps) {
 // 6. FALLBACK — señal de bug en dev. No debería dispararse con cobertura 100%.
 // ============================================================================
 
+/** Header for board tools that have no dedicated renderer yet. */
+function fallbackDescription(
+  shortName: string,
+  input: Record<string, unknown> | undefined,
+  parsed: unknown,
+): { key: string; vars?: DescriptionVars } {
+  switch (shortName) {
+    case 'archive-project':
+      return {
+        key: 'archiveProject',
+        vars: { project: unwrap<Project>(parsed, 'project', 'projectId')?.name },
+      };
+    case 'delete-project':
+      return { key: 'deleteProject' };
+    case 'update-board-config':
+      return { key: 'updateBoardConfig' };
+    case 'subscribe-to-events':
+      return {
+        key: 'subscribeToEvents',
+        vars: {
+          topic: firstName(
+            input?.topic,
+            (parsed as { subscription?: { topic?: string } } | null)?.subscription?.topic,
+          ),
+        },
+      };
+    case 'unsubscribe-from-events':
+      return { key: 'unsubscribeFromEvents' };
+    case 'list-event-subscriptions':
+      return { key: 'listEventSubscriptions' };
+    default:
+      return { key: 'fallback' };
+  }
+}
+
 function FallbackRenderer(props: ToolCallRendererProps) {
   const c = useColors();
-  const { toolName, status, output, error, duration } = props;
+  const { toolName, status, output, error } = props;
   const parsed = output ? parseOutput<unknown>(output) : null;
+  const { key, vars } = fallbackDescription(getShortToolName(toolName), props.input, parsed);
+  const description = useBoardDescription(key, status, vars);
   return (
-    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon}>
+    <ToolShell toolName={toolName} status={status} error={error} appIcon={props.appIcon} description={description}>
       <YStack gap={3}>
         <Text color={colors.red} fontSize={10} fontFamily="$mono">
           [dev] No dedicated renderer for tool: {getShortToolName(toolName)}

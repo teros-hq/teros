@@ -15,7 +15,6 @@ import {
   Empty,
   EntityRow,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   parseOutput,
@@ -98,6 +97,7 @@ export function GetFileVariablesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const palette = useColors()
   const { t } = useTranslation()
   const c = useColors()
   const parsed = output ? (parseOutput<VariablesShape>(output) as VariablesShape | null) : null
@@ -124,7 +124,7 @@ export function GetFileVariablesRenderer({
                   backgroundColor={c.border}
                 >
                   <Text
-                    color={globalColors.secondary}
+                    color={palette.text2}
                     fontSize={9}
                     fontFamily="$mono"
                     textTransform="uppercase"

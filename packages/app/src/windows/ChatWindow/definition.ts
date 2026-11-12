@@ -4,11 +4,14 @@
  * Chat window type definition for agent conversations.
  */
 
-import { MessageCircle } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { useChatStore } from '../../store/chatStore';
-import { ChatWindowContent } from './ChatWindowContent';
+import { MessageCircle } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { useChatStore } from "../../store/chatStore"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const ChatWindowContent = lazyWithRetry(() =>
+  import("./ChatWindowContent").then((m) => ({ default: m.ChatWindowContent })),
+)
 
 // ============================================
 // PROPS
@@ -16,13 +19,15 @@ import { ChatWindowContent } from './ChatWindowContent';
 
 export interface ChatWindowProps {
   /** Channel ID — undefined for new chat (draft) */
-  channelId?: string;
+  channelId?: string
   /** Agent ID - to create a new chat with a specific agent */
-  agentId?: string;
+  agentId?: string
   /** Agent name - to show in the title while the channel is being created */
-  agentName?: string;
+  agentName?: string
   /** Workspace ID - if chat belongs to a workspace */
-  workspaceId?: string;
+  workspaceId?: string
+  /** Text pre-filled in the composer (the Home "ask" box). Transient — not serialized. */
+  initialDraft?: string
 }
 
 // ============================================
@@ -30,10 +35,12 @@ export interface ChatWindowProps {
 // ============================================
 
 export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
-  type: 'chat',
-  displayName: 'Chat',
+  type: "chat",
+  audience: "user",
+  displayName: "Chat",
   icon: MessageCircle,
-  color: '#5E6AD2',
+  phIcon: "chat-circle",
+  color: "#5E6AD2",
   component: ChatWindowContent,
 
   defaultSize: { width: 500, height: 650 },
@@ -45,32 +52,32 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
   getTitle: (props) => {
     // If there's a channelId, look up the title in the store
     if (props.channelId) {
-      const channel = useChatStore.getState().channels[props.channelId];
+      const channel = useChatStore.getState().channels[props.channelId]
       if (channel?.title) {
-        return channel.title;
+        return channel.title
       }
     }
 
     // If it's a new chat with an agent, show the agent's name
     if (props.agentName) {
-      return i18n.t("conversation.chatWith", { name: props.agentName });
+      return i18n.t("conversation.chatWith", { name: props.agentName })
     }
 
-    return i18n.t("conversation.newChat");
+    return i18n.t("conversation.newChat")
   },
 
   getSubtitle: (props) => {
-    if (!props.channelId) return undefined;
+    if (!props.channelId) return undefined
 
-    const channel = useChatStore.getState().channels[props.channelId];
-    if (!channel) return undefined;
+    const channel = useChatStore.getState().channels[props.channelId]
+    if (!channel) return undefined
 
     // Show "AgentName · modelString" format
     if (channel.modelString) {
-      return `${channel.agentName} · ${channel.modelString}`;
+      return `${channel.agentName} · ${channel.modelString}`
     }
 
-    return channel.agentName;
+    return channel.agentName
   },
 
   serialize: (props) => ({
@@ -91,4 +98,4 @@ export const chatWindowDefinition: WindowTypeDefinition<ChatWindowProps> = {
     // Clear unread message notifications when focused
     // This is handled in the component
   },
-};
+}

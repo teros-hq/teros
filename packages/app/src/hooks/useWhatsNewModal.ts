@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getUnseenChangelogEntries, getAllChangelogEntries } from '../changelog'
 import { useAuthStore } from '../store/authStore'
+import { getResolvedFlag, useFeatureFlagsStore } from '../store/featureFlagsStore'
 import { getTerosClient } from '../services/terosClientSingleton'
 
 export interface UseWhatsNewModalResult {
@@ -29,9 +30,11 @@ export interface UseWhatsNewModalResult {
   /** Dismiss the modal and persist the last seen entry ID */
   handleDismiss: (lastSeenEntryId: string) => void
   /** Manually open the modal (from Navbar entry point) */
-  showWhatsNew: () => void
+  /** Manual re-open; undefined while the `whats-new.enabled` flag is off (WNEW-REQ-1). */
+  showWhatsNew: (() => void) | undefined
 }
 
+/** @spec WNEW-REQ-1 */
 export function useWhatsNewModal(): UseWhatsNewModalResult {
   const [isModalVisible, setIsModalVisible] = useState(false)
   const [modalEntries, setModalEntries] = useState<ReturnType<typeof getAllChangelogEntries>>([])
@@ -44,8 +47,13 @@ export function useWhatsNewModal(): UseWhatsNewModalResult {
   // Track whether we've already auto-checked on this mount
   const autoCheckedRef = useRef(false)
 
+  // WNEW-REQ-1: the whole feature sits behind `whats-new.enabled` (off by default).
+  const flags = useFeatureFlagsStore((st) => st.flags)
+  const enabled = getResolvedFlag<boolean>({ flags }, 'whats-new.enabled') === true
+
   // Auto-show on app load when profile is synced and there are unseen entries
   useEffect(() => {
+    if (!enabled) return
     if (autoCheckedRef.current) return
     if (!isProfileSynced || !user) return
 
@@ -57,7 +65,7 @@ export function useWhatsNewModal(): UseWhatsNewModalResult {
       setIsManualReopen(false)
       setIsModalVisible(true)
     }
-  }, [isProfileSynced, user])
+  }, [enabled, isProfileSynced, user])
 
   const handleDismiss = useCallback(
     async (lastSeenEntryId: string) => {
@@ -92,6 +100,6 @@ export function useWhatsNewModal(): UseWhatsNewModalResult {
     modalEntries,
     isManualReopen,
     handleDismiss,
-    showWhatsNew,
+    showWhatsNew: enabled ? showWhatsNew : undefined,
   }
 }

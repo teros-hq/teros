@@ -1,14 +1,14 @@
-import type React from 'react';
-import { Text, YStack } from 'tamagui';
-import { useColors } from './useColors';
+import type React from "react"
+import { YStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
 
 interface EmptyProps {
   /** Icon opcional encima del mensaje. */
-  icon?: React.ReactNode;
+  icon?: React.ReactNode
   /** Mensaje principal. */
-  message: string;
+  message: string
   /** Texto adicional (hint, siguiente acción). */
-  hint?: string;
+  hint?: string
 }
 
 /**
@@ -16,7 +16,6 @@ interface EmptyProps {
  * generoso para no parecer "bug de data missing".
  */
 export function Empty({ icon, message, hint }: EmptyProps): React.ReactNode {
-  const c = useColors();
   return (
     <YStack
       paddingVertical={24}
@@ -26,14 +25,14 @@ export function Empty({ icon, message, hint }: EmptyProps): React.ReactNode {
       gap={6}
     >
       {icon}
-      <Text color={c.text2} fontSize={11} textAlign="center">
+      <T step="sm" tone="text2" center>
         {message}
-      </Text>
+      </T>
       {hint && (
-        <Text color={c.text3} fontSize={9} fontFamily="$mono" textAlign="center">
+        <T step="12" tone="text3" center>
           {hint}
-        </Text>
+        </T>
       )}
     </YStack>
-  );
+  )
 }

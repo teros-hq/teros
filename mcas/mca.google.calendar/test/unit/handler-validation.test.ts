@@ -3,8 +3,8 @@
  * Error(...)` paths *before* any Google API call.
  *
  * Strategy: build a context whose secrets pass `getCalendarSession`'s sanity
- * check and whose `EXPIRY_DATE` is far in the future so `refreshAccessToken`
- * is never invoked. The OAuth2Client object is constructed locally in
+ * check so no token refresh is ever attempted (the backend owns the
+ * refresh_token — TER-388). The OAuth2Client object is constructed locally in
  * `googleapis` and does not hit the network until we call `events.*`. Each
  * handler validates its args BEFORE any `events.*` call, so the network is
  * never touched here.
@@ -46,10 +46,7 @@ function buildContext() {
     }),
     getUserSecrets: async () => ({
       ACCESS_TOKEN: "fake-token",
-      REFRESH_TOKEN: "fake-refresh",
       EMAIL: "me@example.com",
-      // ~1 year in the future — well past the 60s refresh threshold.
-      EXPIRY_DATE: String(Date.now() + 365 * 24 * 60 * 60 * 1000),
     }),
     updateUserSecrets: async () => {},
     getScope: () => "u",

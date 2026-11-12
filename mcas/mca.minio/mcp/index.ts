@@ -159,11 +159,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: '-health-check',
         description: 'Internal health check tool. Verifies MinIO credentials and connectivity.',
+        annotations: { readOnlyHint: true },
         inputSchema: { type: 'object', properties: {} },
       },
       {
         name: 'list-buckets',
         description: 'List all buckets in the MinIO server',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {},
@@ -172,6 +174,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'create-bucket',
         description: 'Create a new bucket',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -190,6 +193,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'delete-bucket',
         description: 'Delete a bucket (must be empty)',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -204,6 +208,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'bucket-exists',
         description: 'Check if a bucket exists',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -218,6 +223,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'list-objects',
         description: 'List objects in a bucket with optional prefix filter',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -244,6 +250,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'upload-object',
         description: 'Upload a file or content to a bucket',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -274,6 +281,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'download-object',
         description: 'Download an object from a bucket',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -296,6 +304,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'delete-object',
         description: 'Delete an object from a bucket',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -314,6 +323,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'copy-object',
         description: 'Copy an object within or between buckets',
+        annotations: { readOnlyHint: false },
         inputSchema: {
           type: 'object',
           properties: {
@@ -340,6 +350,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get-presigned-url',
         description: 'Generate a presigned URL for temporary access to an object',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {
@@ -368,6 +379,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: 'get-object-info',
         description: 'Get metadata/info about an object (size, type, etag, etc.)',
+        annotations: { readOnlyHint: true },
         inputSchema: {
           type: 'object',
           properties: {

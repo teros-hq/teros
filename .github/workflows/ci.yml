@@ -85,7 +85,7 @@ jobs:
       # (mongo/qdrant son `image:`). TER-557.
       - name: Build test images (registry cache, mode=max)
         run: |
-          CACHE=ghcr.io/teros-hq/teros/ci-cache
+          CACHE=ghcr.io/${{ github.repository }}/ci-cache
           docker buildx bake -f docker-compose.test.yml \
             --set "backend.cache-from=type=registry,ref=$CACHE:tests-backend" \
             --set "backend.cache-to=type=registry,ref=$CACHE:tests-backend,mode=max" \
@@ -114,24 +114,15 @@ jobs:
       - name: Run unit tests
         run: docker compose -f docker-compose.test.yml exec -T backend bun test tests/unit/
 
-      # @teros/core billing tests are bun:test files (core's own `test` script is
-      # vitest, which does not run them), so they were never gated. They cover the
-      # FASE 0.5 mid-turn cut (TurnDriver) and the prompt-leak invariant. Run them
-      # from the backend container (COPY . . brings the whole monorepo; bun's
-      # "bun"→src export resolves @teros/* without a build). TER-billing FASE 3f.
-      # TER-707/CTX-016 adds: the tool-arg elision unit suite + its structural
-      # G1/G2 choke-point guards, and the cross-adapter request-shape tests
-      # (Gemini signed-part round-trip, OpenAI-family elided-input round-trip)
-      # — same gotcha, these are bun:test files vitest never runs either.
-      - name: Run core billing unit tests
+      # @teros/core: every test is a bun:test file (vitest retired from core,
+      # 2026-11-09), so the WHOLE suite is gated — before, only a hand-picked
+      # list ran and the rest went stale unnoticed. Run from the backend
+      # container (COPY . . brings the whole monorepo; bun's "bun"→src export
+      # resolves @teros/* without a build).
+      - name: Run core unit tests
         run: >-
           docker compose -f docker-compose.test.yml exec -T backend
-          bun test ../core/src/conversation/TurnDriver.test.ts ../core/src/prompts/billing-invariant.test.ts
-          ../core/src/prompts/tool-arg-eviction.test.ts
-          ../core/src/prompts/tool-arg-eviction-choke-point.invariant.test.ts
-          ../core/src/llm/GeminiLLMAdapter.test.ts
-          ../core/src/llm/OpenAICompatibleLLMAdapter.test.ts
-          ../core/src/compaction/compaction.test.ts
+          bun test ../core/src ../core/test
 
       - name: Run integration tests
         run: docker compose -f docker-compose.test.yml exec -T backend bun test tests/integration/
@@ -171,8 +162,9 @@ jobs:
         run: yarn install --frozen-lockfile --ignore-engines
 
       # The app resolves @teros/* from dist, so build the deps before type-checking.
+      # @teros/workflows added as dep of app+backend (Phase 2-5) — must be built too.
       - name: Build workspace deps
-        run: yarn workspace @teros/shared build && yarn workspace @teros/core build
+        run: yarn workspace @teros/shared build && yarn workspace @teros/core build && yarn workspace @teros/workflows build
 
       # Static layer (Testing Trophy): type-check the WHOLE frontend — the
       # broadest, cheapest catch (every file, not just tested components).
@@ -202,13 +194,32 @@ jobs:
         run: yarn install --frozen-lockfile --ignore-engines
 
       # Backend resolves @teros/* from dist, so build the deps before type-checking.
+      # @teros/workflows added as backend dep (Phase 2-5) — must be built too.
       - name: Build workspace deps
-        run: yarn workspace @teros/shared build && yarn workspace @teros/core build
+        run: yarn workspace @teros/shared build && yarn workspace @teros/core build && yarn workspace @teros/workflows build
 
       # Static layer: type-check the WHOLE backend — catches the handler-signature
       # drift that today only surfaces at runtime.
       - name: Type-check backend
         run: yarn workspace @teros/backend typecheck
+
+  mca-github:
+    name: mca.github (unit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.4
+
+      - name: Run mca.github unit tests
+        working-directory: mcas/mca.github
+        run: bun test
 
   # End-to-end: la suite Playwright (scripts/playwright-smoke, TER-533/TER-550) contra el
   # stack real containerizado — backend + frontend (Expo→nginx) + mongo + qdrant. Job
@@ -220,10 +231,13 @@ jobs:
     # de cada rama, corre SOLO al INTEGRAR a dev/main (evento `push`), no en los PRs (pull_request)
     # — las ramas de feature se validan en local. Es una red de seguridad post-merge, no un gate
     # por-commit. Esto recupera el objetivo de ahorro de TER-548. TER-553.
-    if: github.event_name == 'push'
-    # Suite completa (incl. @llm) + 3 imágenes → más lento que Tests. Red de seguridad a 40 min
-    # (vs 30 de Tests) por el build del frontend + la suite. TER-553.
-    timeout-minutes: 40
+    # workflow_dispatch: para validar una rama ANTES del merge sin hacerlo gate por-PR
+    # (`gh workflow run ci.yml --ref <rama>`); de paso corre el prompt-regression.
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Suite completa (incl. @llm) + 3 imágenes → más lento que Tests. Medido (oct-2026): build de
+    # imágenes 19-24 min (frontend sin cache) + la suite (123 tests, workers:1) no caben en 40 min
+    # → el job moría cancelado a mitad de suite y sin artefactos. Red de seguridad a 60. TER-553.
+    timeout-minutes: 60
     # Cache de capas en GHCR (registry): el push del cache requiere packages:write. TER-557.
     permissions:
       contents: read
@@ -280,7 +294,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          CACHE=ghcr.io/teros-hq/teros/ci-cache
+          CACHE=ghcr.io/${{ github.repository }}/ci-cache
           docker buildx bake -f docker-compose.test.yml -f docker-compose.e2e.yml \
             --set "backend.cache-from=type=registry,ref=$CACHE:e2e-backend" \
             --set "backend.cache-to=type=registry,ref=$CACHE:e2e-backend,mode=max" \
@@ -310,21 +324,35 @@ jobs:
 
       # Suite completa. Los @llm corren en REPLAY determinista (no Kimi real): el backend lleva
       # TEROS_LLM_REPLAY + TEROS_DETERMINISTIC (docker-compose.e2e.yml) → MockLLMAdapter reproduce
-      # las cassettes con reloj/IDs congelados (TER-563). retries:2 (playwright.config.ts) absorbe
-      # flakiness de UI/multi-usuario (p.ej. el setup de la segunda página), NO latencia de LLM.
+      # las cassettes con reloj/IDs congelados (TER-563). Ojo: el contenedor browser NO tiene CI=true
+      # (el `exec` no hereda el env del runner) → retries:0 (playwright.config.ts), un fallo es real.
       # TARGET_URL/BACKEND_URL se inyectan por env al browser.
+      # @stripe (9 tests) NO corre aquí: necesitan un sandbox de Stripe que este stack no tiene —
+      # el secret de sistema `stripe` (clave test), BILLING_BOOST_HOUR_PRICE y un customer con
+      # método de pago test vaultado. Sin eso boostPricing es null y las compras dan
+      # PURCHASE_UNAVAILABLE. Se corren a mano contra un stack con Stripe (yarn smoke --grep @stripe).
       - name: Run e2e suite (Playwright)
-        run: docker compose exec -T -w /app browser yarn smoke
+        run: docker compose exec -T -w /app browser yarn smoke --grep-invert @stripe
+
+      # El report y los test-results (screenshots, traces) se escriben DENTRO del contenedor browser
+      # (sin bind mount) → hay que sacarlos al runner antes de subirlos.
+      - name: Copy Playwright report out of the browser container
+        if: failure() || cancelled()
+        run: |
+          docker compose cp browser:/app/scripts/playwright-smoke/.report scripts/playwright-smoke/.report || true
+          docker compose cp browser:/app/test-results scripts/playwright-smoke/test-results || true
 
       - name: Upload Playwright report on failure
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: scripts/playwright-smoke/.report
+          path: |
+            scripts/playwright-smoke/.report
+            scripts/playwright-smoke/test-results
 
       - name: Dump container logs on failure
-        if: failure()
+        if: failure() || cancelled()
         run: |
           echo "=== backend ===" && docker compose logs backend || true
           echo "=== frontend ===" && docker compose logs frontend || true

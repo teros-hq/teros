@@ -1,54 +1,71 @@
 /**
  * TerminalWindow — Window Type Definition
  *
- * Opens an xterm.js terminal in a WebView.
- * Executes commands via the existing `execute_tool` WebSocket handler
- * targeting the workspace's installed `mca.teros.bash` app.
+ * The workspace's terminals as a crew: a rail of faces (one per session —
+ * shells, Claude Code, any TUI — each with a seat showing who drives) beside
+ * one terminal. Sessions run in the workspace's terminal host and outlive the
+ * window, the browser tab and backend restarts; the window only remembers the
+ * session it shows (active) and the rail's side, so reopening it — on any
+ * device — reattaches it.
  *
  * Opened from:
- *   - File Browser: "Terminal" button in the toolbar (opens in current directory)
- *   - Programmatically: openWindow('terminal', { initialCwd, workspaceId })
+ *   - The launcher / File Browser "Terminal" button
+ *   - Programmatically: openWindow('terminal', { workspaceId, active })
+ *   - A "needs you" toast (a coding agent waiting in a session)
  */
 
-import { Terminal } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { TerminalWindowContent } from './TerminalWindowContent';
+import { Terminal } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+
+const TerminalWindowContent = lazyWithRetry(() =>
+  import("./TerminalWindowContent").then((m) => ({ default: m.TerminalWindowContent })),
+)
 
 export interface TerminalWindowProps {
-  /** Working directory to start in (default: '/workspace') */
-  initialCwd?: string;
+  /** Working directory for new sessions (default: '/workspace') */
+  initialCwd?: string
   /** App ID of the bash MCA to use — resolved by useBashApp if not provided */
-  appId?: string;
+  appId?: string
   /** Workspace ID — used to resolve the bash MCA app ID */
-  workspaceId?: string;
-  /** Session identifier for deduplication — same sessionId → same window */
-  sessionId?: string;
+  workspaceId?: string
+  /** Legacy: the session to show (older callers); `active` wins */
+  sessionId?: string
+  /** Session shown in the pane */
+  active?: string
+  /** Side of the crew rail (default right) */
+  railSide?: "left" | "right"
 }
 
 export const terminalWindowDefinition: WindowTypeDefinition<TerminalWindowProps> = {
-  type: 'terminal',
-  displayName: 'Terminal',
+  type: "terminal",
+  audience: "user",
+  displayName: "Terminal",
   icon: Terminal,
-  color: '#10b981', // Emerald — same as CodeEditorWindow
+  phIcon: "terminal",
+  color: "#6F27FF",
   isLauncher: true,
+  noPreview: true, // Live shell state — never a preview tab (preview-tabs.md)
 
   component: TerminalWindowContent,
 
-  defaultSize: { width: 800, height: 500 },
+  defaultSize: { width: 900, height: 560 },
   minSize: { width: 400, height: 250 },
 
-  // Same sessionId → same window (allows multiple independent terminals)
-  getKey: (props) => props.sessionId ?? 'default',
+  // One Terminal window: every session is a face in its rail (opening one by id reuses it)
+  getKey: () => "default",
 
   getTitle: () => i18n.t("windows.terminal"),
-  getSubtitle: (props) => props.initialCwd ?? '/workspace',
+  getSubtitle: (props) => props.initialCwd ?? "/workspace",
 
   serialize: (props) => ({
     initialCwd: props.initialCwd,
     appId: props.appId,
     workspaceId: props.workspaceId,
     sessionId: props.sessionId,
+    active: props.active,
+    railSide: props.railSide,
   }),
 
   deserialize: (data) => ({
@@ -56,5 +73,9 @@ export const terminalWindowDefinition: WindowTypeDefinition<TerminalWindowProps>
     appId: data.appId as string | undefined,
     workspaceId: data.workspaceId as string | undefined,
     sessionId: data.sessionId as string | undefined,
+    // Older layouts kept tabs: their active tab is the session shown.
+    active: (data.active as string | undefined) ?? (data.tabs as string[] | undefined)?.[0],
+    // Validated where it is used (TerminalWindowContent): keep the round trip symmetric.
+    railSide: data.railSide as "left" | "right" | undefined,
   }),
-};
+}

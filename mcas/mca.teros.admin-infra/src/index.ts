@@ -34,6 +34,7 @@ const server = new McaServer({
 
 // Health check
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies WebSocket connectivity to backend.',
   parameters: { type: 'object', properties: {} },
   handler: async () => {

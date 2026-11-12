@@ -207,8 +207,13 @@ export class ZhipuLLMAdapter implements ILLMClient {
         stopReason = 'max_tokens';
       }
 
-      log.info('ZhipuLLM', 'Response complete', {
+      // maxTokensSent (2026-09-24 silent-turn incident): final max_tokens sent
+      // upstream; rawFinishReason: finish reason before mapping — see
+      // OpenAICompatibleLLMAdapter for the rationale.
+      log.debug('ZhipuLLM', 'Response complete', {
         stopReason,
+        maxTokensSent: maxTokens || this.defaultMaxTokens,
+        rawFinishReason: finishReason,
         inputTokens: usage.prompt_tokens,
         outputTokens: usage.completion_tokens,
         model: model || this.defaultModel,

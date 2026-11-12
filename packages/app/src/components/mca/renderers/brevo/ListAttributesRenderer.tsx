@@ -40,7 +40,7 @@ export function ListAttributesRenderer({ status, output, error, appIcon }: ToolC
   return (
     <ToolCallCard
       status={status}
-      verb="List attributes"
+      description="List attributes"
       badge={badge}
       iconUri={appIcon}
       animateExpand

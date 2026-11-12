@@ -2,8 +2,8 @@
  * admin.list-plans — the FULL billing-plan catalogue for the admin panel.
  *
  * Unlike the user-facing billing.list-plans (which filters isPublic:true for the
- * public pricing catalogue), this returns EVERY plan — including hidden internal
- * tiers like plan_unlimited (isPublic:false) — so an admin can assign them to a
+ * public pricing catalogue), this returns EVERY plan — including any hidden
+ * tier (isPublic:false) — so an admin can assign it to a
  * user from the BillingPanel. Admin/super only. Returns DATA (ids + resolved
  * fields); the frontend renders the chips and marks the hidden ones.
  */

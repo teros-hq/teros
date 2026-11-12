@@ -284,6 +284,7 @@ describe('MessageProcessor.handleToolResult', () => {
       sessionId: SESSION,
       timestamp: 0,
       toolId: 'call_1',
+      toolName: 'web_search',
       status: 'completed',
       output: 'resultado',
       error: undefined,

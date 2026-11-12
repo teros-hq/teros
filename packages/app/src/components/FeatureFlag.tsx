@@ -13,7 +13,7 @@
  *     <FileUpload />
  *   </FeatureFlag>
  *
-
+ * @spec docs/specs/core/feature-flags.md §8 (Integration Frontend)
  */
 
 import type { ReactNode } from "react"

@@ -31,6 +31,7 @@ import {
   computeProrationUpgradeCharge,
   getActiveSubscription,
   getBillingPlansCollection,
+  getBillingSubscriptionsCollection,
 } from '../../../models/billing.js'
 import { chargeOneOffInvoice } from '../../../services/billing-one-off-charge.js'
 import { applyPlanChange } from '../../../services/billing-subscription-ops.js'
@@ -76,13 +77,28 @@ export function createChangePlanHandler(db: Db, stripe: StripePaymentService | n
     if (!active) {
       throw new HandlerError('NO_SUBSCRIPTION', 'No active subscription to change')
     }
-    // A no-op change to the same plan is rejected (a pending downgrade back to the
-    // current plan would be a confusing no-op too — the user cancels instead).
-    if (active.planId === planId && !active.scheduledPlanChange) {
-      throw new HandlerError('SAME_PLAN', 'You are already on this plan')
-    }
-
     const now = new Date()
+
+    if (active.planId === planId) {
+      // A no-op change to the same plan is rejected.
+      if (!active.scheduledPlanChange) {
+        throw new HandlerError('SAME_PLAN', 'You are already on this plan')
+      }
+      // Picking the current plan while a downgrade is pending means "stay":
+      // cancel the downgrade in place. It used to fall through to
+      // changeUserPlanImmediate, which opened a NEW subscription with
+      // agentHoursUsed: 0 — a repeatable free-hours reset (BIL-1).
+      await getBillingSubscriptionsCollection(db).updateOne(
+        { _id: active._id, status: 'active' },
+        { $unset: { scheduledPlanChange: '' }, $set: { updatedAt: now } },
+      )
+      const current = await getActiveSubscription(db, ctx.userId)
+      return {
+        kind: 'downgrade_cancelled' as const,
+        subscription: current ? await shapeSubscriptionView(db, current) : null,
+        invoice: null,
+      }
+    }
 
     // Proration the SAME way preview-plan-change + applyPlanChange compute it, so
     // the gate decision can never disagree with what the user was quoted.
@@ -138,7 +154,7 @@ export function createChangePlanHandler(db: Db, stripe: StripePaymentService | n
     // Re-read: an upgrade replaced the active sub; a downgrade edited it in place.
     const current = await getActiveSubscription(db, ctx.userId)
     return {
-      kind, // 'upgraded' | 'downgrade_scheduled'
+      kind, // 'upgraded' | 'downgrade_scheduled' ('downgrade_cancelled' returns above)
       subscription: current ? await shapeSubscriptionView(db, current) : null,
       invoice:
         paidInvoice?.status === 'paid'

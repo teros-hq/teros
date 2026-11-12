@@ -99,7 +99,7 @@ export const createFocusTime: ToolConfig = {
       },
     }
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.insert({ calendarId, sendUpdates, requestBody }),
     )
     const raw = response.data

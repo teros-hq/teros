@@ -39,6 +39,7 @@ describe('Lifecycle', () => {
     expectToolsExact(tools, [
       'list-feedback',
       'get-feedback',
+      'create-feedback',
       'update-status',
       'set-priority',
       'add-update',

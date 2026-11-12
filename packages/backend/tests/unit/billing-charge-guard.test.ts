@@ -223,7 +223,10 @@ describe('chargeInvoice amount guard', () => {
       expect(res.issue.message).toMatch(/could not process/i)
     }
     // No billing_invoices row persisted on a failed one-off charge.
-    expect(await db.collection('billing_invoices').findOne({ _id: 'plan-change:user_1:plan_pro:req1' })).toBeNull()
+    // Not paid: a 'held' trace pointing at the voided Stripe invoice (BIL-5)
+    const row = await db.collection('billing_invoices').findOne({ _id: 'plan-change:user_1:plan_pro:req1' })
+    expect(row?.status).toBe('held')
+    expect(row?.externalReference).toBeString()
     // The card was never charged.
     expect(methods(stripe)).not.toContain('payInvoice')
     expect(methods(stripe)).toContain('voidInvoice')

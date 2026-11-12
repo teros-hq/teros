@@ -1,38 +1,11 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { githubRequest } from '../lib';
+import { curateRepo } from '../lib/curate';
+import { appInstallUrl } from './_github-error';
 
 interface InstallationReposPayload {
   total_count: number;
   repositories: Array<Record<string, unknown>>;
-}
-
-/**
- * Whitelist of fields the agent + frontend renderer actually use. Prevents
- * the raw GitHub repo object (~3KB each, mostly URLs) from blowing past
- * `MAX_TOOL_OUTPUT_CHARS=40000` on accounts with >12 repos and getting
- * silently truncated to an unparseable JSON.
- */
-function curateRepo(r: Record<string, unknown>): Record<string, unknown> {
-  const owner = r.owner as { login?: string; avatar_url?: string } | undefined;
-  return {
-    id: r.id,
-    name: r.name,
-    full_name: r.full_name,
-    private: r.private,
-    visibility: r.visibility,
-    description: r.description,
-    default_branch: r.default_branch,
-    language: r.language,
-    stargazers_count: r.stargazers_count,
-    forks_count: r.forks_count,
-    open_issues_count: r.open_issues_count,
-    archived: r.archived,
-    fork: r.fork,
-    pushed_at: r.pushed_at,
-    updated_at: r.updated_at,
-    html_url: r.html_url,
-    owner: owner ? { login: owner.login, avatar_url: owner.avatar_url } : undefined,
-  };
 }
 
 /**
@@ -48,7 +21,7 @@ function curateRepo(r: Record<string, unknown>): Record<string, unknown> {
  * `/installation/repositories` requires a server-to-server installation
  * token and rejects user tokens with "Resource not accessible by integration".
  *
- * `owner` filter is applied client-side. `per_page`/`page` apply per
+ * `owner` picks the matching installations first. `per_page`/`page` apply per
  * installation request.
  */
 export const listRepos: ToolConfig = {
@@ -78,40 +51,52 @@ export const listRepos: ToolConfig = {
       per_page?: number;
       page?: number;
     };
+    const pageNo = page && page > 0 ? Math.floor(page) : 1;
+    const perPage = per_page && per_page > 0 ? Math.min(Math.floor(per_page), 100) : 30;
 
     const installationsPayload = (await githubRequest(context, '/user/installations', {
       params: { per_page: 100 },
-    })) as { installations?: Array<{ id: number }> };
+    })) as { installations?: Array<{ id: number; account?: { login?: string } }> };
 
-    const installations = installationsPayload.installations ?? [];
+    const all = installationsPayload.installations ?? [];
+    if (all.length === 0) {
+      const sys = await context.getSystemSecrets().catch(() => ({}) as Record<string, string>);
+      return {
+        total_count: 0,
+        repositories: [],
+        note: `The Teros GitHub App is not installed on any account or organization this user can reach, so no repository is available. Ask the user to install it: ${appInstallUrl(sys.GITHUB_APP_SLUG)}`,
+      };
+    }
+    const installations = owner
+      ? all.filter((i) => i.account?.login?.toLowerCase() === owner.toLowerCase())
+      : all;
     if (installations.length === 0) {
-      return { total_count: 0, repositories: [] };
+      return {
+        total_count: 0,
+        repositories: [],
+        note: `The Teros GitHub App is installed on ${all.map((i) => i.account?.login).filter(Boolean).join(', ')}, but not on ${owner}. Ask an owner of ${owner} to install it there.`,
+      };
     }
 
-    const aggregated: Array<Record<string, unknown>> = [];
+    const repositories: Array<Record<string, unknown>> = [];
+    let total = 0;
+    let largest = 0;
     for (const inst of installations) {
-      const reposPayload = (await githubRequest(
-        context,
-        `/user/installations/${inst.id}/repositories`,
-        { params: { per_page, page } },
-      )) as InstallationReposPayload;
-      if (Array.isArray(reposPayload.repositories)) {
-        aggregated.push(...reposPayload.repositories);
-      }
+      const reposPayload = (await githubRequest(context, `/user/installations/${inst.id}/repositories`, {
+        params: { per_page: perPage, page: pageNo },
+      })) as InstallationReposPayload;
+      if (Array.isArray(reposPayload.repositories)) repositories.push(...reposPayload.repositories);
+      const count = typeof reposPayload.total_count === 'number' ? reposPayload.total_count : 0;
+      total += count;
+      largest = Math.max(largest, count);
     }
-
-    const filtered = owner
-      ? aggregated.filter((r) => {
-          const ownerLogin =
-            (r.owner as { login?: string } | undefined)?.login?.toLowerCase() ??
-            (typeof r.full_name === 'string' ? r.full_name.split('/')[0].toLowerCase() : '');
-          return ownerLogin === owner.toLowerCase();
-        })
-      : aggregated;
 
     return {
-      total_count: filtered.length,
-      repositories: filtered.map(curateRepo),
+      total_count: total,
+      page: pageNo,
+      per_page: perPage,
+      has_next_page: pageNo * perPage < largest,
+      repositories: repositories.map(curateRepo),
     };
   },
 };

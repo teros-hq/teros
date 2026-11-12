@@ -45,7 +45,8 @@
     "transport": "http",
     "port": 3000,
     "healthCheck": "/health",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
   },
   "keywords": ["gmail", "email", "google", "mail", "messages"],
   "changelog": [

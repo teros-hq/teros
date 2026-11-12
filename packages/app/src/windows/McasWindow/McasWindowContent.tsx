@@ -1,474 +1,361 @@
 /**
- * MCAs Window Content
+ * MCAs Window Content — the admin "Controls" view of the MCA catalog, in the
+ * OS prototype's language: Stats · filter chips · per-availability `LGroup`
+ * lists of expandable rows (Tile · name · badges · meta · Edit) · an edit
+ * Sheet built from Switch rows and pill buttons.
  *
- * View and manage MCA catalog:
  * - List all MCAs with their configurations
  * - View availability settings (enabled, system, hidden, role, multi)
  * - View tools, secrets, and auth configuration
  */
 
+import { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { View } from "react-native"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Sheet } from "tamagui"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { FullscreenLoader } from "../../components/ui"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { McaIcon } from "../../components/mca/McaIcon"
 import {
-  ChevronDown,
-  ChevronUp,
-  Edit3,
-  Eye,
-  EyeOff,
-  Key,
-  Lock,
-  Package,
-  RefreshCw,
-  Save,
-  Shield,
-  Unlock,
-  Users,
-  Wrench,
-  X,
-} from '@tamagui/lucide-icons';
-import type React from 'react';
-import { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Image } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Button, ScrollView, Separator, Sheet, Text, XStack, YStack } from 'tamagui';
-import { getTerosClient } from '../../services/terosClientSingleton';
-import { AppSpinner, FullscreenLoader } from '../../components/ui';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, controlsBar } from '../../components/mca/primitives/colors';
+  Badge,
+  type BadgeTone,
+  Btn,
+  ChipBtn,
+  EmptyState,
+  IconBtn,
+  LGroup,
+  LRow,
+  Page,
+  Ph,
+  SectionLabel,
+  Stat,
+  Stats,
+  Switch,
+  T,
+  Tile,
+} from "../../components/ui/ds"
 
 interface Mca {
-  mcaId: string;
-  name: string;
-  description: string;
-  icon?: string;
-  color?: string;
-  category: string;
-  tools: string[];
-  status: string;
+  mcaId: string
+  name: string
+  description: string
+  icon?: string
+  color?: string
+  category: string
+  tools: string[]
+  status: string
   availability: {
-    enabled: boolean;
-    multi: boolean;
-    system: boolean;
-    hidden: boolean;
-    role: 'user' | 'admin' | 'super';
-  };
-  systemSecrets: string[];
-  userSecrets: string[];
-  auth?: {
-    type: string;
-    provider?: string;
-  };
-}
-
-const ROLE_COLORS: Record<string, string> = {
-  user: semanticColors.green,
-  admin: semanticColors.amber,
-  super: semanticColors.red,
-};
-
-function Badge({
-  children,
-  color,
-  icon,
-}: {
-  children: React.ReactNode;
-  color: string;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <XStack
-      paddingHorizontal="$2"
-      paddingVertical="$1"
-      backgroundColor={`${color}15`}
-      borderRadius="$2"
-      borderWidth={1}
-      borderColor={`${color}30`}
-      alignItems="center"
-      gap="$1"
-    >
-      {icon}
-      <Text fontSize="$1" color={color}>
-        {children}
-      </Text>
-    </XStack>
-  );
-}
-
-/** Check if icon is a valid HTTP URL */
-function isValidIconUrl(icon?: string): boolean {
-  return !!icon && (icon.startsWith('http://') || icon.startsWith('https://'));
-}
-
-/** MCA Icon component - shows HTTP image or fallback */
-function McaIcon({ icon, size = 20 }: { icon?: string; size?: number }) {
-  const c = useColors();
-  const [hasError, setHasError] = useState(false);
-
-  if (isValidIconUrl(icon) && !hasError) {
-    return (
-      <Image
-        source={{ uri: icon }}
-        style={{ width: size, height: size }}
-        onError={() => setHasError(true)}
-        resizeMode="contain"
-      />
-    );
+    enabled: boolean
+    multi: boolean
+    system: boolean
+    hidden: boolean
+    role: "user" | "admin" | "super"
   }
+  systemSecrets: string[]
+  userSecrets: string[]
+  auth?: {
+    type: string
+    provider?: string
+  }
+}
 
-  // Fallback: generic package icon
-  return <Package size={size} color={c.text3} />;
+const ROLE_TONE: Record<string, BadgeTone> = {
+  user: "g",
+  admin: "a",
+  super: "r",
 }
 
 interface McaCardProps {
-  mca: Mca;
-  expanded: boolean;
-  onToggle: () => void;
-  onEdit: () => void;
+  mca: Mca
+  expanded: boolean
+  onToggle: () => void
+  onEdit: () => void
+}
+
+/** A mono-pill list (tools, secrets). */
+function PillList({ items }: { items: string[] }) {
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
+      {items.map((item, i) => (
+        <Badge key={`${item}-${i}`} mono sm>
+          {item}
+        </Badge>
+      ))}
+    </View>
+  )
 }
 
 function McaCard({ mca, expanded, onToggle, onEdit }: McaCardProps) {
-  const c = useColors();
-  const roleColor = ROLE_COLORS[mca.availability.role] || ROLE_COLORS['user'];
-  const isDisabled = !mca.availability.enabled;
+  const c = useColors()
+  const roleTone = ROLE_TONE[mca.availability.role] || ROLE_TONE["user"]
+  const isDisabled = !mca.availability.enabled
+
+  const meta = [
+    mca.category,
+    mca.availability.role,
+    `${mca.tools.length} tools`,
+    mca.availability.multi ? "multi" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
   return (
-    <YStack
-      flexBasis="30%"
-      flexGrow={1}
-      minWidth={320}
-      backgroundColor={c.bgCard}
-      borderRadius="$3"
-      borderWidth={1}
-      borderColor={isDisabled ? controlsBar.deny.border : c.borderStrong}
-      overflow="hidden"
-      opacity={isDisabled ? 0.7 : 1}
-    >
+    <View style={{ opacity: isDisabled ? 0.7 : 1 }}>
       {/* Header */}
-      <XStack
-        padding="$3"
-        alignItems="center"
-        gap="$3"
-        cursor="pointer"
-        hoverStyle={{ backgroundColor: c.bgInner }}
-        pressStyle={{ opacity: 0.8 }}
-        onPress={onToggle}
-      >
-        {/* Icon */}
-        <YStack
-          width={40}
-          height={40}
-          borderRadius={8}
-          backgroundColor={c.bgCardHover}
-          justifyContent="center"
-          alignItems="center"
-        >
-          <McaIcon icon={mca.icon} size={22} />
-        </YStack>
-
-        <YStack flex={1}>
-          <XStack alignItems="center" gap="$2" flexWrap="wrap">
-            <Text fontSize="$4" fontWeight="600" color="$color">
+      <LRow hov gap={12} onPress={onToggle}>
+        <Tile sm tone={isDisabled ? "muted" : "accent"}>
+          <McaIcon
+            icon={mca.icon}
+            mcaId={mca.mcaId}
+            size={20}
+            color={c.accent}
+            backgroundColor="transparent"
+            borderRadius={0}
+          />
+        </Tile>
+        <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <T step="sm" numberOfLines={1} style={{ flexShrink: 1 }}>
               {mca.name}
-            </Text>
-            {isDisabled && (
-              <Badge color={semanticColors.red} icon={<Lock size={10} color={semanticColors.red} />}>
+            </T>
+            {isDisabled ? (
+              <Badge tone="r" sm pill icon="lock">
                 disabled
               </Badge>
-            )}
-            {mca.availability.system && (
-              <Badge color={semanticColors.violet} icon={<Shield size={10} color={semanticColors.violet} />}>
+            ) : null}
+            {mca.availability.system ? (
+              <Badge tone="i" sm pill icon="shield-check">
                 system
               </Badge>
-            )}
-            {mca.availability.hidden && (
-              <Badge color={c.text3} icon={<EyeOff size={10} color={c.text3} />}>
+            ) : null}
+            {mca.availability.hidden ? (
+              <Badge tone="muted" sm pill icon="eye-slash">
                 hidden
               </Badge>
-            )}
-          </XStack>
-          <XStack alignItems="center" gap="$2">
-            <Text fontSize="$2" color={c.text2}>
-              {mca.category}
-            </Text>
-            <Text fontSize="$2" color={c.text3}>
-              •
-            </Text>
-            <Text fontSize="$2" color={roleColor}>
-              {mca.availability.role}
-            </Text>
-            <Text fontSize="$2" color={c.text3}>
-              •
-            </Text>
-            <Text fontSize="$2" color={c.text2}>
-              {mca.tools.length} tools
-            </Text>
-            {mca.availability.multi && (
-              <>
-                <Text fontSize="$2" color={c.text3}>
-                  •
-                </Text>
-                <Text fontSize="$2" color={c.text2}>
-                  multi
-                </Text>
-              </>
-            )}
-          </XStack>
-        </YStack>
-
-        {expanded ? (
-          <ChevronUp size={18} color={c.text3} />
-        ) : (
-          <ChevronDown size={18} color={c.text3} />
-        )}
-      </XStack>
+            ) : null}
+          </View>
+          <T step="codenote" tone="text3" numberOfLines={1} style={{ textTransform: "none" }}>
+            {meta}
+          </T>
+        </View>
+        <Badge tone={roleTone} sm pill dot>
+          {mca.availability.role}
+        </Badge>
+        <Ph name={expanded ? "caret-up" : "caret-down"} size={14} color={c.text3} />
+      </LRow>
 
       {/* Expanded Content */}
-      {expanded && (
-        <YStack padding="$3" paddingTop={0} gap="$3">
-          <Separator backgroundColor={c.borderStrong} />
-
+      {expanded ? (
+        <View
+          style={{
+            padding: 16,
+            paddingLeft: 64,
+            gap: 16,
+            backgroundColor: c.wash,
+            borderTopWidth: 1,
+            borderTopColor: c.border,
+          }}
+        >
           {/* Description */}
-          <Text fontSize="$2" color={c.text2}>
+          <T step="sm" tone="text2">
             {mca.description}
-          </Text>
+          </T>
 
           {/* Availability Settings (Read-only with Edit button) */}
-          <YStack gap="$2">
-            <XStack alignItems="center" justifyContent="space-between">
-              <Text fontSize="$2" fontWeight="500" color={c.text2}>
+          <View style={{ gap: 8 }}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <T step="xs" tone="text3">
                 Availability
-              </Text>
-              <Button
-                size="$2"
-                backgroundColor={semanticColors.indigoGlow}
-                borderWidth={1}
-                borderColor={semanticColors.indigo}
-                icon={<Edit3 size={14} color={semanticColors.indigo} />}
-                onPress={onEdit}
-                hoverStyle={{ backgroundColor: semanticColors.indigoGlow }}
+              </T>
+              <Btn variant="sec" size="sm" icon="pencil-simple" onPress={onEdit}>
+                Edit
+              </Btn>
+            </View>
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <Badge
+                tone={mca.availability.enabled ? "g" : "r"}
+                sm
+                pill
+                icon={mca.availability.enabled ? "lock-open" : "lock"}
               >
-                <Text color={semanticColors.indigo} fontSize="$2">
-                  Edit
-                </Text>
-              </Button>
-            </XStack>
-
-            <XStack flexWrap="wrap" gap="$2">
-              <XStack alignItems="center" gap="$1">
-                {mca.availability.enabled ? (
-                  <Unlock size={12} color={semanticColors.green} />
-                ) : (
-                  <Lock size={12} color={semanticColors.red} />
-                )}
-                <Text fontSize="$2" color={mca.availability.enabled ? semanticColors.green : semanticColors.red}>
-                  {mca.availability.enabled ? 'Enabled' : 'Disabled'}
-                </Text>
-              </XStack>
-              <Text color={c.text3}>•</Text>
-              <XStack alignItems="center" gap="$1">
-                <Users size={12} color={roleColor} />
-                <Text fontSize="$2" color={roleColor}>
-                  {mca.availability.role}
-                </Text>
-              </XStack>
-              {mca.availability.system && (
-                <>
-                  <Text color={c.text3}>•</Text>
-                  <XStack alignItems="center" gap="$1">
-                    <Shield size={12} color={semanticColors.violet} />
-                    <Text fontSize="$2" color={semanticColors.violet}>
-                      System
-                    </Text>
-                  </XStack>
-                </>
-              )}
-              {mca.availability.hidden && (
-                <>
-                  <Text color={c.text3}>•</Text>
-                  <XStack alignItems="center" gap="$1">
-                    <EyeOff size={12} color={c.text3} />
-                    <Text fontSize="$2" color={c.text3}>
-                      Hidden
-                    </Text>
-                  </XStack>
-                </>
-              )}
-              {mca.availability.multi && (
-                <>
-                  <Text color={c.text3}>•</Text>
-                  <XStack alignItems="center" gap="$1">
-                    <Users size={12} color={semanticColors.kindText} />
-                    <Text fontSize="$2" color={semanticColors.kindText}>
-                      Multi
-                    </Text>
-                  </XStack>
-                </>
-              )}
-            </XStack>
-          </YStack>
+                {mca.availability.enabled ? "Enabled" : "Disabled"}
+              </Badge>
+              <Badge tone={roleTone} sm pill icon="users-three">
+                {mca.availability.role}
+              </Badge>
+              {mca.availability.system ? (
+                <Badge tone="i" sm pill icon="shield-check">
+                  System
+                </Badge>
+              ) : null}
+              {mca.availability.hidden ? (
+                <Badge tone="muted" sm pill icon="eye-slash">
+                  Hidden
+                </Badge>
+              ) : null}
+              {mca.availability.multi ? (
+                <Badge tone="m" sm pill icon="stack">
+                  Multi
+                </Badge>
+              ) : null}
+            </View>
+          </View>
 
           {/* Tools */}
-          <YStack gap="$2">
-            <XStack alignItems="center" gap="$2">
-              <Wrench size={14} color={c.text3} />
-              <Text fontSize="$2" fontWeight="500" color={c.text2}>
+          <View style={{ gap: 8 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ph name="wrench" size={12} color={c.text3} />
+              <T step="xs" tone="text3">
                 Tools ({mca.tools.length})
-              </Text>
-            </XStack>
-            <XStack flexWrap="wrap" gap="$1">
-              {mca.tools.map((tool, i) => (
-                <Text
-                  key={i}
-                  fontSize="$1"
-                  color={c.text2}
-                  backgroundColor={c.bgCardHover}
-                  paddingHorizontal="$2"
-                  paddingVertical="$1"
-                  borderRadius="$1"
-                  fontFamily="$mono"
-                >
-                  {tool}
-                </Text>
-              ))}
-            </XStack>
-          </YStack>
+              </T>
+            </View>
+            <PillList items={mca.tools} />
+          </View>
 
           {/* Secrets */}
           {(mca.systemSecrets.length > 0 || mca.userSecrets.length > 0) && (
-            <YStack gap="$2">
-              <XStack alignItems="center" gap="$2">
-                <Key size={14} color={c.text3} />
-                <Text fontSize="$2" fontWeight="500" color={c.text2}>
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ph name="key" size={12} color={c.text3} />
+                <T step="xs" tone="text3">
                   Secrets
-                </Text>
-              </XStack>
+                </T>
+              </View>
               {mca.systemSecrets.length > 0 && (
-                <YStack gap="$1">
-                  <Text fontSize="$1" color={c.text3}>
+                <View style={{ gap: 4 }}>
+                  <T step="12" tone="text3">
                     System secrets:
-                  </Text>
-                  <XStack flexWrap="wrap" gap="$1">
-                    {mca.systemSecrets.map((secret, i) => (
-                      <Text
-                        key={i}
-                        fontSize="$1"
-                        color={c.text2}
-                        backgroundColor={c.bgCardHover}
-                        paddingHorizontal="$2"
-                        paddingVertical="$1"
-                        borderRadius="$1"
-                        fontFamily="$mono"
-                      >
-                        {secret}
-                      </Text>
-                    ))}
-                  </XStack>
-                </YStack>
+                  </T>
+                  <PillList items={mca.systemSecrets} />
+                </View>
               )}
               {mca.userSecrets.length > 0 && (
-                <YStack gap="$1">
-                  <Text fontSize="$1" color={c.text3}>
+                <View style={{ gap: 4 }}>
+                  <T step="12" tone="text3">
                     User secrets:
-                  </Text>
-                  <XStack flexWrap="wrap" gap="$1">
-                    {mca.userSecrets.map((secret, i) => (
-                      <Text
-                        key={i}
-                        fontSize="$1"
-                        color={c.text2}
-                        backgroundColor={c.bgCardHover}
-                        paddingHorizontal="$2"
-                        paddingVertical="$1"
-                        borderRadius="$1"
-                        fontFamily="$mono"
-                      >
-                        {secret}
-                      </Text>
-                    ))}
-                  </XStack>
-                </YStack>
+                  </T>
+                  <PillList items={mca.userSecrets} />
+                </View>
               )}
-            </YStack>
+            </View>
           )}
 
           {/* Auth */}
           {mca.auth && (
-            <YStack gap="$2">
-              <XStack alignItems="center" gap="$2">
-                <Shield size={14} color={c.text3} />
-                <Text fontSize="$2" fontWeight="500" color={c.text2}>
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ph name="shield-check" size={12} color={c.text3} />
+                <T step="xs" tone="text3">
                   Authentication
-                </Text>
-              </XStack>
-              <XStack gap="$2">
-                <Text fontSize="$2" color={c.text2}>
-                  type: {mca.auth.type}
-                  {mca.auth.provider && ` • provider: ${mca.auth.provider}`}
-                </Text>
-              </XStack>
-            </YStack>
+                </T>
+              </View>
+              <T step="sm" tone="text2">
+                type: {mca.auth.type}
+                {mca.auth.provider && ` • provider: ${mca.auth.provider}`}
+              </T>
+            </View>
           )}
 
           {/* MCP ID */}
-          <Text fontSize="$1" color={c.text3} fontFamily="$mono">
+          <T step="code" tone="text3">
             {mca.mcaId}
-          </Text>
-        </YStack>
-      )}
-    </YStack>
-  );
+          </T>
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
+/** One switch row of the edit Sheet. */
+function SwitchRow({
+  icon,
+  iconColor,
+  title,
+  sub,
+  on,
+  onToggle,
+}: {
+  icon: string
+  iconColor: string
+  title: string
+  sub: string
+  on: boolean
+  onToggle: () => void
+}) {
+  return (
+    <LRow>
+      <Ph name={icon} size={16} color={iconColor} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <T step="sm">{title}</T>
+        <T step="12" tone="text3">
+          {sub}
+        </T>
+      </View>
+      <Switch on={on} onToggle={onToggle} />
+    </LRow>
+  )
 }
 
 export interface McasWindowContentProps {
-  windowId: string;
+  windowId: string
 }
 
 export function McasWindowContent({ windowId }: McasWindowContentProps) {
-  const { t } = useTranslation();
-  const c = useColors();
-  const client = getTerosClient();
-  const insets = useSafeAreaInsets();
+  const { t } = useTranslation()
+  const c = useColors()
+  const client = getTerosClient()
+  const insets = useSafeAreaInsets()
 
-  const [mcas, setMcas] = useState<Mca[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedMcas, setExpandedMcas] = useState<Set<string>>(new Set());
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
-  const [showDisabled, setShowDisabled] = useState(true);
-  const [showSystem, setShowSystem] = useState(true);
-  const [showHidden, setShowHidden] = useState(true);
-  const [editingMca, setEditingMca] = useState<Mca | null>(null);
+  const [mcas, setMcas] = useState<Mca[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedMcas, setExpandedMcas] = useState<Set<string>>(new Set())
+  const [filterCategory, setFilterCategory] = useState<string | null>(null)
+  const [showDisabled, setShowDisabled] = useState(true)
+  const [showSystem, setShowSystem] = useState(true)
+  const [showHidden, setShowHidden] = useState(true)
+  const [editingMca, setEditingMca] = useState<Mca | null>(null)
   const [editForm, setEditForm] = useState({
     enabled: true,
     system: false,
     hidden: false,
-    role: 'user' as 'user' | 'admin' | 'super',
-  });
-  const [saving, setSaving] = useState(false);
+    role: "user" as "user" | "admin" | "super",
+  })
+  const [saving, setSaving] = useState(false)
 
   const toggleMca = (mcaId: string) => {
     setExpandedMcas((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev)
       if (next.has(mcaId)) {
-        next.delete(mcaId);
+        next.delete(mcaId)
       } else {
-        next.add(mcaId);
+        next.add(mcaId)
       }
-      return next;
-    });
-  };
+      return next
+    })
+  }
 
   const loadMcas = async () => {
-    setLoading(true);
+    setLoading(true)
     try {
-      const mcasList = (await client.app.listAllMcas()).mcas as Mca[];
-      setMcas(mcasList as Mca[]);
+      const mcasList = (await client.app.listAllMcas()).mcas as Mca[]
+      setMcas(mcasList as Mca[])
     } catch (err) {
-      console.error('Failed to load MCAs:', err);
-      setError(err instanceof Error ? err.message : t('errors.mcas.loadFailed'));
+      console.error("Failed to load MCAs:", err)
+      setError(err instanceof Error ? err.message : t("errors.mcas.loadFailed"))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const openEditSheet = (mca: Mca) => {
     setEditForm({
@@ -476,326 +363,213 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
       system: mca.availability.system,
       hidden: mca.availability.hidden,
       role: mca.availability.role,
-    });
-    setEditingMca(mca);
-  };
+    })
+    setEditingMca(mca)
+  }
 
   const closeEditSheet = () => {
-    setEditingMca(null);
-  };
+    setEditingMca(null)
+  }
 
   const saveAvailability = async () => {
-    if (!editingMca) return;
+    if (!editingMca) return
 
-    console.log('💾 Saving MCA availability:', editingMca.mcaId, editForm);
-    setSaving(true);
+    console.log("💾 Saving MCA availability:", editingMca.mcaId, editForm)
+    setSaving(true)
     try {
-      const updatedMca = (await client.app.updateMca(editingMca.mcaId, editForm)).mca as Mca;
-      console.log('✅ MCA updated successfully:', updatedMca);
+      const updatedMca = (await client.app.updateMca(editingMca.mcaId, editForm)).mca as Mca
+      console.log("✅ MCA updated successfully:", updatedMca)
       // Update local state with the updated MCA
       setMcas((prev) =>
         prev.map((mca) => (mca.mcaId === editingMca.mcaId ? { ...mca, ...updatedMca } : mca)),
-      );
-      setEditingMca(null);
+      )
+      setEditingMca(null)
     } catch (err) {
-      console.error('❌ Failed to update MCA:', err);
-      alert(t('errors.mcas.updateFailed', { error: err instanceof Error ? err.message : t('errors.unknownError') }));
+      console.error("❌ Failed to update MCA:", err)
+      alert(
+        t("errors.mcas.updateFailed", {
+          error: err instanceof Error ? err.message : t("errors.unknownError"),
+        }),
+      )
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
   useEffect(() => {
     if (client.isConnected()) {
-      loadMcas();
+      loadMcas()
     } else {
       const onConnected = () => {
-        loadMcas();
-        client.off('connected', onConnected);
-      };
-      client.on('connected', onConnected);
+        loadMcas()
+        client.off("connected", onConnected)
+      }
+      client.on("connected", onConnected)
 
       return () => {
-        client.off('connected', onConnected);
-      };
+        client.off("connected", onConnected)
+      }
     }
-  }, [client]);
+  }, [client])
 
   if (loading) {
-    return (
-      <FullscreenLoader variant="default" label={t('common.loading')} />
-    );
+    return <FullscreenLoader variant="default" label={t("common.loading")} />
   }
 
   if (error) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor="$background"
-        justifyContent="center"
-        alignItems="center"
-        padding="$4"
-      >
-        <Text color={semanticColors.red} textAlign="center">
-          {error}
-        </Text>
-      </YStack>
-    );
+      <Page padTop={0}>
+        <EmptyState icon="warning" title={error} />
+      </Page>
+    )
   }
 
   // Get categories
-  const categories = [...new Set(mcas.map((m) => m.category))].sort();
+  const categories = [...new Set(mcas.map((m) => m.category))].sort()
 
   // Filter MCAs
-  let filteredMcas = mcas;
+  let filteredMcas = mcas
   if (filterCategory) {
-    filteredMcas = filteredMcas.filter((m) => m.category === filterCategory);
+    filteredMcas = filteredMcas.filter((m) => m.category === filterCategory)
   }
   if (!showDisabled) {
-    filteredMcas = filteredMcas.filter((m) => m.availability.enabled);
+    filteredMcas = filteredMcas.filter((m) => m.availability.enabled)
   }
   if (!showSystem) {
-    filteredMcas = filteredMcas.filter((m) => !m.availability.system);
+    filteredMcas = filteredMcas.filter((m) => !m.availability.system)
   }
   if (!showHidden) {
-    filteredMcas = filteredMcas.filter((m) => !m.availability.hidden);
+    filteredMcas = filteredMcas.filter((m) => !m.availability.hidden)
   }
 
   // Sort MCAs by name
-  const sortedMcas = [...filteredMcas].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedMcas = [...filteredMcas].sort((a, b) => a.name.localeCompare(b.name))
 
   // Stats
-  const enabledCount = mcas.filter((m) => m.availability.enabled).length;
-  const systemCount = mcas.filter((m) => m.availability.system).length;
-  const hiddenCount = mcas.filter((m) => m.availability.hidden).length;
-  const totalTools = mcas.reduce((acc, m) => acc + m.tools.length, 0);
+  const enabledCount = mcas.filter((m) => m.availability.enabled).length
+  const systemCount = mcas.filter((m) => m.availability.system).length
+  const hiddenCount = mcas.filter((m) => m.availability.hidden).length
+  const disabledCount = mcas.filter((m) => !m.availability.enabled).length
+  const totalTools = mcas.reduce((acc, m) => acc + m.tools.length, 0)
+
+  // Group MCAs by availability type
+  const groups = {
+    system: sortedMcas.filter(
+      (m) => m.availability.system && m.availability.enabled && !m.availability.hidden,
+    ),
+    admin: sortedMcas.filter(
+      (m) =>
+        !m.availability.system &&
+        m.availability.enabled &&
+        !m.availability.hidden &&
+        (m.availability.role === "admin" || m.availability.role === "super"),
+    ),
+    user: sortedMcas.filter(
+      (m) =>
+        !m.availability.system &&
+        m.availability.enabled &&
+        !m.availability.hidden &&
+        m.availability.role === "user",
+    ),
+    hidden: sortedMcas.filter((m) => m.availability.enabled && m.availability.hidden),
+    disabled: sortedMcas.filter((m) => !m.availability.enabled),
+  }
+
+  const groupConfig = [
+    { key: "system", label: "System", mcas: groups.system },
+    { key: "admin", label: "Admin Only", mcas: groups.admin },
+    { key: "user", label: "User", mcas: groups.user },
+    { key: "hidden", label: "Hidden", mcas: groups.hidden },
+    { key: "disabled", label: "Disabled", mcas: groups.disabled },
+  ]
+
+  const nonEmptyGroups = groupConfig.filter((g) => g.mcas.length > 0)
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <ScrollView flex={1}>
-        <YStack padding="$4" gap="$4">
+    <View style={{ flex: 1 }}>
+      <Page padTop={0}>
+        <View style={{ gap: 20 }}>
           {/* Summary */}
-          <XStack
-            backgroundColor={c.bgInner}
-            borderRadius="$4"
-            padding="$4"
-            gap="$4"
-            borderWidth={1}
-            borderColor={c.border}
-            flexWrap="wrap"
-            justifyContent="space-between"
-            alignItems="center"
+          <View
+            style={{ flexDirection: "row", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}
           >
-            <XStack gap="$4" flexWrap="wrap">
-              <YStack minWidth={80}>
-                <Text fontSize="$6" fontWeight="700" color="$color">
-                  {mcas.length}
-                </Text>
-                <Text fontSize="$2" color={c.text2}>
-                  Total
-                </Text>
-              </YStack>
-              <YStack minWidth={80}>
-                <Text fontSize="$6" fontWeight="700" color="$color">
-                  {enabledCount}
-                </Text>
-                <Text fontSize="$2" color={c.text2}>
-                  Enabled
-                </Text>
-              </YStack>
-              <YStack minWidth={80}>
-                <Text fontSize="$6" fontWeight="700" color="$color">
-                  {systemCount}
-                </Text>
-                <Text fontSize="$2" color={c.text2}>
-                  System
-                </Text>
-              </YStack>
-              <YStack minWidth={80}>
-                <Text fontSize="$6" fontWeight="700" color="$color">
-                  {totalTools}
-                </Text>
-                <Text fontSize="$2" color={c.text2}>
-                  Tools
-                </Text>
-              </YStack>
-            </XStack>
-
-            <Button
-              size="$3"
-              icon={<RefreshCw size={16} />}
-              backgroundColor={c.bgCardHover}
-              borderColor={c.borderStrong}
-              color={c.text2}
-              onPress={loadMcas}
-            >
+            <View style={{ flex: 1, minWidth: 320 }}>
+              <Stats cols={4}>
+                <Stat v={mcas.length} label="Total" />
+                <Stat v={enabledCount} label="Enabled" accent />
+                <Stat v={systemCount} label="System" />
+                <Stat v={totalTools} label="Tools" />
+              </Stats>
+            </View>
+            <Btn variant="sec" icon="arrows-clockwise" onPress={loadMcas} style={{ marginTop: 5 }}>
               Refresh
-            </Button>
-          </XStack>
+            </Btn>
+          </View>
 
           {/* Filters */}
-          <YStack gap="$2">
+          <View style={{ gap: 8 }}>
             {/* Category Filter */}
-            <XStack gap="$2" flexWrap="wrap">
-              <Button
-                size="$2"
-                backgroundColor={
-                  filterCategory === null ? c.bgCardHover : c.bgInner
-                }
-                borderColor={c.borderStrong}
-                color={c.text2}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <ChipBtn
+                on={filterCategory === null}
+                count={mcas.length}
                 onPress={() => setFilterCategory(null)}
               >
-                All ({mcas.length})
-              </Button>
+                All
+              </ChipBtn>
               {categories.map((category) => {
-                const count = mcas.filter((m) => m.category === category).length;
+                const count = mcas.filter((m) => m.category === category).length
                 return (
-                  <Button
+                  <ChipBtn
                     key={category}
-                    size="$2"
-                    backgroundColor={
-                      filterCategory === category
-                        ? c.bgCardHover
-                        : c.bgInner
-                    }
-                    borderColor={c.borderStrong}
-                    color={c.text2}
+                    on={filterCategory === category}
+                    count={count}
                     onPress={() => setFilterCategory(category)}
                   >
-                    {category} ({count})
-                  </Button>
-                );
+                    {category}
+                  </ChipBtn>
+                )
               })}
-            </XStack>
+            </View>
 
             {/* Toggle Filters */}
-            <XStack gap="$2" flexWrap="wrap">
-              <Button
-                size="$2"
-                icon={showDisabled ? <Eye size={14} /> : <EyeOff size={14} />}
-                backgroundColor={showDisabled ? c.bgCardHover : c.bgInner}
-                borderColor={c.borderStrong}
-                color={c.text2}
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              <ChipBtn
+                icon={showDisabled ? "eye" : "eye-slash"}
+                on={showDisabled}
+                count={disabledCount}
                 onPress={() => setShowDisabled(!showDisabled)}
               >
-                Disabled ({mcas.filter((m) => !m.availability.enabled).length})
-              </Button>
-              <Button
-                size="$2"
-                icon={<Shield size={14} />}
-                backgroundColor={showSystem ? c.bgCardHover : c.bgInner}
-                borderColor={c.borderStrong}
-                color={c.text2}
+                Disabled
+              </ChipBtn>
+              <ChipBtn
+                icon="shield-check"
+                on={showSystem}
+                count={systemCount}
                 onPress={() => setShowSystem(!showSystem)}
               >
-                System ({systemCount})
-              </Button>
-              <Button
-                size="$2"
-                icon={<EyeOff size={14} />}
-                backgroundColor={showHidden ? c.bgCardHover : c.bgInner}
-                borderColor={c.borderStrong}
-                color={c.text2}
+                System
+              </ChipBtn>
+              <ChipBtn
+                icon="eye-slash"
+                on={showHidden}
+                count={hiddenCount}
                 onPress={() => setShowHidden(!showHidden)}
               >
-                Hidden ({hiddenCount})
-              </Button>
-            </XStack>
-          </YStack>
+                Hidden
+              </ChipBtn>
+            </View>
+          </View>
 
           {/* MCAs List - Grouped by availability */}
-          <YStack gap="$4">
-            {(() => {
-              // Group MCAs by availability type
-              const groups = {
-                system: sortedMcas.filter(
-                  (m) => m.availability.system && m.availability.enabled && !m.availability.hidden,
-                ),
-                admin: sortedMcas.filter(
-                  (m) =>
-                    !m.availability.system &&
-                    m.availability.enabled &&
-                    !m.availability.hidden &&
-                    (m.availability.role === 'admin' || m.availability.role === 'super'),
-                ),
-                user: sortedMcas.filter(
-                  (m) =>
-                    !m.availability.system &&
-                    m.availability.enabled &&
-                    !m.availability.hidden &&
-                    m.availability.role === 'user',
-                ),
-                hidden: sortedMcas.filter((m) => m.availability.enabled && m.availability.hidden),
-                disabled: sortedMcas.filter((m) => !m.availability.enabled),
-              };
-
-              const groupConfig = [
-                {
-                  key: 'system',
-                  label: 'System',
-                  icon: <Shield size={14} color={semanticColors.violet} />,
-                  color: semanticColors.violet,
-                  mcas: groups.system,
-                },
-                {
-                  key: 'admin',
-                  label: 'Admin Only',
-                  icon: <Users size={14} color={semanticColors.amber} />,
-                  color: semanticColors.amber,
-                  mcas: groups.admin,
-                },
-                {
-                  key: 'user',
-                  label: 'User',
-                  icon: <Users size={14} color={semanticColors.green} />,
-                  color: semanticColors.green,
-                  mcas: groups.user,
-                },
-                {
-                  key: 'hidden',
-                  label: 'Hidden',
-                  icon: <EyeOff size={14} color={c.text3} />,
-                  color: c.text3,
-                  mcas: groups.hidden,
-                },
-                {
-                  key: 'disabled',
-                  label: 'Disabled',
-                  icon: <Lock size={14} color={semanticColors.red} />,
-                  color: semanticColors.red,
-                  mcas: groups.disabled,
-                },
-              ];
-
-              const nonEmptyGroups = groupConfig.filter((g) => g.mcas.length > 0);
-
-              if (nonEmptyGroups.length === 0) {
-                return (
-                  <YStack padding="$6" alignItems="center">
-                    <Package size={48} color={c.text3} />
-                    <Text color={c.text3} marginTop="$3" textAlign="center">
-                      No MCAs match the current filters
-                    </Text>
-                  </YStack>
-                );
-              }
-
-              return nonEmptyGroups.map((group) => (
-                <YStack key={group.key} gap="$2">
-                  {/* Group Header */}
-                  <XStack alignItems="center" gap="$2" paddingVertical="$1">
-                    {group.icon}
-                    <Text fontSize="$3" fontWeight="600" color={group.color}>
-                      {group.label}
-                    </Text>
-                    <Text fontSize="$2" color={c.text3}>
-                      ({group.mcas.length})
-                    </Text>
-                  </XStack>
-
-                  {/* Group MCAs */}
-                  <XStack gap="$2" flexWrap="wrap">
+          {nonEmptyGroups.length === 0 ? (
+            <EmptyState icon="package" title="No MCAs match the current filters" />
+          ) : (
+            <View style={{ gap: 8 }}>
+              {nonEmptyGroups.map((group) => (
+                <View key={group.key}>
+                  <SectionLabel label={group.label} count={group.mcas.length} />
+                  <LGroup style={{ marginBottom: 12 }}>
                     {group.mcas.map((mca) => (
                       <McaCard
                         key={mca.mcaId}
@@ -805,13 +579,13 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
                         onEdit={() => openEditSheet(mca)}
                       />
                     ))}
-                  </XStack>
-                </YStack>
-              ));
-            })()}
-          </YStack>
-        </YStack>
-      </ScrollView>
+                  </LGroup>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </Page>
 
       {/* Edit Availability Sheet */}
       <Sheet
@@ -826,191 +600,120 @@ export function McasWindowContent({ windowId }: McasWindowContentProps) {
           animation={"lazy" as any}
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
-          backgroundColor="rgba(0, 0, 0, 0.5)"
+          backgroundColor="rgba(23, 20, 31, 0.55)"
         />
         <Sheet.Frame
-          backgroundColor={c.bgCard}
-          borderTopLeftRadius="$5"
-          borderTopRightRadius="$5"
-          padding="$4"
+          backgroundColor={c.bgSheet}
+          borderTopLeftRadius={24}
+          borderTopRightRadius={24}
+          padding={24}
           paddingBottom={Math.max(insets.bottom, 40)}
-          gap="$4"
+          gap={16}
         >
           <Sheet.Handle backgroundColor={c.borderStrong} />
 
           {editingMca && (
-            <YStack gap="$4">
+            <View style={{ gap: 20, width: "100%", maxWidth: 760, alignSelf: "center" }}>
               {/* Header */}
-              <XStack justifyContent="space-between" alignItems="center">
-                <YStack>
-                  <Text fontSize="$5" fontWeight="600" color="$color">
-                    Edit Availability
-                  </Text>
-                  <Text fontSize="$2" color={c.text2}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                }}
+              >
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <T step="xl">Edit Availability</T>
+                  <T step="sm" tone="text2" ellipsis>
                     {editingMca.name}
-                  </Text>
-                </YStack>
-                <Button
-                  size="$2"
-                  circular
-                  backgroundColor="transparent"
-                  icon={<X size={18} color={c.text2} />}
-                  onPress={closeEditSheet}
-                />
-              </XStack>
+                  </T>
+                </View>
+                <IconBtn icon="x" plain onPress={closeEditSheet} />
+              </View>
 
               {/* Toggle Controls */}
-              <YStack gap="$3">
-                {/* Enabled */}
-                <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
-                  <XStack alignItems="center" gap="$2">
-                    {editForm.enabled ? (
-                      <Unlock size={16} color={semanticColors.green} />
-                    ) : (
-                      <Lock size={16} color={semanticColors.red} />
-                    )}
-                    <YStack>
-                      <Text fontSize="$3" color="$color">
-                        Enabled
-                      </Text>
-                      <Text fontSize="$1" color={c.text3}>
-                        Allow this MCA to be installed
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  <Button
-                    size="$3"
-                    backgroundColor={editForm.enabled ? semanticColors.green : c.bgCardHover}
-                    borderRadius="$4"
-                    paddingHorizontal="$4"
-                    onPress={() => setEditForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
-                  >
-                    <Text fontSize="$2" color="white" fontWeight="600">
-                      {editForm.enabled ? 'ON' : 'OFF'}
-                    </Text>
-                  </Button>
-                </XStack>
-
-                {/* System */}
-                <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
-                  <XStack alignItems="center" gap="$2">
-                    <Shield size={16} color={editForm.system ? semanticColors.violet : c.text3} />
-                    <YStack>
-                      <Text fontSize="$3" color="$color">
-                        System MCA
-                      </Text>
-                      <Text fontSize="$1" color={c.text3}>
-                        Auto-install for all agents
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  <Button
-                    size="$3"
-                    backgroundColor={editForm.system ? semanticColors.violet : c.bgCardHover}
-                    borderRadius="$4"
-                    paddingHorizontal="$4"
-                    onPress={() => setEditForm((prev) => ({ ...prev, system: !prev.system }))}
-                  >
-                    <Text fontSize="$2" color="white" fontWeight="600">
-                      {editForm.system ? 'ON' : 'OFF'}
-                    </Text>
-                  </Button>
-                </XStack>
-
-                {/* Hidden */}
-                <XStack alignItems="center" justifyContent="space-between" paddingVertical="$2">
-                  <XStack alignItems="center" gap="$2">
-                    {editForm.hidden ? (
-                      <EyeOff size={16} color={c.text3} />
-                    ) : (
-                      <Eye size={16} color={semanticColors.green} />
-                    )}
-                    <YStack>
-                      <Text fontSize="$3" color="$color">
-                        Hidden
-                      </Text>
-                      <Text fontSize="$1" color={c.text3}>
-                        Hide from catalog listing
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  <Button
-                    size="$3"
-                    backgroundColor={editForm.hidden ? c.text3 : c.bgCardHover}
-                    borderRadius="$4"
-                    paddingHorizontal="$4"
-                    onPress={() => setEditForm((prev) => ({ ...prev, hidden: !prev.hidden }))}
-                  >
-                    <Text fontSize="$2" color="white" fontWeight="600">
-                      {editForm.hidden ? 'ON' : 'OFF'}
-                    </Text>
-                  </Button>
-                </XStack>
-
+              <LGroup>
+                <SwitchRow
+                  icon={editForm.enabled ? "lock-open" : "lock"}
+                  iconColor={editForm.enabled ? c.tint.g.tx : c.tint.r.tx}
+                  title="Enabled"
+                  sub="Allow this MCA to be installed"
+                  on={editForm.enabled}
+                  onToggle={() => setEditForm((prev) => ({ ...prev, enabled: !prev.enabled }))}
+                />
+                <SwitchRow
+                  icon="shield-check"
+                  iconColor={editForm.system ? c.accent : c.text3}
+                  title="System MCA"
+                  sub="Auto-install for all agents"
+                  on={editForm.system}
+                  onToggle={() => setEditForm((prev) => ({ ...prev, system: !prev.system }))}
+                />
+                <SwitchRow
+                  icon={editForm.hidden ? "eye-slash" : "eye"}
+                  iconColor={editForm.hidden ? c.text3 : c.tint.g.tx}
+                  title="Hidden"
+                  sub="Hide from catalog listing"
+                  on={editForm.hidden}
+                  onToggle={() => setEditForm((prev) => ({ ...prev, hidden: !prev.hidden }))}
+                />
                 {/* Role Selector */}
-                <YStack gap="$2" paddingVertical="$2">
-                  <XStack alignItems="center" gap="$2">
-                    <Users size={16} color={ROLE_COLORS[editForm.role]} />
-                    <YStack>
-                      <Text fontSize="$3" color="$color">
-                        Required Role
-                      </Text>
-                      <Text fontSize="$1" color={c.text3}>
+                <LRow style={{ alignItems: "flex-start" }}>
+                  <Ph
+                    name="users-three"
+                    size={16}
+                    color={c.tint[ROLE_TONE[editForm.role] as "g" | "a" | "r"].tx}
+                  />
+                  <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+                    <View>
+                      <T step="sm">Required Role</T>
+                      <T step="12" tone="text3">
                         Minimum role to install this MCA
-                      </Text>
-                    </YStack>
-                  </XStack>
-                  <XStack gap="$2" marginTop="$2">
-                    {(['user', 'admin', 'super'] as const).map((role) => (
-                      <Button
-                        key={role}
-                        flex={1}
-                        size="$3"
-                        backgroundColor={
-                          editForm.role === role ? ROLE_COLORS[role] : c.bgCardHover
-                        }
-                        borderRadius="$3"
-                        onPress={() => setEditForm((prev) => ({ ...prev, role }))}
-                      >
-                        <Text fontSize="$2" color="white" fontWeight="500">
+                      </T>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+                      {(["user", "admin", "super"] as const).map((role) => (
+                        <ChipBtn
+                          key={role}
+                          mono
+                          on={editForm.role === role}
+                          onPress={() => setEditForm((prev) => ({ ...prev, role }))}
+                        >
                           {role}
-                        </Text>
-                      </Button>
-                    ))}
-                  </XStack>
-                </YStack>
-              </YStack>
+                        </ChipBtn>
+                      ))}
+                    </View>
+                  </View>
+                </LRow>
+              </LGroup>
 
               {/* Action Buttons */}
-              <XStack gap="$3" marginTop="$2">
-                <Button
-                  flex={1}
-                  size="$4"
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <Btn
+                  variant="sec"
+                  full
+                  style={{ flex: 1 }}
                   onPress={closeEditSheet}
                   disabled={saving}
-                  backgroundColor={c.bgCardHover}
-                  borderWidth={1}
-                  borderColor={c.borderStrong}
                 >
-                  <Text color={c.text2}>Cancel</Text>
-                </Button>
-                <Button
-                  flex={1}
-                  size="$4"
+                  Cancel
+                </Btn>
+                <Btn
+                  variant="primary"
+                  icon="check"
+                  full
+                  style={{ flex: 1 }}
                   onPress={saveAvailability}
-                  disabled={saving}
-                  backgroundColor={controlsBar.allow.bg}
-                  borderWidth={1}
-                  borderColor={controlsBar.allow.border}
-                  icon={saving ? <AppSpinner size="sm" /> : <Save size={16} color={semanticColors.green} />}
+                  loading={saving}
                 >
-                  <Text color={semanticColors.green}>{saving ? 'Saving...' : 'Save'}</Text>
-                </Button>
-              </XStack>
-            </YStack>
+                  {saving ? "Saving..." : "Save"}
+                </Btn>
+              </View>
+            </View>
           )}
         </Sheet.Frame>
       </Sheet>
-    </YStack>
-  );
+    </View>
+  )
 }

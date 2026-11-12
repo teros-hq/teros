@@ -16,7 +16,7 @@ export {
   SessionLockManager,
 } from './SessionLockManager';
 // Storage
-export { SessionStore } from './SessionStore';
+export { SessionStore, filterRedactedForViewer } from './SessionStore';
 // Types (the previous implementation-compatible)
 export type {
   AgentPart,

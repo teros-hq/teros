@@ -3,23 +3,22 @@
  *
  * - Persists onboardingCompletedAt via profile.complete-onboarding (with retry).
  * - Shows summary of what was set up.
- * - Footer handled by wizard (special CTA: "Start chatting →").
+ * - Footer handled by wizard (special CTA: "Start chatting", arrow icon from the button).
  *
  * Returns pure content — no footer, no spacers.
  */
 
-import { Check } from '@tamagui/lucide-icons'
-import React, { useEffect, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Image } from 'react-native'
-import { Text, XStack, YStack } from 'tamagui'
-import { getTerosClient } from '../../../services/terosClientSingleton'
-import { useAuthStore } from '../../../store/authStore'
-import { useWorkspaceStore } from '../../../store/workspaceStore'
-import { useTilingStore } from '../../../store/tilingStore'
-import { colors as semanticColors } from '../../mca/primitives/colors'
-import { useColors } from '../../mca/primitives/useColors'
-import type { StepFooterConfig } from '../StepFooter'
+import React, { useEffect, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Image, View } from "react-native"
+import { getTerosClient } from "../../../services/terosClientSingleton"
+import { useAuthStore } from "../../../store/authStore"
+import { useWorkspaceStore } from "../../../store/workspaceStore"
+import { useTilingStore } from "../../../store/tilingStore"
+import { useColors } from "../../mca/primitives/useColors"
+import { Ph, T, Tile } from "../../ui/ds"
+import type { StepFooterConfig } from "../StepFooter"
+import { useEdition } from "../../../config/edition"
 
 interface DoneStepProps {
   userName?: string
@@ -31,7 +30,17 @@ interface DoneStepProps {
   setFooterConfig: (config: StepFooterConfig) => void
 }
 
-export function DoneStep({ userName, agentName, agentAvatarUrl, defaultAgentId, summaryItems, onFinish, setFooterConfig }: DoneStepProps) {
+export function DoneStep({
+  userName,
+  agentName,
+  agentAvatarUrl,
+  defaultAgentId,
+  summaryItems,
+  onFinish,
+  setFooterConfig,
+}: DoneStepProps) {
+  // ONB-REQ-10: no provider talk on cloud.
+  const edition = useEdition()
   const { t } = useTranslation()
   const c = useColors()
   const client = getTerosClient()
@@ -45,24 +54,26 @@ export function DoneStep({ userName, agentName, agentAvatarUrl, defaultAgentId, 
     let cancelled = false
     const complete = async () => {
       try {
-        await client.send('profile', 'complete-onboarding', {})
+        await client.send("profile", "complete-onboarding", {})
         completeOnboarding()
         if (!cancelled) setCompleted(true)
       } catch (err) {
-        console.error('[DoneStep] complete-onboarding failed, retrying:', err)
+        console.error("[DoneStep] complete-onboarding failed, retrying:", err)
         try {
-          await client.send('profile', 'complete-onboarding', {})
+          await client.send("profile", "complete-onboarding", {})
           completeOnboarding()
           if (!cancelled) setCompleted(true)
         } catch (retryErr) {
-          console.error('[DoneStep] Retry also failed:', retryErr)
+          console.error("[DoneStep] Retry also failed:", retryErr)
           completeOnboarding() // mark locally anyway
           if (!cancelled) setCompleted(true)
         }
       }
     }
     complete()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const handleStartChatting = async () => {
@@ -71,15 +82,15 @@ export function DoneStep({ userName, agentName, agentAvatarUrl, defaultAgentId, 
     }
     try {
       const { workspaces } = await client.workspace.listWorkspaces()
-      const privateWs = workspaces.find((ws: any) => ws.type === 'private')
+      const privateWs = workspaces.find((ws: any) => ws.type === "private")
       if (privateWs) {
         setActiveWorkspace(privateWs.workspaceId)
       }
     } catch (err) {
-      console.warn('[DoneStep] Failed to preselect private workspace:', err)
+      console.warn("[DoneStep] Failed to preselect private workspace:", err)
     }
     if (defaultAgentId) {
-      openWindow('chat', { agentId: defaultAgentId, agentName })
+      openWindow("chat", { agentId: defaultAgentId, agentName })
     }
     onFinish()
   }
@@ -88,86 +99,91 @@ export function DoneStep({ userName, agentName, agentAvatarUrl, defaultAgentId, 
   useEffect(() => {
     setFooterConfig({
       specialCta: {
-        label: t('onboarding.startChatting'),
+        label: t("onboarding.startChatting"),
         onPress: handleStartChatting,
       },
     })
   }, [completed, defaultAgentId, t])
 
-  const firstName = userName?.split(' ')[0]?.trim() || 'there'
+  const firstName = userName?.split(" ")[0]?.trim() || "there"
 
   return (
-    <YStack alignItems="center" gap={24} paddingTop={8} paddingBottom={8}>
-      {/* Large avatar */}
+    <View style={{ alignItems: "center", gap: 22, paddingTop: 8, paddingBottom: 8 }}>
+      {/* Large avatar with the brand ring */}
       {agentAvatarUrl ? (
         <Image
           source={{ uri: agentAvatarUrl }}
-          style={{ width: 72, height: 72, borderRadius: 36 }}
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            borderWidth: 2,
+            borderColor: c.borderAccent,
+          }}
         />
       ) : (
-        <YStack
-          width={72}
-          height={72}
-          borderRadius={36}
-          backgroundColor={semanticColors.indigoGlow}
-          borderWidth={2}
-          borderColor={`${semanticColors.indigo}4D`}
-          justifyContent="center"
-          alignItems="center"
+        <View
+          style={{
+            width: 72,
+            height: 72,
+            borderRadius: 36,
+            backgroundColor: c.tile,
+            borderWidth: 2,
+            borderColor: c.borderAccent,
+            justifyContent: "center",
+            alignItems: "center",
+          }}
         >
-          <Text fontSize={24} fontWeight="700" color={semanticColors.indigo}>
+          <T step="xl" tone="accent">
             {agentName.slice(0, 2).toUpperCase()}
-          </Text>
-        </YStack>
+          </T>
+        </View>
       )}
 
-      {/* Star accent + title */}
-      <YStack alignItems="center" gap={8}>
-        <Text fontSize={32} color={semanticColors.indigo} fontWeight="700">✦</Text>
-        <Text fontSize={22} fontWeight="700" color={c.text} textAlign="center">
-          {t('onboarding.allSetTitle', { firstName })}
-        </Text>
-        <Text fontSize={14} color={c.text2} textAlign="center">
-          {t('onboarding.hereIsWhatWeSetUp')}
-        </Text>
-      </YStack>
+      {/* Sparkle accent + title */}
+      <View style={{ alignItems: "center", gap: 8 }}>
+        <Ph name="sparkle" size={22} color={c.accent} weight="fill" />
+        <T step="2xl" center style={{ fontSize: 30, lineHeight: 34 }}>
+          {t("onboarding.allSetTitle", { firstName })}
+        </T>
+        {/* ONB-REQ-10: no summary heading when nothing was set up in this run */}
+        {summaryItems.length > 0 && (
+          <T step="sm" tone="text2" center>
+            {t("onboarding.hereIsWhatWeSetUp")}
+          </T>
+        )}
+      </View>
 
-      {/* Summary */}
+      {/* Summary — one list card, mint check tiles */}
       {summaryItems.length > 0 && (
-        <YStack gap={8} width="100%">
-          {summaryItems.map((item) => (
-            <XStack
+        <View
+          style={{ width: "100%", borderRadius: 16, backgroundColor: c.nest, overflow: "hidden" }}
+        >
+          {summaryItems.map((item, i) => (
+            <View
               key={item}
-              alignItems="center"
-              gap={10}
-              padding={12}
-              backgroundColor={c.bgInner}
-              borderWidth={1}
-              borderColor={c.border}
-              borderRadius={8}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: c.border,
+              }}
             >
-              <YStack
-                width={20}
-                height={20}
-                borderRadius={10}
-                backgroundColor={`${semanticColors.green}1F`}
-                borderWidth={1}
-                borderColor={`${semanticColors.green}4D`}
-                justifyContent="center"
-                alignItems="center"
-                flexShrink={0}
-              >
-                <Check size={10} color={semanticColors.green} />
-              </YStack>
-              <Text fontSize={13} color={c.text}>{item}</Text>
-            </XStack>
+              <Tile icon="check" tone="mint" size="xs" weight="bold" />
+              <T step="sm" style={{ flex: 1 }}>
+                {item}
+              </T>
+            </View>
           ))}
-        </YStack>
+        </View>
       )}
 
-      <Text fontSize={12} color={c.text2} textAlign="center">
-        {t('onboarding.addMoreAnytime')}
-      </Text>
-    </YStack>
+      <T step="12" tone="text3" center style={{ maxWidth: 360 }}>
+        {t(edition === "cloud" ? "onboarding.addMoreAnytimeCloud" : "onboarding.addMoreAnytime")}
+      </T>
+    </View>
   )
 }

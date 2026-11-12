@@ -1,0 +1,141 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.telegram",
+  "name": "Telegram",
+  "version": "1.1.0",
+  "description": "Full Telegram integration via MTProto (teleproto). Connect your personal account to read chats and history, send messages and media, manage groups and members, and receive real-time message events.",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app",
+    "workspaceMount": true,
+    "appDataMount": true,
+    "resources": {
+      "cpus": 1,
+      "memoryMb": 1024
+    },
+    "systemEnvironment": {
+      "TELEGRAM_API_ID": "${SECRET_MCA_TELEGRAM_API_ID}",
+      "TELEGRAM_API_HASH": "${SECRET_MCA_TELEGRAM_API_HASH}"
+    }
+  },
+  "layers": {
+    "tools": true,
+    "events": true,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "agent",
+      "instructions": "Esta app se conecta a través del agente. Pídele en el chat que vincule tu cuenta de Telegram: te pedirá tu número de teléfono, enviará un código de verificación a tu Telegram y lo introducirás en el chat (si tienes 2FA activada, también te pedirá la contraseña). También puedes pedirle que compruebe el estado de la conexión o que desconecte la cuenta."
+    },
+    "agent": false
+  },
+  "keywords": [
+    "telegram",
+    "messaging",
+    "mtproto",
+    "chat",
+    "automation"
+  ],
+  "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-10-13",
+      "notes": "Real-time event forwarding is now native: telegram.message.received/edited/deleted are emitted automatically at boot when the account is linked (no tool call needed). Removed the manual events-start/events-status tools."
+    },
+    {
+      "version": "1.0.0",
+      "date": "2026-10-13",
+      "notes": "Initial release — connect your Telegram account, read chats and history, send messages and media, manage groups and members, and receive real-time message events"
+    }
+  ],
+  "events": [
+    {
+      "topic": "telegram.message.received",
+      "description": "A message from someone else arrived in a chat the linked account is in (private, group or channel). Your own messages are telegram.message.sent.",
+      "payload": {
+        "messageId": "number",
+        "chatId": "string",
+        "chatTitle": "string|null",
+        "chatType": "user|group|supergroup|channel",
+        "chatUsername": "string|null",
+        "fromId": "string|null",
+        "fromName": "string|null",
+        "fromUsername": "string|null",
+        "text": "string",
+        "hasMedia": "boolean",
+        "mediaType": "string|null",
+        "isOutgoing": "boolean",
+        "replyToMsgId": "number|null",
+        "mentioned": "boolean",
+        "date": "ISO date"
+      }
+    },
+    {
+      "topic": "telegram.message.sent",
+      "description": "The linked account sent a message (from any device).",
+      "payload": {
+        "messageId": "number",
+        "chatId": "string",
+        "chatTitle": "string|null",
+        "chatType": "user|group|supergroup|channel",
+        "chatUsername": "string|null",
+        "fromId": "string|null",
+        "fromName": "string|null",
+        "fromUsername": "string|null",
+        "text": "string",
+        "hasMedia": "boolean",
+        "mediaType": "string|null",
+        "isOutgoing": "boolean",
+        "replyToMsgId": "number|null",
+        "mentioned": "boolean",
+        "date": "ISO date"
+      }
+    },
+    {
+      "topic": "telegram.message.edited",
+      "description": "A message in a chat the linked account is in was edited.",
+      "payload": {
+        "messageId": "number",
+        "chatId": "string",
+        "chatTitle": "string|null",
+        "chatType": "user|group|supergroup|channel",
+        "chatUsername": "string|null",
+        "fromId": "string|null",
+        "fromName": "string|null",
+        "fromUsername": "string|null",
+        "text": "string",
+        "hasMedia": "boolean",
+        "mediaType": "string|null",
+        "isOutgoing": "boolean",
+        "replyToMsgId": "number|null",
+        "mentioned": "boolean",
+        "date": "ISO date",
+        "editedAt": "ISO date"
+      }
+    },
+    {
+      "topic": "telegram.message.deleted",
+      "description": "Messages were deleted in a chat the linked account is in.",
+      "payload": {
+        "chatId": "string|null",
+        "messageIds": "number[]",
+        "deletedAt": "ISO date"
+      }
+    }
+  ]
+}

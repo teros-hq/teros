@@ -28,6 +28,8 @@ export interface BillingPlanView {
   agentHoursLimit: number
   /** Whether the plan includes the bundled Teros model (metered hours). */
   terosModel: boolean
+  /** Automate runs per UTC day; 0 = unlimited. */
+  automateDailyExecutionLimit?: number
   highlights: string[]
   popular: boolean
   contactSales: boolean
@@ -61,12 +63,22 @@ export interface SetupIntentView {
 }
 
 /** The caller's default vaulted card (billing.get-subscription). */
+export interface BillingDetailsView {
+  country: string | null
+  taxId: string | null
+  taxIdType: string | null
+}
+
 export interface PaymentMethodView {
-  /** Card network, lowercase: 'visa' | 'mastercard' | 'amex' | … */
+  /** 'card' | 'link' | 'sepa_debit'; absent = card. */
+  type?: string
+  /** Card network, lowercase: 'visa' | 'mastercard' | 'amex' | …; 'link' / 'sepa' otherwise. */
   brand: string
   last4: string
   expMonth: number
   expYear: number
+  /** Link wallet email. */
+  email?: string | null
 }
 
 /**
@@ -125,7 +137,7 @@ export interface InvoiceView {
   invoiceNumber: string | null
   amount: number
   currency: string
-  status: "pending" | "invoiced" | "paid" | "waived" | "overdue" | "uncollectible"
+  status: "pending" | "invoiced" | "paid" | "waived" | "overdue" | "uncollectible" | "held" | "refunded"
   /** Billed period (ISO strings). */
   periodStart: string
   periodEnd: string
@@ -155,6 +167,8 @@ export class BillingApi {
   getSubscription(): Promise<{
     subscription: SubscriptionView | null
     paymentMethod: PaymentMethodView | null
+    /** Tax location + tax id on the Stripe customer (null when none / Stripe off). */
+    billingDetails?: BillingDetailsView | null
     /** Per-hour boost price, or null when buying a boost is unavailable/disabled. */
     boostPricing: BoostPricingView | null
   }> {
@@ -179,7 +193,7 @@ export class BillingApi {
     planId: string,
     reqId?: string,
   ): Promise<{
-    kind: "upgraded" | "downgrade_scheduled"
+    kind: "upgraded" | "downgrade_scheduled" | "downgrade_cancelled"
     subscription: SubscriptionView | null
     invoice: {
       number: string | null
@@ -208,8 +222,28 @@ export class BillingApi {
   /** Store a vaulted payment method as the caller's default. */
   setPaymentMethod(
     paymentMethodId: string,
-  ): Promise<{ ok: true; defaultPaymentMethodId: string | null }> {
+  ): Promise<{ ok: true; defaultPaymentMethodId: string | null; subscriptionSwitched?: boolean }> {
     return this.transport.request("billing.set-payment-method", { paymentMethodId })
+  }
+
+  /**
+   * Finish card vaulting after a redirect-based confirmation (3DS / SCA): the
+   * page comes back with `setup_intent=<id>` in the URL; the backend reads the
+   * intent from Stripe and stores its payment method as the default.
+   */
+  completeSetupIntent(
+    setupIntentId: string,
+  ): Promise<{ ok: true; defaultPaymentMethodId: string | null; subscriptionSwitched?: boolean }> {
+    return this.transport.request("billing.complete-setup-intent", { setupIntentId })
+  }
+
+  /** Tax location (ISO-3166-1 alpha-2) + optional tax id for Stripe Tax and the invoice header. */
+  setBillingDetails(details: {
+    country: string
+    taxId?: string | null
+    taxIdType?: string | null
+  }): Promise<{ ok: true; country: string | null; taxId: string | null; taxIdType: string | null }> {
+    return this.transport.request("billing.set-billing-details", details)
   }
 
   /**

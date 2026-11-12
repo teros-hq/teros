@@ -9,6 +9,7 @@
  */
 
 import { type RetryOptions, withRetry, withTimeout } from "@teros/mca-sdk"
+import { type SecretsContext, withAuthRetry } from "../lib"
 import type { FieldList } from "./_fields"
 
 // ============================================================================
@@ -109,24 +110,31 @@ function shouldRetryCalendar(err: unknown): boolean {
  * Mutations call `withTimeout` directly via {@link runCalendarCall}.
  */
 export async function wrapCalendarCall<T>(
+  context: SecretsContext,
   fn: () => Promise<T>,
   opts: RetryOptions & { timeoutMs?: number } = {},
 ): Promise<T> {
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
-  return withRetry(() => withTimeout(fn, timeoutMs), {
-    shouldRetry: shouldRetryCalendar,
-    ...opts,
-  })
+  return withAuthRetry(
+    context,
+    () =>
+      withRetry(() => withTimeout(fn, timeoutMs), {
+        shouldRetry: shouldRetryCalendar,
+        ...opts,
+      }),
+    "calendar call",
+  )
 }
 
 /**
  * Timeout-only wrapper for non-idempotent mutations (insert, quickAdd).
  */
 export async function runCalendarCall<T>(
+  context: SecretsContext,
   fn: () => Promise<T>,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
-  return withTimeout(fn, timeoutMs)
+  return withAuthRetry(context, () => withTimeout(fn, timeoutMs), "calendar call")
 }
 
 /**

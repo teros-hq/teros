@@ -7,10 +7,15 @@
  * useRetentionGuard, which decides when to open it and remembers the choice.
  */
 
-import { useTranslation } from 'react-i18next'
-import { Button, Dialog, Paragraph, Text, XStack } from 'tamagui'
-import { RETENTION_VERIFIED_AT, type RetentionInfo } from '@teros/shared'
-import { RETENTION_VISUALS } from './retentionStyle'
+import { useTranslation } from "react-i18next"
+import { Platform, View } from "react-native"
+import { Dialog } from "tamagui"
+import { RETENTION_VERIFIED_AT, type RetentionInfo } from "@teros/shared"
+import { useColors } from "../mca/primitives/useColors"
+import { colors as semantic } from "../mca/primitives/colors"
+import { FONT_SERIF } from "../mca/primitives/fonts"
+import { Btn, T, Tile } from "../ui/ds"
+import { useRetentionVisual } from "./retentionStyle"
 
 interface RetentionConfirmModalProps {
   open: boolean
@@ -30,8 +35,8 @@ export function RetentionConfirmModal({
   onCancel,
 }: RetentionConfirmModalProps) {
   const { t } = useTranslation()
-  const visual = RETENTION_VISUALS[info?.tier ?? 'trains']
-  const Icon = visual.Icon
+  const c = useColors()
+  const visual = useRetentionVisual(info?.tier ?? "trains")
 
   return (
     <Dialog modal open={open} onOpenChange={(o) => (!o ? onCancel() : null)}>
@@ -39,51 +44,78 @@ export function RetentionConfirmModal({
         <Dialog.Overlay
           key="overlay"
           animation="card"
-          opacity={0.5}
+          opacity={0.6}
+          backgroundColor={semantic.main900}
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
         />
         <Dialog.Content
           key="content"
           testID="retention-confirm-modal"
-          bordered
-          elevate
           animation="card"
           enterStyle={{ opacity: 0, scale: 0.96 }}
           exitStyle={{ opacity: 0, scale: 0.96 }}
           transformOrigin="top"
           width={460}
           maxWidth="90%"
-          padding="$5"
-          gap="$4"
+          padding={24}
+          gap={16}
+          borderRadius={16}
+          borderWidth={0}
+          backgroundColor={c.bgStep}
+          {...(Platform.OS === "web" ? ({ style: { boxShadow: c.elevRaised } } as any) : {})}
         >
-          <XStack gap="$3" alignItems="center">
-            <Icon size={22} color={visual.fg} />
-            <Dialog.Title fontWeight="700" fontSize="$6" color={visual.fg}>
-              {t('dataRetention.modal.title')}
-            </Dialog.Title>
-          </XStack>
-          {modelName ? (
-            <Text fontSize="$3" fontWeight="600" color="$gray11" marginTop="$-2">
-              {modelName}
-            </Text>
-          ) : null}
-          <Paragraph fontSize="$3" lineHeight="$2">
-            {info ? t(`dataRetention.notice.${info.noticeSlug}`) : ''}
-          </Paragraph>
-          <XStack gap="$3" justifyContent="flex-end">
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Tile tone={visual.tile} size="sm" icon={visual.icon} />
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Dialog.Title
+                fontFamily={FONT_SERIF}
+                fontWeight="400"
+                fontSize={22}
+                lineHeight={26}
+                color={c.text}
+              >
+                {t("dataRetention.modal.title")}
+              </Dialog.Title>
+              {modelName ? (
+                <T step="sm" tone="text2">
+                  {modelName}
+                </T>
+              ) : null}
+            </View>
+          </View>
+          <View
+            style={{
+              paddingVertical: 10,
+              paddingHorizontal: 12,
+              borderRadius: 10,
+              backgroundColor: visual.bg,
+              borderWidth: 1,
+              borderColor: visual.border,
+            }}
+          >
+            <T step="sm" color={visual.fg}>
+              {info ? t(`dataRetention.notice.${info.noticeSlug}`) : ""}
+            </T>
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
             {/* Not wrapped in Dialog.Close: onCancel already closes via state,
                 and the Close wrapper would fire onOpenChange → onCancel twice. */}
-            <Button size="$3" testID="retention-confirm-cancel" onPress={onCancel}>
-              {t('dataRetention.modal.cancel')}
-            </Button>
-            <Button size="$3" theme="red" testID="retention-confirm-accept" onPress={onConfirm}>
-              {t('dataRetention.modal.confirm')}
-            </Button>
-          </XStack>
-          <Text fontSize="$1" color="$gray9">
-            {t('dataRetention.modal.verifiedAt', { date: RETENTION_VERIFIED_AT })}
-          </Text>
+            <Btn testID="retention-confirm-cancel" variant="sec" onPress={onCancel}>
+              {t("dataRetention.modal.cancel")}
+            </Btn>
+            <Btn
+              testID="retention-confirm-accept"
+              variant="dangerSoft"
+              icon="shield-warning"
+              onPress={onConfirm}
+            >
+              {t("dataRetention.modal.confirm")}
+            </Btn>
+          </View>
+          <T step="12" tone="text3">
+            {t("dataRetention.modal.verifiedAt", { date: RETENTION_VERIFIED_AT })}
+          </T>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog>

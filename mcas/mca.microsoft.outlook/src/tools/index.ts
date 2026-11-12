@@ -27,3 +27,6 @@ export { storeAttachment } from './store-attachment'
 
 // Rules
 export { listRules } from './list-rules'
+
+// Signature
+export { setSignature, getSignature } from './set-signature'

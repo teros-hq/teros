@@ -6,6 +6,9 @@
  */
 
 import * as Sentry from '@sentry/node';
+import { createLogger } from './logger';
+
+const log = createLogger('Sentry');
 
 let initialized = false;
 
@@ -41,18 +44,18 @@ export function initSentry(config?: SentryConfig): void {
   const dsn = config?.dsn || process.env.SENTRY_DSN;
 
   if (!dsn) {
-    console.log('[Sentry] No DSN configured, error tracking disabled');
+    log.info('No DSN configured, error tracking disabled');
     return;
   }
 
   if (initialized) {
-    console.log('[Sentry] Already initialized');
+    log.info('Sentry already initialized');
     return;
   }
 
   Sentry.init({
     dsn,
-    environment: config?.environment || process.env.NODE_ENV || 'development',
+    environment: config?.environment || process.env.NODE_ENV || 'production',
     release: config?.release || process.env.npm_package_version,
     debug: config?.debug || false,
 
@@ -73,9 +76,9 @@ export function initSentry(config?: SentryConfig): void {
     beforeSend(event, hint) {
       // Don't send in development unless explicitly enabled
       if (process.env.NODE_ENV === 'development' && !process.env.SENTRY_DEV_ENABLED) {
-        console.log(
-          '[Sentry] Would send event (dev mode):',
-          event.message || event.exception?.values?.[0]?.value,
+        log.debug(
+          { eventMessage: event.message || event.exception?.values?.[0]?.value },
+          'Would send event (dev mode)',
         );
         return null;
       }
@@ -84,9 +87,9 @@ export function initSentry(config?: SentryConfig): void {
   });
 
   initialized = true;
-  console.log(
-    '[Sentry] Initialized with environment:',
-    config?.environment || process.env.NODE_ENV || 'development',
+  log.info(
+    { environment: config?.environment || process.env.NODE_ENV || 'production' },
+    'Sentry initialized',
   );
 }
 
@@ -133,7 +136,7 @@ export function captureException(
   identity?: SentryIdentity,
 ): string | undefined {
   if (!initialized) {
-    console.error('[Sentry] Not initialized, logging error:', error);
+    log.error({ err: error }, 'Not initialized, logging error');
     return undefined;
   }
 
@@ -158,7 +161,7 @@ export function captureMessage(
   context?: Record<string, any>,
 ): string | undefined {
   if (!initialized) {
-    console.log('[Sentry] Not initialized, logging message:', message);
+    log.info({ message }, 'Not initialized, logging message');
     return undefined;
   }
 

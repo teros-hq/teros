@@ -17,13 +17,23 @@ import type { VolumeService } from './volume-service';
 
 const log = createLogger('McaManager');
 
-export const MAX_TOOL_OUTPUT_CHARS = 40_000;
+export const MAX_TOOL_OUTPUT_CHARS = 200_000;
 
 /**
  * Truncate tool output if it exceeds the maximum allowed characters.
+ *
+ * `skipTruncation` is set by the UI path (`app.execute-tool`): windows fetch
+ * data directly (no LLM context involved), so the 200K LLM-context guard must
+ * not cut a large JSON payload in half — a truncated payload cannot be parsed
+ * and the window silently renders an empty tree (2026-10-24 incident).
  */
-export function truncateToolOutput(output: string, toolName: string, appId: string): string {
-  if (output.length <= MAX_TOOL_OUTPUT_CHARS) {
+export function truncateToolOutput(
+  output: string,
+  toolName: string,
+  appId: string,
+  skipTruncation = false,
+): string {
+  if (skipTruncation || output.length <= MAX_TOOL_OUTPUT_CHARS) {
     return output;
   }
   const originalLength = output.length;
@@ -149,6 +159,8 @@ export interface ManagedMca {
   restartCount: number;
   health?: HealthCheckResult;
   containerKey?: string;
+  /** Timestamp of the last transition to 'error' — used for adaptive backoff. */
+  errorAt?: Date;
 }
 
 /**
@@ -164,6 +176,67 @@ export function computeNextRestartCount(
 ): number {
   if (existing?.status === 'error') return (existing.restartCount ?? 0) + 1;
   return existing?.restartCount ?? 0;
+}
+
+/**
+ * Adaptive backoff schedule for MCAs in 'error' state.
+ *
+ * Instead of permanently blocking after maxRestarts failures, the MCA enters a
+ * cooldown period that grows with each consecutive failure. Once the cooldown
+ * elapses, the next getOrSpawn() call is allowed to retry. This lets transient
+ * errors (network blips, temporary credential issues) self-heal without manual
+ * intervention, while still protecting against rapid infinite respawn loops.
+ *
+ * Schedule (by restartCount at the time of the error):
+ *   0 → 60s     (first failure, short retry)
+ *   1 → 60s     (second failure, still short)
+ *   2 → 3min    (third failure, backing off)
+ *   3 → 5min    (fourth failure, significant backoff)
+ *   4+ → 15min  (permanent cap — keeps trying but slowly)
+ */
+const ERROR_BACKOFF_MS = [
+  60_000,       // restartCount 0 → 60s
+  60_000,       // restartCount 1 → 60s
+  3 * 60_000,   // restartCount 2 → 3min
+  5 * 60_000,   // restartCount 3 → 5min
+  15 * 60_000,  // restartCount 4+ → 15min (permanent cap)
+];
+
+export function getErrorBackoffMs(restartCount: number): number {
+  const idx = Math.min(restartCount, ERROR_BACKOFF_MS.length - 1);
+  return ERROR_BACKOFF_MS[idx];
+}
+
+/**
+ * Check whether an MCA in 'error' state has waited long enough to retry.
+ *
+ * Returns { canRetry, remainingMs } where:
+ * - canRetry = true if the cooldown has elapsed (or errorAt is missing)
+ * - remainingMs = milliseconds until the next retry is allowed (0 if canRetry)
+ */
+export function checkErrorCooldown(
+  existing: Pick<ManagedMca, 'status' | 'restartCount' | 'errorAt'> | undefined,
+  now: Date = new Date(),
+): { canRetry: boolean; remainingMs: number; cooldownMs: number } {
+  if (!existing || existing.status !== 'error') {
+    return { canRetry: true, remainingMs: 0, cooldownMs: 0 };
+  }
+
+  const cooldownMs = getErrorBackoffMs(existing.restartCount ?? 0);
+
+  // No errorAt recorded — allow retry (legacy entries without the field)
+  if (!existing.errorAt) {
+    return { canRetry: true, remainingMs: 0, cooldownMs };
+  }
+
+  const elapsed = now.getTime() - existing.errorAt.getTime();
+  const remainingMs = cooldownMs - elapsed;
+
+  if (remainingMs <= 0) {
+    return { canRetry: true, remainingMs: 0, cooldownMs };
+  }
+
+  return { canRetry: false, remainingMs, cooldownMs };
 }
 
 /**

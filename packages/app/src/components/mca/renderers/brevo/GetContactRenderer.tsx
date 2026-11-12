@@ -25,7 +25,7 @@ export function GetContactRenderer({ status, output, error, appIcon }: ToolCallR
   return (
     <ToolCallCard
       status={status}
-      verb="Get contact"
+      description="Get contact"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

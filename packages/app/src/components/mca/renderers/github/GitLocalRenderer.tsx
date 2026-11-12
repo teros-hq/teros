@@ -26,7 +26,7 @@ import {
   parseOutput,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { GITHUB_PALETTE, GitHubToolShell } from './shared';
+import { GITHUB_PALETTE, GitHubToolShell, actionLabel, noun } from './shared';
 
 // =============================================================================
 // git-status
@@ -109,7 +109,7 @@ export function GitStatusRenderer({ toolName, status, output, error, duration }:
   }
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.branch ?? 'working tree', `${data.totalChanges} cambios`) : actionLabel(toolName, status, 'estado del repo')}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <YStack gap={8}>
@@ -206,7 +206,7 @@ export function GitOperationRenderer({ toolName, status, output, error, duration
   const stagedFiles = data?.stagedFiles ?? [];
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration}>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.branch ?? data.target ?? noun('gitOperation')) : actionLabel(toolName, status, noun('gitOperation'))}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <ResourceCard

@@ -32,6 +32,8 @@ export const listChannels: ToolConfig = {
       limit,
       excludeChannelId: CURRENT_CHANNEL_ID,
       agentId: context.execution.agentId,
+      // Caller channel — lets the backend gate personal history out of a shared context.
+      callerChannelId: context.execution.channelId,
     });
 
     return {

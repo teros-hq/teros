@@ -76,7 +76,7 @@ export function createBlockMyTaskHandler(
     // Clear running flag. Use the return of setRunning so `running: false`
     // is reflected in the response (setRunning is a no-op + returns null if
     // already false — fall back to the moved task).
-    const afterRunning = await boardService.setRunning(taskId, false)
+    const afterRunning = await boardService.setRunning(taskId, false, agentId)
     const updatedTask = afterRunning ?? moved
 
     pubSubService.broadcastToTopic(`board:${updatedTask.boardId}`, { type: 'board_task_updated', task: updatedTask })
@@ -93,6 +93,7 @@ export function createBlockMyTaskHandler(
         toColumnId: blockedColumn.columnId,
         toColumnName: blockedColumn.name,
         columnId: blockedColumn.columnId,
+        actorAgentId: agentId,
       }
       boardSubscriptionService.notifySubscribers(updatedTask.boardId, {
         eventType: 'board.task_moved',

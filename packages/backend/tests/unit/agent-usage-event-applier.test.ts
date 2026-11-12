@@ -311,6 +311,31 @@ describe('AgentUsageEventApplier', () => {
     expect(update.payload.$set.upstreamMessage).toContain('rate limit exceeded')
   })
 
+  // duration-capped bug (2026-10-27): a deadline-killed turn carries
+  // durationCapped=true on session.ended; the projection must persist it so
+  // reporting can exclude watchdog-elapsed durations without the legacy
+  // [1_795_000–1_805_000] range. Mutation: drop the spread in onSessionEnded
+  // → red.
+  it('persists durationCapped=true on session.ended (turn-deadline kill)', async () => {
+    const { applications, sessions, tools, applied } = makeFakes()
+    const applier = new AgentUsageEventApplier(applications, sessions, tools, stubLogger)
+    const ev = sessionEndedEvent(null)
+    ;(ev.payload as SessionEndedPayload).status = 'errored'
+    ;(ev.payload as SessionEndedPayload).errorKind = 'network_error'
+    ;(ev.payload as SessionEndedPayload).durationCapped = true
+    await applier.applyBatch([ev])
+    const update = applied.find((a) => a.collection === 'sessions' && a.op === 'update')!
+    expect(update.payload.$set.durationCapped).toBe(true)
+  })
+
+  it('omits durationCapped from the $set when the event does not carry it', async () => {
+    const { applications, sessions, tools, applied } = makeFakes()
+    const applier = new AgentUsageEventApplier(applications, sessions, tools, stubLogger)
+    await applier.applyBatch([sessionEndedEvent(null)])
+    const update = applied.find((a) => a.collection === 'sessions' && a.op === 'update')!
+    expect('durationCapped' in update.payload.$set).toBe(false)
+  })
+
   it('propagates descendant counters when the child close matches and there is a parent', async () => {
     const { applications, sessions, tools, applied } = makeFakes()
     const applier = new AgentUsageEventApplier(applications, sessions, tools, stubLogger)

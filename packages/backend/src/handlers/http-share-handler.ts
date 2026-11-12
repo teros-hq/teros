@@ -1,26 +1,68 @@
 /**
- * HTTP Share Handler
+ * HTTP Share Handler — PUBLIC serving only
  *
- * Manages public share links for workspace files.
+ * Serves shared files at their public links:
+ *   GET /share/:shareId — serve shared file (public, no auth)
+ * A `todo-io` share (TODOOV-REQ-4) serves a To Do task's current output or
+ * input instead of a volume file.
  *
- * Endpoints:
- *   POST   /api/share            — create a share link (authenticated)
- *   DELETE /api/share/:shareId   — revoke a share link (authenticated)
- *   GET    /share/:shareId       — serve shared file (public, no auth)
+ * This is NOT an API endpoint — it IS the public link itself (a browser or
+ * WhatsApp must be able to open it). All share management (create/get/revoke)
+ * moved to the WebSocket `share` domain (handlers/domains/share) per the
+ * platform's WS-first architecture rule; the old REST /api/share endpoints
+ * were removed 2026-10-21.
+ *
+ * CACHE POLICY (security finding F5, 2026-11-02, review tn_KjOnSKdgygs1xbQu):
+ * /share/:id is a REVOCABLE public link, so its responses are never cached
+ * long. Successful serves: `public, max-age=60` (volume shares — a
+ * revocation reaches any browser within 60s) or `no-store` (todo-io shares,
+ * whose content changes with every delivery). Every 4xx/5xx — including the
+ * 404 a revoked share must answer — carries `no-store`, so no browser or
+ * shared proxy can mask or delay a revocation. The 1-year `immutable` cache
+ * belongs ONLY to /objects/:objectId (capability URL — see
+ * routes/agent-apps-storage-routes.ts). Trade-off accepted: short cache
+ * means each share view re-hits the server; that cost buys real revocation.
+ *
+ * INLINE CONTENT CONTAINMENT (security finding F1, 2026-11-02, same review):
+ * browser-executable share content (volume .html/.svg/.xml/.js files) is
+ * served inline DELIBERATELY (it is the deliverable) — contained by a CSP
+ * `sandbox allow-scripts` + `frame-ancestors` header instead of a download:
+ * opaque origin, scripts run, Teros cookies/storage/same-origin fetch are
+ * unreachable. Every response (any type, any status) carries nosniff. Our
+ * own generated pages (rendered markdown, the 404 page) get nosniff only.
+ * See lib/content-safety.ts (applyInlineSafetyHeaders).
  */
 
 import { readFile } from 'fs/promises';
-import { join } from 'path';
+import { extname, join } from 'path';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Db } from 'mongodb';
-import { marked } from 'marked';
-import type { AuthService } from '../auth/auth-service';
+import { renderMarkdown as renderSharedMarkdown } from '@teros/shared/markdown';
 import type { VolumeService } from '../services/volume-service';
 import type { WorkspaceService } from '../services/workspace-service';
-import type { ShareService } from '../services/share-service';
-import { canAccessWorkspace } from '../auth/workspace-access';
+import type { ShareService, TodoIoShare } from '../services/share-service';
+import { resolveIoShareContent } from './domains/todo-share';
+import { applyInlineSafetyHeaders, buildFrameAncestorsDirective } from '../lib/content-safety';
+import { config as globalConfig } from '../config';
 
 const CONTAINER_MOUNT = '/workspace';
+
+// Extension -> MIME map for serving 'file' shares (FVU).
+const EXT_TO_MIME: Record<string, string> = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif',
+  '.webp': 'image/webp', '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon',
+  '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg', '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac', '.flac': 'audio/flac',
+  '.mp4': 'video/mp4', '.mov': 'video/quicktime', '.webm': 'video/webm', '.mkv': 'video/x-matroska',
+  '.pdf': 'application/pdf', '.json': 'application/json', '.txt': 'text/plain',
+  '.csv': 'text/csv', '.md': 'text/markdown', '.markdown': 'text/markdown',
+  '.html': 'text/html', '.htm': 'text/html', '.xml': 'application/xml', '.js': 'text/javascript',
+  '.zip': 'application/zip', '.gz': 'application/gzip', '.tar': 'application/x-tar',
+};
+
+function extToMime(filePath: string): string {
+  return EXT_TO_MIME[extname(filePath).toLowerCase()] || 'application/octet-stream';
+}
 
 // 404 page for expired or deleted share links
 function notFoundPage(): string {
@@ -169,6 +211,7 @@ function markdownPage(title: string, body: string): string {
     }
     th { background: #f8f9fa; font-weight: 600; }
     hr { border: none; border-top: 1px solid #e2e8f0; margin: 2rem 0; }
+    .md-check { margin-right: 0.35em; }
   </style>
 </head>
 <body>
@@ -179,50 +222,42 @@ function markdownPage(title: string, body: string): string {
 </html>`;
 }
 
+// Markdown → HTML body through the platform policy (@teros/shared/markdown, MD-UNIFY v2):
+// `~` literal (MD-STRIKE-1), raw HTML stripped, unsafe URLs dropped.
+async function renderMarkdown(content: string): Promise<string> {
+  return renderSharedMarkdown(content);
+}
+
 function escapeHtml(str: string): string {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk) => (data += chunk));
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
-  });
-}
-
 export class HttpShareHandler {
+  /**
+   * F1 containment: frame-ancestors directive for inline-served
+   * browser-executable share content (volume .html/.svg/.xml/.js files).
+   * Derived from the CORS allowlist so our own app origins (the FVU embeds,
+   * the app viewer) keep working while third parties cannot embed. See
+   * buildFrameAncestorsDirective for why 'self' alone would break the embeds.
+   */
+  private readonly frameAncestors: string;
+
   constructor(
     private db: Db,
-    private authService: AuthService,
     private volumeService: VolumeService,
     private workspaceService: WorkspaceService | null,
     private shareService: ShareService,
-  ) {}
+    corsAllowedOrigins: readonly string[] = globalConfig.security.corsAllowedOrigins,
+  ) {
+    this.frameAncestors = buildFrameAncestorsDirective(corsAllowedOrigins);
+  }
 
   async handleRoute(req: IncomingMessage, res: ServerResponse, url: string): Promise<boolean> {
     const method = req.method || 'GET';
     const parsedUrl = new URL(url, `http://${req.headers.host}`);
     const pathname = parsedUrl.pathname;
 
-    // POST /api/share — create share (authenticated)
-    if (pathname === '/api/share' && method === 'POST') {
-      return this.handleCreate(req, res);
-    }
-
-    // GET /api/share?filePath=... — get share info for a file (authenticated)
-    if (pathname === '/api/share' && method === 'GET') {
-      return this.handleGetByFilePath(req, res, parsedUrl);
-    }
-
-    // DELETE /api/share/:shareId — revoke share (authenticated)
-    if (pathname.startsWith('/api/share/') && method === 'DELETE') {
-      const shareId = pathname.slice('/api/share/'.length);
-      return this.handleDelete(req, res, shareId);
-    }
-
-    // GET /share/:shareId — serve file (public)
+    // GET /share/:shareId — serve file (public, no auth — this IS the link)
     if (pathname.startsWith('/share/') && method === 'GET') {
       const shareId = pathname.slice('/share/'.length);
       return this.handleServe(req, res, shareId);
@@ -231,127 +266,24 @@ export class HttpShareHandler {
     return false;
   }
 
-  // ── POST /api/share ────────────────────────────────────────────────────────
-
-  private async handleCreate(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
-    const userId = await this.getUserId(req);
-    if (!userId) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
-      return true;
-    }
-
-    let body: { filePath?: string; channelId?: string; fileType?: string };
-    try {
-      body = JSON.parse(await readBody(req));
-    } catch {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid JSON body' }));
-      return true;
-    }
-
-    const { filePath, channelId, fileType } = body;
-
-    if (!filePath || !channelId || !fileType) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing required fields: filePath, channelId, fileType' }));
-      return true;
-    }
-
-    if (fileType !== 'html' && fileType !== 'markdown') {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'fileType must be "html" or "markdown"' }));
-      return true;
-    }
-
-    // Resolve workspaceId from channel
-    const channelsCol = this.db.collection<any>('channels');
-    const channel = await channelsCol.findOne({ channelId });
-    if (!channel) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `Channel not found: ${channelId}` }));
-      return true;
-    }
-
-    const workspaceId: string = channel.workspaceId;
-    if (!workspaceId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Channel has no associated workspace' }));
-      return true;
-    }
-
-    // Workspace is sovereign: only members may share files from its volume. The WS path
-    // (file-share/index.ts → resolveAuthorizedWorkspace) gates this; mirror it here so the
-    // HTTP path the frontend uses cannot exfiltrate another workspace's file by passing a
-    // foreign channelId. TER-551 — the TER-480/#172 fix closed the WS path but missed this one.
-    if (!(await canAccessWorkspace(this.db, userId, workspaceId))) {
-      res.writeHead(403, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'No access to this workspace' }));
-      return true;
-    }
-
-    const { shareId, publicUrl } = await this.shareService.createShare(userId, filePath, workspaceId, fileType as 'html' | 'markdown');
-
-    console.log(`[HttpShareHandler] Created share ${shareId} for user ${userId}, file: ${filePath}`);
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ shareId, publicUrl }));
-    return true;
-  }
-
-  // ── DELETE /api/share/:shareId ─────────────────────────────────────────────
-
-  private async handleDelete(req: IncomingMessage, res: ServerResponse, shareId: string): Promise<boolean> {
-    if (!shareId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing shareId' }));
-      return true;
-    }
-
-    const userId = await this.getUserId(req);
-    if (!userId) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
-      return true;
-    }
-
-    try {
-      await this.shareService.deleteShare(shareId, userId);
-    } catch (err: any) {
-      if (err.message?.includes('not found')) {
-        res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Share not found or not owned by you' }));
-        return true;
-      }
-      if (err.message?.includes('Permission denied')) {
-        res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: err.message }));
-        return true;
-      }
-      throw err;
-    }
-
-    console.log(`[HttpShareHandler] Deleted share ${shareId} by user ${userId}`);
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-    return true;
-  }
-
   // ── GET /share/:shareId ────────────────────────────────────────────────────
 
   private async handleServe(req: IncomingMessage, res: ServerResponse, shareId: string): Promise<boolean> {
     if (!shareId) {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(notFoundPage());
       return true;
     }
 
     const share = await this.shareService.getShare(shareId);
     if (!share) {
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(notFoundPage());
       return true;
+    }
+
+    if (share.source) {
+      return this.serveTodoIo(res, share);
     }
 
     // Resolve host path
@@ -360,7 +292,7 @@ export class HttpShareHandler {
       hostPath = await this.resolveHostPath(share.filePath, share.workspaceId);
     } catch (err: any) {
       console.error('[HttpShareHandler] Path resolution error:', err.message);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(JSON.stringify({ error: 'Could not resolve file path' }));
       return true;
     }
@@ -371,25 +303,61 @@ export class HttpShareHandler {
       content = await readFile(hostPath, 'utf-8');
     } catch (err: any) {
       console.error('[HttpShareHandler] File read error:', err.message, '| path:', hostPath);
-      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
       res.end(notFoundPage());
       return true;
     }
 
+    if (share.fileType === 'file') {
+      // FVU: any other file type - serve with its real mimetype so the
+      // browser renders/downloads it correctly (images inline, PDF viewer,
+      // audio/video players, unknown types as download).
+      // F1 containment: browser-executable types (html/svg/xml/js via
+      // extToMime) get the CSP sandbox + frame-ancestors; every type gets
+      // nosniff. See applyInlineSafetyHeaders.
+      const mime = extToMime(share.filePath);
+      const inlineTypes = /^(text\/|image\/|audio\/|video\/|application\/(pdf|json|xml|javascript))/;
+      const disposition = inlineTypes.test(mime) ? 'inline' : 'attachment';
+      const buf = await readFile(hostPath);
+      const headers = applyInlineSafetyHeaders(
+        {
+          'Content-Type': mime,
+          'Content-Disposition': disposition + '; filename="' + (share.filePath.split('/').pop() ?? 'file') + '"',
+          'Cache-Control': 'public, max-age=60',
+        },
+        mime,
+        this.frameAncestors,
+      );
+      res.writeHead(200, headers);
+      res.end(buf);
+      return true;
+    }
+
     if (share.fileType === 'html') {
-      res.writeHead(200, {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': 'public, max-age=60',
-      });
+      // Raw volume HTML served inline — browser-executable by definition, so
+      // the F1 CSP sandbox always applies (opaque origin: scripts run, Teros
+      // cookies/storage/fetch are unreachable).
+      const headers = applyInlineSafetyHeaders(
+        {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'public, max-age=60',
+        },
+        'text/html',
+        this.frameAncestors,
+      );
+      res.writeHead(200, headers);
       res.end(content);
     } else {
-      // markdown → HTML
-      const htmlBody = await marked(content);
+      // markdown → HTML. Our OWN generated page (markdown is sanitized by
+      // renderMarkdown — raw HTML stripped), not user-executable content:
+      // nosniff only, no CSP sandbox needed.
+      const htmlBody = await renderMarkdown(content);
       const fileName = share.filePath.split('/').pop() ?? 'Document';
       const page = markdownPage(fileName.replace(/\.(md|markdown)$/i, ''), htmlBody);
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Cache-Control': 'public, max-age=60',
+        'X-Content-Type-Options': 'nosniff',
       });
       res.end(page);
     }
@@ -397,55 +365,35 @@ export class HttpShareHandler {
     return true;
   }
 
-  // ── GET /api/share?filePath=...&workspaceId=... ───────────────────────────
-
-  private async handleGetByFilePath(req: IncomingMessage, res: ServerResponse, parsedUrl: URL): Promise<boolean> {
-    const userId = await this.getUserId(req);
-    if (!userId) {
-      res.writeHead(401, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Unauthorized' }));
+  /**
+   * A To Do task's io (TODOOV-REQ-4): the CURRENT io, read at request time
+   * (one node read, scoped to the share's workspace). Markdown → the shared
+   * markdown page titled with the task text; a file → 302 to its object URL;
+   * a form or a missing node/io → the 404 page. Not cached: the next request
+   * after a new delivery serves it.
+   * @spec TODOOV-REQ-4
+   * @spec TODOOV-NFR-1
+   */
+  private async serveTodoIo(res: ServerResponse, share: TodoIoShare): Promise<boolean> {
+    const content = await resolveIoShareContent(this.db, share);
+    if (!content) {
+      res.writeHead(404, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.end(notFoundPage());
       return true;
     }
-
-    const filePath = parsedUrl.searchParams.get('filePath');
-    if (!filePath) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'filePath is required' }));
+    if (content.kind === 'file') {
+      res.writeHead(302, { Location: content.url, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+      res.end();
       return true;
     }
-
-    // workspaceId is optional but recommended: disambiguates the lookup when
-    // the same filePath exists in multiple workspaces owned by the same user.
-    const workspaceId = parsedUrl.searchParams.get('workspaceId') ?? undefined;
-
-    const doc = await this.shareService.getShareByFile(userId, filePath, workspaceId);
-    if (!doc) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Not shared' }));
-      return true;
-    }
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ shareId: doc.shareId, filePath: doc.filePath, createdAt: doc.createdAt }));
+    const page = markdownPage(content.title, await renderMarkdown(content.markdown));
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.end(page);
     return true;
-  }
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-
-  private async getUserId(req: IncomingMessage): Promise<string | null> {
-    const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
-      const result = await this.authService.validateSession(token);
-      return result.success ? (result.user?.userId ?? null) : null;
-    }
-    const parsed = new URL(req.url || '', `http://${req.headers.host}`);
-    const queryToken = parsed.searchParams.get('token');
-    if (queryToken) {
-      const result = await this.authService.validateSession(queryToken);
-      return result.success ? (result.user?.userId ?? null) : null;
-    }
-    return null;
   }
 
   /**

@@ -9,26 +9,21 @@
  *   logoLayer — centered logo + title; logo opacity stays 1 throughout exit
  *               so WelcomeStep logo can take over seamlessly
  *
- * Sequence:
- *   0ms         Logo at (posX:150, posY:-100), scale 0.2, opacity 0
- *   0-520ms     opacity 0→1 (slow reveal)
- *   0-1100ms    posX 150→0 (quad), posY -100→0 (cubic), scale 0.2→1
- *   1100-1500ms title fades in
- *   1500-3500ms hold title for 2s
- *   3500-3850ms title fades out
- *   3850-4310ms logo shake + circular sweep (top-right to bottom-left)
- *   4310-5050ms curved shooting-star exit to WelcomeStep handoff position
- *               while scaling logo down to final size
- *   ~5050ms     onDone()
+ * Sequence (ONB-REQ-11: at most 1 500 ms, ends on any click, tap or key):
+ *   0-500ms     logo shoots in: opacity 0→1, (150,-100)→(0,0), scale 0.2→1
+ *   500-700ms   title fades in
+ *   700-900ms   hold
+ *   900-1400ms  title out, logo glides to the WelcomeStep handoff position,
+ *               background fades
+ *   1400ms      onDone()
  */
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { Animated, Easing, StyleSheet, View } from "react-native"
-import { Text } from "tamagui"
+import { Animated, Easing, Platform, Pressable, StyleSheet, View } from "react-native"
 import { TerosLogo } from "../TerosLogo"
-import { colors as semanticColors } from "../mca/primitives/colors"
 import { useColors } from "../mca/primitives/useColors"
+import { T } from "../ui/ds"
 
 const LOGO_SIZE = 120
 
@@ -56,44 +51,34 @@ function timed(
 
 // ── Animation sequence ─────────────────────────────────────────────────────────
 
-function runAnim(v: Vals, exitPosY: number, onDone: () => void) {
+/** Phase durations (ms). Their sum is the splash length — ONB-REQ-11 caps it at 1 500. */
+export const SPLASH_PHASES = { shoot: 500, titleIn: 200, hold: 200, exit: 500 } as const
+export const SPLASH_DURATION_MS =
+  SPLASH_PHASES.shoot + SPLASH_PHASES.titleIn + SPLASH_PHASES.hold + SPLASH_PHASES.exit
+
+function runAnim(v: Vals, exitPosY: number, onDone: () => void): Animated.CompositeAnimation {
+  const P = SPLASH_PHASES
   const shoot = Animated.parallel([
-    timed(v.logoOpacity, 1, 520, { easing: Easing.out(Easing.cubic) }),
-    timed(v.posX, 0, 980, { easing: Easing.out(Easing.quad) }),
-    timed(v.posY, 0, 1100, { easing: Easing.out(Easing.cubic) }),
-    timed(v.logoScale, 1, 1050, { easing: Easing.out(Easing.back(1.25)) }),
+    timed(v.logoOpacity, 1, 300, { easing: Easing.out(Easing.cubic) }),
+    timed(v.posX, 0, P.shoot, { easing: Easing.out(Easing.quad) }),
+    timed(v.posY, 0, P.shoot, { easing: Easing.out(Easing.cubic) }),
+    timed(v.logoScale, 1, P.shoot, { easing: Easing.out(Easing.back(1.25)) }),
   ])
-
-  const titleInHoldOut = Animated.sequence([
-    timed(v.titleOpacity, 1, 400, { easing: Easing.out(Easing.cubic) }),
-    Animated.delay(2000),
-    timed(v.titleOpacity, 0, 350, { easing: Easing.in(Easing.cubic) }),
+  const title = Animated.sequence([
+    timed(v.titleOpacity, 1, P.titleIn, { easing: Easing.out(Easing.cubic) }),
+    Animated.delay(P.hold),
   ])
-
-  const shakeAndSweep = Animated.sequence([
-    Animated.parallel([
-      timed(v.posX, 34, 220, { easing: Easing.inOut(Easing.sin) }),
-      timed(v.posY, -26, 220, { easing: Easing.inOut(Easing.sin) }),
-    ]),
+  const exit = Animated.parallel([
+    timed(v.titleOpacity, 0, 200, { easing: Easing.in(Easing.cubic) }),
+    timed(v.logoScale, 0.667, P.exit, { easing: Easing.out(Easing.cubic) }),
+    timed(v.posY, exitPosY, P.exit, { easing: Easing.out(Easing.cubic) }),
+    timed(v.bgOpacity, 0, P.exit, { easing: Easing.out(Easing.quad) }),
   ])
-
-  const exit = Animated.sequence([
-    Animated.parallel([
-      timed(v.posX, -30, 220, { easing: Easing.inOut(Easing.sin) }),
-      timed(v.posY, 28, 220, { easing: Easing.inOut(Easing.sin) }),
-      timed(v.logoScale, 0.92, 220, { easing: Easing.inOut(Easing.sin) }),
-    ]),
-    Animated.parallel([
-      timed(v.logoScale, 0.667, 520, { easing: Easing.out(Easing.cubic) }),
-      timed(v.posX, 0, 520, { easing: Easing.out(Easing.quad) }),
-      timed(v.posY, exitPosY, 520, { easing: Easing.out(Easing.cubic) }),
-      timed(v.bgOpacity, 0, 740, { easing: Easing.out(Easing.quad) }),
-    ]),
-  ])
-
-  Animated.sequence([shoot, titleInHoldOut, shakeAndSweep, exit]).start(({ finished }) => {
+  const anim = Animated.sequence([shoot, title, exit])
+  anim.start(({ finished }) => {
     if (finished) onDone()
   })
+  return anim
 }
 
 // ── Content ────────────────────────────────────────────────────────────────────
@@ -118,7 +103,7 @@ function SplashContent({ logoScale, logoOpacity, posX, posY, titleOpacity }: Con
           transform: [{ scale: logoScale }, { translateX: posX }, { translateY: posY }],
         }}
       >
-        <TerosLogo size={LOGO_SIZE} color={semanticColors.indigo} animated />
+        <TerosLogo size={LOGO_SIZE} color={c.accent} animated />
       </Animated.View>
 
       <Animated.View
@@ -129,18 +114,12 @@ function SplashContent({ logoScale, logoOpacity, posX, posY, titleOpacity }: Con
           paddingHorizontal: 24,
         }}
       >
-        <Text
-          fontSize={28}
-          fontWeight="800"
-          color={c.text}
-          textAlign="center"
-          letterSpacing={-0.5}
-        >
-          {t('onboarding.welcomeTitle')}
-        </Text>
-        <Text fontSize={15} color={c.text2} textAlign="center" marginTop={8} lineHeight={22}>
-          {t('onboarding.welcomeSubtitle')}
-        </Text>
+        <T step="2xl" center>
+          {t("onboarding.welcomeTitle")}
+        </T>
+        <T step="base" tone="text2" center style={{ marginTop: 8 }}>
+          {t("onboarding.welcomeSubtitle")}
+        </T>
       </Animated.View>
     </View>
   )
@@ -162,15 +141,30 @@ export function WelcomeSplash({ onDone, exitPosY }: WelcomeSplashProps) {
   const posY = useRef(new Animated.Value(-100)).current
   const titleOpacity = useRef(new Animated.Value(0)).current
 
+  // ONB-REQ-11: any click, tap or key ends the splash at once (onDone fires once).
+  const finished = useRef(false)
+  const animRef = useRef<Animated.CompositeAnimation | null>(null)
+  const finish = useCallback(() => {
+    if (finished.current) return
+    finished.current = true
+    animRef.current?.stop()
+    onDone()
+  }, [onDone])
+
   useEffect(() => {
     const vals = { bgOpacity, logoScale, logoOpacity, posX, posY, titleOpacity }
-    runAnim(vals, exitPosY, onDone)
-  }, [bgOpacity, logoScale, logoOpacity, posX, posY, titleOpacity, exitPosY, onDone])
+    animRef.current = runAnim(vals, exitPosY, finish)
+    if (Platform.OS !== "web" || typeof window === "undefined") return
+    window.addEventListener("keydown", finish)
+    return () => window.removeEventListener("keydown", finish)
+  }, [bgOpacity, logoScale, logoOpacity, posX, posY, titleOpacity, exitPosY, finish])
 
   return (
-    <View style={styles.container}>
+    <Pressable style={styles.container} onPress={finish} accessibilityRole="button" testID="welcome-splash">
       {/* Background — fades independently of the logo */}
-      <Animated.View style={[StyleSheet.absoluteFillObject, styles.bg, { opacity: bgOpacity }]} />
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: c.bgFrame, opacity: bgOpacity }]}
+      />
 
       {/* Logo + title — logo opacity stays 1 during exit */}
       <SplashContent
@@ -180,7 +174,7 @@ export function WelcomeSplash({ onDone, exitPosY }: WelcomeSplashProps) {
         posY={posY}
         titleOpacity={titleOpacity}
       />
-    </View>
+    </Pressable>
   )
 }
 
@@ -188,9 +182,6 @@ const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 50,
-  },
-  bg: {
-    backgroundColor: "#000000",
   },
   contentWrapper: {
     flex: 1,

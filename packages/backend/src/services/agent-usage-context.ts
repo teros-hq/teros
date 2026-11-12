@@ -6,7 +6,7 @@
  * a sub-turn via delegation, the child `processAgentResponse` reads the
  * parent's id automatically via `usageContext.getStore()?.sessionUsageId`.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §5 — Propagación de parentSessionUsageId
  *
  * Fail-safe: if no parent has called `run()`, getStore() returns undefined and
  * `parentSessionUsageId` is null (legitimate top-level turn).

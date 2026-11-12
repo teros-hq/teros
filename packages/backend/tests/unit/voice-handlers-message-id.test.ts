@@ -15,7 +15,8 @@
  *
  *  3. `retryTranscription` — same propagation: when retry succeeds, call
  *     `processAgentResponse(_, _, _, messageId)` with the retried message's
- *     id (fix `f92f711e`).
+ *     id (fix `f92f711e`). It must also refuse a caller without access to the
+ *     channel, and a messageId from another channel, before transcribing.
  *
  * Strategy: invoke the private methods through
  * `(MessageHandler.prototype as any).METHOD.call(stub, ...)` with a minimal
@@ -254,8 +255,12 @@ describe('voice handlers propagate messageId', () => {
     let getMessage: ReturnType<typeof mock>
     let getChannel: ReturnType<typeof mock>
     let broadcastToChannel: ReturnType<typeof mock>
+    let canAccessChannel: ReturnType<typeof mock>
 
-    function makeStub(transcription: string) {
+    function makeStub(
+      transcription: string,
+      opts: { canAccess?: boolean; messageChannelId?: string } = {},
+    ) {
       processAgentResponse = mock(
         async (_channelId: string, _agentId: string, _text: string, _messageId: string) => {},
       )
@@ -263,6 +268,7 @@ describe('voice handlers propagate messageId', () => {
       updateMessageContent = mock(async (_msgId: string, _content: any) => {})
       const originalMessage = {
         id: MESSAGE_ID,
+        channelId: opts.messageChannelId ?? CHANNEL_ID,
         content: {
           type: 'voice',
           url: '/uploads/u/audio.wav',
@@ -280,6 +286,7 @@ describe('voice handlers propagate messageId', () => {
       })
       getChannel = mock(async (_cid: string) => ({ id: CHANNEL_ID, agentId: AGENT_ID }))
       broadcastToChannel = mock((_cid: string, _event: any) => {})
+      canAccessChannel = mock(async (_cid: string, _uid: string) => opts.canAccess ?? true)
 
       return {
         transcribeAudioFile,
@@ -289,6 +296,7 @@ describe('voice handlers propagate messageId', () => {
           getMessage,
           getChannel,
           updateMessageContent,
+          canAccessChannel,
         },
       }
     }
@@ -315,6 +323,30 @@ describe('voice handlers propagate messageId', () => {
       expect(call[1]).toBe(AGENT_ID)
       expect(call[2]).toBe('reintento ok')
       expect(call[3]).toBe(MESSAGE_ID) // ← propagation
+    })
+
+    it('caller without access to the channel → rejected before transcribing', async () => {
+      const stub = makeStub('ajeno', { canAccess: false })
+
+      await expect(callRetry(stub)).rejects.toThrow('Access denied')
+
+      expect(canAccessChannel).toHaveBeenCalledWith(CHANNEL_ID, USER_ID)
+      expect(transcribeAudioFile).not.toHaveBeenCalled()
+      expect(updateMessageContent).not.toHaveBeenCalled()
+      expect(processAgentResponse).not.toHaveBeenCalled()
+      expect(broadcastToChannel).not.toHaveBeenCalled()
+    })
+
+    it("messageId from another channel → rejected (no cross-channel transcription)", async () => {
+      // The caller owns CHANNEL_ID but the voice message lives in someone else's channel.
+      const stub = makeStub('ajeno', { messageChannelId: 'ch_victim' })
+
+      await expect(callRetry(stub)).rejects.toThrow('Message not found')
+
+      expect(transcribeAudioFile).not.toHaveBeenCalled()
+      expect(updateMessageContent).not.toHaveBeenCalled()
+      expect(processAgentResponse).not.toHaveBeenCalled()
+      expect(broadcastToChannel).not.toHaveBeenCalled()
     })
   })
 })

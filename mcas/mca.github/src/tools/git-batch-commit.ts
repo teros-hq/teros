@@ -4,6 +4,7 @@ import { dirname, resolve } from 'path';
 
 import { assertIsRepo, parseGitStatusPorcelain, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 type ChangeAction = 'create' | 'update' | 'delete' | 'rename';
 
@@ -33,7 +34,7 @@ interface BatchChange {
  * between leaves the working tree as it was at the crash; the next
  * `git-status` will show this clearly.
  */
-export const gitBatchCommit: ToolConfig = {
+export const gitBatchCommit: ToolConfig = lockedGitTool('git-batch-commit', {
   annotations: { readOnlyHint: false },
   description:
     'Apply multiple file changes (create/update/delete/rename) and create ONE atomic commit. Use this for refactors and any multi-file change where the intermediate states should not be visible in git history.',
@@ -107,8 +108,8 @@ export const gitBatchCommit: ToolConfig = {
     }
 
     // Snapshot index/HEAD so we can recover on failure.
-    const preHead = runGit(repoPath, ['rev-parse', 'HEAD']).stdout.trim();
-    const preStatus = runGit(repoPath, ['status', '--porcelain=v2', '--branch']);
+    const preHead = (await runGit(repoPath, ['rev-parse', 'HEAD'])).stdout.trim();
+    const preStatus = await runGit(repoPath, ['status', '--porcelain=v2', '--branch']);
     if (preStatus.code !== 0) throwClassifiedGitError(preStatus);
     const preParsed = parseGitStatusPorcelain(preStatus.stdout);
     if (preParsed.totalChanges > 0) {
@@ -134,16 +135,16 @@ export const gitBatchCommit: ToolConfig = {
             } else {
               writeFileSync(absPath, c.content as string, 'utf-8');
             }
-            const r = runGit(repoPath, ['add', '--', c.path]);
+            const r = await runGit(repoPath, ['add', '--', c.path]);
             if (r.code !== 0) throwClassifiedGitError(r);
             break;
           }
           case 'delete': {
             // Use `git rm --cached -f` followed by fs unlink if file still
             // exists. This handles both tracked + untracked cases gracefully.
-            const tracked = runGit(repoPath, ['ls-files', '--error-unmatch', '--', c.path]);
+            const tracked = await runGit(repoPath, ['ls-files', '--error-unmatch', '--', c.path]);
             if (tracked.code === 0) {
-              const r = runGit(repoPath, ['rm', '-f', '--', c.path]);
+              const r = await runGit(repoPath, ['rm', '-f', '--', c.path]);
               if (r.code !== 0) throwClassifiedGitError(r);
             } else if (existsSync(absPath)) {
               unlinkSync(absPath);
@@ -153,7 +154,7 @@ export const gitBatchCommit: ToolConfig = {
             break;
           }
           case 'rename': {
-            const r = runGit(repoPath, ['mv', '-f', c.fromPath as string, c.path]);
+            const r = await runGit(repoPath, ['mv', '-f', c.fromPath as string, c.path]);
             if (r.code !== 0) throwClassifiedGitError(r);
             break;
           }
@@ -168,14 +169,14 @@ export const gitBatchCommit: ToolConfig = {
       if (a.author?.name && a.author?.email) {
         flags.unshift(`--author=${a.author.name} <${a.author.email}>`);
       }
-      const commitResult = runGit(repoPath, ['commit', ...flags]);
+      const commitResult = await runGit(repoPath, ['commit', ...flags]);
       if (commitResult.code !== 0) {
         rollbackNeeded = true;
         throwClassifiedGitError(commitResult);
       }
 
-      const shaResult = runGit(repoPath, ['rev-parse', 'HEAD']);
-      const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+      const shaResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
+      const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
       return {
         repoPath,
@@ -191,8 +192,8 @@ export const gitBatchCommit: ToolConfig = {
       // back; surface that to the caller.
       rollbackNeeded = true;
       if (preHead) {
-        runGit(repoPath, ['reset', '--hard', preHead]);
-        runGit(repoPath, ['clean', '-fd']);
+        await runGit(repoPath, ['reset', '--hard', preHead]);
+        await runGit(repoPath, ['clean', '-fd']);
       }
       throw err;
     } finally {
@@ -203,4 +204,4 @@ export const gitBatchCommit: ToolConfig = {
       }
     }
   },
-};
+});

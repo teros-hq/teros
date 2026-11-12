@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.holded",
   "name": "Holded",
-  "version": "1.0.0",
-  "description": "Holded integration for demo - manage contacts and invoices via Holded REST API v1 with API key authentication",
+  "version": "2.0.0",
+  "description": "Full Holded ERP integration \u2014 manage contacts, CRM leads, invoices, estimates, proformas, credit notes, recurring invoices, products, inventory, accounting, payments, treasury, banking, projects, tasks, team/HR, calendar events, inbox documents, and developer tools via Holded REST API v2 with Bearer token authentication",
   "type": "integration",
   "icon": "icon.png",
   "category": "other",
@@ -32,7 +32,15 @@
     "contacts",
     "invoices",
     "crm",
-    "accounting"
+    "accounting",
+    "treasury",
+    "banking",
+    "projects",
+    "hr",
+    "calendar",
+    "inventory",
+    "products",
+    "payments"
   ],
   "layers": {
     "tools": true,
@@ -49,9 +57,14 @@
   },
   "changelog": [
     {
+      "version": "2.0.0",
+      "date": "2026-09-21",
+      "notes": "Full API v2 integration \u2014 94 tools covering all major Holded modules: CRM (contacts, contact groups, leads, funnels, tags), Invoicing (invoices, estimates, proformas, credit notes, recurring invoices, sales receipts, services, sales channels, numbering series), Products & Inventory (products, warehouses, price lists), Accounting (chart of accounts, ledger entries, expenses accounts, payments, purchases, taxes), Treasury (banking accounts, movements, payment methods, remittances), Projects (projects, tasks, time entries, summaries), Team & HR (employees, time tracking, payslips, time-off requests), Calendar (events), Inbox (documents), and Developer tools (API usage, webhooks). Includes full CRUD operations where supported by the API."
+    },
+    {
       "version": "1.0.0",
       "date": "2026-05-07",
-      "notes": "Initial release — browse and look up your Holded clients, suppliers and leads, and review invoices with statuses and totals"
+      "notes": "Initial release \u2014 browse and look up your Holded clients, suppliers and leads, and review invoices with statuses and totals"
     }
   ]
 }

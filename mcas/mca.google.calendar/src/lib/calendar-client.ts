@@ -3,6 +3,12 @@
  *
  * Manages OAuth2 authentication and exposes the v3 Calendar client.
  * Tokens are fetched on-demand from backend via context.getSystemSecrets/getUserSecrets.
+ *
+ * TER-388: the backend is the only owner of the refresh_token and serves a
+ * fresh access_token from `GET /secrets/user` (lazy refresh, rotation-safe).
+ * The container authenticates with that access_token only and never refreshes
+ * on its own: doing so would reintroduce the double-owner antipattern that
+ * invalidated Google's refresh_token when it rotated.
  */
 
 import type { OAuth2Client } from "google-auth-library"
@@ -23,9 +29,7 @@ export interface CalendarSecrets {
   CLIENT_SECRET?: string
   REDIRECT_URIS?: string
   ACCESS_TOKEN?: string
-  REFRESH_TOKEN?: string
   EMAIL?: string
-  EXPIRY_DATE?: string
 }
 
 export interface CalendarSession {
@@ -47,42 +51,35 @@ export interface CalendarSession {
 let cachedSession: CalendarSession | null = null
 let cachedAccessToken: string | null = null
 
-/**
- * Get an authenticated Google Calendar client.
- * Caches the session by access token; refreshes when expired.
- */
-export async function getCalendarSession(context: SecretsContext): Promise<CalendarSession> {
+async function fetchSecrets(context: SecretsContext): Promise<CalendarSecrets> {
   const systemSecrets = (await context.getSystemSecrets()) as CalendarSecrets
   const userSecrets = (await context.getUserSecrets()) as CalendarSecrets
-  const secrets = { ...systemSecrets, ...userSecrets }
+  return { ...systemSecrets, ...userSecrets }
+}
 
+function requireAccessToken(secrets: CalendarSecrets): string {
   if (!secrets.CLIENT_ID || !secrets.CLIENT_SECRET) {
     throw new Error(
       "Google OAuth credentials not configured. Missing CLIENT_ID or CLIENT_SECRET in system secrets.",
     )
   }
-  if (!secrets.ACCESS_TOKEN || !secrets.REFRESH_TOKEN) {
+  if (!secrets.ACCESS_TOKEN) {
     throw new Error("Google account not connected. Please connect your Google account.")
   }
+  return secrets.ACCESS_TOKEN
+}
 
-  if (cachedSession && cachedAccessToken === secrets.ACCESS_TOKEN) {
-    return cachedSession
-  }
-
+function buildCalendarSession(secrets: CalendarSecrets, accessToken: string): CalendarSession {
   const redirectUri = parseRedirectUri(secrets.REDIRECT_URIS)
-  const oauth2Client = new google.auth.OAuth2(secrets.CLIENT_ID, secrets.CLIENT_SECRET, redirectUri)
-  const expiryDate = secrets.EXPIRY_DATE ? Number.parseInt(secrets.EXPIRY_DATE, 10) : undefined
-  oauth2Client.setCredentials({
-    access_token: secrets.ACCESS_TOKEN,
-    refresh_token: secrets.REFRESH_TOKEN,
-    expiry_date: expiryDate,
-  })
+  const oauth2Client = new google.auth.OAuth2(
+    secrets.CLIENT_ID,
+    secrets.CLIENT_SECRET,
+    redirectUri,
+  )
 
-  const needsRefresh = expiryDate !== undefined && expiryDate < Date.now() + 60_000
-  if (needsRefresh) {
-    const { credentials } = await oauth2Client.refreshAccessToken()
-    oauth2Client.setCredentials(credentials)
-  }
+  // Only the access_token is set: googleapis will not auto-refresh, and a 401
+  // means "ask the backend for a fresh token".
+  oauth2Client.setCredentials({ access_token: accessToken })
 
   const calendar = google.calendar({ version: "v3", auth: oauth2Client })
   const email = secrets.EMAIL ?? "unknown@gmail.com"
@@ -99,15 +96,85 @@ export async function getCalendarSession(context: SecretsContext): Promise<Calen
     return userTimeZone
   }
 
-  cachedSession = {
+  return {
     calendar,
     oauth2Client,
     email,
     displayName: deriveDisplayName(secrets.EMAIL),
     getUserTimeZone,
   }
-  cachedAccessToken = secrets.ACCESS_TOKEN
+}
+
+/**
+ * Get an authenticated Google Calendar client.
+ * Caches the session by access token; a changed token rebuilds the session.
+ */
+export async function getCalendarSession(context: SecretsContext): Promise<CalendarSession> {
+  const secrets = await fetchSecrets(context)
+  const accessToken = requireAccessToken(secrets)
+
+  if (cachedSession && cachedAccessToken === accessToken) {
+    return cachedSession
+  }
+
+  cachedSession = buildCalendarSession(secrets, accessToken)
+  cachedAccessToken = accessToken
   return cachedSession
+}
+
+/**
+ * Re-fetch the user's access token from the backend and apply it to the
+ * cached session. Callers hold a reference to `session.calendar`, so updating
+ * the existing OAuth2Client in place keeps that reference valid.
+ */
+export async function refreshCalendarSession(context: SecretsContext): Promise<CalendarSession> {
+  const secrets = await fetchSecrets(context)
+  const accessToken = requireAccessToken(secrets)
+
+  if (cachedSession) {
+    cachedSession.oauth2Client.setCredentials({ access_token: accessToken })
+    cachedAccessToken = accessToken
+    return cachedSession
+  }
+
+  cachedSession = buildCalendarSession(secrets, accessToken)
+  cachedAccessToken = accessToken
+  return cachedSession
+}
+
+/**
+ * Detect a 401 from googleapis (gaxios shapes differ by version).
+ */
+export function isAuthError(error: any): boolean {
+  return (
+    error?.code === 401 ||
+    error?.status === 401 ||
+    error?.response?.status === 401 ||
+    error?.message?.includes("401") ||
+    error?.message?.toLowerCase().includes("invalid credentials")
+  )
+}
+
+/**
+ * Wrapper that handles 401 errors: re-fetch secrets once from the backend and
+ * retry. Never refreshes the token in the container (TER-388).
+ */
+export async function withAuthRetry<T>(
+  context: SecretsContext,
+  operation: () => Promise<T>,
+  operationName: string,
+): Promise<T> {
+  try {
+    return await operation()
+  } catch (error: any) {
+    if (!isAuthError(error)) {
+      throw error
+    }
+
+    console.error(`[GoogleCalendar] 401 error in ${operationName}, re-fetching credentials...`)
+    await refreshCalendarSession(context)
+    return await operation()
+  }
 }
 
 /**

@@ -1,0 +1,63 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.microsoft.excel",
+  "name": "Excel",
+  "version": "1.0.0",
+  "description": "Microsoft Excel workbook automation — read and write ranges, formulas, tables, and charts via the Microsoft Graph workbook API",
+  "type": "integration",
+  "icon": "icon.png",
+  "category": "microsoft",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros Team",
+    "email": "team@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": true,
+    "system": false,
+    "hidden": false,
+    "role": "user"
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "oauth2",
+      "provider": "microsoft",
+      "systemSecrets": ["CLIENT_ID", "CLIENT_SECRET", "REDIRECT_URIS"],
+      "userSecrets": ["ACCESS_TOKEN", "REFRESH_TOKEN", "EMAIL", "EXPIRY_DATE"],
+      "authorizeUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "scopes": [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "User.Read",
+        "Files.Read",
+        "Files.ReadWrite",
+        "Files.Read.All",
+        "Files.ReadWrite.All"
+      ],
+      "pkce": false
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": ["excel", "spreadsheet", "microsoft", "workbook", "xlsx", "office365", "formulas"],
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-09-15",
+      "notes": "Initial release — read and write Excel ranges, formulas, tables, and charts via Microsoft Graph"
+    }
+  ]
+}

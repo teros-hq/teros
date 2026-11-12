@@ -1,11 +1,11 @@
 import type { ToolConfig } from '@teros/mca-sdk';
 import { getWsClient } from '../lib';
 import { TASK_FIELDS } from './_fields';
-import { assertBackendConnected, resolveFields, withTimeout } from './utils';
+import { assertBackendConnected, normalizeTags, resolveFields, withTimeout } from './utils';
 
 export const createTask: ToolConfig = {
   description:
-    'Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. Providing `instructions` is encouraged — it gives the assigned agent the context and steps needed to work autonomously.',
+    'Create a task on a project board. Defaults to Backlog column. Returns: { task: { taskId, title, columnId, priority, tags, assignedAgentId } }. Use batch-create-tasks to create many atomically. `instructions` is required — it gives the assigned agent the context and steps needed to work autonomously.',
   annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
@@ -29,14 +29,21 @@ export const createTask: ToolConfig = {
       parentTaskId: { type: 'string', description: 'Parent task (for sub-tasks)' },
       includeRaw: { type: 'boolean', description: 'Return full task document' },
     },
-    required: ['projectId', 'title'],
+    required: ['projectId', 'title', 'instructions'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     const title = args?.title as string;
     if (!projectId || !title) throw new Error('projectId and title are required');
+    const instructions = args?.instructions as string;
+    if (!instructions || instructions.trim().length === 0) {
+      throw new Error('instructions is required — provide detailed task instructions so the assigned agent can work autonomously');
+    }
+
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withTimeout(
       wsClient.queryConversations<any>('create_task', {
@@ -45,10 +52,11 @@ export const createTask: ToolConfig = {
         description: args?.description,
         instructions: args?.instructions,
         priority: args?.priority,
-        tags: args?.tags,
+        tags: normalizeTags(args?.tags),
         assignedAgentId: args?.assignedAgentId,
         columnId: args?.columnId,
         parentTaskId: args?.parentTaskId,
+        callerAgentId,
       }),
       15_000,
       'create_task',

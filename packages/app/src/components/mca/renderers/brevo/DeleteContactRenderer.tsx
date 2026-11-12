@@ -22,7 +22,7 @@ export function DeleteContactRenderer({ input, status, output, error, appIcon }:
   return (
     <ToolCallCard
       status={status}
-      verb="Delete contact"
+      description="Delete contact"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

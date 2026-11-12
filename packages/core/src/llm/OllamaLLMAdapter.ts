@@ -230,7 +230,7 @@ export class OllamaLLMAdapter implements ILLMClient {
         outputTokens: totalOutputTokens,
       };
 
-      log.info('OllamaLLM', 'Response complete', {
+      log.debug('OllamaLLM', 'Response complete', {
         stopReason,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,

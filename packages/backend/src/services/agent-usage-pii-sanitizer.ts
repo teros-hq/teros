@@ -20,7 +20,7 @@
  * NOT covered: prompt content, free-form names, internal IDs. These would
  * require structured stripping at the source, out of scope for this layer.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §Decisión #16, §Apéndice
  */
 
 const MAX_LEN = 1000

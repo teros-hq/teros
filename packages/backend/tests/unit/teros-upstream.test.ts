@@ -1,126 +1,136 @@
 /**
- * Tests for resolveTerosUpstream (TER-617 / F3).
+ * Tests for the Teros upstream resolver (TPROV-REQ-5/6/7).
  *
- * Two invariants pinned here:
- *  - ZDR guard (safety-critical): Together is NEVER a failover target unless its
- *    retention tier is 'zdr'. Today it's 'retains' → blocked by default.
- *  - R2/M1: the PRIMARY Fireworks path never returns null for an unmapped model
- *    (it falls back to the catalogue modelString); only failover needs the map.
+ * Pinned here:
+ *  - a size resolves to the config's upstream + catalogue model + the system
+ *    secret of that upstream; a missing secret, an unknown model string or a
+ *    non-ZDR upstream resolve to null (no silent fallback);
+ *  - failover moves within the family on the failover upstream, never across;
+ *  - vision routing only exists for a model that cannot see, on the same upstream.
+ *
+ * @spec TPROV-REQ-5, TPROV-REQ-6, TPROV-REQ-7
  */
 
 import { describe, expect, it } from "bun:test"
 import type { RetentionTier } from "@teros/shared"
-import { MODELS_TEROS, TEROS_UPSTREAM_MODELS } from "../../src/models/providers/teros"
-import { resolveTerosUpstream } from "../../src/services/teros-upstream"
+import {
+  DEFAULT_TEROS_SIZES,
+  TEROS_SIZES,
+  TEROS_UPSTREAM_CATALOG,
+  sameRouteOnBothLanes as both,
+  type TerosSizesConfig,
+  validateTerosSizesConfig,
+} from "../../src/models/providers/teros"
+import {
+  resolveTerosFailoverRoute,
+  resolveTerosRoute,
+  resolveTerosVisionRoute,
+  terosUpstreamStatus,
+  type TerosSecrets,
+} from "../../src/services/teros-upstream"
 
-type FakeSecrets = Parameters<typeof resolveTerosUpstream>[2]
-
-function secretsOf(map: Record<string, { apiKey: string } | undefined>): FakeSecrets {
-  return { system: ((name: string) => map[name]) as FakeSecrets["system"] }
+function secretsOf(map: Record<string, { apiKey: string } | undefined>): TerosSecrets {
+  return { system: ((name: string) => map[name]) as TerosSecrets["system"] }
 }
 
-const ALL_SECRETS = secretsOf({ fireworks: { apiKey: "fw-key" }, together: { apiKey: "tg-key" } })
+const ALL = secretsOf({ fireworks: { apiKey: "fw" }, together: { apiKey: "tg" }, helmcode: { apiKey: "hc" } })
 const zdr = () => ({ tier: "zdr" as RetentionTier })
-const retains = () => ({ tier: "retains" as RetentionTier })
+const retainsTogether = (p: string) => ({ tier: (p === "together" ? "retains" : "zdr") as RetentionTier })
 
-// Catalogue models as `{ modelId, modelString }` — modelString = Fireworks default.
-const K26 = { modelId: "teros-kimi-k2.6", modelString: "accounts/fireworks/models/kimi-k2p6" }
-const K27 = { modelId: "teros-kimi-k2p7-code", modelString: "accounts/fireworks/models/kimi-k2p7-code" }
-const UNMAPPED = { modelId: "teros-future-model", modelString: "accounts/fireworks/models/future" }
+const HELMCODE: TerosSizesConfig = {
+  sizes: {
+    l: both({ upstream: "helmcode", modelString: "glm5.3", reasoningEffort: "high" }),
+    m: both({ upstream: "helmcode", modelString: "glm5.3-flash", reasoningEffort: "medium" }),
+    s: both({ upstream: "helmcode", modelString: "deepseek-v4-flash", reasoningEffort: "none" }),
+  },
+  failover: { mode: "on-error", upstream: "fireworks" },
+}
 
-describe("resolveTerosUpstream — fireworks (primary)", () => {
-  it("resolves Fireworks baseUrl + key + the mapped modelString for a mapped model", () => {
-    expect(resolveTerosUpstream("fireworks", K26, ALL_SECRETS)).toEqual({
+describe("[TPROV-AC-2] resolveTerosRoute", () => {
+  it("[TPROV-AC-2] the default config resolves L to Fireworks GLM-5.3 high with the fireworks secret", () => {
+    expect(resolveTerosRoute({ size: "l", lane: "interactive", config: DEFAULT_TEROS_SIZES, secrets: ALL, retentionResolver: zdr })).toEqual({
+      size: "l",
+      lane: "interactive",
       upstream: "fireworks",
       baseUrl: "https://api.fireworks.ai/inference/v1",
-      apiKey: "fw-key",
-      modelString: "accounts/fireworks/models/kimi-k2p6",
+      apiKey: "fw",
+      modelString: "accounts/fireworks/models/glm-5p3",
+      reasoningEffort: "high",
+      family: "glm-5.3",
+      vision: false,
       actualProvider: "fireworks",
     })
   })
+  it("[TPROV-AC-2] a config on Helmcode resolves to the Helmcode base URL, model and secret", () => {
+    const r = resolveTerosRoute({ size: "l", lane: "interactive", config: HELMCODE, secrets: ALL, retentionResolver: zdr })
+    expect(r).toMatchObject({ upstream: "helmcode", baseUrl: "https://api.helmcode.com/v1", apiKey: "hc", modelString: "glm5.3", vision: true })
+  })
+  it("[TPROV-AC-2] a missing upstream secret resolves to null", () => {
+    const noHelmcode = secretsOf({ fireworks: { apiKey: "fw" } })
+    expect(resolveTerosRoute({ size: "l", lane: "interactive", config: HELMCODE, secrets: noHelmcode, retentionResolver: zdr })).toBeNull()
+  })
+  it("[TPROV-AC-2] an upstream classified retains resolves to null (ZDR guard)", () => {
+    const onTogether: TerosSizesConfig = { ...HELMCODE, sizes: { ...HELMCODE.sizes, l: both({ upstream: "together", modelString: "zai-org/GLM-5.3", reasoningEffort: "high" }) } }
+    expect(resolveTerosRoute({ size: "l", lane: "interactive", config: onTogether, secrets: ALL, retentionResolver: retainsTogether })).toBeNull()
+    expect(resolveTerosRoute({ size: "l", lane: "interactive", config: onTogether, secrets: ALL, retentionResolver: zdr })?.upstream).toBe("together")
+  })
+  it("[TPROV-AC-2] an effort the model rejects is clamped to one it accepts", () => {
+    const noneOnGlm: TerosSizesConfig = { ...HELMCODE, sizes: { ...HELMCODE.sizes, m: both({ upstream: "helmcode", modelString: "glm5.3-flash", reasoningEffort: "none" }) } }
+    expect(resolveTerosRoute({ size: "m", lane: "interactive", config: noneOnGlm, secrets: ALL, retentionResolver: zdr })?.reasoningEffort).toBe("low")
+  })
+})
 
-  it("resolves Fireworks for an UNMAPPED model using the catalogue modelString (R2/M1)", () => {
-    // The bug R2 fixes: an unmapped teros model used to return null → empty key →
-    // the turn failed even with the flag OFF. Now the primary ignores the map.
-    // Mutation: re-adding `if (!mapped) return null` before the fireworks branch → red.
-    expect(resolveTerosUpstream("fireworks", UNMAPPED, ALL_SECRETS)).toEqual({
+describe("[TPROV-AC-3] resolveTerosFailoverRoute", () => {
+  it("[TPROV-AC-3] L on Helmcode fails over to the same family on Fireworks, same effort", () => {
+    expect(resolveTerosFailoverRoute({ size: "l", lane: "interactive", config: HELMCODE, secrets: ALL, retentionResolver: zdr })).toMatchObject({
       upstream: "fireworks",
-      baseUrl: "https://api.fireworks.ai/inference/v1",
-      apiKey: "fw-key",
-      modelString: "accounts/fireworks/models/future",
-      actualProvider: "fireworks",
+      modelString: "accounts/fireworks/models/glm-5p3",
+      reasoningEffort: "high",
     })
   })
-
-  it("returns null ONLY when the fireworks secret is missing", () => {
-    expect(resolveTerosUpstream("fireworks", K26, secretsOf({}))).toBeNull()
+  it("[TPROV-AC-3] failover off → null; a family absent on the failover upstream → null", () => {
+    expect(resolveTerosFailoverRoute({ size: "l", lane: "interactive", config: DEFAULT_TEROS_SIZES, secrets: ALL, retentionResolver: zdr })).toBeNull()
+    const qwen: TerosSizesConfig = { ...HELMCODE, sizes: { ...HELMCODE.sizes, s: both({ upstream: "helmcode", modelString: "qwen3.6", reasoningEffort: "none" }) } }
+    expect(resolveTerosFailoverRoute({ size: "s", lane: "interactive", config: qwen, secrets: ALL, retentionResolver: zdr })).toBeNull()
+  })
+  it("[TPROV-AC-3] failover to the primary's own upstream is meaningless → null", () => {
+    const same: TerosSizesConfig = { ...HELMCODE, failover: { mode: "cutover", upstream: "helmcode" } }
+    expect(resolveTerosFailoverRoute({ size: "l", lane: "interactive", config: same, secrets: ALL, retentionResolver: zdr })).toBeNull()
   })
 })
 
-describe("resolveTerosUpstream — together (failover) + ZDR guard", () => {
-  it("allows Together by default now — real classifier: together='zdr' via account ZDR opt-in (TER-646)", () => {
-    // No injected resolver → uses the real resolveRetention, where together is now
-    // 'zdr' (the account-level ZDR toggle is enabled). The guard itself stays
-    // covered by the 'injected non-zdr tier → null' test below.
-    expect(resolveTerosUpstream("together", K26, ALL_SECRETS)).toEqual({
-      upstream: "together",
-      baseUrl: "https://api.together.ai/v1",
-      apiKey: "tg-key",
-      modelString: "moonshotai/kimi-k2.6",
-      actualProvider: "together",
-    })
+describe("[TPROV-AC-4] resolveTerosVisionRoute", () => {
+  it("[TPROV-AC-4] a model that sees is its own vision route", () => {
+    const l = resolveTerosRoute({ size: "l", lane: "interactive", config: HELMCODE, secrets: ALL, retentionResolver: zdr })!
+    expect(resolveTerosVisionRoute(l, ALL, zdr)).toBe(l)
   })
-
-  it("BLOCKS Together when the injected tier is not zdr", () => {
-    expect(resolveTerosUpstream("together", K26, ALL_SECRETS, retains)).toBeNull()
-  })
-
-  it("allows Together ONLY when tier is zdr (asserted)", () => {
-    expect(resolveTerosUpstream("together", K26, ALL_SECRETS, zdr)).toEqual({
-      upstream: "together",
-      baseUrl: "https://api.together.ai/v1",
-      apiKey: "tg-key",
-      modelString: "moonshotai/kimi-k2.6",
-      actualProvider: "together",
-    })
-  })
-
-  it("returns null for a model with no Together equivalent, even when zdr (Kimi K2.7 Code)", () => {
-    expect(resolveTerosUpstream("together", K27, ALL_SECRETS, zdr)).toBeNull()
-  })
-
-  it("returns null for an UNMAPPED model — failover DOES depend on the map", () => {
-    expect(resolveTerosUpstream("together", UNMAPPED, ALL_SECRETS, zdr)).toBeNull()
-  })
-
-  it("returns null when zdr-allowed but the together secret is missing", () => {
-    const onlyFw = secretsOf({ fireworks: { apiKey: "fw-key" } })
-    expect(resolveTerosUpstream("together", K26, onlyFw, zdr)).toBeNull()
-  })
-
-  it("checks the ZDR guard BEFORE the secret (no secret leak on a non-zdr upstream)", () => {
-    // Even with a together secret present, a non-zdr tier blocks → null.
-    expect(resolveTerosUpstream("together", K26, ALL_SECRETS, retains)).toBeNull()
+  it("[TPROV-AC-4] a model that cannot see reroutes to GLM-5.3 Flash on the SAME upstream", () => {
+    const l = resolveTerosRoute({ size: "l", lane: "interactive", config: DEFAULT_TEROS_SIZES, secrets: ALL, retentionResolver: zdr })!
+    expect(l.vision).toBe(false)
+    expect(resolveTerosVisionRoute(l, ALL, zdr)).toMatchObject({ upstream: "fireworks", modelString: "accounts/fireworks/models/glm-5p3-flash", vision: true })
   })
 })
 
-describe("teros catalogue ↔ failover map invariant (R8.2)", () => {
-  it("every teros catalogue model has a TEROS_UPSTREAM_MODELS entry (failover stays wired)", () => {
-    const catalogueIds = MODELS_TEROS.filter((m) => m.provider === "teros").map((m) => m.modelId)
-    const mapped = new Set(Object.keys(TEROS_UPSTREAM_MODELS))
-    const missing = catalogueIds.filter((id) => !mapped.has(id))
-    // R2 keeps the PRIMARY working even for an unmapped model; this guard keeps
-    // FAILOVER available by construction. Mutation: add a teros model to
-    // MODELS_TEROS without a map entry → red (the latent bug made impossible).
-    expect(missing).toEqual([])
-  })
-
-  it("each map entry's fireworks modelString equals the catalogue modelString", () => {
-    // The primary (R2 fallback) uses the catalogue modelString; the map's
-    // `fireworks` must agree, or the same model would resolve two ways.
-    for (const m of MODELS_TEROS) {
-      const entry = TEROS_UPSTREAM_MODELS[m.modelId]
-      if (entry) expect(entry.fireworks).toBe(m.modelString)
+describe("[TPROV-AC-7] catalogue + validation + status", () => {
+  it("[TPROV-AC-7] every upstream offers the vision family; the default config validates", () => {
+    for (const upstream of ["helmcode", "fireworks", "together"] as const) {
+      expect(TEROS_UPSTREAM_CATALOG[upstream].some((m) => m.family === "glm-5.3-flash")).toBe(true)
     }
+    const v = validateTerosSizesConfig(DEFAULT_TEROS_SIZES)
+    expect(v.ok).toBe(true)
+  })
+  it("[TPROV-AC-7] a route naming a model absent from the catalogue is rejected naming the field", () => {
+    const bad = { ...HELMCODE, sizes: { ...HELMCODE.sizes, m: both({ upstream: "helmcode", modelString: "glm-5.3-flash", reasoningEffort: "low" }) } }
+    expect(validateTerosSizesConfig(bad)).toEqual({ ok: false, error: "sizes.m.interactive.modelString" })
+    expect(validateTerosSizesConfig({ ...HELMCODE, failover: { mode: "sometimes", upstream: "fireworks" } })).toEqual({ ok: false, error: "failover.mode" })
+  })
+  it("[TPROV-AC-7] upstream status reports secret presence without the secret", () => {
+    const status = terosUpstreamStatus(secretsOf({ helmcode: { apiKey: "hc" } }), zdr)
+    expect(status.find((s) => s.upstream === "helmcode")).toEqual({ upstream: "helmcode", baseUrl: "https://api.helmcode.com/v1", hasSecret: true, retention: "zdr" })
+    expect(status.find((s) => s.upstream === "fireworks")?.hasSecret).toBe(false)
+    expect(JSON.stringify(status)).not.toContain("hc")
+  })
+  it("every size has a default route", () => {
+    for (const size of TEROS_SIZES) expect(DEFAULT_TEROS_SIZES.sizes[size]).toBeDefined()
   })
 })

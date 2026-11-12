@@ -1,7 +1,7 @@
 import { HealthCheckBuilder, type ToolConfig } from '@teros/mca-sdk';
 import { GUIDE_TOPICS } from '../content/topics';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 export const healthCheck: ToolConfig = {
   description: 'Internal health check. Verifies the platform guide content is loaded.',

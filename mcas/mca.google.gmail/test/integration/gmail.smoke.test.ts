@@ -56,6 +56,9 @@ describe('Lifecycle', () => {
       'start-email-watcher',
       'stop-email-watcher',
       'get-watcher-status',
+      'get-stats',
+      'set-signature',
+      'get-signature',
     ]);
   });
 

@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -107,11 +110,7 @@
     },
     {
       "name": "admin-agents-delete",
-      "description": "Delete an agent. Super admin only. DESTRUCTIVE \u2014 use with caution.",
-      "annotations": {
-        "readOnlyHint": false,
-        "irreversible": true
-      },
+      "description": "Delete an agent. Super admin only. DESTRUCTIVE — use with caution.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -128,6 +127,10 @@
           "agentId",
           "confirm"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -213,7 +216,7 @@
     },
     {
       "name": "admin-workspaces-archive",
-      "description": "Archive (soft-delete) a workspace. Super admin only. DESTRUCTIVE \u2014 use with caution.",
+      "description": "Archive (soft-delete) a workspace. Super admin only. DESTRUCTIVE — use with caution.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -414,11 +417,7 @@
     },
     {
       "name": "admin-apps-delete",
-      "description": "Delete an installed app. Super admin only. DESTRUCTIVE \u2014 use with caution.",
-      "annotations": {
-        "readOnlyHint": false,
-        "irreversible": true
-      },
+      "description": "Delete an installed app. Super admin only. DESTRUCTIVE — use with caution.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -435,6 +434,10 @@
           "appId",
           "confirm"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -477,6 +480,45 @@
         "required": [
           "appId",
           "agentIds"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "admin-apps-copy-auth",
+      "description": "Copy the COMPLETE authentication (user secrets + OAuth tokens with refresh) from one app instance to another of the same app type — cross-workspace. Full replace on the target (set semantics). Whose credential is copied: the explicit userId when given, else the owner of the source app's workspace. The response lists only the copied field names and masks — values are NEVER exposed. OAuth caveat: both instances share the same tokens afterwards; if the provider rotates refresh tokens, one instance can invalidate the other. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceAppId": {
+            "type": "string",
+            "description": "App instance to copy the credentials FROM (must already be connected)"
+          },
+          "targetAppId": {
+            "type": "string",
+            "description": "App instance to copy the credentials TO (same mcaId as the source)"
+          },
+          "userId": {
+            "type": "string",
+            "description": "Optional: whose credential to copy. Default: the owner of the source app's workspace (the user who typically connected it)."
+          },
+          "sourceWorkspaceId": {
+            "type": "string",
+            "description": "Required: the workspace the source app lives in — cross-workspace tools always name their workspaces (Teros infra is sharded by workspaceId)"
+          },
+          "targetWorkspaceId": {
+            "type": "string",
+            "description": "Required: the workspace the target app lives in — cross-workspace tools always name their workspaces (Teros infra is sharded by workspaceId)"
+          }
+        },
+        "required": [
+          "sourceAppId",
+          "targetAppId",
+          "sourceWorkspaceId",
+          "targetWorkspaceId"
         ]
       },
       "annotations": {
@@ -546,15 +588,131 @@
       }
     },
     {
+      "name": "admin-users-grant-access",
+      "description": "Grant platform access to a waitlisted user (accessGranted: true). The user receives the access-granted email when email is configured. Admin only. This is an action on a person — always requires explicit confirmation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID to grant access to (e.g. user_xxx). Find it in the admin panel Users window."
+          }
+        },
+        "required": [
+          "userId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "admin-users-update-role",
+      "description": "Change a user's role: user | admin | super. Super admin only (same as the admin panel). Cannot demote yourself. This grants or removes privileges over people and the platform — always requires explicit confirmation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "User ID to update (e.g. user_xxx). Find it in the admin panel Users window."
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "admin",
+              "super"
+            ],
+            "description": "New role: 'user' (regular), 'admin' (platform admin), 'super' (super admin)."
+          }
+        },
+        "required": [
+          "userId",
+          "role"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
       "name": "admin-catalog-list",
-      "description": "List all available MCAs in the catalog. Super admin only.",
+      "description": "List available MCAs in the catalog as lightweight summaries (id, name, description, category, tool count, keywords, availability). Does NOT return tool schemas — use admin-catalog-get for the full detail of one app. Supports free-text search across names, descriptions, keywords and tool names, and category filtering. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Free-text search (case-insensitive substring) across MCA id, name, description, tagline, category, keywords and tool names (optional)."
+          },
+          "category": {
+            "type": "string",
+            "description": "Filter by category (optional, e.g. \"productivity\", \"communication\", \"development\", \"google\", \"microsoft\")."
+          },
+          "includeHidden": {
+            "type": "boolean",
+            "description": "Include hidden MCAs in the results (default false)."
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-catalog-get",
+      "description": "Get the full catalog detail of a single MCA (app): complete description, auth configuration, secrets requirements, and the full tool list with their schemas. Use admin-catalog-list first to find the mcaId. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "mcaId": {
+            "type": "string",
+            "description": "The MCA identifier, e.g. \"mca.teros.github\" (from admin-catalog-list)."
+          }
+        },
+        "required": [
+          "mcaId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-active-sessions",
+      "description": "List active WebSocket connections in real time: total connections, unique users, and per-session detail (userName, userEmail, connectedAt, lastActivityAt, idleSeconds, connectionDurationSeconds). Admin only.",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "required": []
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-refresh-clients",
+      "description": "Restart all connected browsers: broadcast a refresh signal to every connected client (all users, all devices) so they reload to the latest deployed version. Clients reload with random staggered delay (default 0-30s jitter) to avoid overloading the backend. Optional params: userId (string, refresh only that user's sessions), reason (string, e.g. \"deploy\" — shown in client logs), maxDelayMs (number, stagger window, default 30000, max 300000). Returns how many sessions received the signal (sent, totalConnections, uniqueUsers). Admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "description": "Optional: refresh only this user's sessions (all their devices). Omit to refresh everyone."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the refresh is happening (e.g. \"deploy\", \"admin\"). Defaults to \"admin\"."
+          },
+          "maxDelayMs": {
+            "type": "number",
+            "description": "Stagger window in ms for the client-side jittered reload. Default 30000 (0-30s). Max 300000."
+          }
+        },
+        "required": []
       }
     },
     {
@@ -703,25 +861,290 @@
           "granularity": {
             "type": "string",
             "enum": [
+              "hour",
               "day",
               "week",
               "month"
             ],
-            "description": "Time granularity"
+            "description": "Time granularity for aggregation (default: day)"
           },
           "startDate": {
             "type": "string",
-            "description": "Start date (ISO)"
+            "description": "Start date (ISO 8601). If omitted, returns all available data from the earliest rollup."
           },
           "endDate": {
             "type": "string",
-            "description": "End date (ISO)"
+            "description": "End date (ISO 8601). If omitted, no upper bound."
           }
         },
         "required": []
       },
       "annotations": {
         "readOnlyHint": false
+      }
+    },
+    {
+      "name": "admin-usage-sessions",
+      "description": "List agent usage sessions (paginated, newest first). Each session represents one LLM turn. Accepts filters (userId, agentId, workspaceId, provider, triggerKind, statuses) and pagination (limit, skip). Use format=\"otel\" for OpenTelemetry-style output. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start of the time window (ISO 8601 date). Required."
+          },
+          "to": {
+            "type": "string",
+            "description": "End of the time window (ISO 8601 date). Required."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Filter by user ID (optional)."
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Filter by agent ID (optional)."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Filter by workspace ID (optional)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Filter by logical provider name (optional)."
+          },
+          "triggerKind": {
+            "type": "string",
+            "description": "Filter by trigger kind (optional, e.g. \"user_message\", \"scheduled\")."
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Filter by session status (optional, e.g. [\"completed\", \"errored\", \"running\"])."
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "native",
+              "otel"
+            ],
+            "description": "Output format (default \"native\")."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 500)."
+          },
+          "skip": {
+            "type": "number",
+            "description": "Number of results to skip for pagination (default 0)."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-usage-session-detail",
+      "description": "Get the full detail and chronological trace of a single agent usage session: the session record, its LLM calls, tool executions, message text, thumbs feedback, and direct sub-agents. Requires a sessionUsageId. Super admin only (conversation text is super-admin-only).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sessionUsageId": {
+            "type": "string",
+            "description": "The session usage ID of the session to inspect. Required."
+          }
+        },
+        "required": [
+          "sessionUsageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-model-health",
+      "description": "Get per-model LLM health metrics (p50/p95/p99 latency + TTFT, error rate by kind, success rate, throughput) grouped by actual upstream provider × model. Accepts optional filters (userId, agentId, workspaceId, provider) and a time range (from/to as ISO dates). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start of the time window (ISO 8601 date, e.g. 2026-09-14T00:00:00Z). Required."
+          },
+          "to": {
+            "type": "string",
+            "description": "End of the time window (ISO 8601 date, e.g. 2026-09-15T00:00:00Z). Required."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Filter by user ID (optional)."
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Filter by agent ID (optional)."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Filter by workspace ID (optional)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Filter by logical provider name (optional, e.g. \"fireworks\", \"openai\")."
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "Timezone label echoed in the response for client-side rendering (default \"UTC\")."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-model-health-timeseries",
+      "description": "Get per-hour health snapshots (p50/p95/p99 latency + TTFT, error rate, success rate, throughput) grouped by actual upstream provider × model, as a time series. Same scope as admin-model-health but returns one entry per time bucket instead of a merged figure. Accepts optional filters and groupBy (hour/day/week). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start of the time window (ISO 8601 date). Required."
+          },
+          "to": {
+            "type": "string",
+            "description": "End of the time window (ISO 8601 date). Required."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Filter by user ID (optional)."
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Filter by agent ID (optional)."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Filter by workspace ID (optional)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Filter by logical provider name (optional)."
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": [
+              "hour",
+              "day",
+              "week"
+            ],
+            "description": "Bucket granularity (default \"hour\"). Use \"day\" for 7d/30d ranges."
+          },
+          "timeZone": {
+            "type": "string",
+            "description": "Timezone label echoed in the response (default \"UTC\")."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-upstream-errors",
+      "description": "Get the most recent upstream provider errors (rate_limited, overloaded, server_error, spend_gate, auth_error, model_unavailable). Returns the error kind, sub-reason, and PII-scrubbed upstream message per session. Accepts optional filters (userId, agentId, workspaceId, provider) and a time range (from/to). Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Start of the time window (ISO 8601 date). Required."
+          },
+          "to": {
+            "type": "string",
+            "description": "End of the time window (ISO 8601 date). Required."
+          },
+          "userId": {
+            "type": "string",
+            "description": "Filter by user ID (optional)."
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Filter by agent ID (optional)."
+          },
+          "workspaceId": {
+            "type": "string",
+            "description": "Filter by workspace ID (optional)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Filter by logical provider name (optional)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max results (default 50, max 200)."
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-in-flight",
+      "description": "Get a live snapshot of LLM streams currently in flight, per real upstream provider. Reads from the in-memory process gauge (not the database), so it is a point-in-time reading of this backend instance. Returns per-upstream counts, total, and a capturedAt timestamp. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "admin-provider-status",
+      "description": "Get a complete LLM provider health overview in a single call. Composes three backend actions (model-health, upstream-errors, in-flight) and returns: per-provider×model health metrics with classified status (healthy/degraded/down), recent upstream errors, live in-flight stream counts, and an overall platform verdict (green/yellow/red) with context. Parameters: periodHours (default 24), optional provider/model filters. Degrades gracefully — if one backend action fails, returns the rest with partial: true. Super admin only.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "periodHours": {
+            "type": "number",
+            "description": "Time window in hours for health metrics and error retrieval (default 24)."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Filter by logical provider name (optional, e.g. \"fireworks\", \"openai\")."
+          },
+          "model": {
+            "type": "string",
+            "description": "Filter by model ID (optional, applied client-side on results)."
+          }
+        },
+        "required": []
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {

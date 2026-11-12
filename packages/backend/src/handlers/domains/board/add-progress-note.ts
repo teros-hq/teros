@@ -62,6 +62,7 @@ export function createAddProgressNoteHandler(
         tags: task.tags,
         columnId: task.columnId,
         noteText: text,
+        actorUserId: ctx.userId,
       }
       boardSubscriptionService.notifySubscribers(task.boardId, {
         eventType: 'board.task_progress_note',

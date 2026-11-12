@@ -40,7 +40,7 @@ export function ListTemplatesRenderer({ status, output, error, appIcon }: ToolCa
   return (
     <ToolCallCard
       status={status}
-      verb="List templates"
+      description="List templates"
       badge={badge}
       iconUri={appIcon}
       animateExpand

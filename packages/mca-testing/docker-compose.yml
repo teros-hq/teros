@@ -34,7 +34,7 @@ services:
 
   # ── Ephemeral Qdrant (for Memory MCA and others needing vector DB) ──────────
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:latest@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
     tmpfs:
       - /qdrant/storage
     ports:

@@ -7,7 +7,10 @@ import {
 } from '../lib';
 
 export const importAttachment: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: copies an uploaded file into the caller's workspace volume —
+  // reversible (deletable) and private. send-message is deliberately NOT
+  // safe-write (visible effect in another channel).
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
     'Copy a file the user uploaded in chat (image or document) into the agent workspace volume so filesystem tools can read it. Identify it by the filename shown in the "[User sent ...]" message reference. Returns { workspacePath, size, mime }.',
   parameters: {
@@ -61,6 +64,8 @@ export const importAttachment: ToolConfig = {
       destPath: args?.destPath as string | undefined,
       overwrite: args?.overwrite === true,
       agentId: context.execution.agentId,
+      // Caller channel — lets the backend gate personal history out of a shared context.
+      callerChannelId: context.execution.channelId,
     });
   },
 };

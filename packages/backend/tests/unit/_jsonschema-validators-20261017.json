@@ -1,0 +1,272 @@
+{
+  "users": {
+    "bsonType": "object",
+    "additionalProperties": true,
+    "required": [
+      "userId",
+      "profile",
+      "status",
+      "role"
+    ],
+    "properties": {
+      "userId": {
+        "bsonType": "string"
+      },
+      "profile": {
+        "bsonType": "object",
+        "additionalProperties": true,
+        "required": [
+          "email"
+        ],
+        "properties": {
+          "email": {
+            "bsonType": "string"
+          }
+        }
+      },
+      "status": {
+        "enum": [
+          "active",
+          "suspended",
+          "pending_verification"
+        ]
+      },
+      "role": {
+        "enum": [
+          "user",
+          "admin",
+          "super"
+        ]
+      },
+      "emailVerified": {
+        "bsonType": "bool"
+      },
+      "accessGranted": {
+        "bsonType": "bool"
+      },
+      "privateWorkspaceId": {
+        "bsonType": "string"
+      },
+      "createdAt": {
+        "bsonType": "date"
+      },
+      "updatedAt": {
+        "bsonType": "date"
+      },
+      "deletedAt": {
+        "bsonType": "date"
+      }
+    }
+  },
+  "workspaces": {
+    "bsonType": "object",
+    "additionalProperties": true,
+    "required": [
+      "workspaceId",
+      "name",
+      "ownerId",
+      "status"
+    ],
+    "properties": {
+      "workspaceId": {
+        "bsonType": "string"
+      },
+      "name": {
+        "bsonType": "string"
+      },
+      "ownerId": {
+        "bsonType": "string"
+      },
+      "volumeId": {
+        "bsonType": "string"
+      },
+      "type": {
+        "enum": [
+          "private",
+          "shared"
+        ]
+      },
+      "status": {
+        "enum": [
+          "active",
+          "archived"
+        ]
+      },
+      "settings": {
+        "bsonType": "object"
+      },
+      "createdAt": {
+        "bsonType": [
+          "date",
+          "string"
+        ]
+      },
+      "updatedAt": {
+        "bsonType": [
+          "date",
+          "string"
+        ]
+      }
+    }
+  },
+  "billing_plans": {
+    "bsonType": "object",
+    "additionalProperties": true,
+    "required": [
+      "name",
+      "displayName",
+      "price",
+      "currency",
+      "agentHoursLimit",
+      "features",
+      "isPublic"
+    ],
+    "properties": {
+      "name": {
+        "bsonType": "string"
+      },
+      "displayName": {
+        "bsonType": "string"
+      },
+      "price": {
+        "bsonType": "number"
+      },
+      "currency": {
+        "bsonType": "string"
+      },
+      "agentHoursLimit": {
+        "bsonType": "number"
+      },
+      "automateDailyExecutionLimit": {
+        "bsonType": "number"
+      },
+      "features": {
+        "bsonType": "object"
+      },
+      "isPublic": {
+        "bsonType": "bool"
+      },
+      "createdAt": {
+        "bsonType": "date"
+      },
+      "updatedAt": {
+        "bsonType": "date"
+      }
+    }
+  },
+  "billing_subscriptions": {
+    "bsonType": "object",
+    "additionalProperties": true,
+    "required": [
+      "userId",
+      "planId",
+      "status",
+      "currentPeriodStart",
+      "currentPeriodEnd"
+    ],
+    "properties": {
+      "userId": {
+        "bsonType": "string"
+      },
+      "planId": {
+        "bsonType": "string"
+      },
+      "status": {
+        "enum": [
+          "active",
+          "paused",
+          "cancelled",
+          "past_due",
+          "ended"
+        ]
+      },
+      "currentPeriodStart": {
+        "bsonType": "date"
+      },
+      "currentPeriodEnd": {
+        "bsonType": "date"
+      },
+      "agentHoursUsed": {
+        "bsonType": "number"
+      },
+      "overageHours": {
+        "bsonType": "number"
+      },
+      "paymentMethod": {
+        "bsonType": "string"
+      },
+      "createdAt": {
+        "bsonType": "date"
+      },
+      "updatedAt": {
+        "bsonType": "date"
+      }
+    }
+  },
+  "billing_invoices": {
+    "bsonType": "object",
+    "additionalProperties": true,
+    "required": [
+      "subscriptionId",
+      "userId",
+      "periodStart",
+      "periodEnd",
+      "amount",
+      "currency",
+      "status"
+    ],
+    "properties": {
+      "subscriptionId": {
+        "bsonType": "string"
+      },
+      "userId": {
+        "bsonType": "string"
+      },
+      "kind": {
+        "enum": [
+          "subscription",
+          "boost",
+          "proration"
+        ]
+      },
+      "periodStart": {
+        "bsonType": "date"
+      },
+      "periodEnd": {
+        "bsonType": "date"
+      },
+      "amount": {
+        "bsonType": "number"
+      },
+      "currency": {
+        "bsonType": "string"
+      },
+      "status": {
+        "enum": [
+          "pending",
+          "invoiced",
+          "paid",
+          "waived",
+          "overdue",
+          "uncollectible",
+          "held",
+          "refunded"
+        ]
+      },
+      "paymentMethod": {
+        "enum": [
+          "stripe",
+          "manual",
+          "transfer",
+          "other"
+        ]
+      },
+      "createdAt": {
+        "bsonType": "date"
+      },
+      "updatedAt": {
+        "bsonType": "date"
+      }
+    }
+  }
+}

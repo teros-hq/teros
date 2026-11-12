@@ -5,6 +5,7 @@ import {
   encodeAddressDisplayName,
   encodeSubject,
   findAttachments,
+  findHtmlPart,
   findTextPart,
   getDisplayName,
   processEmailBody,
@@ -151,24 +152,24 @@ describe('findTextPart', () => {
     expect(findTextPart(part)).toBe('Hello world');
   });
 
-  it('prefers text/plain over text/html in multipart', () => {
+  it('prefers text/html over text/plain in multipart (corporate signatures survive)', () => {
     const plain = Buffer.from('Plain text').toString('base64');
     const html = Buffer.from('<b>HTML</b>').toString('base64');
     const part = {
       parts: [
-        { mimeType: 'text/html', body: { data: html } },
         { mimeType: 'text/plain', body: { data: plain } },
+        { mimeType: 'text/html', body: { data: html } },
       ],
     };
-    expect(findTextPart(part)).toBe('Plain text');
+    expect(findTextPart(part)).toBe('<b>HTML</b>');
   });
 
-  it('falls back to text/html if no plain', () => {
-    const html = Buffer.from('<b>HTML</b>').toString('base64');
+  it('falls back to text/plain if no html', () => {
+    const plain = Buffer.from('Plain text').toString('base64');
     const part = {
-      parts: [{ mimeType: 'text/html', body: { data: html } }],
+      parts: [{ mimeType: 'text/plain', body: { data: plain } }],
     };
-    expect(findTextPart(part)).toBe('<b>HTML</b>');
+    expect(findTextPart(part)).toBe('Plain text');
   });
 
   it('recurses into nested parts', () => {
@@ -257,5 +258,88 @@ describe('processEmailBody', () => {
     const result = await processEmailBody('Just a simple sentence.');
     expect(result.isHtml).toBe(false);
     expect(result.body).toBe('Just a simple sentence.');
+  });
+});
+
+describe('findHtmlPart', () => {
+  it('returns null for null/undefined payload', () => {
+    expect(findHtmlPart(null)).toBeNull();
+    expect(findHtmlPart(undefined)).toBeNull();
+  });
+
+  it('returns null when the payload has no HTML part (plain text only)', () => {
+    const part = {
+      mimeType: 'text/plain',
+      body: { data: Buffer.from('Hello').toString('base64') },
+    };
+    expect(findHtmlPart(part)).toBeNull();
+  });
+
+  it('returns null when a multipart message only has text/plain parts', () => {
+    const part = {
+      mimeType: 'multipart/alternative',
+      parts: [
+        {
+          mimeType: 'text/plain',
+          body: { data: Buffer.from('Hello').toString('base64') },
+        },
+      ],
+    };
+    expect(findHtmlPart(part)).toBeNull();
+  });
+
+  it('extracts the text/html part from a multipart/alternative payload', () => {
+    const html = '<div style="font-family: monospace; color: #1a73e8;">Hello</div>';
+    const part = {
+      mimeType: 'multipart/alternative',
+      parts: [
+        {
+          mimeType: 'text/plain',
+          body: { data: Buffer.from('Hello').toString('base64') },
+        },
+        {
+          mimeType: 'text/html',
+          body: { data: Buffer.from(html).toString('base64') },
+        },
+      ],
+    };
+    expect(findHtmlPart(part)).toBe(html);
+  });
+
+  it('extracts HTML when the top-level part is itself text/html', () => {
+    const html = '<p>Direct HTML</p>';
+    const part = {
+      mimeType: 'text/html',
+      body: { data: Buffer.from(html).toString('base64') },
+    };
+    expect(findHtmlPart(part)).toBe(html);
+  });
+
+  it('finds HTML nested in multipart/mixed → multipart/alternative', () => {
+    const html = '<p>Nested</p>';
+    const part = {
+      mimeType: 'multipart/mixed',
+      parts: [
+        {
+          mimeType: 'multipart/alternative',
+          parts: [
+            {
+              mimeType: 'text/plain',
+              body: { data: Buffer.from('Nested').toString('base64') },
+            },
+            {
+              mimeType: 'text/html',
+              body: { data: Buffer.from(html).toString('base64') },
+            },
+          ],
+        },
+        {
+          filename: 'a.txt',
+          mimeType: 'text/plain',
+          body: { attachmentId: 'att_1', size: 6 },
+        },
+      ],
+    };
+    expect(findHtmlPart(part)).toBe(html);
   });
 });

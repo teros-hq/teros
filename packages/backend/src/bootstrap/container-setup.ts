@@ -15,12 +15,17 @@ import type { McaOAuth } from '../auth/mca-oauth'
 import type { SecretsManager } from '../secrets/secrets-manager'
 
 import { AutoplayService } from '../services/autoplay-service'
+import { TodoAutoplayService } from '../services/todo-autoplay-service'
+import { TodoSubscriptionService } from '../services/todo-subscription-service'
+import { BoardEventService } from '../services/board-event-service'
 import { BoardService } from '../services/board-service'
 import { BoardSubscriptionService } from '../services/board-subscription-service'
+import { ReviewClaimService } from '../services/review-claim-service'
 import { ChannelManager } from '../services/channel-manager'
 import { DesktopStateService } from '../services/desktop-state-service'
 import { FeatureFlagService } from '../services/feature-flag-service'
 import { McaManager } from '../services/mca-manager'
+import { AgentAppsBridge } from '../services/agent-apps-bridge'
 import { McaService } from '../services/mca-service'
 import { MCAEventSubscriptionService } from '../services/mca-event-subscription-service'
 import { ModelService } from '../services/model-service'
@@ -29,7 +34,6 @@ import { ProviderService } from '../services/provider-service'
 import { PtyManager } from '../services/pty-manager'
 import { PubSubService } from '../services/pubsub-service'
 import { ResumeService } from '../services/resume-service'
-import { SchedulerService } from '../services/scheduler-service'
 import { SessionManager } from '../services/session-manager'
 import { ShareService } from '../services/share-service'
 import { SkillService } from '../services/skill-service'
@@ -138,12 +142,19 @@ export function registerDependencies(
     (c) => new WorkspaceService(c.get(Tokens.Db), c.get(Tokens.VolumeService)),
   )
 
+  // Board Event Service (persists board activity events — must be before BoardService)
+  container.register(
+    Tokens.BoardEventService,
+    (c) => new BoardEventService(c.get(Tokens.Db)),
+  )
+
   // Board Service (needs to be before WebSocketHandler)
   // IdGenerator: el board runner inyecta el taskId en el prompt del agente → sembrarlo hace
   // determinista el replay LLM de las tareas de board en modo test (TER-563).
+  // BoardEventService: injected so BoardService can record events to board_events collection.
   container.register(
     Tokens.BoardService,
-    (c) => new BoardService(c.get(Tokens.Db), c.get(Tokens.IdGenerator)),
+    (c) => new BoardService(c.get(Tokens.Db), c.get(Tokens.IdGenerator), c.get(Tokens.BoardEventService)),
   )
 
   // Auth services
@@ -160,6 +171,7 @@ export function registerDependencies(
   container.register(Tokens.DesktopStateService, (c) => new DesktopStateService(c.get(Tokens.Db)))
   container.register(Tokens.UsageTrackingService, (c) => new UsageTrackingService(c.get(Tokens.Db)))
   container.register(Tokens.BoardSubscriptionService, (c) => new BoardSubscriptionService(c.get(Tokens.Db)))
+  container.register(Tokens.ReviewClaimService, (c) => new ReviewClaimService(c.get(Tokens.Db)))
   container.register(Tokens.FeatureFlagService, (c) => new FeatureFlagService(c.get(Tokens.Db)))
 
   // PubSub + dependents
@@ -169,6 +181,22 @@ export function registerDependencies(
   container.register(
     Tokens.AutoplayService,
     (c) => new AutoplayService(c.get(Tokens.Db), c.get(Tokens.PubSubService), c.get(Tokens.ChannelManager), config.autoplay.autoWakeCap),
+  )
+  container.register(
+    Tokens.TodoAutoplayService,
+    (c) =>
+      new TodoAutoplayService(
+        c.get(Tokens.Db),
+        c.get(Tokens.PubSubService),
+        c.get(Tokens.ChannelManager),
+        config.autoplay.autoWakeCap,
+        config.autoplay.todoIdleTimeoutMs,
+        config.autoplay.todoStartFailCap,
+      ),
+  )
+  container.register(
+    Tokens.TodoSubscriptionService,
+    (c) => new TodoSubscriptionService(c.get(Tokens.Db)),
   )
 
   // MCA Service (needs WorkspaceService and VolumeService for app installation)
@@ -183,8 +211,70 @@ export function registerDependencies(
       }),
   )
 
-  // MCA Manager (optional, depends on config)
-  if (config.mca.basePath) {
+  // MCA Manager — choose backend based on config.agentApps.enabled
+  //
+  // Three modes:
+  //   1. Agent Apps only (no mca.basePath): all apps via remote Stations
+  //   2. Local MCAs only (no agentApps.enabled): legacy local processes
+  //   3. Hybrid (both set): bridge wraps the local McaManager, routing
+  //      Station-announced apps remotely and everything else locally
+  if (config.agentApps.enabled) {
+    container.register(
+      Tokens.McaManager,
+      (c) => {
+        // Parse station endpoints from config
+        const stations = Object.entries(config.agentApps.stations).map(
+          ([id, cfg]: [string, any]) => ({
+            id,
+            url: cfg.url ?? cfg,
+            token: cfg.token,
+            region: cfg.region,
+            appIds: cfg.appIds,
+            weight: cfg.weight,
+            maxSessions: cfg.maxSessions,
+          }),
+        )
+
+        // If no explicit stations but a default URL, create a wildcard station
+        if (stations.length === 0 && config.agentApps.defaultStationUrl) {
+          stations.push({
+            id: 'default',
+            url: config.agentApps.defaultStationUrl,
+            token: undefined,
+            region: undefined,
+            appIds: undefined,
+            weight: undefined,
+            maxSessions: undefined,
+          })
+        }
+
+        // Build local McaManager when a basePath is configured (hybrid mode)
+        let localManager: McaManager | undefined
+        if (config.mca.basePath) {
+          const mcaBasePath = resolve(config.mca.basePath)
+          localManager = new McaManager(c.get(Tokens.Db), {
+            mcaBasePath,
+            secretsManager: c.get(Tokens.SecretsManager),
+            authManager: c.get(Tokens.AuthManager),
+            volumeService: c.get(Tokens.VolumeService),
+            maxIdleMs: 30 * 60 * 1000,
+            maxRestarts: 3,
+            cleanupIntervalMs: 5 * 60 * 1000,
+            serverPort: config.server.callbackPort,
+          })
+        }
+
+        return new AgentAppsBridge(c.get(Tokens.Db), {
+          stations,
+          globalToken: config.agentApps.stationToken,
+          toolCallTimeoutMs: config.agentApps.toolCallTimeoutMs,
+          serverPort: config.server.callbackPort,
+          localManager,
+        }) as any // Implements McaManager's public surface
+      },
+    )
+  } else if (config.mca.basePath) {
+    // Local MCAs only: apps are local MCA processes
     const mcaBasePath = resolve(config.mca.basePath)
     container.register(
       Tokens.McaManager,
@@ -197,7 +287,7 @@ export function registerDependencies(
           maxIdleMs: 30 * 60 * 1000,
           maxRestarts: 3,
           cleanupIntervalMs: 5 * 60 * 1000,
-          serverPort: config.server.port,
+          serverPort: config.server.callbackPort,
         }),
     )
   }
@@ -211,14 +301,6 @@ export function registerDependencies(
         c.get(Tokens.SessionManager),
         c.get(Tokens.ChannelManager),
       ),
-  )
-
-  // Scheduler service — receives MCAEventSubscriptionService for unified event dispatch
-  // mcaEventSubscriptionService is created later in the bootstrap, so we pass it lazily
-  // via a setter pattern. The container registration uses a factory that captures the ref.
-  container.register(
-    Tokens.SchedulerService,
-    (c) => new SchedulerService(c.get(Tokens.Db), c.get(Tokens.EventHandler)),
   )
 
   // Resume service
@@ -441,6 +523,7 @@ export function registerDependencies(
       c.get(Tokens.Db),
       createStripeClient(stripeSecret),
       stripeSecret?.publishableKey ?? null,
+      { automaticTax: config.billing.stripeAutomaticTax },
     )
   })
   container.register(

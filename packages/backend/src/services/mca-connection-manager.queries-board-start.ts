@@ -5,7 +5,7 @@
  * creates a conversation, sends the task description, and links it to the task.
  */
 
-import { buildTaskInitialMessage } from './board-service';
+import { buildTaskInitialMessage, SYSTEM_SENDER } from './board-service';
 import { enrichTaskWithColumn } from '../handlers/domains/board/_helpers';
 import type { QueryHandlerContext, ActiveConnection } from './mca-connection-manager.types';
 
@@ -17,6 +17,17 @@ export async function handleBoardStartAction(
   effectiveAgentId: string | undefined,
   connection: ActiveConnection,
 ): Promise<unknown> {
+  // MCA query handlers are only called by agents, never humans.
+  // effectiveAgentId must always be present. If it isn't, the calling MCA
+  // tool failed to pass agentId in its queryConversations params — throw
+  // so the bug surfaces immediately instead of silently storing null.
+  if (!effectiveAgentId) {
+    throw new Error(
+      `Cannot determine agent for board action "${action}". ` +
+      `The MCA tool must pass agentId in its queryConversations params.`
+    );
+  }
+  const actor = effectiveAgentId;
   let data: unknown;
 
   switch (action) {
@@ -32,7 +43,7 @@ case 'start_task': {
   }
   const { task: startedTask } = await ctx.boardService.startTask(
     stTaskId,
-    userId,
+    actor,
     stAgentId,
   );
   const assignedAgentId = startedTask.assignedAgentId!;
@@ -60,7 +71,7 @@ case 'start_task': {
     channel = await ctx.channelManager.createChannel(userId, assignedAgentId, {
       name: startedTask.title,
     }, { workspaceId: taskWorkspaceId });
-    await ctx.boardService.linkConversation(startedTask.taskId, userId, channel.channelId);
+    await ctx.boardService.linkConversation(startedTask.taskId, actor, channel.channelId);
   }
 
   // Save origin channel (the channel that called start_task) for event notifications.
@@ -91,7 +102,7 @@ case 'start_task': {
     // Save the initial message
     const msgId = ctx.channelManager.createMessageId();
     const msgTimestamp = new Date().toISOString();
-    const sender = (await ctx.channelManager.getUserSender(userId)) || undefined;
+    const sender = SYSTEM_SENDER;
 
     await ctx.channelManager.saveMessage({
       messageId: msgId,

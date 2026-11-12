@@ -17,7 +17,6 @@ const ctx: MockContext = {
     USER_REFRESH_TOKEN: 'ghr_test',
     USER_TOKEN_EXPIRES_AT: new Date(Date.now() + 3_600_000).toISOString(),
     USER_LOGIN: 'tester',
-    INSTALLATION_ID: '1',
   }),
   getSystemSecrets: async () => ({
     GITHUB_APP_ID: '1',
@@ -196,5 +195,11 @@ describe('git-checkout', () => {
     await expect(
       gitCheckout.handler({ repoPath, target: 'definitely-not-a-branch' }, ctx as never),
     ).rejects.toThrow(/GIT_REF_NOT_FOUND/);
+  });
+
+  it('throws GIT_INVALID_REF when target starts with a dash (git-option injection)', async () => {
+    await expect(
+      gitCheckout.handler({ repoPath, target: '--upload-pack=evil' }, ctx as never),
+    ).rejects.toThrow(/GIT_INVALID_REF/);
   });
 });

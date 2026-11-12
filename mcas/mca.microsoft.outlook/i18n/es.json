@@ -185,6 +185,17 @@
     "list-rules": {
       "name": "list-rules",
       "description": "Lista todas las reglas de bandeja de entrada (filtros de correo) de la cuenta."
+    },
+    "set-signature": {
+      "name": "set-signature",
+      "description": "Guarda la firma de correo (HTML) de la cuenta de Outlook conectada. Microsoft Graph no expone la firma del buzón, así que esta es la forma canónica de configurarla. La firma se guarda por cuenta y se añade automáticamente a los correos salientes (create-draft, update-draft, send-message, reply-message, comentario de forward-message) — nunca se inventa ni se reconstruye a partir de otros correos. Si el usuario quiere firma y no hay ninguna configurada, pídesela (preferiblemente en HTML) y guárdala con esta herramienta.",
+      "params": {
+        "signatureHtml": "La firma en HTML (p. ej. con logo <img>, nombre con estilo, puesto, empresa). Las imágenes deben usar URLs https absolutas."
+      }
+    },
+    "get-signature": {
+      "name": "get-signature",
+      "description": "Obtiene la firma de correo (HTML) configurada para la cuenta de Outlook conectada, si existe. Úsala antes de redactar correos para saber si hay firma configurada."
     }
   }
 }

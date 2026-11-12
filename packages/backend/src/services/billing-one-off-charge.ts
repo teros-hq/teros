@@ -18,10 +18,15 @@
  * Idempotency / crash-safety (money moves, so this is the whole point): the
  * caller passes a STABLE `invoiceId` (derived from a per-attempt reqId). The
  * Stripe idempotency keys inside chargeInvoice derive from that id, so a replay
- * reuses the same Stripe invoice and never double-charges. If a prior attempt
- * crashed after the Stripe charge but before the grant, its Stripe invoice id was
- * already persisted; we reread it and pass it back as `externalReference` so the
- * charge REUSES that invoice even past Stripe's ~24h idempotency-key expiry.
+ * reuses the same Stripe invoice and never double-charges. A local row is
+ * written BEFORE charging (status 'held') and, when the charge fails, it keeps
+ * the Stripe invoice id the attempt produced (BIL-5: it used to be dropped,
+ * leaving finalized Stripe invoices — legal number consumed — with no Teros
+ * row, invisible to reconciliation). A retry rereads it and passes it back as
+ * `externalReference`, so the charge REUSES that invoice even past Stripe's
+ * ~24h idempotency-key expiry. 'held' keeps the row out of the charge-cron
+ * (which would otherwise collect it without the grant) and does not block the
+ * account.
  */
 
 import type { Db } from 'mongodb'
@@ -82,9 +87,39 @@ export async function chargeOneOffInvoice(
     }
   }
 
-  // Reread any invoice persisted by a prior (crashed) attempt so chargeInvoice
-  // reuses its Stripe invoice instead of minting a second one past key expiry.
+  // Reread any invoice persisted by a prior attempt so chargeInvoice reuses its
+  // Stripe invoice instead of minting a second one past key expiry.
   const persisted = await invoicesCol.findOne({ _id: params.invoiceId })
+  if (persisted?.status === 'paid') {
+    // Already collected by a prior attempt whose response was lost: no new charge
+    return { status: 'paid', invoice: persisted }
+  }
+
+  const started = new Date()
+  // Local trace BEFORE money moves (BIL-5). 'held': never picked by the
+  // charge-cron, never blocks the account.
+  await invoicesCol.updateOne(
+    { _id: params.invoiceId },
+    {
+      $setOnInsert: {
+        _id: params.invoiceId,
+        subscriptionId: params.subscriptionId,
+        userId: params.userId,
+        kind: params.kind,
+        periodStart: params.periodStart,
+        periodEnd: params.periodEnd,
+        amount: params.amount,
+        currency: params.currency,
+        status: 'held',
+        paymentMethod: 'stripe',
+        externalReference: null,
+        notes: params.notes,
+        createdAt: started,
+      },
+      $set: { updatedAt: started },
+    },
+    { upsert: true },
+  )
   const chargeable: ChargeableInvoice = {
     _id: params.invoiceId,
     userId: params.userId,
@@ -97,6 +132,20 @@ export async function chargeOneOffInvoice(
   const result = await stripe.chargeInvoice(chargeable, 1)
   if (result.status !== 'paid') {
     const issue = result.issue as StripeIssue
+    // Keep whatever Stripe invoice the attempt produced, so reconciliation can
+    // see it and a retry reuses it
+    await invoicesCol.updateOne(
+      { _id: params.invoiceId },
+      {
+        $set: {
+          ...(result.stripeInvoiceId ? { externalReference: result.stripeInvoiceId } : {}),
+          ...(result.invoiceNumber ? { invoiceNumber: result.invoiceNumber } : {}),
+          ...(result.hostedInvoiceUrl ? { hostedInvoiceUrl: result.hostedInvoiceUrl } : {}),
+          lastChargeError: issue?.message ?? 'charge failed',
+          updatedAt: new Date(),
+        },
+      },
+    )
     // Integrity failure (the charge guard voided a divergent invoice) is OUR bug,
     // not the user's card. Surface it to ops with parity to the charge-cron (which
     // holds + alerts the renewal path) — the one-off paths (change-plan upgrade,
@@ -121,36 +170,25 @@ export async function chargeOneOffInvoice(
   }
 
   const now = new Date()
-  // Persist the paid invoice (idempotent upsert by _id). status:'paid' +
-  // paymentMethod:'stripe' keep the charge-cron (scans pending/overdue) off it.
+  // Mark the row paid. status:'paid' + paymentMethod:'stripe' keep the
+  // charge-cron (scans pending/overdue) off it.
   await invoicesCol.updateOne(
     { _id: params.invoiceId },
     {
-      $setOnInsert: {
-        _id: params.invoiceId,
-        subscriptionId: params.subscriptionId,
-        userId: params.userId,
-        kind: params.kind,
-        periodStart: params.periodStart,
-        periodEnd: params.periodEnd,
-        amount: params.amount,
+      $set: {
         // Reconcile what Stripe actually collected (the guard in chargeInvoice
         // guarantees it equals `amount`, but persist it so a divergence can never
         // hide again — the €43→€145 incident).
         amountCharged: result.amountPaid ?? params.amount,
-        currency: params.currency,
         status: 'paid',
-        paymentMethod: 'stripe',
         invoiceNumber: result.invoiceNumber ?? null,
         externalReference: result.stripeInvoiceId ?? null,
         hostedInvoiceUrl: result.hostedInvoiceUrl ?? null,
         invoicePdfUrl: result.invoicePdfUrl ?? null,
-        notes: params.notes,
-        createdAt: now,
+        lastChargeError: null,
         updatedAt: now,
       },
     },
-    { upsert: true },
   )
 
   const invoice = await invoicesCol.findOne({ _id: params.invoiceId })

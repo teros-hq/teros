@@ -21,6 +21,7 @@ import {
   ResourceCard,
   colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -41,7 +42,8 @@ import {
 } from './shared';
 
 function StatusChip({ status }: { status: string | null }) {
-  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? globalColors.muted;
+  const c = useColors();
+  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? c.text3;
   const text = (status && JOB_STATUS_LABELS[status]) ?? (status ?? '—').toUpperCase();
   return <IconChip text={text} accent={accent} />;
 }
@@ -123,6 +125,7 @@ export function GetAssetUploadJobRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const job = narrowObject<CanvaJob<CanvaAsset>>(parsed);
   const asset = job?.result ?? null;
@@ -138,8 +141,8 @@ export function GetAssetUploadJobRenderer({
         <ResourceCard
           leading={asset ? assetLeading(asset) : (
             <IconTile
-              accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted}
-              icon={<Upload size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted} />}
+              accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3}
+              icon={<Upload size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3} />}
               size={28}
             />
           )}
@@ -166,6 +169,7 @@ export function GetAssetRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const a = unwrap<CanvaAsset>(parsed, 'asset');
 
@@ -181,7 +185,7 @@ export function GetAssetRenderer({
           <KeyValueGrid rows={assetRows(a)} />
           {a.tags && a.tags.length > 0 && (
             <YStack gap={4}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 tags
               </Text>
               <PillList items={a.tags} />

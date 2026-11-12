@@ -6,20 +6,39 @@
  * - Conversation summarization
  * - Content classification
  *
- * Uses the system user's provider (no environment variables).
- * Abstracts away the provider so we can switch models easily.
+ * Always uses the system user's Teros provider — the credential-free internal
+ * path (no environment variables, no user secrets). The provider is
+ * provisioned on demand (self-heal), so a fresh environment works with no
+ * seeds or migrations.
+ *
+ * Latency lane (TLANE-REQ-4): these calls run outside an agent turn and go on
+ * the `background` lane unless the call site declares `interactive` because a
+ * person is waiting on the result (transcript cleaner, agent.generate-profile).
+ *
+ * @spec TLANE-REQ-4
  */
 
-import { type ILLMClient, LLMClientFactory, type LLMConfig } from "@teros/core"
+import type { ILLMClient } from "@teros/core"
 import type { Db } from "mongodb"
 import type { ProviderService } from "./provider-service"
+import { TerosRouterClient } from "./teros-router-client"
+import { getUserTerosProviderConfig } from "./billing-gate"
+import { sizeForLegacyModelId, TEROS_LANES, type TerosLane } from "../models/providers/teros"
+import { secrets as secretsManager } from "../secrets/secrets-manager"
 
 export interface InternalLLMServiceConfig {
   /** Model ID to use (e.g., 'claude-haiku-4-5') */
   modelId: string
 }
 
-const DEFAULT_MODEL_ID = "openrouter-claude-haiku-4-5"
+// Cheap Teros-provider model for internal one-off tasks (letters, titles).
+// Teros provider is credential-free for users — its upstream key comes from
+// system secrets via resolveTerosUpstream, so this works on any deployment.
+// glm-5p3-flash is a thinking-only model: reasoning_effort 'low' is REQUIRED
+// (Fireworks rejects 'none') or it burns the whole budget reasoning and
+// returns no content.
+// TPROV-REQ-8: internal one-off tasks run on size S (the config says which upstream model).
+const DEFAULT_MODEL_ID = "teros-s"
 const SYSTEM_USER_ID = "system"
 
 export class InternalLLMService {
@@ -43,16 +62,25 @@ export class InternalLLMService {
       return this.client
     }
 
-    // Get system user's providers
+    // Self-heal FIRST (order matters — this used to run after a 0-providers
+    // throw, making it dead code on a fresh environment): ensure the
+    // credential-free Teros provider exists for the system user. Idempotent
+    // no-op when already provisioned. The virtual `system` user is not in the
+    // `users` collection, so migrations that iterate users never provision it —
+    // this call is the only path that does.
+    await this.providerService.ensureDefaultTerosProvider(SYSTEM_USER_ID)
+
+    // Policy: internal LLM tasks ALWAYS use the Teros provider. No fallback to
+    // "any active provider" — one path, the credential-free one.
     const providers = await this.providerService.listUserProviders(SYSTEM_USER_ID)
-    if (providers.length === 0) {
+    const provider = providers.find((p) => p.providerType === "teros" && p.status === "active")
+    if (!provider) {
+      // After ensureDefaultTerosProvider this should be unreachable, but keep a
+      // safety check with an actionable message.
       throw new Error(
-        `[InternalLLM] No provider configured for system user. Run: npm run init:system-provider`,
+        "[InternalLLM] Teros provider unavailable for system user — ensureDefaultTerosProvider failed (check .secrets/system/fireworks.json)",
       )
     }
-
-    // Use the first active provider
-    const provider = providers.find((p) => p.status === "active") || providers[0]
 
     // Find the requested model in this provider
     const model = provider.models.find((m) => m.modelId === this.modelId)
@@ -69,57 +97,22 @@ export class InternalLLMService {
       `[InternalLLM] Using model: ${modelToUse.modelId} (${provider.providerType}) from system provider`,
     )
 
-    // Get decrypted secrets
-    const secrets = await this.providerService.getProviderSecrets(
-      SYSTEM_USER_ID,
-      provider.providerId,
-    )
-
-    if (!secrets || !secrets.apiKey) {
-      throw new Error(`[InternalLLM] Failed to decrypt secrets for provider ${provider.providerId}`)
+    // Always the credential-free Teros provider: the size router resolves the
+    // upstream/model from the default config + system secrets (TPROV-REQ-8).
+    const cfg = await getUserTerosProviderConfig(this.db, SYSTEM_USER_ID)
+    if (!cfg?.sizes || !cfg.failover) {
+      throw new Error("[InternalLLM] Teros provider config has no size routes — run migrations 20261103_001 and 20261109_001")
     }
-
-    // Build LLMConfig based on provider type
-    const llmConfig: LLMConfig = {
-      provider: provider.providerType as LLMConfig["provider"],
+    const client = new TerosRouterClient({
+      size: sizeForLegacyModelId(modelToUse.modelId),
+      config: { sizes: cfg.sizes, failover: cfg.failover },
+      secrets: secretsManager,
+      maxTokens: 1000, // default headroom; per-call values override
+    })
+    if (TEROS_LANES.some((lane) => !client.primaryRoute(lane))) {
+      throw new Error("[InternalLLM] Teros upstream not configured (missing system secret for the configured upstream)")
     }
-
-    // Configure provider-specific settings
-    if (provider.providerType === "anthropic") {
-      llmConfig.anthropic = {
-        apiKey: secrets.apiKey,
-        model: modelToUse.modelString,
-        maxTokens: 200, // Internal tasks don't need long outputs
-      }
-    } else if (provider.providerType === "openai") {
-      llmConfig.openai = {
-        apiKey: secrets.apiKey,
-        model: modelToUse.modelString,
-        maxTokens: 200,
-      }
-    } else if (provider.providerType === "openrouter") {
-      llmConfig.openrouter = {
-        apiKey: secrets.apiKey,
-        model: modelToUse.modelString,
-        maxTokens: 200,
-      }
-    } else if (provider.providerType === "google") {
-      llmConfig.google = {
-        apiKey: secrets.apiKey!,
-        model: modelToUse.modelString,
-        maxTokens: 200,
-      }
-    } else if (provider.providerType === "together") {
-      llmConfig.together = {
-        apiKey: secrets.apiKey,
-        model: modelToUse.modelString,
-        maxTokens: 200,
-      }
-    } else {
-      throw new Error(`[InternalLLM] Unsupported provider: ${provider.providerType}`)
-    }
-
-    this.client = await LLMClientFactory.create(llmConfig)
+    this.client = client
     return this.client
   }
 
@@ -185,7 +178,10 @@ Output (title only, one line):`
             ],
           },
         ],
-        maxTokens: 30,
+        // Thinking models (default teros-glm-5p3-flash) spend budget on
+        // reasoning before content — 30 tokens produced empty titles.
+        maxTokens: 500,
+        lane: "background", // TLANE-REQ-4: titles are not waited on
         callbacks: {
           onText: (chunk) => {
             generatedText += chunk
@@ -205,6 +201,107 @@ Output (title only, one line):`
       console.error("[InternalLLM] Error generating channel name:", error)
       return null
     }
+  }
+
+  /**
+   * Generate structured text (e.g. JSON) for internal features that need more
+   * than a one-liner — like the new-conversation letter. Same provider setup
+   * as generateChannelName but with a configurable token budget.
+   */
+  async generateStructured(prompt: string, maxTokens = 1200): Promise<string | null> {
+    try {
+      const client = await this.ensureClient()
+
+      let generatedText = ""
+
+      await client.streamMessage({
+        messages: [
+          {
+            info: {
+              id: "internal-structured",
+              sessionID: "internal",
+              role: "user",
+              time: { created: Date.now() },
+            },
+            parts: [
+              {
+                type: "text",
+                id: "part-1",
+                sessionID: "internal",
+                messageID: "internal-structured",
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        maxTokens,
+        lane: "background", // TLANE-REQ-4: letters, suggested prompts
+        callbacks: {
+          onText: (chunk) => {
+            generatedText += chunk
+          },
+        },
+      })
+
+      const result = generatedText.trim()
+      if (!result) {
+        return null
+      }
+
+      return result
+    } catch (error) {
+      console.error("[InternalLLM] Error generating structured text:", error)
+      return null
+    }
+  }
+
+  /**
+   * Generic one-shot text generation for internal features (e.g.
+   * agent.generate-profile). Same stream-with-accumulator pattern as the
+   * other generators, but errors propagate to the caller (the handler wraps
+   * them into its own error reporting) and the trimmed text is returned as-is
+   * — an empty response is the caller's business.
+   */
+  async generateText(
+    prompt: string,
+    /** `lane`: `interactive` when a person waits on the result; `background` otherwise (TLANE-REQ-4). */
+    opts?: { maxTokens?: number; systemPrompt?: string; lane?: TerosLane },
+  ): Promise<string> {
+    const client = await this.ensureClient()
+
+    let generatedText = ""
+
+    await client.streamMessage({
+      messages: [
+        {
+          info: {
+            id: "internal-generate",
+            sessionID: "internal",
+            role: "user",
+            time: { created: Date.now() },
+          },
+          parts: [
+            {
+              type: "text",
+              id: "part-1",
+              sessionID: "internal",
+              messageID: "internal-generate",
+              text: prompt,
+            },
+          ],
+        },
+      ],
+      maxTokens: opts?.maxTokens ?? 1000,
+      systemPrompt: opts?.systemPrompt,
+      lane: opts?.lane ?? "background",
+      callbacks: {
+        onText: (chunk) => {
+          generatedText += chunk
+        },
+      },
+    })
+
+    return generatedText.trim()
   }
 
   /**
@@ -254,7 +351,8 @@ ${conversationContext}`
             ],
           },
         ],
-        maxTokens: 200,
+        maxTokens: 1000, // thinking models need headroom for reasoning + summary
+        lane: "background", // TLANE-REQ-4
         callbacks: {
           onText: (chunk) => {
             generatedText += chunk

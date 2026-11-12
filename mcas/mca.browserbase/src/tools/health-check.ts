@@ -3,6 +3,7 @@ import type { HttpToolConfig } from '@teros/mca-sdk';
 import Browserbase from '@browserbasehq/sdk';
 
 export const healthCheck: HttpToolConfig = {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Browserbase API credentials and connectivity.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {

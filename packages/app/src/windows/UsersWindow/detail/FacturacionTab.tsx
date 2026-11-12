@@ -6,19 +6,18 @@
  *
  * It threads the row patch up: a create/edit resolves to fresh `BillingInfo`,
  * which becomes `onUpdate({ billing })` so the list + identity reflect it
- * without a re-fetch. Colours are monitoring tokens only.
+ * without a re-fetch. Presentation: one ds `Card`; colours from `useColors()`.
  */
 
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, YStack } from "tamagui"
-import { tokens } from "../../../components/monitoring/colors"
-import { SectionCard } from "../../../components/monitoring/Kpi"
+import { View } from "react-native"
+import { Btn, Card, T } from "../../../components/ui/ds"
 import type { BillingInfo, UserDetailEnrichment, UserSummary } from "../../../services/AdminApi"
 import { getTerosClient } from "../../../services/terosClientSingleton"
 import { BillingEditForm } from "../billing/BillingEditForm"
 import { BillingSummary } from "../billing/BillingSummary"
-import { Button, FormError } from "../billing/formPrimitives"
+import { FormError } from "../billing/formPrimitives"
 
 export interface FacturacionTabProps {
   /** List row merged with the lazy enrichment (billing + stats). */
@@ -43,8 +42,11 @@ export function FacturacionTab({ user, onUpdate, onChanged }: FacturacionTabProp
   }
 
   return (
-    <YStack paddingTop={4} testID="facturacion-tab">
-      <SectionCard title={t("windows.usersPanel.detail.tabs.billing")}>
+    <View testID="facturacion-tab">
+      <Card pad>
+        <T step="base" style={{ marginBottom: 12 }}>
+          {t("windows.usersPanel.detail.tabs.billing")}
+        </T>
         {billing == null ? (
           <NoBilling user={user} onCreated={applyBilling} />
         ) : editing ? (
@@ -62,8 +64,8 @@ export function FacturacionTab({ user, onUpdate, onChanged }: FacturacionTabProp
             onChanged={onChanged}
           />
         )}
-      </SectionCard>
-    </YStack>
+      </Card>
+    </View>
   )
 }
 
@@ -93,20 +95,16 @@ function NoBilling({
   }
 
   return (
-    <YStack gap={12} paddingVertical={8}>
-      <Text fontSize={13} color={tokens.textTertiary}>
+    <View style={{ gap: 12, paddingVertical: 4 }}>
+      <T step="sm" tone="text3">
         {t("windows.usersPanel.billing.noSubscription")}
-      </Text>
+      </T>
       {error ? <FormError message={error} testID="billing-create-error" /> : null}
-      <YStack ai="flex-start">
-        <Button
-          testID="billing-create-btn"
-          label={t("windows.usersPanel.billing.createSubscription")}
-          tone="positive"
-          busy={busy}
-          onPress={create}
-        />
-      </YStack>
-    </YStack>
+      <View style={{ alignItems: "flex-start" }}>
+        <Btn testID="billing-create-btn" variant="mint" icon="plus" loading={busy} onPress={create}>
+          {t("windows.usersPanel.billing.createSubscription")}
+        </Btn>
+      </View>
+    </View>
   )
 }

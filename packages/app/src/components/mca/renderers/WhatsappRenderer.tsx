@@ -19,9 +19,10 @@ import { Image, Text, XStack, YStack } from 'tamagui';
 import { colors as semantic, type McaStatusType, ToolCallCard, useColors } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
+import { backendUrl } from '../../../config/runtime';
 
 // WhatsApp icon from MCA manifest static folder
-const WHATSAPP_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.whatsapp/icon.png`;
+const WHATSAPP_ICON = `${backendUrl()}/static/mcas/mca.whatsapp/icon.svg`;
 
 // ============================================================================
 // Colors — Renderer UX Guide v2 §5 (theme-adaptive).
@@ -598,14 +599,16 @@ function SessionStatusRenderer({ input, status, output, error, duration }: SubRe
 function StartSessionRenderer(props: SubRendererProps) {
   const c = useColors();
   const colors = useWhatsappColors();
+  // Also renders stop-session (same layout).
+  const stopping = getShortToolName(props.toolName) === 'stop-session';
   const badge =
     props.status === 'failed'
       ? { text: 'failed', variant: 'red' as const }
       : props.status === 'completed'
-        ? { text: 'started', variant: 'green' as const }
+        ? { text: stopping ? 'stopped' : 'started', variant: stopping ? ('gray' as const) : ('green' as const) }
         : undefined;
 
-  const headerProps = { ...props, description: 'Start session', badge };
+  const headerProps = { ...props, description: stopping ? 'Stop session' : 'Start session', badge };
   return (
     <ToolShell {...headerProps}>
         <YStack backgroundColor={c.bgInner} borderRadius={6} padding={8} paddingHorizontal={10} gap={4}>
@@ -782,7 +785,7 @@ function WhatsappRendererBase(props: ToolCallRendererProps) {
     case 'start-session':
       return <StartSessionRenderer {...subProps} />;
     case 'stop-session':
-      return <StartSessionRenderer {...subProps} />; // same layout, different label handled by default
+      return <StartSessionRenderer {...subProps} />;
     case 'check-number':
       return <CheckNumberRenderer {...subProps} />;
     default:

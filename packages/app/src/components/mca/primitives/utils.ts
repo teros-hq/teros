@@ -9,6 +9,16 @@ export function getShortToolName(toolName: string): string {
   return parts[parts.length - 1] || toolName;
 }
 
+// getShortToolName/humanizeLabel can both return '' for a degenerate
+// toolName (empty string, or a name that is just "_" — humanizeLabel strips
+// underscores to a blank string). Callers that feed this into a "must never
+// be blank" slot (e.g. PermissionDetail's fallbackText) need something
+// always non-empty, so fall back to the raw toolName. Used by
+// withPermissionSupport for the per-card intent.
+export function humanToolLabel(toolName: string): string {
+  return humanizeLabel(getShortToolName(toolName)) || toolName;
+}
+
 export function parseOutput<T>(output: string): T | string | null {
   try {
     return JSON.parse(output) as T;

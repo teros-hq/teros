@@ -41,7 +41,7 @@ export function EmailFinderRenderer(props: ToolCallRendererProps): React.ReactNo
   const verification = data ? verifierStatusProps(data.verificationStatus) : null;
 
   return (
-    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} verb={verb} badge={badge}>
+    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} description={verb} badge={badge}>
       {displayError ? (
         <ErrorBlock {...hunterErrorProps(displayError, 'email-finder')} />
       ) : data?.email ? (

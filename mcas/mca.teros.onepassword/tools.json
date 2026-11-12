@@ -1,0 +1,76 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.onepassword",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies the 1Password Service Account token and connectivity by listing vaults.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-vaults",
+      "description": "List the 1Password vaults accessible to the connected Service Account. Returns vault id, title, description, type and active item count. Use this first to find the vault id for list-items.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-items",
+      "description": "List the items in a 1Password vault. Returns item id, title, category, tags and state (no field values). Use list-vaults to get the vault id, then this tool to find the item id for get-item-fields.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vaultId": {
+            "type": "string",
+            "description": "The ID of the vault to list items from (get it from list-vaults)."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived items in the listing (default: false).",
+            "default": false
+          }
+        },
+        "required": [
+          "vaultId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-item-fields",
+      "description": "Get the fields of a 1Password item, including the values of secret fields (passwords, API keys, credentials). Use list-items to find the item id. SECURITY: treat returned secret values as sensitive — use them for the requested action (e.g. writing a secrets file) and do not echo, log or persist them anywhere else.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "vaultId": {
+            "type": "string",
+            "description": "The ID of the vault containing the item."
+          },
+          "itemId": {
+            "type": "string",
+            "description": "The ID of the item to read (get it from list-items)."
+          }
+        },
+        "required": [
+          "vaultId",
+          "itemId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

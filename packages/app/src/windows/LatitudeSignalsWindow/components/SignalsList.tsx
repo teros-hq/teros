@@ -2,21 +2,26 @@
  * SignalsList — pure presentation of the F4·C2 signals dashboard rows.
  *
  * The backend sends structural DATA (name/description/states/occurrences/trend/
- * deepLinkUrl); the phrasing is composed here. Each card is a clickable deep link
- * into Latitude, accented by lifecycle state (escalating loudest), never by colour
- * alone — every state also shows as a labelled chip. Absent web URL → no link.
+ * deepLinkUrl); the phrasing is composed here. The list is an `LGroup` of rows,
+ * each a clickable deep link into Latitude, accented by lifecycle state
+ * (escalating loudest) — never by colour alone: every state also shows as a
+ * labelled `Badge`. Absent web URL → no link.
  */
 
-import { Activity, ExternalLink, Tag } from "@tamagui/lucide-icons"
-import { Linking, Platform } from "react-native"
-import { Text, XStack, YStack } from "tamagui"
+import { Linking, Platform, View } from "react-native"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { Badge } from "../../../components/ui/ds/Badge"
+import { LGroup, LRow } from "../../../components/ui/ds/Card"
+import { Ph } from "../../../components/ui/ds/Icon"
+import { T } from "../../../components/ui/ds/Text"
+import { Tile } from "../../../components/ui/ds/Tile"
 import type { LatitudeSignalSummary } from "../../../services/AdminApi"
 import {
   formatCount,
   formatPercent,
   formatWhen,
-  SIGNAL_COLORS,
-  signalAccent,
+  SIGNAL_TONE,
+  signalLevel,
   stateLevel,
 } from "../format"
 
@@ -29,57 +34,43 @@ export function openSignal(url: string) {
   }
 }
 
-/** Compact 14-day trend as thin bars (height ∝ count). Dependency-free so it
+/** Compact 14-day trend as thin violet bars (height ∝ count). Dependency-free so it
  * renders in web, native, and the vitest harness alike. Empty trend → nothing. */
 function Sparkline({ trend }: { trend: LatitudeSignalSummary["trend"] }) {
+  const c = useColors()
   if (trend.length === 0) return null
   const max = Math.max(1, ...trend.map((p) => p.count))
   return (
-    <XStack ai="flex-end" gap={2} height={24} aria-label="14-day trend">
+    <View
+      style={{ flexDirection: "row", alignItems: "flex-end", gap: 2, height: 24 }}
+      {...({ "aria-label": "14-day trend" } as any)}
+    >
       {trend.map((p) => (
-        <YStack
+        <View
           key={p.bucket}
-          width={3}
-          height={Math.max(2, Math.round((p.count / max) * 24))}
-          borderRadius={1}
-          backgroundColor="$gray8"
+          style={{
+            width: 3,
+            height: Math.max(2, Math.round((p.count / max) * 24)),
+            borderRadius: 1,
+            backgroundColor: c.accent,
+            opacity: 0.35 + (p.count / max) * 0.65,
+          }}
         />
       ))}
-    </XStack>
-  )
-}
-
-function StateChip({ state }: { state: string }) {
-  const color = SIGNAL_COLORS[stateLevel(state)]
-  return (
-    <XStack
-      ai="center"
-      gap={4}
-      paddingHorizontal={7}
-      paddingVertical={2}
-      borderRadius={6}
-      backgroundColor="rgba(255,255,255,0.05)"
-      borderColor={color}
-      borderWidth={1}
-    >
-      <YStack width={6} height={6} borderRadius={3} backgroundColor={color} />
-      <Text fontSize={10} fontWeight="700" color={color} textTransform="uppercase">
-        {state}
-      </Text>
-    </XStack>
+    </View>
   )
 }
 
 function MetaItem({ label, value }: { label: string; value: string }) {
   return (
-    <YStack gap={1}>
-      <Text fontSize={9} color="$gray9" textTransform="uppercase" letterSpacing={0.4}>
+    <View style={{ gap: 1, minWidth: 72 }}>
+      <T step="codenote" tone="text3">
         {label}
-      </Text>
-      <Text fontSize={12} fontWeight="600" color="$gray12">
+      </T>
+      <T step="code13" numberOfLines={1}>
         {value}
-      </Text>
-    </YStack>
+      </T>
+    </View>
   )
 }
 
@@ -90,79 +81,75 @@ export function SignalCard({
   signal: LatitudeSignalSummary
   onOpen: (url: string) => void
 }) {
-  const accent = signalAccent(signal.states, signal.muted)
+  const c = useColors()
+  const level = signalLevel(signal.states, signal.muted)
   const linkable = signal.deepLinkUrl.length > 0
   const label = `Signal: ${signal.name}. ${signal.muted ? "Muted. " : ""}${formatCount(
     signal.occurrences,
   )} occurrences.${linkable ? " Opens in Latitude." : ""}`
+  const tileTone =
+    level === "bad" ? "pink" : level === "warn" ? "amber" : level === "info" ? "accent" : "muted"
   return (
-    <YStack
-      gap={10}
-      padding={14}
-      borderRadius={12}
-      backgroundColor="rgba(255,255,255,0.02)"
-      borderColor="rgba(255,255,255,0.08)"
-      borderWidth={1}
-      borderLeftWidth={3}
-      borderLeftColor={accent}
-      opacity={signal.muted ? 0.72 : 1}
-      cursor={linkable ? "pointer" : "default"}
-      hoverStyle={linkable ? { backgroundColor: "rgba(255,255,255,0.05)" } : undefined}
+    <LRow
+      padV={14}
+      gap={14}
       onPress={linkable ? () => onOpen(signal.deepLinkUrl) : undefined}
-      aria-label={label}
-      role={linkable ? "link" : undefined}
+      style={{ alignItems: "flex-start", opacity: signal.muted ? 0.72 : 1 }}
+      {...({
+        "aria-label": label,
+        ...(linkable ? { role: "link", accessibilityRole: "link" } : {}),
+      } as any)}
     >
-      <XStack ai="center" gap={8} flexWrap="wrap">
-        <Activity size={15} color={accent} />
-        <Text fontSize={14} fontWeight="700" color="$gray12" flexShrink={1}>
-          {signal.name}
-        </Text>
-        {signal.states.map((s) => (
-          <StateChip key={s} state={s} />
-        ))}
-        {signal.muted ? (
-          <Text fontSize={10} fontWeight="700" color="$gray9" textTransform="uppercase">
-            Muted
-          </Text>
-        ) : null}
-        <XStack flex={1} />
-        {linkable ? <ExternalLink size={14} color="$gray9" /> : null}
-      </XStack>
+      <Tile sm tone={tileTone} icon="broadcast" />
 
-      {signal.description ? (
-        <Text fontSize={12} color="$gray10" numberOfLines={2}>
-          {signal.description}
-        </Text>
-      ) : null}
-
-      <XStack ai="center" gap={20} flexWrap="wrap">
-        <MetaItem label="Occurrences" value={formatCount(signal.occurrences)} />
-        <MetaItem label="Sessions" value={formatPercent(signal.affectedSessionsPercent)} />
-        <MetaItem label="Source" value={signal.source} />
-        <MetaItem label="Last seen" value={formatWhen(signal.lastSeenAt)} />
-        <XStack flex={1} />
-        <Sparkline trend={signal.trend} />
-      </XStack>
-
-      {signal.tags.length > 0 ? (
-        <XStack ai="center" gap={6} flexWrap="wrap">
-          <Tag size={12} color="$gray9" />
-          {signal.tags.map((t) => (
-            <Text
-              key={t}
-              fontSize={10}
-              color="$gray10"
-              paddingHorizontal={6}
-              paddingVertical={1}
-              borderRadius={5}
-              backgroundColor="rgba(255,255,255,0.05)"
-            >
-              {t}
-            </Text>
+      <View style={{ flex: 1, minWidth: 0, gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <T step="base" style={{ flexShrink: 1 }}>
+            {signal.name}
+          </T>
+          {signal.states.map((s) => (
+            <Badge key={s} tone={SIGNAL_TONE[stateLevel(s)]} dot pill>
+              {s}
+            </Badge>
           ))}
-        </XStack>
+          {signal.muted ? (
+            <Badge tone="muted" pill>
+              Muted
+            </Badge>
+          ) : null}
+        </View>
+
+        {signal.description ? (
+          <T step="sm" tone="text2" numberOfLines={2}>
+            {signal.description}
+          </T>
+        ) : null}
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+          <MetaItem label="Occurrences" value={formatCount(signal.occurrences)} />
+          <MetaItem label="Sessions" value={formatPercent(signal.affectedSessionsPercent)} />
+          <MetaItem label="Source" value={signal.source} />
+          <MetaItem label="Last seen" value={formatWhen(signal.lastSeenAt)} />
+          <View style={{ flex: 1 }} />
+          <Sparkline trend={signal.trend} />
+        </View>
+
+        {signal.tags.length > 0 ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <Ph name="tag" size={12} color={c.text3} />
+            {signal.tags.map((t) => (
+              <Badge key={t} mono sm>
+                {t}
+              </Badge>
+            ))}
+          </View>
+        ) : null}
+      </View>
+
+      {linkable ? (
+        <Ph name="arrow-square-out" size={14} color={c.text3} style={{ marginTop: 4 }} />
       ) : null}
-    </YStack>
+    </LRow>
   )
 }
 
@@ -175,10 +162,10 @@ export function SignalsList({
 }) {
   const open = onOpenSignal ?? openSignal
   return (
-    <YStack gap={10}>
+    <LGroup>
       {signals.map((s) => (
         <SignalCard key={s.id} signal={s} onOpen={open} />
       ))}
-    </YStack>
+    </LGroup>
   )
 }

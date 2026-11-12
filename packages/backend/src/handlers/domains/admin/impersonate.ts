@@ -10,6 +10,8 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import { UserService } from '../../../auth/user-service'
 import { IdentityService } from '../../../auth/identity-service'
 import { SessionService, hashSessionToken } from '../../../auth/session-service'
+import { auditLogger } from '../../../lib/audit-logger'
+import { requireStepUp } from './require-step-up'
 
 // ============================================================================
 // admin.impersonate
@@ -38,6 +40,9 @@ export function createImpersonateHandler(
     if (!targetUserId) {
       throw new HandlerError('MISSING_FIELDS', 'targetUserId is required')
     }
+
+    // 1b. Step-up auth: require recent re-authentication (Req 2.4.1)
+    await requireStepUp(ctx, sessionService)
 
     // 3. Verify caller's current session is NOT already an impersonation session
     //    (no nested impersonation)
@@ -87,12 +92,18 @@ export function createImpersonateHandler(
         ipAddress: ctx.ip,
       })
 
-    // 7. Audit log
-    console.log(
-      `[AUDIT] admin.impersonate: admin=${ctx.userId} (${caller.profile.displayName}) ` +
-        `→ target=${targetUserId} (${targetUser.profile.displayName}) ` +
-        `ip=${ctx.ip} sessionId=${impersonationSession._id.toHexString()}`,
-    )
+    // 7. Audit log (Req 6.5.1)
+    await auditLogger.log({
+      event: 'impersonation.start',
+      actorUserId: ctx.userId,
+      targetUserId,
+      ip: ctx.ip,
+      detail: {
+        adminName: caller.profile.displayName,
+        targetName: targetUser.profile.displayName,
+        sessionId: impersonationSession._id.toHexString(),
+      },
+    })
 
     return {
       impersonationToken,
@@ -167,13 +178,18 @@ export function createStopImpersonationHandler(
       )
     }
 
-    // 6. Audit log
+    // 6. Audit log (Req 6.5.1)
     const adminUserId = originalSession.userId
     const admin = await userService.getByUserId(adminUserId)
-    console.log(
-      `[AUDIT] admin.stop-impersonation: admin=${adminUserId} (${admin?.profile.displayName ?? 'unknown'}) ` +
-        `stopped impersonating userId=${currentSession.userId} ip=${ctx.ip}`,
-    )
+    await auditLogger.log({
+      event: 'impersonation.stop',
+      actorUserId: adminUserId,
+      targetUserId: currentSession.userId,
+      ip: ctx.ip,
+      detail: {
+        adminName: admin?.profile.displayName ?? 'unknown',
+      },
+    })
 
     return {
       restoredToken: refreshed.token,

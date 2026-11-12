@@ -91,8 +91,12 @@ export function createWorkspaceCommands(deps: WorkspaceCommandsDeps) {
         } as any);
 
         console.log(`✅ Created workspace ${workspace.workspaceId} for user ${userId}`);
-      } catch (error) {
+      } catch (error: any) {
         console.error('❌ Error creating workspace:', error);
+        if (error?.code === 'UPGRADE_REQUIRED' || error?.name === 'UpgradeRequiredError') {
+          sendError(ws, 'UPGRADE_REQUIRED', error.message || 'Workspace limit reached');
+          return;
+        }
         sendError(ws, 'CREATE_WORKSPACE_ERROR', 'Failed to create workspace');
       }
     },
@@ -127,6 +131,9 @@ export function createWorkspaceCommands(deps: WorkspaceCommandsDeps) {
 
         const role = await workspaceService.getUserRole(workspaceId, userId);
 
+        // Fetch members from workspace_members collection (single source of truth)
+        const members = await workspaceService.getWorkspaceMembers(workspaceId);
+
         sendMessage(ws, {
           type: 'workspace_details',
           workspace: {
@@ -136,7 +143,7 @@ export function createWorkspaceCommands(deps: WorkspaceCommandsDeps) {
             context: workspace.context,
             volumeId: workspace.volumeId,
             ownerId: workspace.ownerId,
-            members: workspace.members,
+            members,
             settings: workspace.settings,
             appearance: workspace.appearance,
             role,

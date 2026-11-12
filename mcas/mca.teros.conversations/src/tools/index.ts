@@ -4,6 +4,7 @@ export { getChannelMessages } from './get-channel-messages';
 export { getChannelSummary } from './get-channel-summary';
 export { importAttachment } from './import-attachment';
 export { listChannels } from './list-channels';
+export { redactByValue } from './redact-by-value';
 export { renameChannel } from './rename-channel';
 export { searchMessages } from './search-messages';
 export { sendMessage } from './send-message';

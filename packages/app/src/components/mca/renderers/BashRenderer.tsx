@@ -8,9 +8,9 @@
  *      `pending_permission` context (forceExpand + ControlsBar) flows
  *      through.
  *
- * Admin bash uses the same Core via `AdminBashRenderer.tsx` with a
- * different `defaultMcaId`. Any fix to the bash UI lives in the Core,
- * never duplicated here.
+ * Any fix to the bash UI lives in the Core, never duplicated here.
+ * (The admin-bash variant went away with mca.teros.admin.bash on
+ * 2026-10-19 — host access is served by Teros Remote now.)
  */
 
 import { withPermissionSupport } from '../withPermissionSupport';

@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -284,7 +287,7 @@
     },
     {
       "name": "railway-list-deployments",
-      "description": "List recent deployments for a service.",
+      "description": "List recent deployments for a service. Optionally filter by status (e.g. SUCCESS, FAILED, CRASHED, BUILDING, DEPLOYING).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -299,6 +302,18 @@
           "environmentId": {
             "type": "string",
             "description": "The Railway environment ID"
+          },
+          "status": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional list of statuses to include (e.g. [\"SUCCESS\", \"FAILED\"]). If omitted, returns all."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of deployments to return (default: 10, max: 100)",
+            "default": 10
           }
         },
         "required": [
@@ -308,7 +323,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     },
     {
@@ -327,7 +342,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     },
     {
@@ -549,7 +564,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     }
   ]

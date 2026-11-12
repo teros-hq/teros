@@ -53,6 +53,11 @@ IFS=$OLD_IFS
 
 if [ "$need_mca_sdk" -eq 1 ]; then
   echo "-- building @teros/mca-sdk (required by MCA-level golden-set tests) --"
+  # @teros/mca-sdk's tsc resolves @teros/shared from dist/ (no "bun"→src
+  # export condition in mca-sdk's tsconfig). In the CI test container shared
+  # ships as source only (dist/ is gitignored, never in the checkout), so
+  # build shared first or mca-sdk's tsc fails with TS2307.
+  yarn workspace @teros/shared build
   yarn workspace @teros/mca-sdk build
 fi
 

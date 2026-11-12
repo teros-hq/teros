@@ -8,17 +8,20 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "higgsfield-run",
-      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models.",
+      "description": "Run any model on Higgsfield. Supports text-to-image, image-to-video, and other AI generation models. Image/video inputs inside `input` must be PUBLIC URLs (https://...) or data: URIs — Higgsfield cannot reach internal/localhost URLs. Internal Teros objects URLs (http://localhost:.../objects/obj_... or http://127.0.0.1:.../objects/obj_...) are automatically resolved to data URIs (objects up to 10 MB).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "model": {
             "type": "string",
-            "description": "Model/endpoint identifier (e.g., 'bytedance/seedream/v4/text-to-image')"
+            "description": "Model/endpoint identifier (e.g., 'higgsfield-ai/soul/standard'). Run higgsfield-list-models to see what's available."
           },
           "input": {
             "type": "object",
@@ -41,7 +44,7 @@
     },
     {
       "name": "higgsfield-text-to-image",
-      "description": "Generate images from text prompts using Seedream v4.",
+      "description": "Generate images from text prompts using Higgsfield Soul Standard (ultra-realistic fashion/portrait).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -52,11 +55,10 @@
           "resolution": {
             "type": "string",
             "enum": [
-              "1K",
-              "2K",
-              "4K"
+              "720p",
+              "1080p"
             ],
-            "default": "2K",
+            "default": "1080p",
             "description": "Output resolution"
           },
           "aspect_ratio": {
@@ -92,63 +94,8 @@
       }
     },
     {
-      "name": "higgsfield-image-to-video",
-      "description": "Convert an image to video with motion. Supports various motion styles and camera movements.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "image_url": {
-            "type": "string",
-            "description": "URL of the input image"
-          },
-          "prompt": {
-            "type": "string",
-            "description": "Description of the desired motion/video"
-          },
-          "duration": {
-            "type": "number",
-            "default": 5,
-            "description": "Video duration in seconds (default: 5)"
-          },
-          "motion_strength": {
-            "type": "number",
-            "minimum": 0,
-            "maximum": 1,
-            "default": 0.5,
-            "description": "Motion intensity (0.0-1.0)"
-          },
-          "camera_motion": {
-            "type": "string",
-            "enum": [
-              "none",
-              "zoom_in",
-              "zoom_out",
-              "pan_left",
-              "pan_right",
-              "tilt_up",
-              "tilt_down"
-            ],
-            "default": "none",
-            "description": "Camera movement type"
-          },
-          "wait": {
-            "type": "boolean",
-            "description": "Wait for completion (default: false)",
-            "default": false
-          }
-        },
-        "required": [
-          "image_url",
-          "prompt"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false
-      }
-    },
-    {
       "name": "higgsfield-text-to-video",
-      "description": "Generate video from text prompt.",
+      "description": "Generate video from text prompt using WAN v2.6.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -206,7 +153,7 @@
           },
           "reference_image": {
             "type": "string",
-            "description": "URL of the reference image for character consistency"
+            "description": "URL of the reference image for character consistency. Must be a PUBLIC URL (https://...) or data: URI — internal/localhost URLs are auto-resolved to data URIs (up to 10 MB)."
           },
           "style": {
             "type": "string",
@@ -215,11 +162,10 @@
           "resolution": {
             "type": "string",
             "enum": [
-              "1K",
-              "2K",
-              "4K"
+              "720p",
+              "1080p"
             ],
-            "default": "2K"
+            "default": "1080p"
           },
           "wait": {
             "type": "boolean",

@@ -1,145 +1,153 @@
 // ============================================================================
 // CONVERSATION PREVIEW
+// Compact read-only transcript of a task's linked conversation, in the OS
+// prototype language: a header strip with a Phosphor glyph + "Abrir" pill,
+// user turns as ink bubbles, agent turns as name (accent) + markdown.
 // ============================================================================
 
-import { ArrowRight, MessageSquare } from '@tamagui/lucide-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import { ScrollView, TouchableOpacity } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
-import { colors } from '../../components/mca/primitives/colors';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { AppSpinner } from '../../components/ui';
-import { getTerosClient } from '../../services/terosClientSingleton';
-import { CompactMarkdown } from './CompactMarkdown';
+import type { AgentMapEntry } from "./board-utils"
+import React, { useEffect, useRef, useState } from "react"
+import { ScrollView, View } from "react-native"
+import { useTranslation } from "react-i18next"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { colors as semantic } from "../../components/mca/primitives/colors"
+import { AppSpinner } from "../../components/ui"
+import { Btn, Ph, T } from "../../components/ui/ds"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { CompactMarkdown } from "./CompactMarkdown"
 
 interface ConversationPreviewProps {
-  channelId: string;
-  onOpenConversation: (channelId: string) => void;
-  agentMap: Record<string, { name: string; avatarUrl?: string }>;
+  channelId: string
+  onOpenConversation: (channelId: string) => void
+  agentMap: Record<string, AgentMapEntry>
 }
 
 /** Extract displayable text from a MessageContent object */
 function getMessageText(content: any): string {
-  if (!content) return '';
-  if (typeof content === 'string') return content; // legacy fallback
+  if (!content) return ""
+  if (typeof content === "string") return content // legacy fallback
   switch (content.type) {
-    case 'text':
-      return content.text || '';
-    case 'voice':
-      return content.transcription || '[Nota de voz]';
-    case 'image':
-      return content.caption || '[Imagen]';
-    case 'video':
-      return content.caption || '[Video]';
-    case 'audio':
-      return content.caption || '[Audio]';
-    case 'file':
-      return content.caption || content.filename || '[Archivo]';
-    case 'html':
-      return content.caption || '[Widget HTML]';
-    case 'html_file':
-      return content.caption || '[Archivo HTML]';
-    case 'tool_execution':
-      return `🔧 ${content.toolName || 'Tool call'}`;
-    case 'event':
-      return content.description || '';
-    case 'error':
-      return content.userMessage || '[Error]';
+    case "text":
+      return content.text || ""
+    case "voice":
+      return content.transcription || "[Nota de voz]"
+    case "image":
+      return content.caption || "[Imagen]"
+    case "video":
+      return content.caption || "[Video]"
+    case "audio":
+      return content.caption || "[Audio]"
+    case "file":
+      return content.caption || content.filename || "[Archivo]"
+    case "html":
+      return content.caption || "[Widget HTML]"
+    case "html_file":
+      return content.caption || "[Archivo HTML]"
+    case "tool_execution":
+      return `🔧 ${content.toolName || "Tool call"}`
+    case "event":
+      return content.description || ""
+    case "error":
+      return content.userMessage || "[Error]"
     default:
-      return '';
+      return ""
   }
 }
 
 /** Returns true if the message should be shown in the preview */
 function isVisibleMessage(msg: any): boolean {
-  if (!msg?.content) return false;
-  const type = msg.content.type;
+  if (!msg?.content) return false
+  const type = msg.content.type
   // Skip internal event messages
-  if (type === 'event') return false;
+  if (type === "event") return false
   // Only show user and assistant messages
-  if (msg.role !== 'user' && msg.role !== 'assistant') return false;
-  return true;
+  if (msg.role !== "user" && msg.role !== "assistant") return false
+  return true
 }
 
 /** Whether a message is a tool call (compact card style) */
 function isToolCall(msg: any): boolean {
-  return msg?.content?.type === 'tool_execution';
+  return msg?.content?.type === "tool_execution"
 }
 
-// ─── User bubble (right-aligned, blue) ───────────────────────────────────────
+// ─── User bubble (right-aligned, ink pill) ───────────────────────────────────
 
 function UserBubble({ text }: { text: string }) {
+  const c = useColors()
   return (
-    <XStack justifyContent="flex-end" paddingLeft={40}>
-      <YStack
-        backgroundColor="$blue"
-        borderRadius={16}
-        borderBottomRightRadius={4}
-        paddingHorizontal={12}
-        paddingVertical={8}
-        maxWidth="85%"
+    <View style={{ flexDirection: "row", justifyContent: "flex-end", paddingLeft: 40 }}>
+      <View
+        style={{
+          backgroundColor: c.inkPill,
+          borderRadius: 16,
+          borderBottomRightRadius: 4,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          maxWidth: "85%",
+        }}
       >
-        <Text fontSize={13} color="white" lineHeight={19}>
+        <T step="sm" tone="inkPill">
           {text}
-        </Text>
-      </YStack>
-    </XStack>
-  );
+        </T>
+      </View>
+    </View>
+  )
 }
 
 // ─── Agent message (left-aligned, no bubble) ──────────────────────────────────
 
 function AgentMessage({ text, agentName }: { text: string; agentName: string }) {
-  const c = useColors();
+  const c = useColors()
   return (
-    <YStack alignItems="flex-start" paddingRight={40} gap={2}>
-      <Text fontSize={11} fontWeight="600" color={colors.violet}>
+    <View style={{ alignItems: "flex-start", paddingRight: 40, gap: 2 }}>
+      <T step="12" tone="accent">
         {agentName}
-      </Text>
+      </T>
       <CompactMarkdown text={text} fontSize={13} color={c.text} />
-    </YStack>
-  );
+    </View>
+  )
 }
 
-// ─── Tool call card (compact surface card) ─────────────────────────────────────
+// ─── Tool call card (compact nested row) ───────────────────────────────────────
 
 function ToolCallCard({ content }: { content: any }) {
-  const c = useColors();
-  const toolName = content?.toolName || 'Tool call';
-  const status = content?.status;
+  const c = useColors()
+  const toolName = content?.toolName || "Tool call"
+  const status = content?.status
   const statusIcon =
-    status === 'completed' ? '✓' : status === 'failed' ? '✗' : status === 'running' ? '⏳' : '·';
+    status === "completed"
+      ? "check"
+      : status === "failed"
+        ? "x"
+        : status === "running"
+          ? "hourglass"
+          : "dot"
   const statusColor =
-    status === 'completed'
-      ? colors.green
-      : status === 'failed'
-        ? colors.red
-        : c.text3;
+    status === "completed" ? semantic.green : status === "failed" ? semantic.red : c.text3
 
   return (
-    <XStack
-      backgroundColor={c.bgInner}
-      borderRadius={8}
-      paddingHorizontal={10}
-      paddingVertical={6}
-      borderWidth={1}
-      borderColor={c.border}
-      gap={6}
-      alignItems="center"
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        backgroundColor: c.nest,
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+      }}
     >
-      <Text fontSize={11} color={statusColor} fontWeight="700">
-        {statusIcon}
-      </Text>
-      <Text fontSize={11} color={c.text2} fontFamily="$mono">
+      <Ph name={statusIcon} size={12} color={statusColor} />
+      <T step="code" tone="text2" ellipsis style={{ flex: 1 }}>
         {toolName}
-      </Text>
+      </T>
       {content?.duration ? (
-        <Text fontSize={10} color={c.text3} marginLeft="auto">
+        <T step="codenote" tone="text3">
           {content.duration}ms
-        </Text>
+        </T>
       ) : null}
-    </XStack>
-  );
+    </View>
+  )
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -149,85 +157,82 @@ export function ConversationPreview({
   onOpenConversation,
   agentMap,
 }: ConversationPreviewProps) {
-  const c = useColors();
-  const client = getTerosClient();
-  const [messages, setMessages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const scrollRef = useRef<ScrollView>(null);
+  const { t } = useTranslation()
+  const c = useColors()
+  const client = getTerosClient()
+  const [messages, setMessages] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const scrollRef = useRef<ScrollView>(null)
 
   useEffect(() => {
-    let cancelled = false;
+    let cancelled = false
     const load = async () => {
       try {
         // Fetch last 30 messages; backend returns newest-first so we reverse
-        const result = await client.channel.getMessages(channelId, 30);
+        const result = await client.channel.getMessages(channelId, 30)
         if (!cancelled) {
           const visible = (result.messages || [])
             .filter(isVisibleMessage)
             .reverse() // chronological order
-            .slice(-20); // keep last 20
-          setMessages(visible);
+            .slice(-20) // keep last 20
+          setMessages(visible)
         }
       } catch (err) {
-        console.error('Error loading conversation preview:', err);
+        console.error("Error loading conversation preview:", err)
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setLoading(false)
       }
-    };
-    load();
+    }
+    load()
     return () => {
-      cancelled = true;
-    };
-  }, [channelId]);
+      cancelled = true
+    }
+  }, [channelId])
 
   return (
-    <YStack flex={1}>
+    <View style={{ flex: 1 }}>
       {/* Header */}
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={12}
-        paddingVertical={8}
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-        flexShrink={0}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          paddingHorizontal: 12,
+          paddingVertical: 8,
+          borderBottomWidth: 1,
+          borderBottomColor: c.border,
+          flexShrink: 0,
+        }}
       >
-        <XStack alignItems="center" gap={6}>
-          <MessageSquare size={13} color={c.badges.info.text} />
-          <Text fontSize={12} fontWeight="600" color={c.text3}>
-            Conversation
-          </Text>
-        </XStack>
-        <TouchableOpacity
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <Ph name="chat-circle" size={13} color={c.accent} />
+          <T step="xs" tone="text3">
+            {t("board.conversationPreview.title", { defaultValue: "Conversation" })}
+          </T>
+        </View>
+        <Btn
+          size="sm"
+          variant="mint"
+          icon="chat-circle"
+          iconRight="arrow-right"
           onPress={() => onOpenConversation(channelId)}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            backgroundColor: c.badges.info.bg,
-            paddingHorizontal: 8,
-            paddingVertical: 3,
-            borderRadius: 4,
-          }}
         >
-          <Text fontSize={10} color={c.badges.info.text} fontWeight="600">
-            Abrir completa
-          </Text>
-          <ArrowRight size={10} color={c.badges.info.text} />
-        </TouchableOpacity>
-      </XStack>
+          {t("board.conversationPreview.open", { defaultValue: "Abrir completa" })}
+        </Btn>
+      </View>
 
       {/* Messages */}
       {loading ? (
-        <YStack flex={1} alignItems="center" justifyContent="center">
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <AppSpinner size="sm" variant="default" />
-        </YStack>
+        </View>
       ) : messages.length === 0 ? (
-        <YStack flex={1} alignItems="center" justifyContent="center">
-          <Text fontSize={12} color={c.text3}>
-            No messages yet
-          </Text>
-        </YStack>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <T step="sm" tone="text3">
+            {t("board.conversationPreview.empty", { defaultValue: "No messages yet" })}
+          </T>
+        </View>
       ) : (
         <ScrollView
           ref={scrollRef}
@@ -237,33 +242,27 @@ export function ConversationPreview({
           onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: false })}
         >
           {messages.map((msg, i) => {
-            const isUser = msg.role === 'user';
+            const isUser = msg.role === "user"
             const agentName =
-              msg.sender?.name ||
-              (msg.agentId ? agentMap[msg.agentId]?.name : null) ||
-              'Agente';
+              msg.sender?.name || (msg.agentId ? agentMap[msg.agentId]?.name : null) || "Agente"
 
             // Tool call card
             if (isToolCall(msg)) {
-              return (
-                <ToolCallCard key={msg.messageId || i} content={msg.content} />
-              );
+              return <ToolCallCard key={msg.messageId || i} content={msg.content} />
             }
 
-            const rawText = getMessageText(msg.content);
-            const text = rawText.length > 400 ? rawText.slice(0, 400) + '…' : rawText;
-            if (!text) return null;
+            const rawText = getMessageText(msg.content)
+            const text = rawText.length > 400 ? rawText.slice(0, 400) + "…" : rawText
+            if (!text) return null
 
             if (isUser) {
-              return <UserBubble key={msg.messageId || i} text={text} />;
+              return <UserBubble key={msg.messageId || i} text={text} />
             }
 
-            return (
-              <AgentMessage key={msg.messageId || i} text={text} agentName={agentName} />
-            );
+            return <AgentMessage key={msg.messageId || i} text={text} agentName={agentName} />
           })}
         </ScrollView>
       )}
-    </YStack>
-  );
+    </View>
+  )
 }

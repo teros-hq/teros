@@ -1,12 +1,14 @@
 /**
  * useChatChannel — WS listener lifecycle (TER-451).
  *
- * The hook registers 11 listeners on the WS client and MUST tear all of them down
- * in the effect cleanup. `channel_private_updated` was registered (line 747) but
- * never `off()`'d, so it leaked: a fresh handler accumulated on every reconnect /
- * channel change and the handler fired N times (the TER-369 class of bug). These
- * tests count listeners per event with a faithful fake client (the real client is
- * an EventEmitter) and assert the balance on mount, unmount, and re-run.
+ * The hook registers 13 listeners on the WS client and MUST tear all of them down
+ * in the effect cleanup. `channel_private_updated` (since renamed
+ * `channel_scope_updated`, a6583cc6c) was registered but never `off()`'d, so it
+ * leaked: a fresh handler accumulated on every reconnect / channel change and the
+ * handler fired N times (the TER-369 class of bug). These tests count listeners per
+ * event with a faithful fake client (the real client is an EventEmitter) and assert
+ * the balance on mount, unmount, and re-run — both for the known event list and for
+ * every event the hook actually registered, so a new listener can't escape the net.
  *
  *   cd packages/app && npx vitest run src/hooks/chat/useChatChannel.render.test.ts
  */
@@ -32,6 +34,9 @@ class FakeClient {
   count(event: string): number {
     return this.listeners.get(event)?.size ?? 0
   }
+  events(): string[] {
+    return [...this.listeners.keys()]
+  }
   isConnected = () => false
   channel = {
     get: vi.fn(async () => ({ id: 'ch', agentId: undefined, isPrivate: false })),
@@ -49,7 +54,9 @@ vi.mock('../../services/terosClientSingleton', () => ({
 
 import { useChatChannel } from './useChatChannel'
 
-// The 11 listeners registered by the main effect (lines 738-748).
+// The 13 listeners registered by the main "Message Listeners" effect.
+// `token_budget` is no longer one of them: 81fbbab5c moved the budget feed
+// behind the admin-only View Token Usage gate, out of this hook.
 const WS_EVENTS = [
   'message',
   'message_chunk',
@@ -57,10 +64,12 @@ const WS_EVENTS = [
   'queue_state',
   'agent_phase',
   'typing',
-  'token_budget',
   'system_event',
   'channel_status',
-  'channel_private_updated',
+  'channel_scope_updated',
+  'conversation.message.feedback.created',
+  'conversation.message.action.executed',
+  'message_redacted',
   'error',
 ] as const
 
@@ -83,25 +92,31 @@ describe('useChatChannel — WS listener lifecycle (TER-451)', () => {
     for (const ev of WS_EVENTS) {
       expect(fakeClient.count(ev)).toBe(1)
     }
+    for (const ev of fakeClient.events()) {
+      expect(fakeClient.count(ev), ev).toBeLessThanOrEqual(1)
+    }
   })
 
-  it('tears down EVERY listener on unmount — no orphan (regression: channel_private_updated)', () => {
+  it('tears down EVERY listener on unmount — no orphan (regression: channel_private_updated → channel_scope_updated)', () => {
     const { unmount } = mount('ch_1')
     unmount()
-    for (const ev of WS_EVENTS) {
-      expect(fakeClient.count(ev)).toBe(0)
+    for (const ev of fakeClient.events()) {
+      expect(fakeClient.count(ev), ev).toBe(0)
     }
     // The historical leak: this one stayed registered. Explicit guard.
-    expect(fakeClient.count('channel_private_updated')).toBe(0)
+    expect(fakeClient.count('channel_scope_updated')).toBe(0)
   })
 
   it('does not accumulate listeners across channel changes (reconnect/resume)', () => {
     const { rerender } = mount('ch_1')
     rerender({ id: 'ch_2' }) // channelId change → effect cleanup + re-run
     rerender({ id: 'ch_3' })
-    // With the leak, channel_private_updated would be 3 (one per run, never removed).
+    // With the leak, channel_scope_updated would be 3 (one per run, never removed).
     for (const ev of WS_EVENTS) {
       expect(fakeClient.count(ev)).toBe(1)
+    }
+    for (const ev of fakeClient.events()) {
+      expect(fakeClient.count(ev), ev).toBeLessThanOrEqual(1)
     }
   })
 })

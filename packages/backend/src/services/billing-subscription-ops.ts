@@ -14,6 +14,7 @@ import {
   getBillingSubscriptionsCollection,
   type BillingSubscription,
 } from '../models/billing.js'
+import { withTransaction } from '../lib/mongo-transaction.js'
 
 /** Field overrides carried onto the new subscription (admin panel edits). */
 export interface PlanChangeEdits {
@@ -24,6 +25,21 @@ export interface PlanChangeEdits {
   billingNotes?: string
   terosProviderConfigId?: string | null
   teamId?: string | null
+}
+
+/**
+ * A vaulted card means the user wants to be charged by card: flip the ACTIVE
+ * subscription to `paymentMethod: 'stripe'` so the reset-cron writes `stripe`
+ * invoices and the charge-cron collects them. Until 2026-10-15 nothing did this
+ * (only an admin edit could), so self-serve users with a card paid their
+ * upgrade proration and then never a renewal. Returns true when a sub changed.
+ */
+export async function markActiveSubscriptionStripe(db: Db, userId: string, now: Date): Promise<boolean> {
+  const res = await getBillingSubscriptionsCollection(db).updateOne(
+    { userId, status: 'active', paymentMethod: { $ne: 'stripe' } },
+    { $set: { paymentMethod: 'stripe', updatedAt: now } },
+  )
+  return res.modifiedCount > 0
 }
 
 /**
@@ -52,21 +68,21 @@ export async function changeUserPlanImmediate(
   active: BillingSubscription,
   newPlanId: string,
   now: Date,
-  opts: { edits?: PlanChangeEdits } = {},
+  opts: { edits?: PlanChangeEdits; carryUsage?: boolean } = {},
 ): Promise<string> {
   const subsCol = getBillingSubscriptionsCollection(db)
   const edits = opts.edits ?? {}
 
-  await subsCol.updateOne(
-    { _id: active._id },
-    { $set: { status: 'ended', endDate: now, cancelAtPeriodEnd: false, resetting: false, updatedAt: now } },
-  )
 
   // Immediate access from `now`; keep the ORIGINAL cut so the next bill lands on
   // the same date (decision A). Guard: if the period already lapsed (edge: change
   // applied after the cut, before the reset-cron renewed), fall back to a fresh
   // month so we never write an inverted [start, end) window.
-  const periodStart = now
+  // carryUsage (lateral move, BIL-1): same price, so nothing new was bought —
+  // keep the period's usage, cursor and anchor instead of granting fresh hours.
+  // Otherwise a lateral switch (or a switch back) reset agentHoursUsed for free.
+  const carry = opts.carryUsage === true
+  const periodStart = carry ? active.currentPeriodStart : now
   const periodEnd =
     active.currentPeriodEnd.getTime() > now.getTime()
       ? active.currentPeriodEnd
@@ -78,10 +94,12 @@ export async function changeUserPlanImmediate(
     customAgentHoursLimit: edits.customAgentHoursLimit ?? null,
     customPrice: edits.customPrice ?? null,
     customPriceNote: edits.customPriceNote ?? null,
-    agentHoursUsed: 0,
+    agentHoursUsed: carry ? active.agentHoursUsed : 0,
     overageHours: 0,
     // Fresh billing cursor: pre-change hours are not billed onto the new plan.
-    lastBilledHourBucket: now,
+    // A carried period keeps its cursor and anchor so nothing is lost or re-billed.
+    lastBilledHourBucket: carry ? (active.lastBilledHourBucket ?? now) : now,
+    ...(carry && active.periodStartBucket ? { periodStartBucket: active.periodStartBucket } : {}),
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
     status: 'active',
@@ -94,15 +112,30 @@ export async function changeUserPlanImmediate(
     createdAt: now,
     updatedAt: now,
   }
-  try {
-    await subsCol.insertOne(newActive)
-  } catch (err) {
-    // Compensation (TER-625): we closed the old sub FIRST (the partial unique index
-    // billing_sub_one_active forbids two active subs), so a failed insert would
-    // leave the user with NO active subscription — which the gate then blocks. Teros
-    // uses no Mongo transactions; mirroring the codebase's compensation-over-
-    // transaction pattern, re-OPEN the old sub to its pre-change state and rethrow,
-    // so the change is all-or-nothing instead of orphaning the user.
+  // Close FIRST (the partial unique index billing_sub_one_active forbids two
+  // active subs), then open the new one — in one transaction when the
+  // deployment supports it (BIL-4), so a crash in between can't orphan the user.
+  await withTransaction(db, async (session) => {
+    await subsCol.updateOne(
+      { _id: active._id },
+      { $set: { status: 'ended', endDate: now, cancelAtPeriodEnd: false, resetting: false, updatedAt: now } },
+      { session },
+    )
+    try {
+      await subsCol.insertOne(newActive, { session })
+    } catch (err) {
+      // Inside a transaction the abort undoes the close. Without one (standalone
+      // Mongo), compensate (TER-625): a failed insert would leave the user with
+      // NO active subscription — which the gate then blocks — so re-OPEN the old
+      // sub to its pre-change state and rethrow: all-or-nothing.
+      if (!session) await reopen()
+      throw err
+    }
+  })
+
+  return newActive._id
+
+  async function reopen(): Promise<void> {
     await subsCol.updateOne(
       { _id: active._id },
       {
@@ -115,10 +148,7 @@ export async function changeUserPlanImmediate(
         },
       },
     )
-    throw err
   }
-
-  return newActive._id
 }
 
 /**
@@ -171,6 +201,9 @@ export async function applyPlanChange(
     return { kind: 'downgrade_scheduled', subId: active._id }
   }
 
-  const subId = await changeUserPlanImmediate(db, active, newPlanId, now, { edits })
+  const subId = await changeUserPlanImmediate(db, active, newPlanId, now, {
+    edits,
+    carryUsage: newPrice === oldPrice,
+  })
   return { kind: 'upgraded', subId }
 }

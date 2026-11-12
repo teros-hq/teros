@@ -5,15 +5,24 @@
  */
 
 import { type Db, ObjectId } from 'mongodb';
-import { secrets } from '../secrets/secrets-manager';
-import { decrypt, encrypt, generateKey, generateSalt } from './encryption';
-import type { EncryptedData, UserCredentialDocument, UserEncryptionKeyDocument } from './types';
+import type { UserCredentialDocument } from './types';
 import { UserAuthContext } from './user-auth-context';
+import { AAD_FORMAT, decryptForUser, encryptForUser } from './user-keys';
+
+/** Bounded retries for merge() when another write lands in between (MOD-6). */
+const MERGE_ATTEMPTS = 5;
+
+const credentialScope = (appId: string) => `user_credentials:${appId}`;
 
 export class AuthManager {
   private mcaIdCache: Map<string, string> = new Map();
 
   constructor(private db: Db) {}
+
+  /** The one place `user_credentials` is opened (GOV-1 ratchet). */
+  private get credentials() {
+    return this.db.collection<UserCredentialDocument>('user_credentials');
+  }
 
   /**
    * Create auth context for a user
@@ -34,46 +43,75 @@ export class AuthManager {
     }
 
     // Update lastUsedAt
-    await this.db
-      .collection<UserCredentialDocument>('user_credentials')
+    await this.credentials
       .updateOne({ userId, appId }, { $set: { lastUsedAt: new Date() } });
 
     // Decrypt and return
-    return this.decryptCredentials(userId, {
-      data: doc.encryptedData,
-      iv: doc.encryptionIv,
-      tag: doc.encryptionTag,
-    });
+    return this.decryptDoc(doc);
+  }
+
+  private decryptDoc(doc: UserCredentialDocument): Promise<any> {
+    return decryptForUser(
+      this.db,
+      doc.userId,
+      credentialScope(doc.appId),
+      { data: doc.encryptedData, iv: doc.encryptionIv, tag: doc.encryptionTag },
+      doc.encryptionFormat,
+    );
   }
 
   /**
    * Set credentials for a user's app (full replace)
    */
   async set(userId: string, appId: string, mcaId: string, data: any): Promise<void> {
-    // Encrypt credentials
-    const encrypted = await this.encryptCredentials(userId, data);
+    await this.write(userId, appId, mcaId, data);
+  }
 
-    // Upsert document
-    await this.db.collection<UserCredentialDocument>('user_credentials').updateOne(
-      { userId, appId },
-      {
-        $set: {
-          mcaId,
-          encryptedData: encrypted.data,
-          encryptionIv: encrypted.iv,
-          encryptionTag: encrypted.tag,
-          updatedAt: new Date(),
+  /**
+   * Encrypt and upsert. With `expectedRev`, only writes if the stored rev
+   * still matches (returns false otherwise) — merge()'s optimistic lock.
+   */
+  private async write(
+    userId: string,
+    appId: string,
+    mcaId: string,
+    data: any,
+    expectedRev?: number | null,
+  ): Promise<boolean> {
+    const encrypted = await encryptForUser(this.db, userId, credentialScope(appId), data);
+    const filter: Record<string, unknown> = { userId, appId };
+    if (expectedRev !== undefined) filter.rev = expectedRev ?? { $exists: false };
+
+    try {
+      const res = await this.credentials.updateOne(
+        filter,
+        {
+          $set: {
+            mcaId,
+            encryptedData: encrypted.data,
+            encryptionIv: encrypted.iv,
+            encryptionTag: encrypted.tag,
+            encryptionFormat: AAD_FORMAT,
+            updatedAt: new Date(),
+          },
+          $inc: { rev: 1 },
+          $unset: {
+            revokedAt: '',
+          },
+          $setOnInsert: {
+            createdAt: new Date(),
+            lastUsedAt: new Date(),
+          },
         },
-        $unset: {
-          revokedAt: '',
-        },
-        $setOnInsert: {
-          createdAt: new Date(),
-          lastUsedAt: new Date(),
-        },
-      },
-      { upsert: true },
-    );
+        // A conditional write must not upsert a duplicate when the rev moved
+        { upsert: expectedRev === undefined || expectedRev === null },
+      );
+      return res.matchedCount > 0 || res.upsertedCount > 0;
+    } catch (err) {
+      // Lost an insert race on (userId, appId): the caller retries
+      if (expectedRev !== undefined && (err as { code?: number }).code === 11000) return false;
+      throw err;
+    }
   }
 
   /**
@@ -81,19 +119,24 @@ export class AuthManager {
    * Reads current credentials, merges the new fields on top, then saves.
    */
   async merge(userId: string, appId: string, mcaId: string, patch: Record<string, any>): Promise<void> {
-    // Get existing credentials (if any)
-    const existing = (await this.get(userId, appId)) || {};
-    // Merge: existing fields + patch (patch wins on conflict)
-    const merged = { ...existing, ...patch };
-    await this.set(userId, appId, mcaId, merged);
+    // Optimistic concurrency (MOD-6): read + merge + write conditioned on the
+    // rev we read. Two concurrent token refreshes used to both read the old
+    // blob and the second write dropped the first one's rotated refresh token.
+    for (let attempt = 0; attempt < MERGE_ATTEMPTS; attempt++) {
+      const doc = await this.getCredentialDoc(userId, appId);
+      const existing = doc && !doc.revokedAt ? await this.decryptDoc(doc) : {};
+      // Merge: existing fields + patch (patch wins on conflict)
+      const merged = { ...existing, ...patch };
+      if (await this.write(userId, appId, mcaId, merged, doc ? (doc.rev ?? null) : null)) return;
+    }
+    throw new Error(`AuthManager.merge: concurrent updates kept conflicting for ${appId}`);
   }
 
   /**
    * Revoke credentials (mark as revoked)
    */
   async revoke(userId: string, appId: string): Promise<void> {
-    await this.db
-      .collection<UserCredentialDocument>('user_credentials')
+    await this.credentials
       .updateOne({ userId, appId }, { $set: { revokedAt: new Date() } });
   }
 
@@ -101,7 +144,7 @@ export class AuthManager {
    * Get credential document (internal use)
    */
   async getCredentialDoc(userId: string, appId: string): Promise<UserCredentialDocument | null> {
-    return this.db.collection<UserCredentialDocument>('user_credentials').findOne({
+    return this.credentials.findOne({
       userId,
       appId,
     });
@@ -117,10 +160,14 @@ export class AuthManager {
       return this.mcaIdCache.get(appId)!;
     }
 
-    // Query apps collection
-    const app = await this.db
-      .collection('apps')
-      .findOne({ _id: new ObjectId(appId) }, { projection: { mcaId: 1 } });
+    // Apps are keyed by the string appId (app_…); only very old callers used
+    // the ObjectId _id, which made new ObjectId('app_…') throw (MOD-8)
+    const app = await this.db.collection('apps').findOne(
+      ObjectId.isValid(appId) && appId.length === 24
+        ? { $or: [{ appId }, { _id: new ObjectId(appId) }] }
+        : { appId },
+      { projection: { mcaId: 1 } },
+    );
 
     if (!app?.mcaId) {
       throw new Error(`App ${appId} not found or missing mcaId`);
@@ -136,8 +183,7 @@ export class AuthManager {
    * List all app IDs with credentials for a user
    */
   async listUserApps(userId: string): Promise<string[]> {
-    const docs = await this.db
-      .collection<UserCredentialDocument>('user_credentials')
+    const docs = await this.credentials
       .find({
         userId,
         revokedAt: { $exists: false },
@@ -152,8 +198,7 @@ export class AuthManager {
    * List app IDs for a specific MCA
    */
   async listByMCA(userId: string, mcaId: string): Promise<string[]> {
-    const docs = await this.db
-      .collection<UserCredentialDocument>('user_credentials')
+    const docs = await this.credentials
       .find({
         userId,
         mcaId,
@@ -165,115 +210,30 @@ export class AuthManager {
     return docs.map((doc) => doc.appId);
   }
 
-  /**
-   * Encrypt credentials using user's encryption key
-   */
-  private async encryptCredentials(userId: string, data: any): Promise<EncryptedData> {
-    const userKey = await this.getUserEncryptionKey(userId);
-    return encrypt(data, userKey);
-  }
 
   /**
-   * Decrypt credentials using user's encryption key
+   * Decrypt every live credential stored for an MCA, across users and app
+   * instances. Used when a secret has to be matched against an inbound value
+   * instead of being looked up by (userId, appId) — e.g. the Teros Remote
+   * gateway resolving a daemon's pasted key to its app instance (REQ-3).
+   * Entries that fail to decrypt are skipped (crypto-shredded users, GOV-7).
    */
-  private async decryptCredentials(userId: string, encrypted: EncryptedData): Promise<any> {
-    const userKey = await this.getUserEncryptionKey(userId);
-    return decrypt(encrypted, userKey);
-  }
-
-  /**
-   * Get or create user's encryption key
-   */
-  private async getUserEncryptionKey(userId: string): Promise<Buffer> {
-    // Try to get existing key
-    const keyDoc = await this.db
-      .collection<UserEncryptionKeyDocument>('user_encryption_keys')
-      .findOne({ userId });
-
-    if (keyDoc) {
-      // Decrypt master key with system key
-      return this.decryptMasterKey(keyDoc.encryptedMasterKey);
+  async listCredentialsByMca(
+    mcaId: string,
+  ): Promise<Array<{ userId: string; appId: string; data: Record<string, unknown> }>> {
+    const docs = await this.credentials
+      .find({ mcaId, revokedAt: { $exists: false } })
+      .toArray();
+    const out: Array<{ userId: string; appId: string; data: Record<string, unknown> }> = [];
+    for (const doc of docs) {
+      try {
+        const data = await this.decryptDoc(doc);
+        if (data && typeof data === 'object') out.push({ userId: doc.userId, appId: doc.appId, data });
+      } catch {
+        // undecryptable (missing user key) — not a match, keep going
+      }
     }
-
-    // Create new key for user
-    return this.createUserEncryptionKey(userId);
-  }
-
-  /**
-   * Create new encryption key for user
-   */
-  private async createUserEncryptionKey(userId: string): Promise<Buffer> {
-    // Generate random master key
-    const masterKey = generateKey();
-
-    // Encrypt master key with system key
-    const encryptedMasterKey = this.encryptMasterKey(masterKey);
-
-    // Generate salt
-    const salt = generateSalt();
-
-    // Store in database
-    await this.db.collection<UserEncryptionKeyDocument>('user_encryption_keys').insertOne({
-      _id: new ObjectId(),
-      userId,
-      encryptedMasterKey: encryptedMasterKey.toString('hex'),
-      keyVersion: 1,
-      salt: salt.toString('hex'),
-      createdAt: new Date(),
-    });
-
-    return masterKey;
-  }
-
-  /**
-   * Encrypt user's master key with system encryption key
-   */
-  private encryptMasterKey(masterKey: Buffer): Buffer {
-    const systemKey = this.getSystemEncryptionKey();
-    const encrypted = encrypt(masterKey.toString('hex'), systemKey);
-
-    // Combine encrypted data, iv, and tag into single buffer
-    return Buffer.concat([
-      Buffer.from(encrypted.data, 'hex'),
-      Buffer.from(encrypted.iv, 'hex'),
-      Buffer.from(encrypted.tag, 'hex'),
-    ]);
-  }
-
-  /**
-   * Decrypt user's master key with system encryption key
-   */
-  private decryptMasterKey(encryptedMasterKey: string): Buffer {
-    const systemKey = this.getSystemEncryptionKey();
-    const combined = Buffer.from(encryptedMasterKey, 'hex');
-
-    // Extract components (data is variable length, iv and tag are fixed)
-    const tagLength = 16;
-    const ivLength = 16;
-    const dataLength = combined.length - ivLength - tagLength;
-
-    const data = combined.subarray(0, dataLength);
-    const iv = combined.subarray(dataLength, dataLength + ivLength);
-    const tag = combined.subarray(dataLength + ivLength);
-
-    const decrypted = decrypt(
-      {
-        data: data.toString('hex'),
-        iv: iv.toString('hex'),
-        tag: tag.toString('hex'),
-      },
-      systemKey,
-    );
-
-    return Buffer.from(decrypted, 'hex');
-  }
-
-  /**
-   * Get system encryption key from secrets
-   */
-  private getSystemEncryptionKey(): Buffer {
-    const encryptionSecret = secrets.requireSystem('encryption');
-    return Buffer.from(encryptionSecret.masterKey, 'hex');
+    return out;
   }
 
   /**

@@ -62,5 +62,25 @@ export async function login(page: Page, creds: Creds, label = ""): Promise<void>
     timeout: 20000,
   })
   await page.waitForTimeout(3000) // navbar hydration
+  await dismissWhatsNew(page, 5000)
   console.log(`${tag}logged in @ ${page.url()}`)
+}
+
+/**
+ * "What's New" changelog modal (5860fd71b): auto-opens once per user while there are
+ * changelog entries newer than `user.lastChangelogSeen`, with a full-screen scrim that
+ * swallows every click. Closing it persists `lastChangelogSeen` server-side (like a real
+ * user would), so later sessions of the same user don't see it again. No-op if absent.
+ */
+export async function dismissWhatsNew(page: Page, waitMs = 0): Promise<void> {
+  const modal = page.getByTestId("whats-new-modal")
+  // It opens once the profile syncs → after login give it a moment to show up.
+  const shown = await modal
+    .waitFor({ state: "visible", timeout: Math.max(waitMs, 1) })
+    .then(() => true)
+    .catch(() => false)
+  if (!shown) return
+  // First button of the card = the close (x) icon, top-right.
+  await modal.getByRole("button").first().click()
+  await modal.waitFor({ state: "hidden", timeout: 5000 })
 }

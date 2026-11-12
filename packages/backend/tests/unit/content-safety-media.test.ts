@@ -22,9 +22,12 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   applyDownloadSafetyHeaders,
+  applyInlineSafetyHeaders,
+  buildFrameAncestorsDirective,
   FORCE_ATTACHMENT_TYPES,
   normalizeMediaType,
   sanitizeContentDispositionFilename,
+  withTextCharset,
 } from '../../src/lib/content-safety';
 import { HttpMediaHandler } from '../../src/handlers/http-media-handler';
 import { handleUploadedFile, UPLOADS_DIR } from '../../src/bootstrap/http-server';
@@ -79,6 +82,29 @@ describe('normalizeMediaType', () => {
   });
 });
 
+describe('withTextCharset', () => {
+  it('appends charset=utf-8 to a text/* type lacking one (the mojibake bug)', () => {
+    for (const t of ['text/markdown', 'text/plain', 'text/csv', 'text/html', 'text/css']) {
+      expect(withTextCharset(t)).toBe(`${t}; charset=utf-8`);
+    }
+  });
+
+  it('preserves an explicit charset (never doubled, never overridden)', () => {
+    expect(withTextCharset('text/plain; charset=iso-8859-1')).toBe('text/plain; charset=iso-8859-1');
+    expect(withTextCharset('TEXT/PLAIN; Charset=UTF-8')).toBe('TEXT/PLAIN; Charset=UTF-8');
+  });
+
+  it('passes non-text types through unchanged', () => {
+    for (const t of ['image/jpeg', 'application/json', 'application/pdf', 'audio/mpeg']) {
+      expect(withTextCharset(t)).toBe(t);
+    }
+  });
+
+  it('tolerates empty input', () => {
+    expect(withTextCharset('')).toBe('');
+  });
+});
+
 describe('sanitizeContentDispositionFilename', () => {
   it('strips quotes, path separators, control chars (CR/LF), backslashes', () => {
     expect(sanitizeContentDispositionFilename('evil".svg')).toBe('evil_.svg');
@@ -89,6 +115,90 @@ describe('sanitizeContentDispositionFilename', () => {
   it('never returns empty (blank or whitespace-only → download)', () => {
     expect(sanitizeContentDispositionFilename('')).toBe('download');
     expect(sanitizeContentDispositionFilename('   ')).toBe('download');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 1b. Inline-serving helpers (security F1 — /objects and /share containment)
+// ---------------------------------------------------------------------------
+
+describe('buildFrameAncestorsDirective (F1)', () => {
+  it("always includes 'self' plus the allowlisted app origins", () => {
+    expect(buildFrameAncestorsDirective(['https://os.teros.ai', 'https://raw-os.teros.ai'])).toBe(
+      "frame-ancestors 'self' https://os.teros.ai https://raw-os.teros.ai",
+    );
+  });
+
+  it('dedupes and drops empty entries', () => {
+    expect(buildFrameAncestorsDirective(['https://os.teros.ai', 'https://os.teros.ai', '', '  '])).toBe(
+      "frame-ancestors 'self' https://os.teros.ai",
+    );
+  });
+
+  it("degrades a '*' allowlist to 'self' only — never re-opens framing to the whole web", () => {
+    expect(buildFrameAncestorsDirective(['*'])).toBe("frame-ancestors 'self'");
+    expect(buildFrameAncestorsDirective(['*', 'https://os.teros.ai'])).toBe(
+      "frame-ancestors 'self' https://os.teros.ai",
+    );
+  });
+
+  it('an empty allowlist still allows same-origin framing', () => {
+    expect(buildFrameAncestorsDirective([])).toBe("frame-ancestors 'self'");
+  });
+});
+
+describe('applyInlineSafetyHeaders (F1)', () => {
+  const FA = "frame-ancestors 'self' https://os.teros.ai";
+
+  it('HTML gets the sandbox CSP: allow-scripts, NEVER allow-same-origin, plus frame-ancestors', () => {
+    const h = applyInlineSafetyHeaders({ 'Content-Type': 'text/html' }, 'text/html', FA);
+    expect(h['Content-Security-Policy']).toBe("sandbox allow-scripts; frame-ancestors 'self' https://os.teros.ai");
+    expect(h['Content-Security-Policy']).toContain('allow-scripts');
+    expect(h['Content-Security-Policy']).not.toContain('allow-same-origin');
+    expect(h['X-Content-Type-Options']).toBe('nosniff');
+  });
+
+  it('SVG gets the sandbox CSP (the other browser-executable type served inline)', () => {
+    const h = applyInlineSafetyHeaders({ 'Content-Type': 'image/svg+xml' }, 'image/svg+xml', FA);
+    expect(h['Content-Security-Policy']).toContain('sandbox allow-scripts');
+    expect(h['X-Content-Type-Options']).toBe('nosniff');
+  });
+
+  it('every browser-executable type in FORCE_ATTACHMENT_TYPES gets the CSP — the exact sandboxed set', () => {
+    for (const t of FORCE_ATTACHMENT_TYPES) {
+      const h = applyInlineSafetyHeaders({ 'Content-Type': t }, t, FA);
+      expect(h['Content-Security-Policy']).toContain('sandbox allow-scripts');
+      expect(h['Content-Security-Policy']).toContain('frame-ancestors');
+    }
+  });
+
+  it('benign types get NO CSP but DO get nosniff (a PNG must not be sniffed into HTML)', () => {
+    for (const t of ['image/png', 'image/jpeg', 'application/pdf', 'text/plain', 'application/json', 'audio/mpeg', 'video/mp4', 'application/zip']) {
+      const h = applyInlineSafetyHeaders({ 'Content-Type': t }, t, FA);
+      expect(h['Content-Security-Policy']).toBeUndefined();
+      expect(h['X-Content-Type-Options']).toBe('nosniff');
+    }
+  });
+
+  it('a crafted mimeType with params/case cannot evade the sandbox set', () => {
+    for (const t of ['text/html; charset=utf-8', 'TEXT/HTML', '  image/svg+xml ', 'image/svg+xml;x=1']) {
+      const h = applyInlineSafetyHeaders({ 'Content-Type': t }, t, FA);
+      expect(h['Content-Security-Policy']).toContain('sandbox allow-scripts');
+    }
+  });
+
+  it('keeps the caller\'s Content-Disposition (inline serving is the point — no attachment override)', () => {
+    const h = applyInlineSafetyHeaders(
+      { 'Content-Type': 'text/html', 'Content-Disposition': 'inline; filename="deliverable.html"' },
+      'text/html',
+      FA,
+    );
+    expect(h['Content-Disposition']).toBe('inline; filename="deliverable.html"');
+  });
+
+  it('appends charset=utf-8 to a text/* Content-Type lacking one (same rule as the download path)', () => {
+    const h = applyInlineSafetyHeaders({ 'Content-Type': 'text/html' }, 'text/html', FA);
+    expect(h['Content-Type']).toBe('text/html; charset=utf-8');
   });
 });
 
@@ -137,7 +247,7 @@ function newId(): string {
 
 afterEach(() => {
   for (const id of fixtures.splice(0)) {
-    for (const suffix of ['.json', '.svg', '.jpg']) {
+    for (const suffix of ['.json', '.svg', '.jpg', '.md', '.txt', '.csv']) {
       const p = join(MEDIA_DIR, `${id}${suffix}`);
       if (existsSync(p)) rmSync(p);
     }
@@ -170,6 +280,26 @@ describe('HttpMediaHandler serving (A5)', () => {
     expect(res.headers?.['X-Content-Type-Options']).toBe('nosniff');
   });
 
+  it('serves text files with charset=utf-8 so non-ASCII does not mojibake (the fb_9fc7413b9cc7c59d bug)', async () => {
+    // Before the fix the handler answered `Content-Type: text/markdown` with no
+    // charset. RFC 9110 defines no default charset for text/*, so Chromium
+    // guessed windows-1252 and rendered `situaciÃ³n` for UTF-8 `situación`.
+    const cases: Array<[ext: string, mimeType: string, filename: string]> = [
+      ['.md', 'text/markdown', 'reporte-situacion.md'],
+      ['.txt', 'text/plain', 'notas-acción.txt'],
+      ['.csv', 'text/csv', 'datos-polarización.csv'],
+    ];
+    for (const [ext, mimeType, filename] of cases) {
+      const id = newId();
+      writeMediaFixture(id, ext, mimeType, filename, 'situación — «Polarización» año 2026');
+      const res = mockRes();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal req stub
+      await handler.handleRoute({ method: 'GET' } as any, res as any, `/media/${id}`);
+      expect(res.status).toBe(200);
+      expect(res.headers?.['Content-Type']).toBe(`${mimeType}; charset=utf-8`);
+    }
+  });
+
   it('sanitizes a header-injecting filename in the served Content-Disposition', async () => {
     const id = newId();
     writeMediaFixture(id, '.jpg', 'image/jpeg', 'a"\r\nSet-Cookie: b.jpg', 'JFIF-bytes');
@@ -182,6 +312,40 @@ describe('HttpMediaHandler serving (A5)', () => {
     expect(cd).not.toContain('\r');
     expect(cd).not.toContain('\n');
     expect(cd).toMatch(/^inline; filename="[^"]*"$/);
+  });
+});
+
+describe('HttpMediaHandler text charset (fb_9fc7413b9cc7c59d)', () => {
+  // biome-ignore lint/suspicious/noExplicitAny: authService unused on the public GET path
+  const handler = new HttpMediaHandler({} as any);
+
+  it('serves text files with charset=utf-8 so non-ASCII does not mojibake', async () => {
+    // Before the fix the handler answered `Content-Type: text/markdown` with no
+    // charset. RFC 9110 defines no default charset for text/*, so Chromium
+    // guessed windows-1252 and rendered `situaciÃ³n` for UTF-8 `situación`.
+    const cases: Array<[ext: string, mimeType: string, filename: string]> = [
+      ['.md', 'text/markdown', 'reporte-situacion.md'],
+      ['.txt', 'text/plain', 'notas-acción.txt'],
+      ['.csv', 'text/csv', 'datos-polarización.csv'],
+    ];
+    for (const [ext, mimeType, filename] of cases) {
+      const id = newId();
+      writeMediaFixture(id, ext, mimeType, filename, 'situación — «Polarización» año 2026');
+      const res = mockRes();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal req stub
+      await handler.handleRoute({ method: 'GET' } as any, res as any, `/media/${id}`);
+      expect(res.status).toBe(200);
+      expect(res.headers?.['Content-Type']).toBe(`${mimeType}; charset=utf-8`);
+    }
+  });
+
+  it('keeps non-text media Content-Type untouched (no charset appended)', async () => {
+    const id = newId();
+    writeMediaFixture(id, '.jpg', 'image/jpeg', 'cat.jpg', 'JFIF-bytes');
+    const res = mockRes();
+    // biome-ignore lint/suspicious/noExplicitAny: minimal req stub
+    await handler.handleRoute({ method: 'GET' } as any, res as any, `/media/${id}`);
+    expect(res.headers?.['Content-Type']).toBe('image/jpeg');
   });
 });
 

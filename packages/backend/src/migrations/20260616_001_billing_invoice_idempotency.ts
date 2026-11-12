@@ -65,7 +65,15 @@ const migration: Migration = {
     //    (code 85), crashing boot on a fresh DB. The index's purpose (period-uniqueness for
     //    the reset-cron upsert) is already satisfied by the existing one, and migration
     //    20260623_001 reconciles the spec to partial regardless — so skip if present.
-    const existing = await col.listIndexes().toArray();
+    // On a fresh DB the collection doesn't exist yet (migrations now run before
+    // the central index registry, GOV-4): listIndexes throws NamespaceNotFound (26).
+    const existing = await col
+      .listIndexes()
+      .toArray()
+      .catch((err: { code?: number }) => {
+        if (err.code === 26) return [];
+        throw err;
+      });
     if (existing.some((idx) => idx.name === INDEX_NAME)) {
       console.log(`[Migration] ${INDEX_NAME} already exists (seeded at boot); skipping create`);
       return;

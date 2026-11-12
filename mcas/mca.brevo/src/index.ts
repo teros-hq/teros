@@ -74,6 +74,7 @@ const server = new McaServer({
 // ============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check. Validates the Brevo API key against GET /account.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {

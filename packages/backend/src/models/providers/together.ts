@@ -47,7 +47,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
       output: 4.5,
       cacheRead: 0.2,
     },
-    status: "active",
+    status: "deprecated",
   },
   {
     modelId: "together-deepseek-v4-pro",
@@ -64,7 +64,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     },
     context: {
       maxTokens: 512000,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 384000,
     },
     defaults: {
       temperature: 0.7,
@@ -83,7 +83,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     cost: {
       input: 1.74,
       output: 3.48,
-      cacheRead: 0.145,
+      cacheRead: 0.2,
     },
     status: "active",
   },
@@ -101,8 +101,8 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
       thinking: true,
     },
     context: {
-      maxTokens: 262144,
-      maxOutputTokens: 8192,
+      maxTokens: 1048576,
+      maxOutputTokens: 128000,
     },
     defaults: {
       temperature: 0.7,
@@ -140,7 +140,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     },
     context: {
       maxTokens: 262144,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 131072,
     },
     defaults: {
       temperature: 0.7,
@@ -178,7 +178,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     },
     context: {
       maxTokens: 524288,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 250000,
     },
     defaults: {
       temperature: 0.7,
@@ -239,7 +239,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
       input: 0.6,
       output: 3.6,
     },
-    status: "active",
+    status: "deprecated",
   },
   {
     modelId: "together-llama-3.3-70b",
@@ -256,7 +256,7 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     },
     context: {
       maxTokens: 128000,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 131072,
     },
     defaults: {
       temperature: 0.7,
@@ -288,11 +288,11 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
       streaming: true,
       tools: true,
       vision: false,
-      thinking: false,
+      thinking: true,
     },
     context: {
       maxTokens: 131072,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 131072,
     },
     defaults: {
       temperature: 0.7,
@@ -323,12 +323,12 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     capabilities: {
       streaming: true,
       tools: true,
-      vision: false,
-      thinking: false,
+      vision: true,
+      thinking: true,
     },
     context: {
       maxTokens: 262144,
-      maxOutputTokens: 8192,
+      maxOutputTokens: 131072,
     },
     defaults: {
       temperature: 0.7,
@@ -347,6 +347,235 @@ export const MODELS_TOGETHER: ModelDefinition[] = [
     cost: {
       input: 0.39,
       output: 0.97,
+    },
+    status: "active",
+  },
+  // ── New models (2026-08) ──────────────────────────────────────────────
+  {
+    modelId: "together-glm-5.3",
+    provider: "together",
+    name: "GLM 5.3 (Together)",
+    description:
+      "Zhipu AI GLM-5.3 via Together AI. 1M context, flagship GLM model for long-horizon coding, agents, and complex project delivery.",
+    modelString: "zai-org/GLM-5.3",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: false,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1048576,
+      maxOutputTokens: 262144,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 770000,
+      targetSize: 570000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 1.4,
+      output: 4.4,
+      cacheRead: 0.26,
+    },
+    status: "active",
+  },
+  {
+    modelId: "together-glm-5.3-flash",
+    provider: "together",
+    name: "GLM 5.3 Flash (Together)",
+    description:
+      "Zhipu AI GLM-5.3 Flash via Together AI. 1M context, native multimodal (vision), efficient coding and long-horizon agent tasks at very low cost.",
+    modelString: "zai-org/GLM-5.3-Flash",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: true,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1048576,
+      maxOutputTokens: 400000,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 630000,
+      targetSize: 470000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 0.15,
+      output: 0.5,
+      cacheRead: 0.03,
+    },
+    status: "active",
+  },
+  {
+    modelId: "together-deepseek-v4-pro-0813",
+    provider: "together",
+    name: "DeepSeek V4 Pro 0813 (Together)",
+    description:
+      "DeepSeek V4 Pro snapshot via Together AI. 1M context, thinking and non-thinking modes, enhanced agentic capabilities.",
+    modelString: "deepseek-ai/DeepSeek-V4-Pro-0813",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: false,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1048576,
+      maxOutputTokens: 384000,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 650000,
+      targetSize: 480000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 1.32,
+      output: 3.96,
+      cacheRead: 0.13,
+    },
+    status: "active",
+  },
+  {
+    modelId: "together-deepseek-v4-flash-0731",
+    provider: "together",
+    name: "DeepSeek V4 Flash 0731 (Together)",
+    description:
+      "DeepSeek V4 Flash via Together AI. 1M context, integrated DSpark speculative decoding, enhanced agentic capabilities.",
+    modelString: "deepseek-ai/DeepSeek-V4-Flash-0731",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: false,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1000000,
+      maxOutputTokens: 384000,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 650000,
+      targetSize: 480000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 0.14,
+      output: 0.28,
+      cacheRead: 0.028,
+    },
+    status: "active",
+  },
+  {
+    modelId: "together-kimi-k3",
+    provider: "together",
+    name: "Kimi K3 (Together)",
+    description:
+      "Moonshot AI Kimi K3 via Together AI. 1M context, function calling, reasoning, and vision.",
+    modelString: "moonshotai/Kimi-K3",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: true,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1048576,
+      maxOutputTokens: 131072,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 850000,
+      targetSize: 600000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 3,
+      output: 15,
+      cacheRead: 0.3,
+    },
+    status: "active",
+  },
+  {
+    modelId: "together-inkling",
+    provider: "together",
+    name: "Inkling (Together)",
+    description:
+      "Multimodal MoE reasoning model (975B total, 41B active) via Together AI. 524K context, text, image, and audio input.",
+    modelString: "thinkingmachines/Inkling",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: true,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 524288,
+      maxOutputTokens: 131072,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 4096,
+    },
+    reservations: {
+      systemPrompt: 4000,
+      memory: 8000,
+      output: 4096,
+    },
+    compaction: {
+      triggerAt: 380000,
+      targetSize: 280000,
+      protectRecent: 20000,
+    },
+    cost: {
+      input: 1,
+      output: 4.05,
+      cacheRead: 0.17,
     },
     status: "active",
   },

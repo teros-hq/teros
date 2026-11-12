@@ -11,21 +11,76 @@
  */
 
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
-import { loadStripe, type Stripe } from "@stripe/stripe-js"
+// `/pure`: the default entry injects js.stripe.com at IMPORT time; the pure
+// entry loads it only when loadStripe() runs (the card form), so the app
+// boots without touching the internet.
+import type { Stripe } from "@stripe/stripe-js"
+import { loadStripe } from "@stripe/stripe-js/pure"
 import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Platform } from "react-native"
-import { Button, Text, XStack, YStack } from "tamagui"
+import { Platform, View } from "react-native"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { useColors, useMcaTheme } from "../mca/primitives/useColors"
-import { colors as semanticColors } from "../mca/primitives/colors"
+import { colors as semantic } from "../mca/primitives/colors"
+import { FONT_SANS } from "../mca/primitives/fonts"
+import { Btn, Field, FieldHelp, FieldLabel, T } from "../ui/ds"
+import { Select } from "../../windows/UsersWindow/Select"
 
-const ACCENT = "#06B6D4"
+/**
+ * Countries offered for the tax location. ISO-3166-1 alpha-2 → label. Kept
+ * short on purpose (where Teros sells); the backend accepts any alpha-2 code.
+ */
+export const BILLING_COUNTRIES: Array<{ key: string; label: string }> = [
+  { key: "ES", label: "España" },
+  { key: "PT", label: "Portugal" },
+  { key: "FR", label: "France" },
+  { key: "DE", label: "Deutschland" },
+  { key: "IT", label: "Italia" },
+  { key: "NL", label: "Nederland" },
+  { key: "BE", label: "Belgique" },
+  { key: "IE", label: "Ireland" },
+  { key: "AT", label: "Österreich" },
+  { key: "PL", label: "Polska" },
+  { key: "SE", label: "Sverige" },
+  { key: "DK", label: "Danmark" },
+  { key: "FI", label: "Suomi" },
+  { key: "GB", label: "United Kingdom" },
+  { key: "CH", label: "Schweiz" },
+  { key: "NO", label: "Norge" },
+  { key: "US", label: "United States" },
+  { key: "CA", label: "Canada" },
+  { key: "MX", label: "México" },
+  { key: "AR", label: "Argentina" },
+  { key: "CL", label: "Chile" },
+  { key: "CO", label: "Colombia" },
+  { key: "BR", label: "Brasil" },
+]
+
+/** Stripe tax id type for a country's business tax number (VAT / CIF / EIN…). */
+export function taxIdTypeFor(country: string): string {
+  const EU = new Set(["ES", "PT", "FR", "DE", "IT", "NL", "BE", "IE", "AT", "PL", "SE", "DK", "FI"])
+  if (EU.has(country)) return "eu_vat"
+  switch (country) {
+    case "GB": return "gb_vat"
+    case "CH": return "ch_vat"
+    case "NO": return "no_vat"
+    case "US": return "us_ein"
+    case "CA": return "ca_bn"
+    case "MX": return "mx_rfc"
+    case "AR": return "ar_cuit"
+    case "CL": return "cl_tin"
+    case "CO": return "co_nit"
+    case "BR": return "br_cnpj"
+    default: return "eu_vat"
+  }
+}
 
 interface PaymentMethodSetupProps {
   /** Called after the card is vaulted as the default (set-payment-method OK). */
   onSuccess: () => void
   onCancel: () => void
+  /** Tax location already on file, to prefill the country / tax id fields. */
+  initialDetails?: { country: string | null; taxId: string | null } | null
 }
 
 /**
@@ -40,34 +95,50 @@ function useStripeAppearance() {
   return {
     theme: (theme === "dark" ? "night" : "stripe") as "night" | "stripe",
     variables: {
-      colorPrimary: ACCENT,
-      colorBackground: c.bgCard,
+      colorPrimary: semantic.purple300,
+      colorBackground: c.bgStep,
       colorText: c.text,
-      borderRadius: "8px",
-      fontFamily: "Inter, system-ui, sans-serif",
+      borderRadius: "10px",
+      fontFamily: `${FONT_SANS}, system-ui, sans-serif`,
     },
   }
 }
 
 // ── Inner form (inside <Elements>, so the Stripe hooks resolve) ─────────────────
 
-function CardForm({ onSuccess, onCancel }: PaymentMethodSetupProps) {
+function CardForm({ onSuccess, onCancel, initialDetails }: PaymentMethodSetupProps) {
   const { t } = useTranslation()
-  const c = useColors()
   const stripe = useStripe()
   const elements = useElements()
   const client = getTerosClient()
 
   const [processing, setProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [country, setCountry] = useState<string>(initialDetails?.country ?? "ES")
+  const [taxId, setTaxId] = useState<string>(initialDetails?.taxId ?? "")
 
   const handleSave = useCallback(async () => {
     if (!stripe || !elements || processing) return
     setProcessing(true)
     setError(null)
 
+    // 0) Tax location first: Stripe Tax needs the customer's country BEFORE any
+    //    invoice, and the card may redirect away (3DS) right after this.
+    //    Best-effort: a failure here must not block vaulting the card.
+    try {
+      await client.billing.setBillingDetails({
+        country,
+        taxId: taxId.trim() || null,
+        taxIdType: taxId.trim() ? taxIdTypeFor(country) : null,
+      })
+    } catch (err) {
+      console.warn("[PaymentMethodSetup] setBillingDetails failed:", err)
+    }
+
     // 1) Vault the card via the SetupIntent. redirect:'if_required' keeps cards
-    //    inline; a return_url is still required for redirect-based methods.
+    //    inline; a return_url is still required for redirect-based methods. When
+    //    the bank requires 3DS, Stripe redirects and the return is finished by
+    //    `useStripeSetupReturn` (billing.complete-setup-intent).
     const { error: confirmError, setupIntent } = await stripe.confirmSetup({
       elements,
       confirmParams: { return_url: window.location.href },
@@ -99,57 +170,75 @@ function CardForm({ onSuccess, onCancel }: PaymentMethodSetupProps) {
   }, [stripe, elements, processing, client, onSuccess, t])
 
   return (
-    <YStack gap={14} testID="payment-method-form">
-      <YStack testID="payment-element">
-        <PaymentElement options={{ layout: "tabs" }} />
-      </YStack>
-      {error && (
-        <Text testID="payment-method-error" fontSize={12} color={semanticColors.red} lineHeight={17}>
-          {error}
-        </Text>
-      )}
-      <XStack gap={10}>
-        <Button
-          flex={1}
-          height={44}
-          backgroundColor={c.bgInner}
-          borderWidth={1}
-          borderColor={c.border}
-          borderRadius={10}
-          pressStyle={{ backgroundColor: c.bgCardHover }}
+    <View testID="payment-method-form" style={{ gap: 14 }}>
+      <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
+        <View style={{ minWidth: 180 }}>
+          <FieldLabel>{t("profile.plan.payment.countryLabel", { defaultValue: "País de facturación" })}</FieldLabel>
+          <Select
+            testID="payment-method-country"
+            value={country}
+            options={BILLING_COUNTRIES}
+            onChange={setCountry}
+            minWidth={180}
+            ariaLabel={t("profile.plan.payment.countryLabel", { defaultValue: "País de facturación" })}
+          />
+        </View>
+        <View style={{ flex: 1, minWidth: 180 }}>
+          <FieldLabel>{t("profile.plan.payment.taxIdLabel", { defaultValue: "NIF / IVA (opcional)" })}</FieldLabel>
+          <Field
+            value={taxId}
+            onChangeText={setTaxId}
+            placeholder={t("profile.plan.payment.taxIdPlaceholder", { defaultValue: "ESB12345678" })}
+            editable={!processing}
+            autoCapitalize="characters"
+            testID="payment-method-tax-id"
+          />
+          <FieldHelp>{t("profile.plan.payment.taxIdHint", { defaultValue: "Aparece en la factura y aplica el IVA que corresponda." })}</FieldHelp>
+        </View>
+      </View>
+      <View>
+        <FieldLabel>{t("profile.plan.payment.cardLabel", { defaultValue: "Tarjeta" })}</FieldLabel>
+        <View testID="payment-element">
+          <PaymentElement options={{ layout: "tabs" }} />
+        </View>
+        {error ? (
+          <T testID="payment-method-error" step="12" tone="danger" style={{ marginTop: 8 }}>
+            {error}
+          </T>
+        ) : null}
+      </View>
+      <View style={{ flexDirection: "row", gap: 10 }}>
+        {/* Outlined: cancel is the retreat. */}
+        <Btn
+          testID="payment-method-cancel"
+          variant="sec"
+          style={{ flex: 1 }}
           onPress={onCancel}
           disabled={processing}
         >
-          <Text color={c.text2} fontSize={14} fontWeight="500">
-            {t("profile.plan.payment.cancel")}
-          </Text>
-        </Button>
-        <Button
+          {t("profile.plan.payment.cancel")}
+        </Btn>
+        {/* THE CTA: vault the card. */}
+        <Btn
           testID="payment-method-save"
-          flex={1}
-          height={44}
-          backgroundColor="rgba(6, 182, 212, 0.15)"
-          borderWidth={1}
-          borderColor="rgba(6, 182, 212, 0.35)"
-          borderRadius={10}
-          pressStyle={{ backgroundColor: "rgba(6, 182, 212, 0.25)" }}
+          variant="primary"
+          icon="credit-card"
+          style={{ flex: 1 }}
           onPress={handleSave}
           disabled={!stripe || !elements || processing}
+          loading={processing}
         >
-          <Text color={ACCENT} fontSize={14} fontWeight="600">
-            {processing ? t("profile.plan.payment.saving") : t("profile.plan.payment.save")}
-          </Text>
-        </Button>
-      </XStack>
-    </YStack>
+          {processing ? t("profile.plan.payment.saving") : t("profile.plan.payment.save")}
+        </Btn>
+      </View>
+    </View>
   )
 }
 
 // ── Outer: mints the SetupIntent + loads Stripe.js, then mounts <Elements> ──────
 
-export function PaymentMethodSetup({ onSuccess, onCancel }: PaymentMethodSetupProps) {
+export function PaymentMethodSetup({ onSuccess, onCancel, initialDetails }: PaymentMethodSetupProps) {
   const { t } = useTranslation()
-  const c = useColors()
   const client = getTerosClient()
   const appearance = useStripeAppearance()
 
@@ -188,39 +277,28 @@ export function PaymentMethodSetup({ onSuccess, onCancel }: PaymentMethodSetupPr
 
   if (loading) {
     return (
-      <Text testID="payment-method-loading" fontSize={13} color={c.text3} paddingVertical={12}>
+      <T testID="payment-method-loading" step="sm" tone="text3" style={{ paddingVertical: 12 }}>
         {t("profile.plan.payment.loading")}
-      </Text>
+      </T>
     )
   }
 
   if (initError || !clientSecret || !stripePromise) {
     return (
-      <YStack gap={10} paddingVertical={4}>
-        <Text testID="payment-method-init-error" fontSize={13} color={semanticColors.red} lineHeight={19}>
+      <View style={{ gap: 12, paddingVertical: 4 }}>
+        <T testID="payment-method-init-error" step="sm" tone="danger">
           {initError || t("profile.plan.payment.initError")}
-        </Text>
-        <Button
-          alignSelf="flex-start"
-          height={40}
-          paddingHorizontal={16}
-          backgroundColor={c.bgInner}
-          borderWidth={1}
-          borderColor={c.border}
-          borderRadius={10}
-          onPress={onCancel}
-        >
-          <Text color={c.text2} fontSize={14}>
-            {t("profile.plan.payment.cancel")}
-          </Text>
-        </Button>
-      </YStack>
+        </T>
+        <Btn variant="sec" onPress={onCancel} style={{ alignSelf: "flex-start" }}>
+          {t("profile.plan.payment.cancel")}
+        </Btn>
+      </View>
     )
   }
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, appearance }}>
-      <CardForm onSuccess={onSuccess} onCancel={onCancel} />
+      <CardForm onSuccess={onSuccess} onCancel={onCancel} initialDetails={initialDetails} />
     </Elements>
   )
 }

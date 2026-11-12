@@ -1,19 +1,20 @@
-import type React from 'react';
-import { Text, XStack, YStack } from 'tamagui';
-import { useColors } from './useColors';
+import type React from "react"
+import { XStack, YStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
+import { useColors } from "./useColors"
 
 export interface SpecsheetRow {
-  key: string;
-  value: React.ReactNode;
+  key: string
+  value: React.ReactNode
 }
 
 export interface SpecsheetSection {
-  title: string;
-  rows: SpecsheetRow[];
+  title: string
+  rows: SpecsheetRow[]
 }
 
 interface SpecsheetProps {
-  sections: SpecsheetSection[];
+  sections: SpecsheetSection[]
 }
 
 /**
@@ -30,54 +31,47 @@ interface SpecsheetProps {
  *     size        12.4 KB
  *     ...
  *
- * Solo composición de Tamagui primitivos — cero estilos hard-coded fuera
- * de los tokens del sistema.
+ * Section labels are the prototype's codenote (mono 10 caps) with a
+ * hairline; rows are the `.kvl` key/value list.
  */
 export function Specsheet({ sections }: SpecsheetProps): React.ReactNode {
-  const c = useColors();
-  if (!sections || sections.length === 0) return null;
+  const c = useColors()
+  if (!sections || sections.length === 0) return null
   return (
-    <YStack gap={10}>
+    <YStack gap={12}>
       {sections.map((section, idx) => (
         <YStack
           // biome-ignore lint/suspicious/noArrayIndexKey: stable
           key={`${section.title}-${idx}`}
-          gap={4}
+          gap={6}
         >
-          <XStack alignItems="center" gap={6}>
-            <Text
-              color={c.text3}
-              fontSize={9}
-              fontFamily="$mono"
-              fontWeight="bold"
-              letterSpacing={1.2}
-              textTransform="uppercase"
-            >
+          <XStack alignItems="center" gap={8}>
+            <T step="codenote" tone="text3">
               {section.title}
-            </Text>
+            </T>
             <YStack flex={1} height={1} backgroundColor={c.border} />
           </XStack>
-          <YStack gap={2}>
+          <YStack gap={6}>
             {section.rows.map((row, rowIdx) => (
               <XStack
                 // biome-ignore lint/suspicious/noArrayIndexKey: stable
                 key={`${row.key}-${rowIdx}`}
                 gap={12}
-                alignItems="baseline"
+                alignItems="flex-start"
               >
-                <Text
-                  color={c.text3}
-                  fontSize={10}
-                  fontFamily="$mono"
-                  width={88}
+                <T
+                  step="code"
+                  tone="text3"
+                  numberOfLines={1}
+                  style={{ width: 110, flexShrink: 0, fontSize: 11, lineHeight: 18 }}
                 >
                   {row.key}
-                </Text>
-                <YStack flex={1}>
-                  {typeof row.value === 'string' ? (
-                    <Text color={c.text} fontSize={11} fontFamily="$mono">
+                </T>
+                <YStack flex={1} minWidth={0}>
+                  {typeof row.value === "string" ? (
+                    <T step="sm" tone="text2" style={{ lineHeight: 18 }} selectable>
                       {row.value}
-                    </Text>
+                    </T>
                   ) : (
                     row.value
                   )}
@@ -88,5 +82,5 @@ export function Specsheet({ sections }: SpecsheetProps): React.ReactNode {
         </YStack>
       ))}
     </YStack>
-  );
+  )
 }

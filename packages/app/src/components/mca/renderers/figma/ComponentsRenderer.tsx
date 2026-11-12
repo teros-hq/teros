@@ -17,6 +17,7 @@ import {
   IconChip,
   IconTile,
   parseOutput,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -98,6 +99,7 @@ export function GetComponentSetsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const parsed = output ? parseOutput(output) : null
   const { items, count } = unwrapList<FigmaComponentSetRef>(parsed, "componentSets")
@@ -127,7 +129,7 @@ export function GetComponentSetsRenderer({
                 subtitle={shortId(s.key)}
                 meta={
                   s.description ? (
-                    <Text color={globalColors.muted} fontSize={9} numberOfLines={1}>
+                    <Text color={c.text3} fontSize={9} numberOfLines={1}>
                       {truncate(s.description, 40)}
                     </Text>
                   ) : null

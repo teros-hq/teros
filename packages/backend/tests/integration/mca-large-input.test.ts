@@ -28,7 +28,7 @@ import { McaHttpClient } from '../../src/services/mca-http-client';
 const MCA_PORT = 13_003;
 const MCA_URL = `http://127.0.0.1:${MCA_PORT}`;
 const TEST_DIR = join(tmpdir(), `mca-large-input-test-${Date.now()}`);
-const MCA_ENTRY = new URL('../../../mcas/mca.teros.filesystem/src/index.ts', import.meta.url).pathname;
+const MCA_ENTRY = new URL('../../../../mcas/mca.teros.filesystem/src/index.ts', import.meta.url).pathname;
 
 // Skip in CI — this test spawns a child MCA process which requires the full
 // monorepo layout at runtime. The underlying fix (no 40KB size limit) is
@@ -62,8 +62,11 @@ beforeAll(async () => {
   }
   mkdirSync(TEST_DIR, { recursive: true });
 
+  // MCA_REQUIRE_SIGNATURE=false: no backend here to HMAC-sign /tools/call.
+  // MCA_FS_ROLE=admin: native fs (the workspace role writes via backend
+  // callbacks through ctx.volume, which this standalone test doesn't run).
   mcaProcess = Bun.spawn(['bun', 'run', MCA_ENTRY], {
-    env: { ...process.env, PORT: String(MCA_PORT), MCA_WORKSPACE_PATH: TEST_DIR },
+    env: { ...process.env, PORT: String(MCA_PORT), MCA_WORKSPACE_PATH: TEST_DIR, MCA_REQUIRE_SIGNATURE: 'false', MCA_FS_ROLE: 'admin' },
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -94,7 +97,7 @@ describe('large filesystem_write inputs reach the MCA end-to-end', () => {
     const filePath = join(TEST_DIR, 'test-50kb.html');
 
     const result = await new McaHttpClient({ baseUrl: MCA_URL })
-      .callTool('write', { filePath, content }, EXEC_CONTEXT);
+      .callTool('create-file', { filePath, content }, EXEC_CONTEXT);
 
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
@@ -107,7 +110,7 @@ describe('large filesystem_write inputs reach the MCA end-to-end', () => {
     const filePath = join(TEST_DIR, 'test-100kb.html');
 
     const result = await new McaHttpClient({ baseUrl: MCA_URL })
-      .callTool('write', { filePath, content }, EXEC_CONTEXT);
+      .callTool('create-file', { filePath, content }, EXEC_CONTEXT);
 
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();
@@ -120,7 +123,7 @@ describe('large filesystem_write inputs reach the MCA end-to-end', () => {
     const filePath = join(TEST_DIR, 'test-500kb.html');
 
     const result = await new McaHttpClient({ baseUrl: MCA_URL })
-      .callTool('write', { filePath, content }, EXEC_CONTEXT);
+      .callTool('create-file', { filePath, content }, EXEC_CONTEXT);
 
     expect(result.success).toBe(true);
     expect(result.error).toBeUndefined();

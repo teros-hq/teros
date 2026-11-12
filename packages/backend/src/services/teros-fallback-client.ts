@@ -59,14 +59,16 @@ export class TerosFallbackClient implements ILLMClient {
     /** null when no failover target is available (no Together equivalent / missing secret / ZDR guard). */
     private readonly secondary: ILLMClient | null,
     private readonly mode: TerosFallbackMode,
+    /** Upstream names for logs + telemetry (TPROV: any pair of upstreams). */
+    private readonly labels: { primary: string; secondary: string } = { primary: "fireworks", secondary: "together" },
   ) {
     // R8.4: a cutover with no target silently runs Fireworks. Surface it so a
     // misconfigured flag (armed but no ZDR-safe Together) is visible, instead of
     // a quiet no-op that looks like the cutover took effect.
     if (mode === "cutover" && !secondary) {
       console.warn(
-        "[TerosFallback] mode=cutover but no Together target available — running Fireworks " +
-          "(check the together system secret + ZDR classification in data-retention.ts)",
+        `[TerosFallback] mode=cutover but no ${this.labels.secondary} target available — running ${this.labels.primary} ` +
+          `(check the ${this.labels.secondary} system secret + ZDR classification in data-retention.ts)`,
       )
     }
   }
@@ -115,7 +117,7 @@ export class TerosFallbackClient implements ILLMClient {
         const errorClass = (err as { context?: { errorClass?: unknown } })?.context?.errorClass
         const primaryErrorClass = String(errorClass ?? "transient")
         console.warn(
-          `[TerosFallback] Fireworks failed (${primaryErrorClass}) before output — failing over to Together`,
+          `[TerosFallback] ${this.labels.primary} failed (${primaryErrorClass}) before output — failing over to ${this.labels.secondary}`,
         )
         // R3.1: tag the secondary's onFinish so the turn is counted as a failover
         // (fallbackUsed → fallback-rate, F1) AND the primary's failure survives in
@@ -130,7 +132,7 @@ export class TerosFallbackClient implements ILLMClient {
               await options.callbacks?.onFinish?.({
                 ...info,
                 fallbackUsed: true,
-                primaryProvider: "fireworks",
+                primaryProvider: this.labels.primary,
                 primaryErrorClass,
               })
             },

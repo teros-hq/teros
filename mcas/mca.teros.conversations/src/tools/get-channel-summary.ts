@@ -41,7 +41,12 @@ export const getChannelSummary: ToolConfig = {
 
     const result = await wsClient.queryConversations<GetChannelSummaryResult>(
       'get_channel_summary',
-      { channelId, agentId: context.execution.agentId },
+      {
+        channelId,
+        agentId: context.execution.agentId,
+        // Caller channel — lets the backend gate personal history out of a shared context.
+        callerChannelId: context.execution.channelId,
+      },
     );
 
     return {

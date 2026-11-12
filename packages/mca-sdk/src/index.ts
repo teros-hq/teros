@@ -135,7 +135,23 @@ export {
   type ToolContext,
   type ToolHandler,
   type TransportType,
+  // UI Resources
+  type UiResourceType,
+  type UiResourceConfig,
+  type UiResourceHandler,
+  type UiResourceData,
+  type TreeNode,
+  type DetailField,
+  type DetailSection,
+  type UiFormField,
 } from './server';
+// Renderer — converts UiResourceData to markdown/text/html
+export {
+  type RenderFormat,
+  type RenderedOutput,
+  renderToOutput,
+  renderUiResourceData,
+} from './renderer';
 // Stdio server (stdio/MCP transport)
 export {
   McaStdioServer,
@@ -169,10 +185,66 @@ export {
   type PublicUrlOptions,
   safeFetch,
 } from './url-validation';
+// Media persistence helpers (WS1b — objects-first standard)
+export {
+  DEFAULT_MAX_MEDIA_SIZE,
+  DEFAULT_MEDIA_CONTENT_TYPE,
+  isExternalMediaUrl,
+  type MediaPersistenceContext,
+  type PersistedMedia,
+  type PersistedMediaOutput,
+  type PersistExternalMediaOptions,
+  persistExternalMedia,
+  persistExternalMediaOutput,
+} from './media-persistence';
 // WebSocket client (for bidirectional MCA ↔ Backend communication)
+// MCA streams (spec MCS)
+export {
+  McaStream,
+  type McaStreamEvents,
+  McaStreams,
+  type StreamOpenOptions,
+  type StreamScope,
+  type StreamSocket,
+  type StreamViewer,
+} from './streams';
 export {
   createWebSocketClient,
   McaWebSocketClient,
   type McaWebSocketConfig,
   type McaWebSocketEvents,
 } from './websocket-client';
+
+// Reserved subscription tools (v1.4.4 — the unified _subscribe API)
+export {
+  registerSubscriptionTools,
+  loadEventsDeclaration,
+  type DeclaredEvent,
+  type DeclaredFilterField,
+  type EventsDeclaration,
+} from './subscriptions';
+
+// Storage types — unified volume + sharing API
+export type {
+  VolumeStorage,
+  VolumeEntry,
+  VolumeStat,
+  VolumeDeleteOptions,
+  ShareAccess,
+  ShareOptions,
+  ShareResult,
+  // AgentApps document storage
+  DocumentStorage,
+  StoragePutResult,
+  StorageGetResult,
+  StorageQueryResult,
+  StorageUpdateResult,
+  StorageDeleteResult,
+  // AgentApps object storage
+  ObjectStorage,
+  ObjectListItem,
+  ObjectPutResult,
+  ObjectGetResult,
+  ObjectDeleteResult,
+  ObjectListResult,
+} from './types';

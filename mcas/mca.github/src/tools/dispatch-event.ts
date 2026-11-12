@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 /**
  * Trigger a `repository_dispatch` event. The repo must have a workflow
@@ -35,6 +35,7 @@ export const dispatchEvent: ToolConfig = {
       event_type: string;
       client_payload?: Record<string, unknown>;
     };
+    assertOwnerRepo(owner, repo);
 
     if (!event_type || event_type.trim() === '') {
       throw new Error('`event_type` must be a non-empty string.');

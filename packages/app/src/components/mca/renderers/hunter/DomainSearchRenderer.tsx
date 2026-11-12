@@ -42,7 +42,7 @@ export function DomainSearchRenderer(props: ToolCallRendererProps): React.ReactN
   ) : undefined;
 
   return (
-    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} verb={verb} badge={badge}>
+    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} description={verb} badge={badge}>
       {displayError ? (
         <ErrorBlock {...hunterErrorProps(displayError, 'domain-search')} />
       ) : data ? (

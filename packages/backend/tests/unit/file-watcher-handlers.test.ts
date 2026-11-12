@@ -18,6 +18,7 @@ import {
   createWatchFileHandler,
   createWatcherRegistry,
   cleanupWatcherRegistry,
+  fileWatchTopic,
   type WatcherRegistry,
 } from '../../src/handlers/domains/file-watcher/watch';
 import { createUnwatchFileHandler } from '../../src/handlers/domains/file-watcher/unwatch';
@@ -28,11 +29,32 @@ mkdirSync(VOL, { recursive: true });
 
 afterAll(() => rmSync(TEST_BASE, { recursive: true, force: true }));
 
+/** Topic for a file of the test volume (scoped by its host path) */
+const topicOf = (name: string) => fileWatchTopic(join(VOL, name), `/workspace/${name}`);
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** ctx con ws fake — el handler usa ctx.ws solo como clave para sessionId/registry */
 const WS = {} as any;
 const ctx = (userId: string): WsHandlerContext => ({ userId, sessionId: 'sess1', connectionId: 'c1', ws: WS }) as any;
+
+/**
+ * Db for the access check (canUseVolumeContext): u1 owns the active work_1;
+ * `channels` answers through `channelLookup` (default: no channel).
+ */
+function accessDb(channelLookup: (filter: any) => Promise<any> = async () => null) {
+  return {
+    collection: (name: string) => ({
+      findOne: async (filter: any) => {
+        if (name === 'workspaces') {
+          return filter.workspaceId === 'work_1' ? { workspaceId: 'work_1', ownerId: 'u1', status: 'active' } : null;
+        }
+        if (name === 'channels') return channelLookup(filter);
+        return null;
+      },
+    }),
+  } as any;
+}
 
 function makeDeps(registry: WatcherRegistry, over: Record<string, unknown> = {}) {
   const broadcasts: any[] = [];
@@ -42,7 +64,7 @@ function makeDeps(registry: WatcherRegistry, over: Record<string, unknown> = {})
     broadcastToTopic: mock((topic: string, payload: any) => broadcasts.push({ topic, payload })),
   } as any;
   const deps = {
-    db: { collection: () => ({ findOne: async () => null }) } as any,
+    db: accessDb(),
     volumeService: { getVolume: mock(async () => ({ volumeId: 'vol_001', hostPath: VOL })) } as any,
     workspaceService: { getWorkspace: mock(async () => ({ workspaceId: 'work_1', volumeId: 'vol_001' })) } as any,
     pubSubService,
@@ -80,13 +102,21 @@ describe('file.watch — validación de params', () => {
     await expect(h(ctx('u1'), { filePath: '/workspace/a.html' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
   });
 
-  it('FILE_WATCHER_ERROR si el resolver no puede resolver (channel inexistente)', async () => {
-    const { deps } = makeDeps(registry, {
-      workspaceService: null,
-      db: { collection: () => ({ findOne: async () => null }) },
-    });
+  it('FORBIDDEN con un channel inexistente (sin workspace que autorizar; no revela existencia)', async () => {
+    const { deps } = makeDeps(registry);
     const h = createWatchFileHandler(deps);
     await expect(h(ctx('u1'), { filePath: '/workspace/a.html', channelId: 'ch_nope' })).rejects.toMatchObject({
+      code: 'FORBIDDEN',
+    });
+  });
+
+  it('FILE_WATCHER_ERROR si el resolver no puede resolver (channel autorizado, sin WorkspaceService)', async () => {
+    const { deps } = makeDeps(registry, {
+      workspaceService: null,
+      db: accessDb(async () => ({ channelId: 'ch_1', workspaceId: 'work_1' })),
+    });
+    const h = createWatchFileHandler(deps);
+    await expect(h(ctx('u1'), { filePath: '/workspace/a.html', channelId: 'ch_1' })).rejects.toMatchObject({
       code: 'FILE_WATCHER_ERROR',
     });
   });
@@ -105,14 +135,14 @@ describe('file.watch — contenido inicial + watcher real', () => {
     const res = await h(ctx('u1'), { filePath: '/workspace/page.html', workspaceId: 'work_1' });
 
     expect(res).toEqual({ filePath: '/workspace/page.html', watching: true });
-    expect(pubSubService.subscribeSession).toHaveBeenCalledWith('sess1', 'file:/workspace/page.html');
+    expect(pubSubService.subscribeSession).toHaveBeenCalledWith('sess1', topicOf('page.html'));
     expect(broadcasts).toEqual([
       {
-        topic: 'file:/workspace/page.html',
+        topic: topicOf('page.html'),
         payload: {
           type: 'event',
           event: 'file_changed',
-          channel: 'file:/workspace/page.html',
+          channel: topicOf('page.html'),
           data: { filePath: '/workspace/page.html', content: '<h1>v1</h1>' },
         },
       },
@@ -164,7 +194,7 @@ describe('file.watch — contenido inicial + watcher real', () => {
     writeFileSync(join(VOL, 'both.html'), 'x');
     const channelLookup = mock(async () => ({ channelId: 'ch_X', workspaceId: 'work_other' }));
     const { deps } = makeDeps(registry, {
-      db: { collection: () => ({ findOne: channelLookup }) } as any,
+      db: accessDb(channelLookup),
     });
     await createWatchFileHandler(deps)(ctx('u1'), {
       filePath: '/workspace/both.html',
@@ -184,7 +214,7 @@ describe('file.watch — contenido inicial + watcher real', () => {
     await expect(h(ctx('u1'), { filePath: '/workspace/ghost.html', workspaceId: 'work_1' })).rejects.toMatchObject({
       code: 'FILE_WATCHER_ERROR',
     });
-    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith('sess1', 'file:/workspace/ghost.html');
+    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith('sess1', topicOf('ghost.html'));
     expect(registry.size).toBe(0);
   });
 });
@@ -230,14 +260,14 @@ describe('file.unwatch', () => {
 
     expect(res).toEqual({ filePath: '/workspace/bye.html', watching: false });
     expect(registry.size).toBe(0);
-    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith('sess1', 'file:/workspace/bye.html');
+    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith('sess1', topicOf('bye.html'));
   });
 
-  it('path no vigilado → no lanza y desuscribe igualmente (idempotente)', async () => {
+  it('path no vigilado → no lanza (idempotente); no había topic que desuscribir', async () => {
     const { deps, pubSubService } = makeDeps(registry);
     const res = await createUnwatchFileHandler(deps)(ctx('u1'), { filePath: '/workspace/never.html' });
     expect(res).toEqual({ filePath: '/workspace/never.html', watching: false });
-    expect(pubSubService.unsubscribeSession).toHaveBeenCalledWith('sess1', 'file:/workspace/never.html');
+    expect(pubSubService.unsubscribeSession).not.toHaveBeenCalled();
   });
 });
 

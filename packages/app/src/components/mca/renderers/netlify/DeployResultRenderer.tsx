@@ -62,7 +62,7 @@ export function DeployResultRenderer({
     : [];
 
   return (
-    <ToolCallCard status={status} verb="Deploy site" badge={badge} iconUri={appIcon}>
+    <ToolCallCard status={status} description="Deploy site" badge={badge} iconUri={appIcon}>
       <YStack gap={8}>
         {displayError ? (
           <ErrorBlock error={displayError} />

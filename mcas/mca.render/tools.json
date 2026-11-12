@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -89,10 +92,6 @@
     {
       "name": "render-delete-project",
       "description": "Delete a Render project. This action is irreversible!",
-      "annotations": {
-        "readOnlyHint": false,
-        "irreversible": true
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -104,6 +103,10 @@
         "required": [
           "projectId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {
@@ -249,10 +252,6 @@
     {
       "name": "render-delete-service",
       "description": "Delete a Render service. This action is irreversible!",
-      "annotations": {
-        "readOnlyHint": false,
-        "irreversible": true
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -264,6 +263,10 @@
         "required": [
           "serviceId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true
       }
     },
     {

@@ -10,6 +10,7 @@ import { useCallback, useRef, useState } from "react"
 import { Platform } from "react-native"
 import { getTerosClient } from "../services/terosClientSingleton"
 import { useAuthStore } from "../store/authStore"
+import { backendUrl } from "../config/runtime"
 
 // Allowed file types - accepts all common types
 const ALLOWED_IMAGE_TYPES = [
@@ -171,6 +172,9 @@ function uploadSingleFile(
 
     xhr.onerror = () => reject(new Error("Network error during upload"))
     xhr.open("POST", `${apiBaseUrl}/api/upload/static`)
+    // F2: cookie auth fallback — after a web reload there is no in-memory
+    // token; the httpOnly cookie (same-site under teros.ai) authenticates.
+    xhr.withCredentials = true
     xhr.setRequestHeader("Authorization", `Bearer ${sessionToken}`)
     xhr.send(formData)
   })
@@ -185,7 +189,7 @@ export function useFileUpload(): UseFileUploadReturn {
   const addFilesRef = useRef<(files: File[] | FileList) => void>(() => {})
 
   const client = getTerosClient()
-  const API_BASE_URL = client?.getBackendBaseUrl() || process.env.EXPO_PUBLIC_BACKEND_URL || ""
+  const API_BASE_URL = client?.getBackendBaseUrl() || backendUrl()
 
   const [state, setState] = useState<FileUploadState>({
     selectedFiles: [],
@@ -346,7 +350,10 @@ export function useFileUpload(): UseFileUploadReturn {
       return []
     }
 
-    if (!sessionToken) {
+    // F2: with cookieAuth (web reload) there is no in-memory token — the
+    // httpOnly cookie sent with xhr.withCredentials authenticates the upload.
+    const cookieAuth = getTerosClient().isCookieAuth()
+    if (!sessionToken && !cookieAuth) {
       setState((prev) => ({ ...prev, error: "Not authenticated" }))
       return []
     }
@@ -366,7 +373,7 @@ export function useFileUpload(): UseFileUploadReturn {
           uploadSingleFile(
             file,
             API_BASE_URL,
-            sessionToken,
+            sessionToken ?? "",
             (pct) => {
               progressMap.set(idx, pct)
               updateOverallProgress()

@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const updateIssue: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -38,6 +38,7 @@ export const updateIssue: ToolConfig = {
       state_reason?: string;
       labels?: string[];
     };
+    assertOwnerRepo(owner, repo);
     const updateData: Record<string, unknown> = {};
     if (title !== undefined) updateData.title = title;
     if (body !== undefined) updateData.body = body;

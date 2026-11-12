@@ -16,7 +16,7 @@
  *   - Returns a discriminated union; callers handle exhaustion explicitly
  *     instead of catching an exception.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §7 — Bus de eventos (retry policy)
  */
 
 export interface RetryOptions {

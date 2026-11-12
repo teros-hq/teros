@@ -26,7 +26,7 @@ export function CreateTemplateRenderer({ input, status, output, error, appIcon }
   return (
     <ToolCallCard
       status={status}
-      verb="Create template"
+      description="Create template"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

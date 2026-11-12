@@ -2,11 +2,12 @@
  * file.watch — Start watching a file for changes
  *
  * Resolves the host path for the given file, sends the current content
- * immediately, then subscribes the client to the `file:<filePath>` channel
+ * immediately, then subscribes the client to the volume-scoped `file:<volume>:<filePath>` channel
  * via PubSubService. Subsequent changes are pushed as `file_changed`
  * events to all subscribers.
  */
 
+import { createHash } from 'crypto'
 import { readFile, access } from 'fs/promises'
 import { watch, type FSWatcher } from 'fs'
 import { HandlerError } from '../../../ws-framework/WsRouter'
@@ -17,6 +18,7 @@ import type { WorkspaceService } from '../../../services/workspace-service'
 import type { PubSubService } from '../../../services/pubsub-service'
 import type { WebSocket } from 'ws'
 import { resolveVolumeHostPath } from '../../../lib/volume-path-resolver'
+import { canUseVolumeContext } from '../../../auth/workspace-access'
 
 type WsCtx = WsHandlerContext & { ws: WebSocket }
 
@@ -36,6 +38,8 @@ interface WatchFileData {
 interface WatcherEntry {
   watcher: FSWatcher
   hostPath: string
+  /** PubSub topic the connection is subscribed to (see fileWatchTopic) */
+  topic: string
   /** Debounce timer to avoid double-firing on rapid saves */
   debounceTimer: NodeJS.Timeout | null
 }
@@ -55,6 +59,17 @@ export { resolveVolumeHostPath as resolveHostPath } from '../../../lib/volume-pa
  * Key: filePath (as provided by client, e.g. '/workspace/mockup.html')
  */
 export type WatcherRegistry = Map<string, WatcherEntry>
+
+/**
+ * PubSub topic for a watched file. Scoped to the volume (a hash of the resolved
+ * host path, so the host path itself never reaches clients): `filePath` alone
+ * (`/workspace/index.html`) is the same string in every workspace, and a
+ * `file:<filePath>` topic delivered one tenant's file content to everyone
+ * watching that path in their own workspace.
+ */
+export function fileWatchTopic(hostPath: string, filePath: string): string {
+  return `file:${createHash('sha256').update(hostPath).digest('hex').slice(0, 16)}:${filePath}`
+}
 
 /** Create a fresh registry for a new connection */
 export function createWatcherRegistry(): WatcherRegistry {
@@ -131,6 +146,11 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
     // Use whichever context identifier was provided
     const contextId = (workspaceId ?? channelId)!
 
+    // Authorize the same context the resolver uses, before touching it
+    if (!(await canUseVolumeContext(db, ctx.userId, contextId, 'read'))) {
+      throw new HandlerError('FORBIDDEN', 'No access to this workspace')
+    }
+
     const ws = (ctx as WsCtx).ws
     const sessionId = getSessionId(ws)
     const registry = getRegistry(ws)
@@ -141,6 +161,7 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
       if (existing.debounceTimer) clearTimeout(existing.debounceTimer)
       existing.watcher.close()
       registry.delete(filePath)
+      if (sessionId) pubSubService.unsubscribeSession(sessionId, existing.topic)
     }
 
     let hostPath: string
@@ -154,7 +175,7 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
     console.log(`[FileWatcher] Watching ${filePath} → ${hostPath}`)
 
     // Subscribe the client to the file topic via PubSubService
-    const fileTopic = `file:${filePath}`
+    const fileTopic = fileWatchTopic(hostPath, filePath)
     if (sessionId) {
       pubSubService.subscribeSession(sessionId, fileTopic)
     }
@@ -214,7 +235,7 @@ export function createWatchFileHandler(deps: WatchFileDeps) {
       throw new HandlerError('FILE_WATCHER_ERROR', `Cannot watch file: ${err.message}`)
     }
 
-    registry.set(filePath, { watcher: fsWatcher, hostPath, debounceTimer: null })
+    registry.set(filePath, { watcher: fsWatcher, hostPath, topic: fileTopic, debounceTimer: null })
 
     return { filePath, watching: true }
   }

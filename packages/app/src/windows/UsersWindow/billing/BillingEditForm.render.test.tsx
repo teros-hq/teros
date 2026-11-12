@@ -1,7 +1,7 @@
 /**
  * BillingEditForm — the admin edit form. Assertions that BITE:
  *   - the FULL catalogue (admin.list-plans) is the source, so a hidden internal
- *     tier (plan_unlimited, isPublic:false) is a SELECTABLE chip marked with the
+ *     tier (isPublic:false; fixture id plan_hidden_test) is a SELECTABLE chip marked with the
  *     internal suffix, while a public tier is not (mutation: sourcing the public
  *     billing.list-plans would drop it),
  *   - boundary validation: a negative price / fractional limit shows an inline
@@ -29,12 +29,12 @@ const updateBillingSubscription = vi.hoisted(() =>
 )
 const clientMock = vi.hoisted(() => ({
   admin: {
-    // admin.list-plans → FULL catalogue incl. the hidden plan_unlimited tier.
+    // admin.list-plans → FULL catalogue incl. a hidden (isPublic:false) tier.
     listPlans: vi.fn(() =>
       Promise.resolve({
         plans: [
           { planId: "plan_growth", displayName: "Growth", isPublic: true },
-          { planId: "plan_unlimited", displayName: "Unlimited", isPublic: false },
+          { planId: "plan_hidden_test", displayName: "Hidden (test)", isPublic: false },
         ],
       }),
     ),
@@ -105,7 +105,7 @@ describe("BillingEditForm plan chips", () => {
     const marker = i18n.t("windows.usersPanel.billing.internalTier")
     const { findByTestId, getByTestId } = renderForm()
 
-    const hidden = await findByTestId("billing-plan-plan_unlimited")
+    const hidden = await findByTestId("billing-plan-plan_hidden_test")
     expect(hidden.textContent).toContain(marker)
     expect(getByTestId("billing-plan-plan_growth").textContent).not.toContain(marker)
   })

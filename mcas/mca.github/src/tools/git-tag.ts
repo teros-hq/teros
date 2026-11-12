@@ -1,13 +1,14 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Manage local tags. `list` returns all tags (or those matching `pattern`),
  * `create` adds a lightweight (default) or annotated (`message` provided)
  * tag, `delete` removes one.
  */
-export const gitTag: ToolConfig = {
+export const gitTag: ToolConfig = lockedGitTool('git-tag', {
   annotations: { readOnlyHint: false },
   description:
     'List, create, or delete local git tags. Pass `message` on create for an annotated tag (otherwise lightweight).',
@@ -43,9 +44,11 @@ export const gitTag: ToolConfig = {
     const action = a.action ?? 'list';
 
     if (action === 'list') {
+      // `--` before the pattern so a dash-leading glob (`-rc*`) is treated as
+      // a pattern, not an option (verified: `git tag -l -- '-rc*'` works).
       const argv = ['tag', '-l'];
-      if (a.pattern) argv.push(a.pattern);
-      const result = runGit(repoPath, argv);
+      if (a.pattern) argv.push('--', a.pattern);
+      const result = await runGit(repoPath, argv);
       if (result.code !== 0) throwClassifiedGitError(result);
       const tags = result.stdout.split('\n').filter(Boolean);
       return { repoPath, action, tags, total: tags.length };
@@ -54,14 +57,21 @@ export const gitTag: ToolConfig = {
     if (!a.name) {
       throw new Error('[GIT_INVALID_INPUT] `name` is required for create/delete.');
     }
+    assertSafeRef(a.name, 'name');
 
     if (action === 'create') {
       const flags: string[] = [];
       if (a.force) flags.push('-f');
       if (a.message) flags.push('-a', '-m', a.message);
-      const argv = ['tag', ...flags, a.name];
-      if (a.ref) argv.push(a.ref);
-      const result = runGit(repoPath, argv);
+      // `--` separates the agent-supplied tag name/ref from the flag section
+      // so a dash-leading value can never be parsed as an option (verified:
+      // `git tag <flags> -- <name> <ref>` keeps normal tag semantics).
+      const argv = ['tag', ...flags, '--', a.name];
+      if (a.ref) {
+        assertSafeRef(a.ref, 'ref');
+        argv.push(a.ref);
+      }
+      const result = await runGit(repoPath, argv);
       if (result.code !== 0) throwClassifiedGitError(result);
       return {
         repoPath,
@@ -73,8 +83,9 @@ export const gitTag: ToolConfig = {
     }
 
     // delete
-    const result = runGit(repoPath, ['tag', '-d', a.name]);
+    // `--` before the tag name (verified: `git tag -d -- <name>` works).
+    const result = await runGit(repoPath, ['tag', '-d', '--', a.name]);
     if (result.code !== 0) throwClassifiedGitError(result);
     return { repoPath, action: 'delete', name: a.name };
   },
-};
+});

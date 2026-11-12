@@ -5,20 +5,22 @@
  *
  * On mount (when access is not granted), fetches the latest profile from the
  * backend so a reload is enough to pick up access without re-logging in.
+ *
+ * Look: the OS prototype's "Beta privada" card — a white card (radius 24) on
+ * the sheet with a violet "PRIVATE BETA" badge, serif headline, a
+ * three-step list and pill buttons.
  */
 
-import { LogOut } from "@tamagui/lucide-icons"
-import { LinearGradient } from "expo-linear-gradient"
 import type React from "react"
 import { useEffect } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, XStack, YStack } from "tamagui"
+import { Platform, View } from "react-native"
 import type { TerosClient } from "../services/TerosClient"
 import { useAuthStore } from "../store/authStore"
 import { TerosLogo } from "./TerosLogo"
 import { AppSpinner } from "./ui/AppSpinner"
 import { useColors } from "./mca/primitives/useColors"
-import { colors as semanticColors, controlsBar, indicators } from "./mca/primitives/colors"
+import { Badge, Btn, Ph, T } from "./ui/ds"
 
 interface AccessGateProps {
   client: TerosClient | null
@@ -42,6 +44,7 @@ export const AccessGate: React.FC<AccessGateProps> = ({ client, children }) => {
         updateProfile({
           accessGranted: profile.accessGranted,
           termsAcceptedAt: profile.termsAcceptedAt,
+          ...(profile.edition ? { edition: profile.edition } : {}),
         })
       })
       .catch((err) => {
@@ -64,9 +67,16 @@ export const AccessGate: React.FC<AccessGateProps> = ({ client, children }) => {
   // Wait for auth store to hydrate
   if (!isHydrated) {
     return (
-      <YStack flex={1} backgroundColor={c.bgPage} alignItems="center" justifyContent="center">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: c.bgSheet,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
         <AppSpinner size="lg" variant="brand" />
-      </YStack>
+      </View>
     )
   }
 
@@ -74,89 +84,82 @@ export const AccessGate: React.FC<AccessGateProps> = ({ client, children }) => {
     return <>{children}</>
   }
 
+  const bullets = [
+    { icon: "envelope", text: t("accessGate.emailWhenIn") },
+    { icon: "user-focus", text: t("accessGate.reviewPersonally") },
+    { icon: "clock", text: t("accessGate.noActionNeeded") },
+  ]
+
   // User is on the waitlist — show private beta screen
   return (
-    <LinearGradient
-      colors={[c.bgPage, c.bgCard, c.bgPage]}
-      locations={[0, 0.5, 1]}
-      style={{ flex: 1 }}
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: c.bgSheet,
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+      }}
     >
-      <YStack
-        flex={1}
-        alignItems="center"
-        justifyContent="center"
-        paddingHorizontal="$6"
-        maxWidth={420}
-        width="100%"
-        alignSelf="center"
-        gap="$8"
+      <View
+        style={[
+          {
+            width: "100%",
+            maxWidth: 480,
+            borderRadius: 24,
+            backgroundColor: c.bgStep,
+            padding: 32,
+            gap: 20,
+          },
+          Platform.OS === "web" ? ({ boxShadow: c.lift } as any) : null,
+        ]}
       >
-        {/* Logo */}
-        <YStack alignItems="center" gap="$4">
-          <TerosLogo size={64} animated={true} />
-          <Text fontSize={28} fontWeight="200" color={c.text} letterSpacing={7}>
-            TEROS
-          </Text>
-        </YStack>
+        {/* Brand */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TerosLogo size={28} animated={true} />
+          <T step="xl">Teros</T>
+        </View>
 
-        {/* Card */}
-        <YStack
-          backgroundColor={semanticColors.indigoGlow}
-          borderWidth={1}
-          borderColor={c.badges.info.border}
-          borderRadius="$4"
-          padding="$6"
-          gap="$4"
-          width="100%"
-        >
-          <YStack gap="$2">
-            <Text fontSize={18} fontWeight="600" color={c.text} letterSpacing={0.3}>
-              {t("accessGate.privateBeta")}
-            </Text>
-            <Text fontSize={13} color={c.text3} lineHeight={20}>
-              {t("accessGate.description")}
-            </Text>
-          </YStack>
+        <View style={{ gap: 12 }}>
+          <Badge tone="i" pill cap icon="hourglass">
+            {t("accessGate.privateBeta")}
+          </Badge>
+          <T step="3xl">
+            {t("accessGate.waitlistTitle", { defaultValue: "Estás en la lista de espera" })}
+          </T>
+          <T step="base" tone="text2">
+            {t("accessGate.description")}
+          </T>
+        </View>
 
-          <YStack gap="$2" paddingTop="$2">
-            {[
-              t("accessGate.noActionNeeded"),
-              t("accessGate.reviewPersonally"),
-              t("accessGate.emailWhenIn"),
-            ].map((item) => (
-              <XStack key={item} gap="$2" alignItems="flex-start">
-                <Text color={semanticColors.indigo} fontSize={13} marginTop={1}>
-                  ·
-                </Text>
-                <Text fontSize={13} color={c.text2} flex={1} lineHeight={20}>
-                  {item}
-                </Text>
-              </XStack>
-            ))}
-          </YStack>
-        </YStack>
+        <View style={{ gap: 4 }}>
+          <T step="xs" tone="text3" style={{ marginBottom: 8 }}>
+            {t("accessGate.whatNow", { defaultValue: "Qué pasa ahora" })}
+          </T>
+          {bullets.map((b) => (
+            <View
+              key={b.text}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: 10,
+                paddingVertical: 4,
+              }}
+            >
+              <Ph name={b.icon} size={16} color={c.text3} style={{ marginTop: 3 }} />
+              <T step="sm" tone="text2" style={{ flex: 1 }}>
+                {b.text}
+              </T>
+            </View>
+          ))}
+        </View>
 
-        {/* Sign out */}
-        <XStack
-          paddingVertical="$3"
-          paddingHorizontal="$4"
-          backgroundColor={indicators.irreversible.bg}
-          borderWidth={1}
-          borderColor={indicators.irreversible.border}
-          borderRadius="$3"
-          alignItems="center"
-          gap="$2"
-          cursor="pointer"
-          hoverStyle={{ backgroundColor: controlsBar.deny.bg }}
-          pressStyle={{ opacity: 0.8 }}
-          onPress={handleLogout}
-        >
-          <LogOut size={15} color={semanticColors.red} />
-          <Text fontSize={13} color={semanticColors.red} fontWeight="500">
+        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+          <Btn variant="sec" icon="sign-out" onPress={handleLogout}>
             {t("accessGate.signOut")}
-          </Text>
-        </XStack>
-      </YStack>
-    </LinearGradient>
+          </Btn>
+        </View>
+      </View>
+    </View>
   )
 }

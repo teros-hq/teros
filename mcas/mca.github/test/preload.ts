@@ -1,0 +1,1 @@
+process.env.MCA_GIT_CLEANUP_AFTER_CALLS = '0';

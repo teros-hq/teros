@@ -180,34 +180,16 @@ describe("ProfilePlanSection (redesign)", () => {
     expect(getByTestId("payment-card-display").textContent).toContain("4242")
   })
 
-  it("shows the chrome-metallic hero (unmetered tagline) for plan_unlimited (TER-638)", async () => {
-    billingH.getSubscription.mockResolvedValue({
-      subscription: { ...SUB, planId: "plan_unlimited", planName: "Unlimited", agentHoursLimit: 0 },
-      paymentMethod: CARD,
-    })
-    const { getByTestId } = renderSection()
-    await waitFor(() => expect(getByTestId("plan-hero")).toBeTruthy())
-    expect(getByTestId("plan-hero").textContent).toContain("Unlimited")
-    // The metallic hero renders its own tagline marker (default hero never does).
-    expect(getByTestId("unlimited-tagline")).toBeTruthy()
-  })
-
-  it("keeps the normal hero for a metered plan (no metallic treatment)", async () => {
-    const { getByTestId, queryByTestId } = renderSection() // default mock = Growth
-    await waitFor(() => expect(getByTestId("plan-hero")).toBeTruthy())
-    expect(queryByTestId("unlimited-tagline")).toBeNull()
-  })
-
-  it("does NOT apply the metallic hero to Enterprise — only plan_unlimited", async () => {
-    // MUST BITE: gating on `unmetered` / agentHoursLimit===0 instead of the exact
-    // planId would also light up Enterprise (also 0h). Only Unlimited holders see it.
+  it("an unmetered plan (Enterprise, 0h) shows the unmetered copy instead of a usage bar", async () => {
     billingH.getSubscription.mockResolvedValue({
       subscription: { ...SUB, planId: "plan_enterprise", planName: "Enterprise", agentHoursLimit: 0 },
       paymentMethod: CARD,
     })
     const { getByTestId, queryByTestId } = renderSection()
     await waitFor(() => expect(getByTestId("plan-hero")).toBeTruthy())
-    expect(queryByTestId("unlimited-tagline")).toBeNull()
+    expect(getByTestId("plan-hero").textContent).toContain("Enterprise")
+    expect(getByTestId("plan-hero").textContent).toContain("Unlimited agent time")
+    expect(queryByTestId("usage-bar")).toBeNull()
   })
 
   it("upgrade: select → preview (exact planId) → confirm → change-plan (exact planId)", async () => {

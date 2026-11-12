@@ -6,7 +6,7 @@
   "description": "Microsoft Outlook email management - send, read, search, and organize emails via Microsoft Graph API",
   "type": "integration",
   "icon": "icon.png",
-  "category": "productivity",
+  "category": "microsoft",
   "entrypoint": "src/index.ts",
   "author": {
     "name": "Teros Team",
@@ -49,7 +49,8 @@
     "transport": "http",
     "port": 3000,
     "healthCheck": "/health",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
   },
   "keywords": ["outlook", "email", "microsoft", "mail", "messages", "office365", "hotmail"],
   "changelog": [

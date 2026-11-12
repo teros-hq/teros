@@ -19,18 +19,22 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   GITHUB_PALETTE,
   type GitHubRepo,
   GitHubToolShell,
+  actionLabel,
   getRepoFullName,
   relativeTime,
   repoVisibilityChipProps,
   scrollStyle,
+  listItems,
+  noun,
+  detailText,
 } from './shared';
 
 interface SearchReposPayload {
@@ -43,6 +47,7 @@ function isSearchPayload(o: unknown): o is SearchReposPayload {
 }
 
 function RepoRow({ repo }: { repo: GitHubRepo }) {
+  const c = useColors();
   const visibility = repoVisibilityChipProps(repo);
   const stars = repo.stargazers_count ?? 0;
   return (
@@ -65,9 +70,9 @@ function RepoRow({ repo }: { repo: GitHubRepo }) {
       meta={
         stars > 0 ? (
           <IconChip
-            icon={<Star size={9} color={globalColors.muted} />}
+            icon={<Star size={9} color={c.text3} />}
             text={stars >= 1000 ? `${(stars / 1000).toFixed(1)}k` : String(stars)}
-            accent={globalColors.muted}
+            accent={c.text3}
           />
         ) : null
       }
@@ -84,16 +89,12 @@ function RepoListImpl({
   isSearch,
 }: ToolCallRendererProps & { isSearch?: boolean }) {
   const parsed = output ? parseOutput<unknown>(output) : null;
-  const repos: GitHubRepo[] = isSearch
-    ? isSearchPayload(parsed)
-      ? parsed.items ?? []
-      : []
-    : Array.isArray(parsed)
-      ? (parsed as GitHubRepo[])
-      : [];
+  const repos = listItems<GitHubRepo>(parsed, 'repositories');
 
   const total = isSearch && isSearchPayload(parsed) ? parsed.total_count ?? repos.length : repos.length;
-  const description = isSearch ? `Search · ${total} repo${total === 1 ? '' : 's'}` : `${repos.length} repo${repos.length === 1 ? '' : 's'}`;
+  const description = isSearch
+    ? actionLabel(toolName, status, noun('repositories'), detailText('found', { count: total }))
+    : actionLabel(toolName, status, noun('repositories'), `${repos.length}`);
 
   return (
     <GitHubToolShell toolName={toolName} status={status} description={description}>
@@ -162,7 +163,7 @@ export function GetRepoRenderer({ toolName, status, output, error, duration }: T
   const visibility = repo ? repoVisibilityChipProps(repo) : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={repo ? actionLabel(toolName, status, getRepoFullName(repo)) : actionLabel(toolName, status, noun('repository'))}>
       {error && <ErrorBlock error={error} />}
       {!error && repo && (
         <ResourceCard
@@ -192,6 +193,7 @@ export function GetRepoRenderer({ toolName, status, output, error, duration }: T
 // =============================================================================
 
 export function CreateRepoRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubRepo>(output) : null;
   const repo = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'full_name' in (parsed as object)
     ? (parsed as GitHubRepo)
@@ -199,7 +201,7 @@ export function CreateRepoRenderer({ toolName, status, output, error, duration }
   const visibility = repo ? repoVisibilityChipProps(repo) : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={repo ? actionLabel(toolName, status, getRepoFullName(repo)) : actionLabel(toolName, status, noun('repository'))}>
       {error && <ErrorBlock error={error} />}
       {!error && repo && (
         <ResourceCard
@@ -210,7 +212,7 @@ export function CreateRepoRenderer({ toolName, status, output, error, duration }
           meta={visibility ? <IconChip {...visibility} /> : null}
         >
           {repo.html_url && (
-            <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+            <Text color={c.text2} fontSize={9} fontFamily="$mono">
               {repo.html_url}
             </Text>
           )}

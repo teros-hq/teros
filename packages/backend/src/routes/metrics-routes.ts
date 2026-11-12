@@ -12,7 +12,7 @@
  * Sentry handles event-based alarms (drops, persist errors, lag, dead letter
  * bloat) — see agent-usage-sentry-alerts.ts.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §7
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http"

@@ -35,6 +35,7 @@ import {
   type SpecsheetSection,
   SuccessBlock,
   ToolCallCard,
+  useColors,
 } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
@@ -82,13 +83,14 @@ function ContactAvatar({
 }
 
 function FailedBlock({ error }: { error?: string }): React.ReactNode {
+  const c = useColors();
   if (!error) return null;
   const hint = activeCampaignErrorHint(error);
   return (
     <YStack gap={4}>
       <ErrorBlock error={error} />
       {hint ? (
-        <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+        <Text color={c.text3} fontSize={9} fontFamily="$mono">
           {hint}
         </Text>
       ) : null}
@@ -105,12 +107,13 @@ function PaginationFooter({
   shown: number;
   nextOffset: number | null;
 }): React.ReactNode {
+  const c = useColors();
   const fragments: string[] = [];
   if (total !== null) fragments.push(`${shown} of ${total}`);
   else fragments.push(`${shown} item${shown !== 1 ? 's' : ''}`);
   if (nextOffset !== null) fragments.push(`next offset: ${nextOffset}`);
   return (
-    <Text color={globalColors.muted} fontSize={9}>
+    <Text color={c.text3} fontSize={9}>
       {fragments.join(' · ')}
     </Text>
   );
@@ -128,6 +131,7 @@ interface HealthOutput {
 }
 
 function HealthCheckRenderer(props: ToolCallRendererProps) {
+  const c = useColors();
   const raw = props.output ? parseOutput<HealthOutput>(props.output) : null;
   const parsed: HealthOutput | null = raw && typeof raw === 'object' ? raw : null;
   const status = parsed?.status ?? 'unknown';
@@ -154,7 +158,7 @@ function HealthCheckRenderer(props: ToolCallRendererProps) {
             <YStack key={`${issue.code}-${idx}`} gap={2}>
               <ErrorBlock error={`[${issue.code}] ${issue.message}`} />
               {issue.action?.description ? (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {issue.action.description}
                 </Text>
               ) : null}
@@ -319,6 +323,7 @@ function DeleteContactRenderer(props: ToolCallRendererProps) {
 // ============================================================================
 
 function ListListsRenderer(props: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = props.output ? parseOutput<unknown>(props.output) : null;
   const { items, total, nextOffset } = unwrapList<AcList>(parsed, 'lists');
   const badge =
@@ -346,8 +351,8 @@ function ListListsRenderer(props: ToolCallRendererProps) {
                   trailing={
                     l.subscriberCount !== null ? (
                       <XStack gap={4} alignItems="center">
-                        <Users size={9} color={globalColors.muted} />
-                        <Text color={globalColors.muted} fontSize={9}>
+                        <Users size={9} color={c.text3} />
+                        <Text color={c.text3} fontSize={9}>
                           {l.subscriberCount}
                         </Text>
                       </XStack>
@@ -750,6 +755,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // ============================================================================
 
 function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererProps) {
+  const c = useColors();
   const shortName = getShortToolName(toolName);
 
   const badge = __DEV__ ? (
@@ -779,7 +785,7 @@ function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererP
           <Text color={globalColors.badgeError.text} fontSize={10} fontWeight="600">
             [dev] Missing sub-renderer for "{shortName}"
           </Text>
-          <Text color={globalColors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             Register it in the RENDERERS map in ActiveCampaignRenderer.tsx.
           </Text>
         </YStack>

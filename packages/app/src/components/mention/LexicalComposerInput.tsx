@@ -12,15 +12,17 @@ import {
   $getSelection,
   $isRangeSelection,
   type LexicalEditor,
-} from 'lexical';
-import { AutoFocusPlugin } from '@lexical/react/LexicalAutoFocusPlugin';
-import { LexicalComposer } from '@lexical/react/LexicalComposer';
-import { ContentEditable } from '@lexical/react/LexicalContentEditable';
-import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
-import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
-import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
-import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+} from "lexical"
+import { AutoFocusPlugin } from "@lexical/react/LexicalAutoFocusPlugin"
+import { LexicalComposer } from "@lexical/react/LexicalComposer"
+import { ContentEditable } from "@lexical/react/LexicalContentEditable"
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary"
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin"
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin"
+import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin"
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext"
+import { FONT_SANS } from "../mca/primitives/fonts"
+import { useMentionColors } from "./useMentionColors"
 import React, {
   forwardRef,
   useCallback,
@@ -29,226 +31,228 @@ import React, {
   useLayoutEffect,
   useRef,
   useState,
-} from 'react';
-import type { EditorState } from 'lexical';
-import type { MentionChip } from '../../hooks/useAtMention';
-import { $createMentionNode, $isMentionNode, MentionNode } from './MentionNode';
+} from "react"
+import type { EditorState } from "lexical"
+import type { MentionChip } from "../../hooks/useAtMention"
+import { $createMentionNode, $isMentionNode, MentionNode } from "./MentionNode"
+
+const FONT_FAMILY = `${FONT_SANS}, system-ui, sans-serif`
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type Segment =
-  | { kind: 'text'; text: string }
-  | { kind: 'chip'; chip: MentionChip };
+export type Segment = { kind: "text"; text: string } | { kind: "chip"; chip: MentionChip }
 
 export interface InlineComposerInputHandle {
-  focus(): void;
-  getCursorPos(): number;
-  getPlainText(): string;
-  serialize(): string;
-  clear(): void;
-  insertChip(chip: MentionChip, queryLength: number): void;
+  focus(): void
+  getCursorPos(): number
+  getPlainText(): string
+  serialize(): string
+  clear(): void
+  insertChip(chip: MentionChip, queryLength: number): void
 }
 
 interface LexicalComposerInputProps {
-  segments: Segment[];
-  onChange: (segments: Segment[], plainText: string) => void;
-  onMentionTrigger: (text: string, cursorPos: number) => void;
-  onKeyDown?: (e: KeyboardEvent) => void;
-  placeholder?: string;
-  disabled?: boolean;
-  fontSize?: number;
-  color?: string;
-  placeholderColor?: string;
-  minHeight?: number;
-  maxHeight?: number;
-  style?: React.CSSProperties;
+  segments: Segment[]
+  onChange: (segments: Segment[], plainText: string) => void
+  onMentionTrigger: (text: string, cursorPos: number) => void
+  onKeyDown?: (e: KeyboardEvent) => void
+  placeholder?: string
+  disabled?: boolean
+  fontSize?: number
+  color?: string
+  placeholderColor?: string
+  minHeight?: number
+  maxHeight?: number
+  style?: React.CSSProperties
 }
 
 // ── Serializers ───────────────────────────────────────────────────────────────
 
 function editorStateToSegments(editorState: EditorState): Segment[] {
-  const segments: Segment[] = [];
-  (editorState as any).read(() => {
-    const root = $getRoot();
+  const segments: Segment[] = []
+  ;(editorState as any).read(() => {
+    const root = $getRoot()
     for (const child of root.getChildren()) {
-      const children = (child as any).getChildren?.() ?? [];
+      const children = (child as any).getChildren?.() ?? []
       for (const node of children) {
         if ($isMentionNode(node)) {
-          segments.push({ kind: 'chip', chip: node.__chip });
-        } else if (node.getType() === 'text') {
-          const text = node.getTextContent();
-          if (text) segments.push({ kind: 'text', text });
-        } else if (node.getType() === 'linebreak') {
-          segments.push({ kind: 'text', text: '\n' });
+          segments.push({ kind: "chip", chip: node.__chip })
+        } else if (node.getType() === "text") {
+          const text = node.getTextContent()
+          if (text) segments.push({ kind: "text", text })
+        } else if (node.getType() === "linebreak") {
+          segments.push({ kind: "text", text: "\n" })
         }
       }
     }
-  });
-  return segments;
+  })
+  return segments
 }
 
 export function segmentsToPlainText(segments: Segment[]): string {
-  return segments.map((s) => (s.kind === 'text' ? s.text : s.chip.resource.name)).join('');
+  return segments.map((s) => (s.kind === "text" ? s.text : s.chip.resource.name)).join("")
 }
 
 export function segmentsToSendString(segments: Segment[]): string {
   return segments
     .map((s) =>
-      s.kind === 'text'
+      s.kind === "text"
         ? s.text
         : `[${s.chip.resource.name}](teros://${s.chip.resource.type}/${s.chip.resource.id})`,
     )
-    .join('');
+    .join("")
 }
 
 // ── Inner plugin ──────────────────────────────────────────────────────────────
 
 interface InnerPluginProps {
-  handle: React.MutableRefObject<InlineComposerInputHandle | null>;
-  onChange: (segments: Segment[], plainText: string) => void;
-  onMentionTrigger: (text: string, cursorPos: number) => void;
-  onKeyDown?: (e: KeyboardEvent) => void;
+  handle: React.MutableRefObject<InlineComposerInputHandle | null>
+  onChange: (segments: Segment[], plainText: string) => void
+  onMentionTrigger: (text: string, cursorPos: number) => void
+  onKeyDown?: (e: KeyboardEvent) => void
 }
 
 function InnerPlugin({ handle, onChange, onMentionTrigger, onKeyDown }: InnerPluginProps) {
-  const [editor] = useLexicalComposerContext();
+  const [editor] = useLexicalComposerContext()
 
   // Keep onChange in a ref to avoid stale closures
-  const onChangeRef = useRef(onChange);
+  const onChangeRef = useRef(onChange)
   useLayoutEffect(() => {
-    onChangeRef.current = onChange;
-  });
+    onChangeRef.current = onChange
+  })
 
   useLayoutEffect(() => {
     handle.current = {
       focus() {
-        editor.focus();
+        editor.focus()
       },
       getCursorPos() {
-        let pos = 0;
+        let pos = 0
         editor.getEditorState().read(() => {
-          const sel = $getSelection();
-          if (!$isRangeSelection(sel)) return;
-          const anchor = sel.anchor;
-          const root = $getRoot();
-          let count = 0;
-          let done = false;
+          const sel = $getSelection()
+          if (!$isRangeSelection(sel)) return
+          const anchor = sel.anchor
+          const root = $getRoot()
+          let count = 0
+          let done = false
           for (const para of root.getChildren()) {
-            if (done) break;
-            const children = (para as any).getChildren?.() ?? [];
+            if (done) break
+            const children = (para as any).getChildren?.() ?? []
             for (const node of children) {
-              if (done) break;
+              if (done) break
               if (node.getKey() === anchor.key) {
-                pos = count + anchor.offset;
-                done = true;
+                pos = count + anchor.offset
+                done = true
               } else if ($isMentionNode(node)) {
-                count += 1;
+                count += 1
               } else {
-                count += node.getTextContent().length;
+                count += node.getTextContent().length
               }
             }
           }
-        });
-        return pos;
+        })
+        return pos
       },
       getPlainText() {
-        return editor.getEditorState().read(() => $getRoot().getTextContent());
+        return editor.getEditorState().read(() => $getRoot().getTextContent())
       },
       serialize() {
-        const segs = editorStateToSegments(editor.getEditorState());
-        return segmentsToSendString(segs);
+        const segs = editorStateToSegments(editor.getEditorState())
+        return segmentsToSendString(segs)
       },
       clear() {
         editor.update(
           () => {
-            const root = $getRoot();
-            root.clear();
-            const para = $createParagraphNode();
-            root.append(para);
-            para.select();
+            const root = $getRoot()
+            root.clear()
+            const para = $createParagraphNode()
+            root.append(para)
+            para.select()
           },
           {
             onUpdate: () => {
-              onChangeRef.current([], '');
+              onChangeRef.current([], "")
             },
             discrete: true,
           },
-        );
+        )
       },
       insertChip(chip: MentionChip, queryLength: number) {
         editor.update(() => {
-          const sel = $getSelection();
-          if (!$isRangeSelection(sel)) return;
+          const sel = $getSelection()
+          if (!$isRangeSelection(sel)) return
 
           // Delete @query (queryLength chars + 1 for '@')
-          const totalDelete = queryLength + 1;
+          const totalDelete = queryLength + 1
           for (let i = 0; i < totalDelete; i++) {
-            sel.deleteCharacter(true);
+            sel.deleteCharacter(true)
           }
 
           // Insert chip node + trailing space
-          const mentionNode = $createMentionNode(chip);
-          const spaceNode = $createTextNode(' ');
-          sel.insertNodes([mentionNode, spaceNode]);
-          spaceNode.selectEnd();
-        });
+          const mentionNode = $createMentionNode(chip)
+          const spaceNode = $createTextNode(" ")
+          sel.insertNodes([mentionNode, spaceNode])
+          spaceNode.selectEnd()
+        })
       },
-    };
-  }, [editor, handle, onChange]);
+    }
+  }, [editor, handle, onChange])
 
   // Detect @ trigger on every change
   const handleChange = useCallback(
     (editorState: EditorState) => {
-      const segs = editorStateToSegments(editorState);
-      const plainText = segmentsToPlainText(segs);
-      onChange(segs, plainText);
+      const segs = editorStateToSegments(editorState)
+      const plainText = segmentsToPlainText(segs)
+      onChange(segs, plainText)
 
       // Build text before cursor for mention detection
-      (editorState as any).read(() => {
-        const sel = $getSelection();
-        if (!$isRangeSelection(sel) || !sel.isCollapsed()) return;
+      ;(editorState as any).read(() => {
+        const sel = $getSelection()
+        if (!$isRangeSelection(sel) || !sel.isCollapsed()) return
 
-        const anchor = sel.anchor;
-        const root = $getRoot();
-        let textBeforeCursor = '';
-        let done = false;
+        const anchor = sel.anchor
+        const root = $getRoot()
+        let textBeforeCursor = ""
+        let done = false
 
         for (const para of root.getChildren()) {
-          if (done) break;
-          const children = (para as any).getChildren?.() ?? [];
+          if (done) break
+          const children = (para as any).getChildren?.() ?? []
           for (const node of children) {
-            if (done) break;
+            if (done) break
             if (node.getKey() === anchor.key) {
-              if (node.getType() === 'text') {
-                textBeforeCursor += node.getTextContent().slice(0, anchor.offset);
+              if (node.getType() === "text") {
+                textBeforeCursor += node.getTextContent().slice(0, anchor.offset)
               }
-              done = true;
+              done = true
             } else if ($isMentionNode(node)) {
-              textBeforeCursor += '\x01'; // 1 char placeholder for chip
+              textBeforeCursor += "\x01" // 1 char placeholder for chip
             } else {
-              textBeforeCursor += node.getTextContent();
+              textBeforeCursor += node.getTextContent()
             }
           }
         }
 
-        const cursorPos = textBeforeCursor.length;
-        onMentionTrigger(plainText, cursorPos);
-      });
+        const cursorPos = textBeforeCursor.length
+        onMentionTrigger(plainText, cursorPos)
+      })
     },
     [onChange, onMentionTrigger],
-  );
+  )
 
   // Forward keydown to parent
   useEffect(() => {
-    if (!onKeyDown) return;
-    const removeListener = editor.registerRootListener((rootElement: HTMLElement | null, prevRootElement: HTMLElement | null) => {
-      if (prevRootElement) prevRootElement.removeEventListener('keydown', onKeyDown as any);
-      if (rootElement) rootElement.addEventListener('keydown', onKeyDown as any);
-    });
-    return removeListener;
-  }, [editor, onKeyDown]);
+    if (!onKeyDown) return
+    const removeListener = editor.registerRootListener(
+      (rootElement: HTMLElement | null, prevRootElement: HTMLElement | null) => {
+        if (prevRootElement) prevRootElement.removeEventListener("keydown", onKeyDown as any)
+        if (rootElement) rootElement.addEventListener("keydown", onKeyDown as any)
+      },
+    )
+    return removeListener
+  }, [editor, onKeyDown])
 
-  return <OnChangePlugin onChange={handleChange} />;
+  return <OnChangePlugin onChange={handleChange} />
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -260,60 +264,65 @@ export const InlineComposerInput = forwardRef<InlineComposerInputHandle, Lexical
       onChange,
       onMentionTrigger,
       onKeyDown,
-      placeholder = 'Type a message...',
+      placeholder = "Type a message...",
       disabled = false,
-      fontSize = 15,
-      color = '#E4E4E7',
-      placeholderColor = '#52525B',
+      fontSize = 16,
+      color: colorProp,
+      placeholderColor: placeholderColorProp,
       minHeight = 40,
       maxHeight = 150,
       style,
     },
     ref,
   ) {
-    const handleRef = useRef<InlineComposerInputHandle | null>(null);
-    useImperativeHandle(ref, () => handleRef.current!, []);
+    // Theme-aware defaults (Saans 16, c.text, placeholder c.text3) — an
+    // explicit prop still wins.
+    const c = useMentionColors()
+    const color = colorProp ?? c.text
+    const placeholderColor = placeholderColorProp ?? c.text3
+    const handleRef = useRef<InlineComposerInputHandle | null>(null)
+    useImperativeHandle(ref, () => handleRef.current!, [])
 
-    const [isEmpty, setIsEmpty] = useState(true);
+    const [isEmpty, setIsEmpty] = useState(true)
 
     const handleChange = useCallback(
       (segs: Segment[], plainText: string) => {
         setIsEmpty(
           segs.length === 0 ||
-            (segs.length === 1 && segs[0].kind === 'text' && segs[0].text === ''),
-        );
-        onChange(segs, plainText);
+            (segs.length === 1 && segs[0].kind === "text" && segs[0].text === ""),
+        )
+        onChange(segs, plainText)
       },
       [onChange],
-    );
+    )
 
     const initialConfig = {
-      namespace: 'InlineComposer',
+      namespace: "InlineComposer",
       nodes: [MentionNode],
-      onError: (error: Error) => console.error('[LexicalComposerInput]', error),
+      onError: (error: Error) => console.error("[LexicalComposerInput]", error),
       editable: !disabled,
-    };
+    }
 
     return (
-      <div style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      <div style={{ position: "relative", flex: 1, minWidth: 0 }}>
         {/* Placeholder */}
         {isEmpty && (
           <div
             style={{
-              position: 'absolute',
-              top: '50%',
-              transform: 'translateY(-50%)',
+              position: "absolute",
+              top: "50%",
+              transform: "translateY(-50%)",
               left: 8,
               right: 8,
-              pointerEvents: 'none',
+              pointerEvents: "none",
               color: placeholderColor,
               fontSize,
-              fontFamily: "$body",
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              userSelect: 'none',
-              lineHeight: '1.4',
+              fontFamily: FONT_FAMILY,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              userSelect: "none",
+              lineHeight: "1.4",
             }}
           >
             {placeholder}
@@ -324,22 +333,22 @@ export const InlineComposerInput = forwardRef<InlineComposerInputHandle, Lexical
           <PlainTextPlugin
             contentEditable={React.createElement(ContentEditable as any, {
               style: {
-                outline: 'none',
-                border: 'none',
-                background: 'transparent',
+                outline: "none",
+                border: "none",
+                background: "transparent",
                 color,
                 fontSize,
-                fontFamily: "$body",
-                lineHeight: '1.4',
+                fontFamily: FONT_FAMILY,
+                lineHeight: "1.4",
                 minHeight,
                 maxHeight,
-                overflowY: 'auto',
-                overflowX: 'hidden',
-                wordBreak: 'break-word',
-                whiteSpace: 'pre-wrap',
-                padding: '8px',
-                boxSizing: 'border-box',
-                cursor: disabled ? 'not-allowed' : 'text',
+                overflowY: "auto",
+                overflowX: "hidden",
+                wordBreak: "break-word",
+                whiteSpace: "pre-wrap",
+                padding: "8px",
+                boxSizing: "border-box",
+                cursor: disabled ? "not-allowed" : "text",
                 opacity: disabled ? 0.5 : 1,
                 ...style,
               },
@@ -356,6 +365,6 @@ export const InlineComposerInput = forwardRef<InlineComposerInputHandle, Lexical
           />
         </LexicalComposer>
       </div>
-    );
+    )
   },
-);
+)

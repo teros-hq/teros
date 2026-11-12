@@ -8,6 +8,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import { TASK_LIST_PROJECTION } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { AgentProjectRelationship } from '../../../types/database'
 import type { Db } from 'mongodb'
@@ -36,8 +37,13 @@ export function createGetBoardStatusHandler(
     const role = await workspaceService.getUserRole(project.workspaceId, ctx.userId)
     if (role === null) throw new HandlerError('FORBIDDEN', 'No access to this board')
 
-    // All non-archived tasks on this board
-    const allTasks = await boardService.listTasks(boardId)
+    // All non-archived tasks on this board.
+    // Keeps only the LAST progress note per task ($slice: -1) — this handler
+    // reads exactly that for blocked tasks. Full activity/notes would ship
+    // megabytes on large boards for data this summary never uses.
+    const allTasks = await boardService.listTasks(boardId, {
+      projection: { ...TASK_LIST_PROJECTION, progressNotes: { $slice: -1 } },
+    })
 
     // Column lookup map
     const colMap = new Map(board.columns.map((c) => [c.columnId, c]))
@@ -82,12 +88,21 @@ export function createGetBoardStatusHandler(
         // Try to get agent name from DB
         const agentDoc = await db.collection('agents').findOne({ agentId: rel.agentId })
 
+        const runningTasks = agentTasks.filter((t) => t.running)
+
         return {
           agentId: rel.agentId,
           agentName: (agentDoc?.name as string | undefined) ?? rel.agentId,
           slots: rel.slots,
           playEnabled: rel.playEnabled,
-          activeSlots: agentTasks.filter((t) => t.running).length,
+          activeSlots: runningTasks.length,
+          activeTasks: runningTasks.length > 0
+            ? runningTasks.map((t) => ({
+                taskId: t.taskId,
+                title: t.title,
+                projectName: project.name,
+              }))
+            : [],
           tasksInReview: reviewCol
             ? agentTasks.filter((t) => t.columnId === reviewCol.columnId).length
             : 0,

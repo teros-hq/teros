@@ -1,16 +1,19 @@
 /**
  * ConfirmDialog — an accessible, cross-native confirmation modal.
  *
- * Reusable by every destructive/irreversible admin action (and by PR4's billing
+ * Reusable by every destructive/irreversible admin action (and by the billing
  * edits). Renders as a Tamagui absolute overlay INSIDE the window (never fixed
  * positioning, so it can't escape the tiling layout), moves focus to the
- * dialog on open and closes on Esc. All colours derive from monitoring tokens
- * (no hardcoded hex/rgba) so theme work touches one file.
+ * dialog on open and closes on Esc. The sheet is a ds `Card`-style surface on
+ * a dim backdrop with `Btn` actions; colours come from `useColors()`.
  */
 
 import { type ReactNode, useEffect, useRef } from "react"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "../../../components/monitoring/colors"
+import { Platform } from "react-native"
+import { XStack, YStack } from "tamagui"
+import { useColors, useMcaTheme } from "../../../components/mca/primitives/useColors"
+import { colors as semantic } from "../../../components/mca/primitives/colors"
+import { Btn, T } from "../../../components/ui/ds"
 
 export interface ConfirmDialogProps {
   open: boolean
@@ -24,6 +27,18 @@ export interface ConfirmDialogProps {
   onCancel: () => void
 }
 
+/** Backdrop scrim: Main/900 ink at 40% (light) / 60% (dark). */
+export function useScrimColor(): string {
+  const theme = useMcaTheme()
+  return `${semantic.main900}${theme === "light" ? "66" : "99"}`
+}
+
+/** The web lift of a floating sheet (`elevRaised`), no-op on native. */
+export function useSheetWeb(): Record<string, unknown> | undefined {
+  const c = useColors()
+  return Platform.OS === "web" ? { style: { boxShadow: c.elevRaised } } : undefined
+}
+
 export function ConfirmDialog({
   open,
   title,
@@ -35,6 +50,9 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const c = useColors()
+  const scrim = useScrimColor()
+  const sheetWeb = useSheetWeb()
   const dialogRef = useRef<{ focus?: () => void } | null>(null)
 
   // Move focus to the dialog on open so keyboard/AT users land inside it and Esc
@@ -44,8 +62,6 @@ export function ConfirmDialog({
   }, [open])
 
   if (!open) return null
-
-  const accent = tone === "danger" ? tokens.error : tokens.accent
 
   return (
     <YStack
@@ -59,21 +75,19 @@ export function ConfirmDialog({
       jc="center"
       padding={24}
       zIndex={1000}
-      // Scrim derived from the bg token (~90%), not a hardcoded rgba.
-      backgroundColor={`${tokens.bg}E6`}
+      backgroundColor={scrim}
       onPress={onCancel}
     >
       <YStack
         ref={dialogRef as never}
         width="100%"
-        maxWidth={380}
-        gap={14}
-        padding={22}
-        borderRadius={14}
-        borderWidth={1}
-        borderColor={tokens.borderHover}
-        backgroundColor={tokens.bgPress}
+        maxWidth={400}
+        gap={12}
+        padding={20}
+        borderRadius={16}
+        backgroundColor={c.bgStep}
         onPress={(e: { stopPropagation?: () => void }) => e.stopPropagation?.()}
+        {...sheetWeb}
         {...({
           role: "dialog",
           "aria-modal": true,
@@ -84,71 +98,31 @@ export function ConfirmDialog({
           },
         } as Record<string, unknown>)}
       >
-        <Text fontSize={16} fontWeight="650" color={tokens.text}>
-          {title}
-        </Text>
+        <T step="xl">{title}</T>
         {body != null ? (
           typeof body === "string" ? (
-            <Text fontSize={13} lineHeight={20} color={tokens.textTertiary}>
+            <T step="sm" tone="text2">
               {body}
-            </Text>
+            </T>
           ) : (
             <YStack>{body}</YStack>
           )
         ) : null}
-        <XStack gap={8} jc="flex-end" ai="center">
-          <DialogButton testID="confirm-dialog-cancel" label={cancelLabel} onPress={onCancel} />
-          <DialogButton
+        <XStack gap={8} jc="flex-end" ai="center" paddingTop={6}>
+          <Btn testID="confirm-dialog-cancel" variant="ghost" onPress={onCancel}>
+            {cancelLabel}
+          </Btn>
+          <Btn
             testID="confirm-dialog-confirm"
-            label={confirmLabel}
+            variant={tone === "danger" ? "danger" : "primary"}
+            disabled={busy}
             onPress={busy ? undefined : onConfirm}
-            accent={accent}
-            busy={busy}
-          />
+            {...({ "aria-disabled": busy } as Record<string, unknown>)}
+          >
+            {confirmLabel}
+          </Btn>
         </XStack>
       </YStack>
     </YStack>
-  )
-}
-
-function DialogButton({
-  testID,
-  label,
-  onPress,
-  accent,
-  busy,
-}: {
-  testID: string
-  label: string
-  onPress?: () => void
-  accent?: string
-  busy?: boolean
-}) {
-  const isPrimary = accent != null
-  const color = accent ?? tokens.textSecondary
-  const disabled = onPress == null
-
-  return (
-    <XStack
-      testID={testID}
-      paddingVertical={8}
-      paddingHorizontal={14}
-      borderRadius={8}
-      borderWidth={1}
-      borderColor={isPrimary ? `${color}55` : tokens.border}
-      backgroundColor={isPrimary ? `${color}1A` : tokens.bgInner}
-      opacity={busy ? 0.5 : 1}
-      cursor={disabled ? "default" : "pointer"}
-      hoverStyle={disabled ? {} : { backgroundColor: isPrimary ? `${color}26` : tokens.bgHover }}
-      onPress={onPress}
-      {...({ role: "button", tabIndex: disabled ? -1 : 0, "aria-disabled": disabled } as Record<
-        string,
-        unknown
-      >)}
-    >
-      <Text fontSize={13} fontWeight="600" color={isPrimary ? color : tokens.textSecondary}>
-        {label}
-      </Text>
-    </XStack>
   )
 }

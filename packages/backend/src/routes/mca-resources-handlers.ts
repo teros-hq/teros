@@ -10,6 +10,7 @@
 import { randomBytes } from 'crypto';
 import type { ServerResponse } from 'http';
 import type { Db } from 'mongodb';
+import { maskSecret } from '@teros/shared';
 import {
   canAccessAgent,
   canAccessApp,
@@ -17,15 +18,29 @@ import {
   getUserWorkspaceIds,
 } from '../auth/workspace-access';
 import type { AgentProvisioningService } from '../services/agent-provisioning-service';
+import { AgentMailboxService } from '../services/agent-mailbox-service';
 import type { McaOAuth } from '../auth/mca-oauth';
+import type { AuthManager } from '../auth/auth-manager';
+import type { AwaitingAuthRegistry } from '../handlers/message/awaiting-auth-registry';
 import type { McaService } from '../services/mca-service';
+import type { McaManager } from "../services/mca-manager";
 import type { PubSubService } from '../services/pubsub-service';
-import type { AppToolPermissions, McpCatalogEntry, ToolPermission } from '../types/database';
+import type { WorkspaceService } from '../services/workspace-service';
+import type { UserService } from '../auth/user-service';
+import { buildInvitationEmailSendFn } from '../handlers/domains/workspace/invitation-email';
+import { checkRateLimit } from '../handlers/domains/workspace/add-member';
+import type { AgentInstance, AppToolPermissions, McpCatalogEntry, ToolPermission } from '../types/database';
 import { buildToolPermissionsView, isPrivateTool, normalizeToolName } from '../types/permissions';
+import { buildAppPermissionsView } from '../handlers/domains/app/_permissions-view';
 import { buildAvatarUrl } from '../lib/avatar-url';
-import { buildAgentCreatedPayload } from '../lib/agent-payload';
-import { SkillService } from '../services/skill-service';
-import { canCreateWorkspace, UpgradeRequiredError } from '../services/billing-gate.js';
+import {
+  broadcastAgentUpdated,
+  buildAgentCreatedPayload,
+  buildAgentUpdatedPayload,
+} from '../lib/agent-payload';
+import { SkillService, isValidLoadMode, type SkillLoadMode } from '../services/skill-service';
+import { UpgradeRequiredError } from '../services/billing-gate.js';
+import { DeletionService } from '../services/deletion-service';
 
 // ============================================================================
 // TYPES
@@ -33,8 +48,16 @@ import { canCreateWorkspace, UpgradeRequiredError } from '../services/billing-ga
 
 export interface ResourceContext {
   userId: string;
+  mcaManager?: McaManager | null;
   channelId: string;
   appId?: string;
+  /**
+   * REAL conversation channel (ch_*) when the callback came through a call
+   * grant — in grant mode ctx.channelId is rewritten to the appId, which is
+   * NOT a channel. The set-app-secret redaction sweep must target the
+   * conversation the secret was shared in, so it prefers this field.
+   */
+  callerChannelId?: string;
 }
 
 // ============================================================================
@@ -42,9 +65,10 @@ export interface ResourceContext {
 // ============================================================================
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
+  // ACAO is set by the main request handler via resolveAllowedOrigin() —
+  // do not override it with a wildcard here.
   res.writeHead(status, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
   });
   res.end(JSON.stringify(data));
 }
@@ -237,6 +261,7 @@ export async function handleAgentUpdate(
     avatarUrl?: string;
     context?: string;
   },
+  pubSubService: PubSubService,
 ): Promise<void> {
   if (!(await canAccessAgent(db, ctx.userId, agentId))) {
     sendJson(res, 403, { error: 'Access denied to agent' });
@@ -252,10 +277,36 @@ export async function handleAgentUpdate(
   if (body.avatarUrl) updates.avatarUrl = body.avatarUrl;
   if (body.context !== undefined) updates.context = body.context;
 
-  await db.collection('agents').updateOne({ agentId }, { $set: updates });
+  const agents = db.collection<AgentInstance>('agents');
+  await agents.updateOne({ agentId }, { $set: updates });
 
-  const agent = await db.collection('agents').findOne({ agentId });
-  sendJson(res, 200, agent ? { ...agent, avatarUrl: buildAvatarUrl(agent.avatarUrl) } : agent);
+  const agent = await agents.findOne({ agentId });
+
+  // Resolve avatar with the core fallback so the synchronous 200 body matches the
+  // agent.updated broadcast below — an agent with no own avatar still surfaces its
+  // core avatar in both (TER-644).
+  const core = agent ? await db.collection('agent_cores').findOne({ coreId: agent.coreId }) : null;
+  const coreAvatarUrl = core?.avatarUrl as string | undefined;
+  sendJson(
+    res,
+    200,
+    agent ? { ...agent, avatarUrl: buildAvatarUrl(agent.avatarUrl || coreAvatarUrl) } : agent,
+  );
+
+  // Broadcast agent.updated so connected clients' navbars refresh in realtime
+  // (TER-644). This MCA resource path is how the UI mutates agents (rename /
+  // avatar via the `core_update-agent` tool) — a separate path from the WsRouter
+  // agent.update handler, so it must emit its own event or the panel keeps the
+  // stale value until reload. Same pattern as handleAgentCreate above (TER-611).
+  // Emitted AFTER the 200 with a non-fatal catch: the update is already persisted.
+  if (agent) {
+    try {
+      const payload = buildAgentUpdatedPayload(agent, coreAvatarUrl);
+      await broadcastAgentUpdated(pubSubService, ctx.userId, payload);
+    } catch (err) {
+      console.warn('[handleAgentUpdate] agent.updated broadcast failed', err);
+    }
+  }
 }
 
 export async function handleAgentDelete(
@@ -275,9 +326,9 @@ export async function handleAgentDelete(
   const agent = await db.collection('agents').findOne({ agentId });
   const name = (agent?.fullName as string | undefined) ?? (agent?.name as string | undefined) ?? agentId;
 
-  // Delete agent and access grants
-  await db.collection('agents').deleteOne({ agentId });
-  await db.collection('agent_app_access').deleteMany({ agentId });
+  // Same full cascade as agent.delete (INF-3: this path used to leave the
+  // agent's channels, skills, relationships and subscriptions behind)
+  await new DeletionService(db).deleteAgent(agentId, ctx.userId, 'mca.agent.delete');
 
   sendJson(res, 200, {
     success: true,
@@ -392,18 +443,8 @@ export async function handleWorkspaceCreate(
   }
 
   try {
-    // Billing gate: check workspace limit against subscription tier
-    const allowed = await canCreateWorkspace(db, ctx.userId);
-    if (!allowed) {
-      sendJson(res, 403, {
-        error: 'Workspace limit reached',
-        code: 'UPGRADE_REQUIRED',
-        message: 'You have reached the workspace limit on your current plan. Upgrade to create more workspaces.',
-      });
-      return;
-    }
-
-    // Use WorkspaceService to ensure volume is created
+    // Billing gate is enforced inside workspaceService.createWorkspace —
+    // UpgradeRequiredError is caught below and returned as 403.
     const workspace = await workspaceService.createWorkspace(ctx.userId, {
       name: body.name,
       description: body.description,
@@ -484,57 +525,90 @@ export async function handleWorkspaceMemberAdd(
   ctx: ResourceContext,
   db: Db,
   workspaceId: string,
-  body: { userId: string; role: string },
+  body: { email?: string; userId?: string; role?: string },
+  workspaceService: WorkspaceService,
+  userService: UserService,
 ): Promise<void> {
-  // Only owner or admin can add members
+  // Invitations are ALWAYS by email (Pablo's rule, 2026-10-27).
+  // The wire value is an email address. `userId` is accepted as a legacy
+  // field name (older MCA containers post it) and is interpreted the same
+  // way — the pre-fix handler inserted it verbatim as a userId, creating
+  // ghost members (repro: work_bb02eff683ac5b89).
+  const email = String(body.email ?? body.userId ?? '').trim().toLowerCase();
+  const role = body.role;
+
   const workspace = await db.collection('workspaces').findOne({ workspaceId });
   if (!workspace) {
     sendJson(res, 404, { error: 'Workspace not found' });
     return;
   }
 
-  const isOwner = workspace.ownerId === ctx.userId;
-  const membership = await db
-    .collection('workspace_members')
-    .findOne({ workspaceId, userId: ctx.userId });
-  const isAdmin = membership?.role === 'admin';
-
-  if (!isOwner && !isAdmin) {
+  // Authorization + rate limit: same guards as the WS handler
+  // (workspace.add_member) — canManageMembers (owner/admin, REQ-17) and
+  // Guard 6 (10 calls/min/workspace/admin against bulk email enumeration).
+  if (!(await workspaceService.canManageMembers(workspaceId, ctx.userId))) {
     sendJson(res, 403, { error: 'Only owner or admin can add members' });
     return;
   }
-
-  if (!body.userId || !body.role) {
-    sendJson(res, 400, { error: 'Missing required fields: userId, role' });
+  if (!checkRateLimit(workspaceId, ctx.userId)) {
+    sendJson(res, 429, {
+      error: 'Too many member additions — please try again in a minute',
+    });
     return;
   }
 
-  // Check if already a member
-  const existing = await db
-    .collection('workspace_members')
-    .findOne({ workspaceId, userId: body.userId });
-  if (existing) {
-    sendJson(res, 409, { error: 'User is already a member' });
+  if (!email || !role) {
+    sendJson(res, 400, { error: 'Missing required fields: email, role' });
     return;
   }
 
-  const member = {
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_RE.test(email)) {
+    sendJson(res, 400, { error: 'Invalid email address — members are invited by email' });
+    return;
+  }
+
+  const validRoles = ['admin', 'write', 'read'];
+  if (!validRoles.includes(role)) {
+    sendJson(res, 400, { error: 'Invalid role — must be one of: admin, write, read' });
+    return;
+  }
+
+  // Resolve existing account by email (case-insensitive) — same as the WS handler
+  const existingUser = await userService.getByEmail(email);
+  const existingUserId = existingUser?.userId ?? null;
+
+  // Best-effort invitation email (shared helper, NFR-5)
+  const emailSendFn = buildInvitationEmailSendFn(userService, db, ctx.userId, {
+    logTag: 'mca.workspaceMemberAdd',
+  });
+
+  // Delegate to the canonical MUW-14 flow (WorkspaceService.addMemberByEmail):
+  // existing account → active member (+ volume access); no account → pending
+  // member + invitation email with inv_ token (activated on signup).
+  const result = await workspaceService.addMemberByEmail(
     workspaceId,
-    userId: body.userId,
-    role: body.role,
-    joinedAt: new Date().toISOString(),
-  };
-
-  await db.collection('workspace_members').insertOne(member);
+    email,
+    role as 'admin' | 'write' | 'read',
+    ctx.userId,
+    existingUserId,
+    emailSendFn,
+  );
 
   const workspaceName = (workspace.name as string | undefined) ?? workspaceId;
   sendJson(res, 201, {
     success: true,
-    message: `Added member to '${workspaceName}' as ${body.role}`,
+    message:
+      result.status === 'pending'
+        ? `Invitation created for '${email}' in '${workspaceName}' as ${role}${result.invitationEmailSent ? ' — invitation email sent' : ''}`
+        : `Added '${email}' to '${workspaceName}' as ${role}`,
     workspaceId,
     workspaceName,
-    userId: body.userId,
-    role: body.role,
+    email: result.email,
+    status: result.status, // 'active' | 'pending'
+    invitationEmailSent: result.invitationEmailSent,
+    role,
+    // Guard 1: the resolved userId is NEVER returned.
   });
 }
 
@@ -618,40 +692,6 @@ export async function handleWorkspaceMemberUpdate(
 // ============================================================================
 // APPS
 // ============================================================================
-
-export async function handleAppList(
-  res: ServerResponse,
-  ctx: ResourceContext,
-  db: Db,
-  body?: {},
-): Promise<void> {
-  // Return apps from all workspaces the user has access to
-  const userWorkspaceIds = await getUserWorkspaceIds(db, ctx.userId);
-  const ownedWorkspaces = await db
-    .collection('workspaces')
-    .find({ ownerId: ctx.userId, status: { $ne: 'archived' } })
-    .toArray();
-  const ownedWorkspaceIds = ownedWorkspaces.map((w) => w.workspaceId);
-  const allWorkspaceIds = Array.from(new Set([...userWorkspaceIds, ...ownedWorkspaceIds]));
-
-  const query: any = {
-    status: 'active',
-    ownerId: { $in: allWorkspaceIds },
-    ownerType: 'workspace',
-  };
-
-  const apps = await db.collection('apps').find(query).toArray();
-
-  sendJson(res, 200, {
-    apps: apps.map((a) => ({
-      appId: a.appId,
-      mcaId: a.mcaId,
-      name: a.name,
-      status: a.status,
-      createdAt: a.createdAt,
-    })),
-  });
-}
 
 export async function handleAppGet(
   res: ServerResponse,
@@ -772,13 +812,13 @@ export async function handleAppInstall(
       sendJson(res, 400, { error: validation.error || 'Invalid app name' });
       return;
     }
-    if (!(await mcaService.isAppNameAvailable(ownerId, body.name))) {
+    if (!(await mcaService.isAppNameAvailable(ownerId, body.name, { scope: 'personal', installedBy: ctx.userId }))) {
       sendJson(res, 409, { error: `App name "${body.name}" is already in use` });
       return;
     }
     appName = body.name;
   } else {
-    appName = await mcaService.generateDefaultAppName(body.mcaId, ownerId);
+    appName = await mcaService.generateDefaultAppName(body.mcaId, ownerId, { scope: 'personal', installedBy: ctx.userId });
   }
 
   // createApp auto-resolves the workspace volume mount
@@ -787,6 +827,9 @@ export async function handleAppInstall(
     mcaId: body.mcaId,
     ownerId,
     ownerType: 'workspace',
+    // MUW-REQ-10/11: the acting user owns it; member-installed apps are personal.
+    installedBy: ctx.userId,
+    scope: 'personal',
     name: appName,
     status: 'active',
   });
@@ -950,7 +993,7 @@ export async function handleAccessGrant(
   res: ServerResponse,
   ctx: ResourceContext,
   db: Db,
-  body: { agentId: string; appId: string },
+  body: { agentId: string; appId: string; preferredName?: string },
   invalidateToolCache?: (agentId: string) => Promise<void>,
 ): Promise<void> {
   if (!body.agentId || !body.appId) {
@@ -1007,6 +1050,26 @@ export async function handleAccessGrant(
   };
 
   await db.collection('agent_app_access').insertOne(access);
+
+  // EMAIL MAILBOX HOOK (tn_PcquTN30AawbK8uE): same fail-soft provisioning as
+  // McaService.grantAccess — this REST path writes the grant directly, so the
+  // hook is duplicated here. NEVER fails the grant.
+  if (app.mcaId === 'mca.teros.email') {
+    try {
+      const mailboxService = new AgentMailboxService(db);
+      const mailbox = await mailboxService.ensureMailbox(agent as unknown as AgentInstance, {
+        preferredName: body.preferredName,
+      });
+      console.log(
+        `[McaResources] Mailbox hook: ${body.agentId} → ${mailbox.address} (${mailbox.status}${mailbox.reason ? `, ${mailbox.reason}` : ''})`,
+      );
+    } catch (error) {
+      console.error(
+        `[McaResources] Mailbox hook FAILED for ${body.agentId} (grant NOT affected):`,
+        error,
+      );
+    }
+  }
 
   // Hot-reload: invalidate the tool executor cache so active conversations
   // pick up the new app immediately without a backend restart.
@@ -1156,16 +1219,17 @@ async function canManageAppPermissions(
 ): Promise<boolean> {
   if (app.ownerId === userId) return true;
   if (app.ownerId === 'system') return false;
-  if (app.ownerType === 'workspace' || app.ownerId.startsWith('work_')) {
+  if (app.ownerType === 'workspace' || app.ownerId.startsWith('work_') || app.ownerId.startsWith('ws_')) {
     const workspace = await db
       .collection('workspaces')
       .findOne({ workspaceId: app.ownerId, status: 'active' });
     if (!workspace) return false;
     if (workspace.ownerId === userId) return true;
-    const member = (
-      workspace.members as Array<{ userId: string; role?: string }> | undefined
-    )?.find((m) => m.userId === userId);
-    return member?.role === 'admin';
+    // Check workspace_members collection (single source of truth)
+    const membership = await db
+      .collection('workspace_members')
+      .findOne({ workspaceId: app.ownerId, userId });
+    return membership?.role === 'admin';
   }
   return false;
 }
@@ -1203,7 +1267,14 @@ export async function handleAppPermissionsGet(
     return;
   }
 
-  const { tools, summary } = buildToolPermissionsView(loaded.app, loaded.toolNames, new Map());
+  // Use buildAppPermissionsView to load manifest annotations (readOnlyHint, alwaysAsk)
+  // so the readOnly flag is correctly reported — not hardcoded to false via new Map().
+  const { tools, summary } = await buildAppPermissionsView(
+    ctx.mcaManager ?? null,
+    loaded.app,
+    appId,
+    loaded.toolNames,
+  );
   sendJson(res, 200, {
     appId,
     appName: loaded.app.name,
@@ -1313,7 +1384,14 @@ export async function handleAppPermissionsSet(
     return;
   }
 
-  const { tools, summary } = buildToolPermissionsView({ permissions: next }, toolNames, new Map());
+  // Use buildAppPermissionsView to load manifest annotations (readOnlyHint, alwaysAsk)
+  // so the readOnly flag is correctly reported — not hardcoded to false via new Map().
+  const { tools, summary } = await buildAppPermissionsView(
+    ctx.mcaManager ?? null,
+    { ...app, permissions: next },
+    appId,
+    toolNames,
+  );
   console.log(
     `[Resources] app.permissions updated for ${appId} by ${ctx.userId}: all=${all ?? '-'}, tools=${Object.keys(toolChanges ?? {}).length}`,
   );
@@ -1360,6 +1438,12 @@ export async function handleAppShowAuth(
   db: Db,
   appId: string,
   mcaOAuth: McaOAuth | undefined,
+  /** v2 non-blocking interactions: register the (userId, appId) → channelId
+   * wake pointer so the OAuth callback can wake this channel's agent. */
+  awaitingAuth?: AwaitingAuthRegistry,
+  /** v2 non-blocking interactions: broadcast channel_status awaitingUser
+   * { kind: 'auth' } so the unified frontend chip can show the state. */
+  pubSubService?: PubSubService,
 ): Promise<void> {
   if (!(await canAccessApp(db, ctx.userId, appId))) {
     sendJson(res, 403, { error: 'Access denied to app' });
@@ -1380,6 +1464,22 @@ export async function handleAppShowAuth(
       auth = { status: info.status, authType: info.authType, message: info.message };
     } catch (err) {
       console.warn(`[Resources] app.show-auth: getAuthStatus failed for ${appId}`, err);
+    }
+  }
+
+  // v2: the widget is shown and the connection is pending — remember where to
+  // send the wake when the OAuth callback completes. Best-effort: skip when
+  // already connected or when the registry isn't wired (tests/legacy).
+  if (awaitingAuth && auth?.status !== 'ready' && auth?.status !== 'not_required') {
+    awaitingAuth.register(ctx.userId, appId, ctx.channelId);
+    // v2: the channel enters awaiting_user { kind: 'auth', pointer } — the
+    // unified frontend chip reads it (spec §Implementation design 5).
+    if (pubSubService && ctx.channelId) {
+      pubSubService.broadcastToTopic(`channel:${ctx.channelId}`, {
+        type: 'channel_status',
+        channelId: ctx.channelId,
+        awaitingUser: { kind: 'auth', pointer: appId },
+      });
     }
   }
 
@@ -1481,6 +1581,136 @@ export async function handleProviderList(
   sendJson(res, 200, { providers: sanitized });
 }
 
+// Shared shape of a user_providers record as read by these handlers (subset).
+interface ProviderRecordForAgents {
+  providerId: string;
+  userId: string;
+  providerType: string;
+  displayName: string;
+  status: string;
+  defaultModelId?: string;
+  models?: Array<{ modelId: string; capabilities?: Record<string, unknown> }>;
+}
+
+/**
+ * Models with an exclusive assignment (spec 20261017_agent-model-tools §3.4.3).
+ * A shared provider's default must NEVER point at one of these, and pinning
+ * another agent to one requires an explicit operator decision — set-agent-model
+ * rejects them unless `allowReserved: true` is passed.
+ *
+ * Today: `teros-glm-5p3-fast` is reserved exclusively for Alice.
+ */
+// @todo pablo - 2026.10.20 : RESERVED_MODEL_IDS should be workspace config, not hardcoded
+// Removed hardcoded 'teros-glm-5p3-fast' reservation — this is operational, not architectural
+export const RESERVED_MODEL_IDS = new Set<string>();
+
+/**
+ * Compute the (provider, model) pair a run would actually use for this agent,
+ * mirroring the runtime chain in provider-service's private agent resolver
+ * (2-level model, 2026-10-21):
+ *   pin (selectedProviderId active + selectedModelId served)
+ *     → user's isDefault provider → provider.defaultModelId → first model.
+ * The availableProviders list is GONE — it is never consulted.
+ * Pure read — no secrets, no billing throws — so it is safe for a read tool.
+ */
+function resolveAgentModel(
+  agent: {
+    selectedModelId?: string | null;
+    selectedProviderId?: string | null;
+  },
+  providers: ProviderRecordForAgents[],
+  defaultProvider: ProviderRecordForAgents | null,
+): { providerId: string | null; modelId: string | null; source: string } {
+  const selectedProviderId = agent.selectedProviderId ?? null;
+  const selectedModelId = agent.selectedModelId ?? null;
+
+  // ── Level 1: the pin ────────────────────────────────────────────────────────
+  const pinned = selectedProviderId
+    ? providers.find((p) => p.providerId === selectedProviderId && p.status === 'active')
+    : null;
+
+  if (pinned) {
+    const model =
+      (selectedModelId && (pinned.models ?? []).some((m) => m.modelId === selectedModelId)
+        ? selectedModelId
+        : null) ??
+      pinned.defaultModelId ??
+      (pinned.models ?? [])[0]?.modelId ??
+      null;
+    return { providerId: pinned.providerId, modelId: model, source: 'agent_pin' };
+  }
+
+  // ── Level 2: System Default — the user's default provider ──────────────────
+  if (defaultProvider) {
+    const models = defaultProvider.models ?? [];
+    const viaDefault = defaultProvider.defaultModelId
+      ? models.find((m) => m.modelId === defaultProvider.defaultModelId)
+      : undefined;
+    const model = viaDefault ?? models[0];
+    if (model) {
+      return {
+        providerId: defaultProvider.providerId,
+        modelId: model.modelId,
+        source: 'user_default_provider',
+      };
+    }
+  }
+
+  return { providerId: null, modelId: null, source: 'unresolved' };
+}
+
+/**
+ * Detect orphaned/inconsistent provider config for an agent (spec §3.1.3),
+ * updated for the 2-level model (2026-10-21): a pin whose provider does not
+ * exist / is inactive, a model pin no provider serves, or no user default to
+ * inherit. The availableProviders list no longer exists — no warnings for it.
+ */
+function collectAgentProviderWarnings(
+  agent: {
+    selectedProviderId?: string | null;
+    selectedModelId?: string | null;
+  },
+  providerRecords: ProviderRecordForAgents[],
+  defaultProvider: ProviderRecordForAgents | null,
+): string[] {
+  const warnings: string[] = [];
+  const foundIds = new Set(providerRecords.map((p) => p.providerId));
+  const selectedProviderId = agent.selectedProviderId ?? null;
+  const selectedModelId = agent.selectedModelId ?? null;
+
+  if (selectedProviderId && !foundIds.has(selectedProviderId)) {
+    warnings.push(
+      `selectedProviderId points at provider '${selectedProviderId}' which does not exist (orphan pin).`,
+    );
+  } else if (
+    selectedProviderId &&
+    providerRecords.find((p) => p.providerId === selectedProviderId)?.status !== 'active'
+  ) {
+    warnings.push(
+      `selectedProviderId '${selectedProviderId}' is inactive — the run falls back to the user default provider.`,
+    );
+  }
+
+  if (selectedModelId) {
+    const served = providerRecords.some((p) =>
+      (p.models ?? []).some((m) => m.modelId === selectedModelId),
+    );
+    if (!served) {
+      warnings.push(
+        `selectedModelId '${selectedModelId}' is not served by any provider (ghost pin).`,
+      );
+    }
+  }
+
+  if (!selectedProviderId && !defaultProvider) {
+    warnings.push(
+      'Agent has no pin and the user has no active default provider — the run cannot resolve a provider (System Default unresolved).',
+    );
+  }
+
+  return warnings;
+}
+
 export async function handleAgentProvidersGet(
   res: ServerResponse,
   ctx: ResourceContext,
@@ -1498,50 +1728,68 @@ export async function handleAgentProvidersGet(
     return;
   }
 
-  const availableProviders: string[] = agent.availableProviders ?? [];
-  const preferredProviderId: string | null = agent.preferredProviderId ?? null;
+  const selectedProviderId: string | null = agent.selectedProviderId ?? null;
   const selectedModelId: string | null = agent.selectedModelId ?? null;
 
-  // Fetch provider details
-  let providerDetails: any[] = [];
-  if (availableProviders.length > 0) {
-    const records = await db
-      .collection('user_providers')
-      .find({ providerId: { $in: availableProviders } })
-      .toArray();
+  // ALL of the owner's providers — the availableProviders filter no longer
+  // exists; the selector shows every option.
+  const providerRecords = (await db
+    .collection('user_providers')
+    .find({ userId: agent.ownerId })
+    .toArray()) as unknown as ProviderRecordForAgents[];
 
-    providerDetails = records.map((p) => ({
-      providerId: p.providerId,
-      providerType: p.providerType,
-      displayName: p.displayName,
-      status: p.status,
-      models: p.models,
-    }));
-  }
+  const providerDetails = providerRecords.map((p) => ({
+    providerId: p.providerId,
+    providerType: p.providerType,
+    displayName: p.displayName,
+    status: p.status,
+    isDefault: (p as any).isDefault ?? false,
+    models: p.models,
+    defaultModelId: p.defaultModelId ?? null,
+  }));
+
+  // The user's default provider — what System Default resolves to.
+  const defaultProvider = (await db.collection('user_providers').findOne({
+    userId: agent.ownerId,
+    isDefault: true,
+    status: 'active',
+  })) as unknown as ProviderRecordForAgents | null;
+
+  const resolved = resolveAgentModel(agent as any, providerRecords, defaultProvider);
+  const warnings = collectAgentProviderWarnings(agent as any, providerRecords, defaultProvider);
 
   sendJson(res, 200, {
     agentId,
-    availableProviders,
-    preferredProviderId,
+    selectedProviderId,
     selectedModelId,
     providers: providerDetails,
+    resolved,
+    warnings,
   });
 }
 
+/**
+ * set-agent-providers (legacy endpoint, now pin-only) — the availableProviders
+ * list is GONE (2026-10-21). `providerIds` is accepted for backward
+ * compatibility but IGNORED: a pin is a single (provider, model) pair
+ * (selectedProviderId + selectedModelId); without a pin the agent inherits the
+ * user's default provider (System Default).
+ */
 export async function handleAgentProvidersSet(
   res: ServerResponse,
   ctx: ResourceContext,
   db: Db,
   agentId: string,
-  body: { providerIds: string[] },
+  body: {
+    providerIds?: string[];
+    selectedProviderId?: string | null;
+    selectedModelId?: string | null;
+    reason?: string;
+  },
+  pubSubService?: PubSubService | null,
 ): Promise<void> {
   if (!(await canAccessAgent(db, ctx.userId, agentId))) {
     sendJson(res, 403, { error: 'Access denied to agent' });
-    return;
-  }
-
-  if (!Array.isArray(body.providerIds)) {
-    sendJson(res, 400, { error: 'providerIds must be an array' });
     return;
   }
 
@@ -1551,50 +1799,235 @@ export async function handleAgentProvidersSet(
     return;
   }
 
-  // Verify all providers exist and belong to user
-  if (body.providerIds.length > 0) {
-    const providers = await db
-      .collection('user_providers')
-      .find({
-        providerId: { $in: body.providerIds },
-        userId: ctx.userId,
-      })
-      .toArray();
+  // The pin: a single (provider, model) pair. providerIds (if sent) is ignored.
+  const selectedProviderId: string | null | undefined = body.selectedProviderId;
+  const selectedModelId: string | null | undefined = body.selectedModelId;
 
-    if (providers.length !== body.providerIds.length) {
+  // Validate the pin target when one is being set.
+  if (selectedProviderId) {
+    const provider = (await db
+      .collection('user_providers')
+      .findOne({ providerId: selectedProviderId, userId: ctx.userId })) as unknown as
+      | ProviderRecordForAgents
+      | null;
+
+    if (!provider) {
       sendJson(res, 400, {
-        error: 'One or more provider IDs are invalid or do not belong to user',
+        error: `Provider '${selectedProviderId}' not found or does not belong to user`,
       });
       return;
     }
+
+    // Billing gate: pinning a teros provider consumes teros hours (same rule
+    // as handleAgentModelSet).
+    if (provider.providerType === 'teros') {
+      const { BillingGateService } = await import('../services/billing-gate.js');
+      try {
+        await new BillingGateService(db).assertTerosModelAllowed(ctx.userId);
+      } catch (err) {
+        if (err instanceof UpgradeRequiredError) {
+          sendJson(res, 402, { error: err.message });
+          return;
+        }
+        throw err;
+      }
+    }
+
+    if (selectedModelId) {
+      const served = (provider.models ?? []).some((m) => m.modelId === selectedModelId);
+      if (!served) {
+        sendJson(res, 400, {
+          error: `Model '${selectedModelId}' is not served by provider '${selectedProviderId}'`,
+        });
+        return;
+      }
+    }
   }
 
-  await db.collection('agents').updateOne(
-    { agentId },
-    {
-      $set: {
-        availableProviders: body.providerIds,
-        updatedAt: new Date().toISOString(),
-      },
-    },
-  );
+  const updateFields: Record<string, unknown> = {
+    updatedAt: new Date().toISOString(),
+  };
+  if (selectedProviderId !== undefined) updateFields.selectedProviderId = selectedProviderId;
+  if (selectedModelId !== undefined) updateFields.selectedModelId = selectedModelId;
 
-  const agentName = (agent.fullName as string | undefined) ?? (agent.name as string | undefined) ?? agentId;
+  // Clearing the provider pin also clears the model pin — a model pin without
+  // a provider pin is not a state the resolver understands.
+  if (selectedProviderId === null) updateFields.selectedModelId = null;
+
+  await db.collection('agents').updateOne({ agentId }, { $set: updateFields });
+
+  const updatedAgent = await db.collection('agents').findOne({ agentId });
+  const agentName =
+    (agent.fullName as string | undefined) ?? (agent.name as string | undefined) ?? agentId;
+
   sendJson(res, 200, {
     success: true,
-    message: `Set providers for '${agentName}': ${body.providerIds.join(', ') || '(none)'}`,
+    message: selectedProviderId
+      ? `Pinned '${agentName}' to provider ${selectedProviderId}${selectedModelId ? ` / model ${selectedModelId}` : ''}`
+      : `Cleared the pin for '${agentName}' — System Default (the user's default provider) applies`,
     agentId,
     agentName,
-    availableProviders: body.providerIds,
+    selectedProviderId: selectedProviderId !== undefined ? selectedProviderId : (updatedAgent?.selectedProviderId ?? null),
+    selectedModelId: selectedModelId !== undefined ? selectedModelId : (updatedAgent?.selectedModelId ?? null),
   });
+
+  // Broadcast agent.updated so the UI reflects the change without a reload.
+  if (pubSubService && updatedAgent) {
+    try {
+      const core = await db
+        .collection('agent_cores')
+        .findOne({ coreId: updatedAgent.coreId });
+      const payload = buildAgentUpdatedPayload(updatedAgent as any, core?.avatarUrl);
+      await broadcastAgentUpdated(pubSubService, ctx.userId, payload);
+    } catch (err) {
+      console.warn('[handleAgentProvidersSet] agent.updated broadcast failed', err);
+    }
+  }
 }
 
-export async function handleAgentPreferredProviderSet(
+/**
+ * set-agent-model — the atomic model pin (spec 20261017_agent-model-tools §3.1.1).
+ *
+ * Writes `selectedProviderId` + `selectedModelId` in a single update, validates
+ * the model is served by the provider, enforces the billing gate when the
+ * provider is teros, and broadcasts `agent.updated` so the UI refreshes live.
+ * The availableProviders list is GONE (2026-10-21) — nothing is auto-added to
+ * any list; a pin is just the (provider, model) pair.
+ *
+ * `reason` is optional but recommended: model changes are a considered decision
+ * (policy §3.4.2), so every change is logged with who/when/why for audit.
+ */
+export async function handleAgentModelSet(
   res: ServerResponse,
   ctx: ResourceContext,
   db: Db,
   agentId: string,
-  body: { providerId: string | null },
+  body: {
+    providerId: string;
+    modelId: string;
+    reason?: string;
+    allowReserved?: boolean;
+  },
+  pubSubService?: PubSubService | null,
+): Promise<void> {
+  if (!(await canAccessAgent(db, ctx.userId, agentId))) {
+    sendJson(res, 403, { error: 'Access denied to agent' });
+    return;
+  }
+
+  const { providerId, modelId, reason, allowReserved } = body;
+  if (!providerId || !modelId) {
+    sendJson(res, 400, { error: 'providerId and modelId are required' });
+    return;
+  }
+
+  const agent = await db.collection('agents').findOne({ agentId });
+  if (!agent) {
+    sendJson(res, 404, { error: 'Agent not found' });
+    return;
+  }
+
+  // Provider must exist and belong to the calling user.
+  const provider = (await db
+    .collection('user_providers')
+    .findOne({ providerId, userId: ctx.userId })) as unknown as ProviderRecordForAgents | null;
+  if (!provider) {
+    sendJson(res, 400, { error: `Provider '${providerId}' not found or does not belong to user` });
+    return;
+  }
+
+  // Model must be served by the provider.
+  const model = (provider.models ?? []).find((m) => m.modelId === modelId);
+  if (!model) {
+    sendJson(res, 400, {
+      error: `Model '${modelId}' is not served by provider '${providerId}'`,
+      availableModels: (provider.models ?? []).map((m) => m.modelId),
+    });
+    return;
+  }
+
+  // Reserved models (policy §3.4.3): reject unless explicitly overridden.
+  if (RESERVED_MODEL_IDS.has(modelId) && !allowReserved) {
+    sendJson(res, 409, {
+      error:
+        `Model '${modelId}' is reserved (exclusive assignment). ` +
+        `Pass allowReserved: true only with an explicit operator decision.`,
+      reserved: true,
+    });
+    return;
+  }
+
+  // Billing gate: pinning a teros-provider model consumes teros hours.
+  if (provider.providerType === 'teros') {
+    const { BillingGateService } = await import('../services/billing-gate.js');
+    try {
+      await new BillingGateService(db).assertTerosModelAllowed(ctx.userId);
+    } catch (err) {
+      if (err instanceof UpgradeRequiredError) {
+        sendJson(res, 402, { error: err.message });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  await db.collection('agents').updateOne(
+    { agentId },
+    {
+      $set: {
+        selectedProviderId: providerId,
+        selectedModelId: modelId,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  );
+
+  // Audit trail (policy §3.4.2): who/when/why for every model change.
+  console.log(
+    `[handleAgentModelSet] user=${ctx.userId} set agent=${agentId} ` +
+      `provider=${providerId} model=${modelId} reason=${reason ?? '(none)'}`,
+  );
+
+  const updatedAgent = await db.collection('agents').findOne({ agentId });
+  const agentName =
+    (agent.fullName as string | undefined) ?? (agent.name as string | undefined) ?? agentId;
+
+  sendJson(res, 200, {
+    success: true,
+    message: `Model for '${agentName}' set to ${modelId} (provider ${providerId})`,
+    agentId,
+    agentName,
+    selectedProviderId: providerId,
+    selectedModelId: modelId,
+    reason: reason ?? null,
+  });
+
+  // Broadcast agent.updated so the UI reflects the new model without a reload.
+  if (pubSubService && updatedAgent) {
+    try {
+      const core = await db
+        .collection('agent_cores')
+        .findOne({ coreId: updatedAgent.coreId });
+      const payload = buildAgentUpdatedPayload(updatedAgent as any, core?.avatarUrl);
+      await broadcastAgentUpdated(pubSubService, ctx.userId, payload);
+    } catch (err) {
+      console.warn('[handleAgentModelSet] agent.updated broadcast failed', err);
+    }
+  }
+}
+
+/**
+ * reset-agent-model — clear the explicit pin so the agent returns to System
+ * Default (spec §3.1.2). This is the preferred state: the user's default
+ * provider/model wins unless there is a considered reason to pin.
+ */
+export async function handleAgentModelReset(
+  res: ServerResponse,
+  ctx: ResourceContext,
+  db: Db,
+  agentId: string,
+  body: { reason?: string },
+  pubSubService?: PubSubService | null,
 ): Promise<void> {
   if (!(await canAccessAgent(db, ctx.userId, agentId))) {
     sendJson(res, 403, { error: 'Access denied to agent' });
@@ -1607,39 +2040,46 @@ export async function handleAgentPreferredProviderSet(
     return;
   }
 
-  const providerId = body.providerId;
-
-  // If providerId is set, verify it's in availableProviders
-  if (providerId) {
-    const available: string[] = agent.availableProviders ?? [];
-    if (!available.includes(providerId)) {
-      sendJson(res, 400, {
-        error: 'Provider must be in availableProviders before setting as preferred',
-      });
-      return;
-    }
-  }
-
   await db.collection('agents').updateOne(
     { agentId },
     {
       $set: {
-        preferredProviderId: providerId,
+        selectedProviderId: null,
+        selectedModelId: null,
         updatedAt: new Date().toISOString(),
       },
     },
   );
 
-  const agentName = (agent.fullName as string | undefined) ?? (agent.name as string | undefined) ?? agentId;
+  console.log(
+    `[handleAgentModelReset] user=${ctx.userId} reset agent=${agentId} to System Default ` +
+      `reason=${body?.reason ?? '(none)'}`,
+  );
+
+  const updatedAgent = await db.collection('agents').findOne({ agentId });
+  const agentName =
+    (agent.fullName as string | undefined) ?? (agent.name as string | undefined) ?? agentId;
+
   sendJson(res, 200, {
     success: true,
-    message: providerId
-      ? `Preferred provider for '${agentName}' set to ${providerId}`
-      : `Cleared preferred provider for '${agentName}'`,
+    message: `Model for '${agentName}' reset to System Default`,
     agentId,
     agentName,
-    preferredProviderId: providerId,
+    selectedProviderId: null,
+    selectedModelId: null,
   });
+
+  if (pubSubService && updatedAgent) {
+    try {
+      const core = await db
+        .collection('agent_cores')
+        .findOne({ coreId: updatedAgent.coreId });
+      const payload = buildAgentUpdatedPayload(updatedAgent as any, core?.avatarUrl);
+      await broadcastAgentUpdated(pubSubService, ctx.userId, payload);
+    } catch (err) {
+      console.warn('[handleAgentModelReset] agent.updated broadcast failed', err);
+    }
+  }
 }
 
 // ============================================================================
@@ -1674,10 +2114,10 @@ export async function handleSkillCreate(
   res: ServerResponse,
   ctx: ResourceContext,
   db: Db,
-  body: { workspaceId: string; name: string; description?: string; content: string },
+  body: { workspaceId: string; name: string; description?: string; content: string; loadMode?: SkillLoadMode },
   skillService?: SkillService,
 ): Promise<void> {
-  const { workspaceId, name, description, content } = body;
+  const { workspaceId, name, description, content, loadMode } = body;
 
   if (!workspaceId) {
     sendJson(res, 400, { error: 'workspaceId is required' });
@@ -1691,6 +2131,10 @@ export async function handleSkillCreate(
     sendJson(res, 400, { error: 'content is required' });
     return;
   }
+  if (loadMode !== undefined && !isValidLoadMode(loadMode)) {
+    sendJson(res, 400, { error: "loadMode must be 'always' or 'on-demand'" });
+    return;
+  }
 
   if (!(await canAccessWorkspace(db, ctx.userId, workspaceId))) {
     sendJson(res, 403, { error: 'Access denied to workspace' });
@@ -1702,6 +2146,7 @@ export async function handleSkillCreate(
     name,
     description,
     content,
+    loadMode,
   });
   sendJson(res, 200, { skill });
 }
@@ -1711,11 +2156,15 @@ export async function handleSkillUpdate(
   ctx: ResourceContext,
   db: Db,
   skillId: string,
-  body: { name?: string; description?: string; content?: string },
+  body: { name?: string; description?: string; content?: string; loadMode?: SkillLoadMode },
   skillService?: SkillService,
 ): Promise<void> {
   if (!skillId) {
     sendJson(res, 400, { error: 'skillId is required' });
+    return;
+  }
+  if (body.loadMode !== undefined && !isValidLoadMode(body.loadMode)) {
+    sendJson(res, 400, { error: "loadMode must be 'always' or 'on-demand'" });
     return;
   }
 
@@ -1735,6 +2184,7 @@ export async function handleSkillUpdate(
     name: body.name,
     description: body.description,
     content: body.content,
+    loadMode: body.loadMode,
   });
 
   if (!skill) {
@@ -1947,4 +2397,379 @@ export async function handleSkillGetAgentSkills(
   const svc = skillService ?? new SkillService(db);
   const skills = await svc.getAgentSkills(agentId);
   sendJson(res, 200, { skills });
+}
+
+// ============================================================================
+// APP SECRETS — agent secret tools
+// (docs/specs/20261031_agent-secret-tools.md, designs B & C)
+// ============================================================================
+
+/**
+ * Valid secret keys an agent may write for an app: the MCA's declared
+ * `userSecrets` plus OAuth `auth.extraFields` (e.g. TEAM_ID in Figma).
+ * System secrets (`systemSecrets`) are admin-only — never agent-writable.
+ */
+function allowedSecretKeys(mca: McpCatalogEntry): { keys: string[]; extraFields: string[] } {
+  const userSecrets = (mca as any).userSecrets ?? (mca as any).auth?.userSecrets ?? [];
+  const extraFields = ((mca as any).auth?.extraFields ?? []) as Array<{ name: string }>;
+  return {
+    keys: [...userSecrets, ...extraFields.map((f) => f.name)],
+    extraFields: extraFields.map((f) => f.name),
+  };
+}
+
+/**
+ * `set-app-secret` — write ONE user secret for an app (design B).
+ *
+ * Permission: the TOOL is `alwaysAsk` (teros-core), so the user confirmed
+ * before this runs. The write path is the same one the panel uses
+ * (saveApiKeyCredentials → AuthManager.merge — partial, preserves siblings).
+ *
+ * After the write, the backend runs the redaction sweep server-side over the
+ * CALLING channel (riding on this same confirmation — no separate ask): every
+ * message containing the value gets redacted, INCLUDING this call's own
+ * arguments. MCA containers fetch secrets live via /secrets/user, so no
+ * respawn is needed.
+ *
+ * Audit: "secret <key> of app <appId> updated by <agentId>" — NEVER the value.
+ */
+export async function handleAppSetSecret(
+  res: ServerResponse,
+  ctx: ResourceContext,
+  db: Db,
+  appId: string,
+  body: { key?: string; value?: string; scope?: 'user' | 'app'; alsoRedact?: string[] },
+  mcaOAuth: McaOAuth | undefined,
+  channelManager: import('../services/channel-manager').ChannelManager | undefined,
+  agentId?: string,
+): Promise<void> {
+  const { key, value, scope = 'user', alsoRedact } = body ?? ({} as any);
+
+  if (!(await canAccessApp(db, ctx.userId, appId))) {
+    sendJson(res, 403, { error: 'Access denied to app' });
+    return;
+  }
+
+  if (!key || typeof key !== 'string') {
+    sendJson(res, 400, { error: 'key is required (the secret field name, e.g. MAKE_API_TOKEN)' });
+    return;
+  }
+  if (value == null || typeof value !== 'string' || value.length === 0) {
+    sendJson(res, 400, { error: 'value is required' });
+    return;
+  }
+  if (scope === 'app') {
+    // System secrets are admin surface only — an agent must never write them.
+    sendJson(res, 403, {
+      error: "scope 'app' (MCA system secrets) is admin-only; agents can only write user secrets",
+    });
+    return;
+  }
+  if (scope !== 'user') {
+    sendJson(res, 400, { error: "scope must be 'user' (default) or 'app'" });
+    return;
+  }
+
+  const loaded = await loadAppAndMca(db, appId);
+  if ('error' in loaded) {
+    sendJson(res, loaded.error.status, { error: loaded.error.message });
+    return;
+  }
+  const { app, mca } = loaded;
+
+  const { keys } = allowedSecretKeys(mca);
+  if (!keys.includes(key)) {
+    sendJson(res, 400, {
+      error: `key '${key}' is not a declared secret of ${app.mcaId}`,
+      allowedKeys: keys,
+      hint: 'The MCA manifest declares writable user secrets (userSecrets / auth.extraFields).',
+    });
+    return;
+  }
+
+  if (!mcaOAuth) {
+    sendJson(res, 503, { error: 'Secret write unavailable: OAuth service not configured' });
+    return;
+  }
+
+  // ── Write (same path as the panel: partial merge, preserves siblings) ────
+  await mcaOAuth.saveApiKeyCredentials(ctx.userId, appId, app.mcaId, { [key]: value });
+
+  // ── Audit — key + app + actor, NEVER the value (AC 6) ────────────────────
+  console.log(
+    `[Resources] app.set-secret: secret ${key} of app ${appId} updated by ${agentId ?? ctx.userId} (user ${ctx.userId})`,
+  );
+
+  // ── Post-write sweep over the CALLING channel (self-redacting) ───────────
+  // Best-effort: a sweep failure must not fail the credential write (the
+  // secret IS saved). The agent can still run redact-by-value standalone.
+  // callerChannelId: in grant mode ctx.channelId is the appId — the REAL
+  // conversation channel (ch_*) came from the call grant.
+  const sweepChannelId = ctx.callerChannelId ?? ctx.channelId;
+  let sweep: { redactedCount: number; messageIds: string[] } | null = null;
+  let sweepError: string | undefined;
+  if (sweepChannelId && channelManager) {
+    try {
+      const { sweepRedactByValue } = await import('../services/redaction-sweep');
+      const result = await sweepRedactByValue(db, channelManager, sweepChannelId, value, {
+        ...(alsoRedact && alsoRedact.length > 0 ? { alsoRedact } : {}),
+        redactedBy: agentId ?? ctx.userId,
+      });
+      sweep = { redactedCount: result.redactedCount, messageIds: result.messageIds };
+
+      // Live UI update for every swept message — ids only, no content.
+      const pubSub = (globalThis as any).__terosPubSub;
+      if (pubSub) {
+        for (const messageId of result.messageIds) {
+          pubSub.broadcastToTopic(`channel:${sweepChannelId}`, {
+            type: 'message_redacted',
+            channelId: sweepChannelId,
+            messageId,
+            redacted: true,
+            redactedBy: agentId ?? ctx.userId,
+            redactedAt: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (err) {
+      sweepError = err instanceof Error ? err.message : 'sweep failed';
+      console.warn(`[Resources] app.set-secret: post-write sweep failed for ${appId}`, err);
+    }
+  }
+
+  // ── Read back status so the agent can verify connection (AC 1) ───────────
+  let auth: { status: string; authType: string; message?: string } | undefined;
+  try {
+    const info = await mcaOAuth.getAuthStatus(ctx.userId, appId, mca);
+    auth = { status: info.status, authType: info.authType, message: info.message };
+  } catch (err) {
+    console.warn(`[Resources] app.set-secret: getAuthStatus failed for ${appId}`, err);
+  }
+
+  sendJson(res, 200, {
+    success: true,
+    appId,
+    appName: app.name,
+    mcaId: app.mcaId,
+    key,
+    scope: 'user',
+    maskedValue: maskSecret(value),
+    auth,
+    redaction: sweep
+      ? {
+          swept: true,
+          channelId: sweepChannelId,
+          redactedCount: sweep.redactedCount,
+          messageIds: sweep.messageIds,
+        }
+      : { swept: false, error: sweepError ?? 'no channel context' },
+    note:
+      `Secret ${key} saved (${maskSecret(value)}). All messages containing it were redacted` +
+      ' (including this call). The app reads the new value live — no restart needed. ' +
+      'Reference the secret only by its mask from now on.',
+  });
+}
+
+/**
+ * `copy-app-auth` — replicate the COMPLETE auth of one app instance to another
+ * (task tn_aGVdSrVwIJi9mfvc, the 5th credential tool). URL names the TARGET
+ * app; the source travels in the body. The copy itself lives in
+ * services/app-auth-copy.ts (get→set: decrypt with the source scope,
+ * re-encrypt with the target scope — NEVER a Mongo clone).
+ *
+ * Permission: the TOOL is `alwaysAsk` (teros-core), so the user confirmed
+ * before this runs. Cross-user is impossible here: ctx.userId IS the caller's
+ * own userId, and canAccessApp verified access to both apps.
+ */
+export async function handleAppCopyAuth(
+  res: ServerResponse,
+  ctx: ResourceContext,
+  db: Db,
+  targetAppId: string,
+  body: { sourceAppId?: string; sourceWorkspaceId?: string; targetWorkspaceId?: string; agentId?: string },
+  authManager: AuthManager | undefined,
+  mcaOAuth: McaOAuth | undefined,
+): Promise<void> {
+  const { sourceAppId, sourceWorkspaceId, targetWorkspaceId, agentId } = body ?? ({} as any);
+
+  // ── 1. The caller must have access to BOTH apps (cross-workspace OK —
+  // canAccessApp walks the caller's workspace memberships).
+  if (!(await canAccessApp(db, ctx.userId, targetAppId))) {
+    sendJson(res, 403, { error: `Access denied to target app '${targetAppId}'` });
+    return;
+  }
+  if (!sourceAppId || typeof sourceAppId !== 'string') {
+    sendJson(res, 400, { error: 'sourceAppId is required (the app instance to copy credentials FROM)' });
+    return;
+  }
+  // Cross-workspace tools ALWAYS name their workspaces (tn_hj1s2cs1t93g91xq,
+  // Pablo 2-nov: infra sharded by workspaceId — a tool must know which
+  // infrastructure it is hitting at all times).
+  if (!sourceWorkspaceId || typeof sourceWorkspaceId !== 'string') {
+    sendJson(res, 400, {
+      error: 'sourceWorkspaceId is required — cross-workspace tools always name their workspaces (the workspace the source app lives in)',
+    });
+    return;
+  }
+  if (!targetWorkspaceId || typeof targetWorkspaceId !== 'string') {
+    sendJson(res, 400, {
+      error: 'targetWorkspaceId is required — cross-workspace tools always name their workspaces (the workspace the target app lives in)',
+    });
+    return;
+  }
+  if (!(await canAccessApp(db, ctx.userId, sourceAppId))) {
+    sendJson(res, 403, { error: `Access denied to source app '${sourceAppId}'` });
+    return;
+  }
+
+  if (!authManager) {
+    sendJson(res, 503, { error: 'Auth copy unavailable: AuthManager not configured' });
+    return;
+  }
+
+  // ── 2. The copy (validations inside the service, in order, with clear errors)
+  const { copyAppAuth } = await import('../services/app-auth-copy');
+  const outcome = await copyAppAuth(db, authManager, {
+    userId: ctx.userId,
+    sourceAppId,
+    targetAppId,
+    sourceWorkspaceId,
+    targetWorkspaceId,
+    ...(agentId ? { actorId: agentId } : {}),
+  });
+
+  if (!outcome.ok) {
+    sendJson(res, outcome.status, {
+      error: outcome.message,
+      code: outcome.code,
+      ...(outcome.extra ?? {}),
+    });
+    return;
+  }
+
+  // ── 3. Read back the target's live status so the agent can verify the copy
+  // (same contract as set-app-secret's AC 1). Best-effort: the copy IS saved.
+  let auth: { status: string; authType: string; message?: string } | undefined;
+  if (mcaOAuth) {
+    try {
+      const loaded = await loadAppAndMca(db, targetAppId);
+      if (!('error' in loaded)) {
+        const info = await mcaOAuth.getAuthStatus(ctx.userId, targetAppId, loaded.mca);
+        auth = { status: info.status, authType: info.authType, message: info.message };
+      }
+    } catch (err) {
+      console.warn(`[Resources] app.copy-auth: getAuthStatus failed for ${targetAppId}`, err);
+    }
+  }
+
+  const s = outcome.summary;
+  sendJson(res, 200, {
+    success: true,
+    sourceAppId: s.sourceAppId,
+    sourceAppName: s.sourceAppName,
+    targetAppId: s.targetAppId,
+    targetAppName: s.targetAppName,
+    mcaId: s.mcaId,
+    copiedFields: s.copiedFields,
+    fieldCount: s.fieldCount,
+    auth,
+    note:
+      `Auth of '${s.sourceAppName}' (${s.sourceAppId}) copied to '${s.targetAppName}' (${s.targetAppId}) — ` +
+      `${s.fieldCount} field(s): ${s.copiedFields.map((f) => `${f.key}=${f.maskedValue}`).join(', ')}. ` +
+      'Full replace on the target; it reads the new credentials live (no restart). ' +
+      (s.hasOAuthTokens
+        ? 'Both instances now share the same OAuth tokens — if the provider rotates refresh tokens, one can invalidate the other. '
+        : '') +
+      'Values are never exposed; reference them only by mask.',
+  });
+}
+
+/**
+ * `get-app-secret` — masked preview + metadata ONLY (design C).
+ *
+ * Never returns the value. The mask format is the shared `maskSecret`
+ * (prefix…last4), the same one the agent sees in redaction placeholders —
+ * so "the …4f2a key" is a stable reference across both surfaces.
+ */
+export async function handleAppGetSecret(
+  res: ServerResponse,
+  ctx: ResourceContext,
+  db: Db,
+  appId: string,
+  body: { key?: string; scope?: 'user' | 'app' },
+  mcaOAuth: McaOAuth | undefined,
+): Promise<void> {
+  const { key, scope = 'user' } = body ?? ({} as any);
+
+  if (!(await canAccessApp(db, ctx.userId, appId))) {
+    sendJson(res, 403, { error: 'Access denied to app' });
+    return;
+  }
+  if (!key || typeof key !== 'string') {
+    sendJson(res, 400, { error: 'key is required' });
+    return;
+  }
+  if (scope !== 'user' && scope !== 'app') {
+    sendJson(res, 400, { error: "scope must be 'user' (default) or 'app'" });
+    return;
+  }
+
+  const loaded = await loadAppAndMca(db, appId);
+  if ('error' in loaded) {
+    sendJson(res, loaded.error.status, { error: loaded.error.message });
+    return;
+  }
+  const { app, mca } = loaded;
+
+  const { keys } = allowedSecretKeys(mca);
+  if (!keys.includes(key)) {
+    sendJson(res, 400, {
+      error: `key '${key}' is not a declared secret of ${app.mcaId}`,
+      allowedKeys: keys,
+    });
+    return;
+  }
+
+  if (!mcaOAuth) {
+    sendJson(res, 503, { error: 'Secret read unavailable: OAuth service not configured' });
+    return;
+  }
+
+  // Read the stored credential through the SAME auth path the app uses.
+  const credentials = await mcaOAuth
+    .getCredentials(ctx.userId, appId)
+    .catch(() => undefined);
+
+  let stored: string | undefined;
+  if (credentials && typeof credentials === 'object') {
+    stored = (credentials as any)[key];
+  }
+  if (stored == null) {
+    sendJson(res, 200, {
+      appId,
+      appName: app.name,
+      mcaId: app.mcaId,
+      key,
+      scope,
+      configured: false,
+      note: 'No value stored for this key. Use set-app-secret to store one.',
+    });
+    return;
+  }
+
+  console.log(
+    `[Resources] app.get-secret: secret ${key} of app ${appId} previewed by ${ctx.userId} (masked)`,
+  );
+
+  sendJson(res, 200, {
+    appId,
+    appName: app.name,
+    mcaId: app.mcaId,
+    key,
+    scope,
+    configured: true,
+    maskedValue: maskSecret(stored),
+    updatedAt: undefined, // per-key timestamps are not tracked; kept for future use
+    note: 'Only a masked preview is available to agents — the full value is never returned.',
+  });
 }

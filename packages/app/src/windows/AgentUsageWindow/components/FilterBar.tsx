@@ -1,6 +1,7 @@
 /**
- * FilterBar — the 5 filter dimensions of Agent Activity in the monitoring
- * suite's visual language. Provider chips are data-derived from the loaded
+ * FilterBar — the 5 filter dimensions of Agent Activity in the OS prototype's
+ * vocabulary: a `Card pad` holding a row of select fields + provider chips +
+ * the Clear / IDs controls. Provider chips are data-derived from the loaded
  * KPI buckets and carry the LOGICAL provider id (`teros`, `anthropic`, …) —
  * the exact key every backend query filters by (sessions.provider /
  * rollups groupKey.provider). They previously carried `actualProvider`
@@ -9,14 +10,20 @@
  * trigger is a fixed backend enum. Plus a Clear button (only when a filter is
  * active) and an internal-IDs toggle.
  *
- * The dropdowns are native `<select>` (admin is web-only) — simpler than
- * Tamagui's declarative Select for 4 dropdowns, styled from the shared tokens.
+ * The dropdowns stay native `<select>` (admin is web-only) for the real picker
+ * behaviour; a transparent select sits over a `SelectField` so the trigger
+ * draws like the design system's 36px field.
  */
 
 import React from "react"
 import { providerColor, providerLabel } from "@teros/shared"
-import { Text, XStack } from "tamagui"
-import { tokens } from "../../../components/monitoring"
+import { Platform, View } from "react-native"
+import { Dot } from "../../../components/ui/ds/Badge"
+import { Btn, ChipBtn } from "../../../components/ui/ds/Buttons"
+import { Card } from "../../../components/ui/ds/Card"
+import { SelectField } from "../../../components/ui/ds/Field"
+import { T } from "../../../components/ui/ds/Text"
+import { useColors } from "../../../components/mca/primitives/useColors"
 import type { FilterDirectory } from "../hooks/useDirectory"
 import type { FilterKey, FilterState } from "../hooks/filtersHelpers"
 
@@ -29,17 +36,19 @@ const TRIGGER_KIND_OPTIONS: { value: string; label: string }[] = [
   { value: "event_subscription", label: "Event subscription" },
 ]
 
-const SELECT_STYLE: React.CSSProperties = {
-  backgroundColor: tokens.bgInner,
-  color: tokens.textSecondary,
-  border: `1px solid ${tokens.borderHover}`,
-  borderRadius: 8,
-  padding: "6px 9px",
-  fontSize: 13,
-  minWidth: 132,
-  maxWidth: 220,
-  outline: "none",
+/** Invisible native select stretched over the styled trigger (web only). */
+const NATIVE_SELECT_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  width: "100%",
+  height: "100%",
+  opacity: 0,
   cursor: "pointer",
+  margin: 0,
+  padding: 0,
+  border: 0,
+  fontSize: 13,
 }
 
 function FilterSelect(props: {
@@ -47,59 +56,34 @@ function FilterSelect(props: {
   onValueChange: (v: string) => void
   options: { value: string; label: string }[]
   placeholder: string
+  icon: string
 }) {
-  return React.createElement("select", {
-    value: props.value,
-    onChange: (e: React.ChangeEvent<HTMLSelectElement>) => props.onValueChange(e.target.value),
-    style: SELECT_STYLE,
-    "aria-label": props.placeholder,
-    children: [
-      React.createElement("option", { key: "__all__", value: "" }, props.placeholder),
-      ...props.options.map((o) =>
-        React.createElement("option", { key: o.value, value: o.value }, o.label),
-      ),
-    ],
-  } as any)
-}
-
-function Pill({
-  label,
-  count,
-  active,
-  color,
-  onPress,
-}: {
-  label: string
-  count?: number
-  active: boolean
-  color?: string
-  onPress: () => void
-}) {
+  const c = useColors()
+  const active = props.value !== ""
+  const current = props.options.find((o) => o.value === props.value)?.label ?? props.placeholder
   return (
-    <XStack
-      ai="center"
-      gap={6}
-      paddingVertical={5}
-      paddingHorizontal={11}
-      borderRadius={9999}
-      borderWidth={1}
-      borderColor={active ? tokens.borderHover : tokens.border}
-      backgroundColor={active ? tokens.bgPress : tokens.bgInner}
-      cursor="pointer"
-      hoverStyle={active ? {} : { backgroundColor: tokens.bgHover }}
-      onPress={onPress}
-      aria-label={`Filter by ${label}`}
-    >
-      {color ? <XStack width={9} height={9} borderRadius={3} backgroundColor={color} /> : null}
-      <Text fontSize={13} fontWeight="500" color={active ? tokens.text : tokens.textSecondary}>
-        {label}
-      </Text>
-      {typeof count === "number" ? (
-        <Text fontSize={12} fontFamily="$mono" color={tokens.textTertiary}>
-          {count}
-        </Text>
-      ) : null}
-    </XStack>
+    <View style={{ position: "relative", minWidth: 150, maxWidth: 240 }}>
+      <SelectField
+        icon={props.icon}
+        label={current}
+        style={active ? { borderColor: c.borderAccentStrong } : undefined}
+      />
+      {Platform.OS === "web"
+        ? React.createElement("select", {
+            value: props.value,
+            onChange: (e: React.ChangeEvent<HTMLSelectElement>) =>
+              props.onValueChange(e.target.value),
+            style: NATIVE_SELECT_STYLE,
+            "aria-label": props.placeholder,
+            children: [
+              React.createElement("option", { key: "__all__", value: "" }, props.placeholder),
+              ...props.options.map((o) =>
+                React.createElement("option", { key: o.value, value: o.value }, o.label),
+              ),
+            ],
+          } as any)
+        : null}
+    </View>
   )
 }
 
@@ -128,88 +112,96 @@ export function FilterBar({
   showInternalIds,
   onToggleIds,
 }: FilterBarProps) {
+  const c = useColors()
   const toggleProvider = (id: string) => setFilter("provider", filters.provider === id ? "" : id)
 
   return (
-    <XStack
-      ai="center"
-      flexWrap="wrap"
-      gap={8}
-      paddingHorizontal={24}
-      paddingVertical={12}
-      borderBottomWidth={1}
-      borderBottomColor={tokens.border}
-      backgroundColor={tokens.bgInner}
-    >
-      <FilterSelect
-        value={filters.userId}
-        onValueChange={(v) => setFilter("userId", v)}
-        options={directory.userOptions}
-        placeholder="All users"
-      />
-      <FilterSelect
-        value={filters.agentId}
-        onValueChange={(v) => setFilter("agentId", v)}
-        options={directory.agentOptions}
-        placeholder="All agents"
-      />
-      <FilterSelect
-        value={filters.workspaceId}
-        onValueChange={(v) => setFilter("workspaceId", v)}
-        options={directory.workspaceOptions}
-        placeholder="All workspaces"
-      />
-      <FilterSelect
-        value={filters.triggerKind}
-        onValueChange={(v) => setFilter("triggerKind", v)}
-        options={TRIGGER_KIND_OPTIONS}
-        placeholder="All triggers"
-      />
+    <Card pad>
+      <View style={{ flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <FilterSelect
+          icon="user"
+          value={filters.userId}
+          onValueChange={(v) => setFilter("userId", v)}
+          options={directory.userOptions}
+          placeholder="All users"
+        />
+        <FilterSelect
+          icon="robot"
+          value={filters.agentId}
+          onValueChange={(v) => setFilter("agentId", v)}
+          options={directory.agentOptions}
+          placeholder="All agents"
+        />
+        <FilterSelect
+          icon="buildings"
+          value={filters.workspaceId}
+          onValueChange={(v) => setFilter("workspaceId", v)}
+          options={directory.workspaceOptions}
+          placeholder="All workspaces"
+        />
+        <FilterSelect
+          icon="lightning"
+          value={filters.triggerKind}
+          onValueChange={(v) => setFilter("triggerKind", v)}
+          options={TRIGGER_KIND_OPTIONS}
+          placeholder="All triggers"
+        />
 
-      {/* provider chips (data-derived) */}
-      {providerCounts.length > 0 ? (
-        <XStack ai="center" gap={6} flexWrap="wrap">
-          <Pill
-            label="All"
-            count={totalCount}
-            active={filters.provider === ""}
-            onPress={() => setFilter("provider", "")}
-          />
-          {providerCounts.map(([p, n]) => (
-            <Pill
-              key={p}
-              label={providerLabel(p)}
-              count={n}
-              color={providerColor(p)}
-              active={filters.provider === p}
-              onPress={() => toggleProvider(p)}
-            />
-          ))}
-        </XStack>
-      ) : null}
+        {/* provider chips (data-derived) */}
+        {providerCounts.length > 0 ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <ChipBtn
+              on={filters.provider === ""}
+              count={totalCount}
+              onPress={() => setFilter("provider", "")}
+              {...({ "aria-label": "Filter by All" } as any)}
+            >
+              All
+            </ChipBtn>
+            {providerCounts.map(([p, n]) => {
+              const on = filters.provider === p
+              return (
+                <ChipBtn
+                  key={p}
+                  on={on}
+                  count={n}
+                  onPress={() => toggleProvider(p)}
+                  {...({ "aria-label": `Filter by ${providerLabel(p)}` } as any)}
+                >
+                  <Dot color={providerColor(p)} size={7} />
+                  <T step="12" color={on ? c.accent : c.text2} numberOfLines={1}>
+                    {providerLabel(p)}
+                  </T>
+                </ChipBtn>
+              )
+            })}
+          </View>
+        ) : null}
 
-      <XStack flex={1} minWidth={8} />
+        <View style={{ flex: 1, minWidth: 8 }} />
 
-      {hasAnyActive ? (
-        <XStack
-          ai="center"
-          paddingVertical={5}
-          paddingHorizontal={11}
-          borderRadius={8}
-          borderWidth={1}
-          borderColor={tokens.borderHover}
-          cursor="pointer"
-          hoverStyle={{ backgroundColor: tokens.bgHover }}
-          onPress={clearAll}
-          aria-label="Clear filters"
-        >
-          <Text fontSize={13} fontWeight="500" color={tokens.warning}>
+        {hasAnyActive ? (
+          <Btn
+            variant="ghost"
+            size="sm"
+            icon="x"
+            onPress={clearAll}
+            {...({ "aria-label": "Clear filters" } as any)}
+          >
             Clear
-          </Text>
-        </XStack>
-      ) : null}
+          </Btn>
+        ) : null}
 
-      <Pill label="IDs" active={showInternalIds} onPress={onToggleIds} />
-    </XStack>
+        <ChipBtn
+          mono
+          on={showInternalIds}
+          icon="identification-badge"
+          onPress={onToggleIds}
+          {...({ "aria-label": "Filter by IDs" } as any)}
+        >
+          IDs
+        </ChipBtn>
+      </View>
+    </Card>
   )
 }

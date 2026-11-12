@@ -14,7 +14,7 @@
  * stringified errors) to AgentUsageErrorKind. Exported for reuse by
  * `agent-loop.ts:handleAgentError`.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §5 — Lifecycle de instrumentación
  */
 
 import { generateSessionUsageId, generateUsageEventId } from "@teros/core"
@@ -79,6 +79,8 @@ export interface StartSessionInput {
    */
   actualProvider?: string
   actualModel?: string
+  /** Latency lane of a Teros turn (TLANE-REQ-9). Omitted for other providers. */
+  lane?: "interactive" | "background"
 }
 
 export interface EndSessionInput {
@@ -86,6 +88,13 @@ export interface EndSessionInput {
   status: AgentUsageSessionStatus
   /** Optional override for durationSource (default 'monotonic'). */
   durationSource?: AgentUsageDurationSource
+  /**
+   * True when the turn was killed by the absolute turn deadline
+   * (`OperationTimeoutError` with operation 'turn-deadline'). Marks the
+   * recorded durationMs as watchdog-elapsed, not real work — reporting
+   * excludes/adjusts these sessions (duration-capped bug, 2026-10-27).
+   */
+  durationCapped?: boolean
   /** Optional. Will be sanitized + truncated before emission. */
   errorKind?: AgentUsageErrorKind
   errorMessage?: unknown
@@ -136,6 +145,7 @@ export class AgentUsageSessionService {
         modelId: input.modelId,
         ...(input.actualProvider ? { actualProvider: input.actualProvider } : {}),
         ...(input.actualModel ? { actualModel: input.actualModel } : {}),
+        ...(input.lane ? { lane: input.lane } : {}),
         startedAt: wallStart,
       },
       appliedAt: wallStart,
@@ -221,6 +231,7 @@ export class AgentUsageSessionService {
         endedAt,
         durationMs,
         durationSource: input.durationSource ?? "monotonic",
+        ...(input.durationCapped ? { durationCapped: true } : {}),
         status,
         parentSessionUsageId: handle.parentSessionUsageId,
         ...(input.errorKind ? { errorKind: input.errorKind } : {}),

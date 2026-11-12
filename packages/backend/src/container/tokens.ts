@@ -49,7 +49,11 @@ import type { MessageHandler } from '../handlers/message-handler';
 import type { WebSocketHandler } from '../handlers/websocket-handler';
 import type { SecretsManager } from '../secrets/secrets-manager';
 import type { AutoplayService } from '../services/autoplay-service';
+import type { TodoAutoplayService } from '../services/todo-autoplay-service';
+import type { TodoSubscriptionService } from '../services/todo-subscription-service';
+import type { BoardEventService } from '../services/board-event-service';
 import type { BoardSubscriptionService } from '../services/board-subscription-service';
+import type { ReviewClaimService } from '../services/review-claim-service';
 import type { BoardService } from '../services/board-service';
 import type { ChannelManager } from '../services/channel-manager';
 import type { FeatureFlagService } from '../services/feature-flag-service';
@@ -63,7 +67,6 @@ import type { ProviderService } from '../services/provider-service';
 import type { PubSubService } from '../services/pubsub-service';
 import type { PtyManager } from '../services/pty-manager';
 import type { ResumeService } from '../services/resume-service';
-import type { SchedulerService } from '../services/scheduler-service';
 // Import service types
 // Note: Interfaces exist in ./services/interfaces/ for testing with mocks
 import type { SessionManager } from '../services/session-manager';
@@ -167,9 +170,6 @@ export const Tokens = {
   /** LLM provider management service */
   ProviderService: createToken<ProviderService>('ProviderService'),
 
-  /** Scheduled tasks service */
-  SchedulerService: createToken<SchedulerService>('SchedulerService'),
-
   /** Session resume service */
   ResumeService: createToken<ResumeService>('ResumeService'),
 
@@ -188,14 +188,24 @@ export const Tokens = {
   /** Desktop state service (per-user UI layout persistence) */
   DesktopStateService: createToken<DesktopStateService>('DesktopStateService'),
 
+  /** Board event service (persists board activity events to board_events collection) */
+  BoardEventService: createToken<BoardEventService>('BoardEventService'),
+
   /** Board subscription service (real-time board event routing) */
   BoardSubscriptionService: createToken<BoardSubscriptionService>('BoardSubscriptionService'),
+
+  /** Review claim service (single-flight anti-duplicate review actions) */
+  ReviewClaimService: createToken<ReviewClaimService>('ReviewClaimService'),
 
   /** Feature flag service (hierarchical flag resolution and overrides) */
   FeatureFlagService: createToken<FeatureFlagService>('FeatureFlagService'),
 
   /** Autoplay service (board task auto-scheduling) */
   AutoplayService: createToken<AutoplayService>('AutoplayService'),
+  /** To Do autoplay service (todo task auto-scheduling, TODOAP) */
+  TodoAutoplayService: createToken<TodoAutoplayService>('TodoAutoplayService'),
+  /** To Do subscription service (todo event subscriptions, todo/events spec) */
+  TodoSubscriptionService: createToken<TodoSubscriptionService>('TodoSubscriptionService'),
 
   /** PTY manager (terminal session management) */
   PtyManager: createToken<PtyManager>('PtyManager'),

@@ -15,9 +15,9 @@
  * `stub-window-content`) stubs their heavy content components so the graph stays
  * cheap. The assertions themselves are pure — nothing is rendered.
  */
-import { describe, expect, it } from 'vitest'
-import { windowRegistry } from '../services/windowRegistry'
-import { registerAllWindowTypes } from './index'
+import { describe, expect, it } from "vitest"
+import { windowRegistry } from "../services/windowRegistry"
+import { registerAllWindowTypes } from "./index"
 
 registerAllWindowTypes()
 
@@ -31,10 +31,10 @@ registerAllWindowTypes()
 // billing-requests (FASE 6) and billing-teams (T1) carry no persistable props
 // (they open on a list and drill in via internal state), same as
 // pending-approvals — a deliberate no-serialize choice, not an oversight.
-const NO_SERIALIZE_ALLOWLIST = new Set(['pending-approvals', 'billing-requests', 'billing-teams'])
+const NO_SERIALIZE_ALLOWLIST = new Set(["pending-approvals", "billing-requests", "billing-teams"])
 
 /** Types registered by registerAllWindowTypes() — bites if the registry shrinks. */
-const EXPECTED_TYPE_COUNT = 37
+const EXPECTED_TYPE_COUNT = 50 // +browser (fa4ebd4f9), +feedback-admin (4b49fc7ed), +automate (6106b0400), +todo-node, +teros-provider (ddff910d7), +agents-list +projects-list (NAV-REQ-20/21)
 
 const sentinel = (key: string) => `__rt:${key}__`
 
@@ -50,7 +50,7 @@ function discoverPersistedKeys(serialize: (props: any) => Record<string, any>): 
     {},
     {
       get(_target, prop) {
-        if (typeof prop === 'string') {
+        if (typeof prop === "string") {
           keys.add(prop)
           return sentinel(prop)
         }
@@ -85,18 +85,18 @@ function roundtrip(def: {
   return { persisted, restored, repersisted }
 }
 
-describe('window serialize/deserialize roundtrip (TER-516)', () => {
+describe("window serialize/deserialize roundtrip (TER-516)", () => {
   const defs = windowRegistry.getAll()
 
-  it('registers every window type exactly once', () => {
+  it("registers every window type exactly once", () => {
     expect(defs).toHaveLength(EXPECTED_TYPE_COUNT)
     const types = defs.map((d) => d.type)
     expect(new Set(types).size).toBe(types.length)
   })
 
-  it('every persistable window type has both serialize and deserialize', () => {
+  it("every persistable window type has both serialize and deserialize", () => {
     const missing = defs
-      .filter((d) => typeof d.serialize !== 'function' || typeof d.deserialize !== 'function')
+      .filter((d) => typeof d.serialize !== "function" || typeof d.deserialize !== "function")
       .map((d) => d.type)
       .filter((type) => !NO_SERIALIZE_ALLOWLIST.has(type))
     expect(missing).toHaveLength(0)
@@ -104,21 +104,20 @@ describe('window serialize/deserialize roundtrip (TER-516)', () => {
 
   const roundtrippable = defs.filter((d) => !NO_SERIALIZE_ALLOWLIST.has(d.type))
 
-  it.each(roundtrippable.map((d) => [d.type, d] as const))(
-    "'%s' preserves every persisted prop through serialize→JSON→deserialize",
-    (_type, def) => {
-      const { persisted, restored, repersisted } = roundtrip(def)
-      // No key emitted by serialize is dropped on the restore→persist cycle.
-      expect(repersisted).toEqual(persisted)
-      // Every persisted key is read back with the exact same value — no default
-      // silently overwriting real data, no key read under a different name.
-      for (const key of Object.keys(persisted)) {
-        expect(restored[key]).toBe(persisted[key])
-      }
-    },
-  )
+  it.each(
+    roundtrippable.map((d) => [d.type, d] as const),
+  )("'%s' preserves every persisted prop through serialize→JSON→deserialize", (_type, def) => {
+    const { persisted, restored, repersisted } = roundtrip(def)
+    // No key emitted by serialize is dropped on the restore→persist cycle.
+    expect(repersisted).toEqual(persisted)
+    // Every persisted key is read back with the exact same value — no default
+    // silently overwriting real data, no key read under a different name.
+    for (const key of Object.keys(persisted)) {
+      expect(restored[key]).toBe(persisted[key])
+    }
+  })
 
-  it('the roundtrip oracle catches an asymmetric definition', () => {
+  it("the roundtrip oracle catches an asymmetric definition", () => {
     // §5: prove the invariant can fail by feeding it a serialize/deserialize pair
     // that loses a key. If this passed, the oracle above would be decorative.
     const broken = {
@@ -126,7 +125,7 @@ describe('window serialize/deserialize roundtrip (TER-516)', () => {
       deserialize: (d: Record<string, any>) => ({ a: d.a }), // drops `b`
     }
     const { persisted, repersisted } = roundtrip(broken)
-    expect(persisted).toEqual({ a: sentinel('a'), b: sentinel('b') })
+    expect(persisted).toEqual({ a: sentinel("a"), b: sentinel("b") })
     expect(repersisted).not.toEqual(persisted)
   })
 })

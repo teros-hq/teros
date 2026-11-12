@@ -20,6 +20,8 @@ import type { VolumeService } from './volume-service';
 import type { SessionManager } from './session-manager';
 import type { PubSubService } from './pubsub-service';
 import type { MCAEventSubscriptionService } from './mca-event-subscription-service';
+import type { BoardSubscriptionService } from './board-subscription-service';
+import type { ActionBridgeManager } from './workflow-action-bridge';
 import type { WebSocket } from 'ws';
 
 /**
@@ -49,6 +51,10 @@ export interface ActiveConnection {
   currentChannelId?: string;
   /** Current workspace context - set before tool execution */
   currentWorkspaceId?: string;
+  /** WsRouter actions this MCA may invoke through the bridge (manifest backend.actions). */
+  backendActions?: string[];
+  /** Whether the MCA declares layers.streams (catalog `streams`); undefined until first asked. */
+  streams?: boolean;
 }
 
 /**
@@ -81,6 +87,7 @@ export interface McaConnectionManagerConfig {
   channelManager?: ChannelManager;
   /** Board service for board/task queries from MCAs */
   boardService?: BoardService;
+  reviewClaimService?: import('./review-claim-service').ReviewClaimService;
   /** Session manager for broadcasting board events */
   sessionManager?: SessionManager;
   /** WsRouter for admin_request dispatch (admin-api domain) */
@@ -89,10 +96,18 @@ export interface McaConnectionManagerConfig {
   pubSubService?: PubSubService;
   /** MCA event subscription service for high-level topic routing */
   mcaEventSubscriptionService?: MCAEventSubscriptionService;
+  /**
+   * Board subscription service — emits board events to subscribed channels.
+   * Required by MCA inline board mutations so they emit the same subscription
+   * events as the WS domain handlers (fb_d211b16343bd3034).
+   */
+  boardSubscriptionService?: BoardSubscriptionService;
   /** Workspace service for validating workspace access */
   workspaceService?: WorkspaceService;
   /** Volume service for resolving workspace volume host paths (attachment import) */
   volumeService?: VolumeService;
+  /** Workflow Action Bridge manager — advances workflow engine when tasks complete */
+  actionBridgeManager?: ActionBridgeManager;
 }
 
 /**
@@ -103,10 +118,18 @@ export interface QueryHandlerContext {
   db: import('mongodb').Db;
   channelManager?: ChannelManager;
   boardService?: BoardService;
+  reviewClaimService?: import('./review-claim-service').ReviewClaimService;
   pubSubService?: PubSubService;
   mcaEventSubscriptionService?: MCAEventSubscriptionService;
+  /**
+   * Board subscription service — emits board events to subscribed channels.
+   * MCA inline board mutations use it to emit the same subscription events
+   * as the WS domain handlers (fb_d211b16343bd3034).
+   */
+  boardSubscriptionService?: BoardSubscriptionService;
   workspaceService?: WorkspaceService;
   volumeService?: VolumeService;
+  actionBridgeManager?: ActionBridgeManager;
   wsRouter?: WsRouter;
   send: (appId: string, message: WsBackendToMcaMessage) => boolean;
   emit: (event: string, ...args: unknown[]) => boolean;

@@ -20,12 +20,14 @@ export const listBoardSubscriptions: ToolConfig = {
     assertBackendConnected();
     const wsClient = getWsClient();
     const channelId = (context?.execution as any)?.channelId ?? CURRENT_CHANNEL_ID;
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     if (!channelId) throw new Error('channelId not found in execution context');
 
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('list_board_subscriptions', { channelId }),
+          wsClient.queryConversations<any>('list_board_subscriptions', { channelId, callerAgentId }),
           15_000,
           'list_board_subscriptions',
         ),

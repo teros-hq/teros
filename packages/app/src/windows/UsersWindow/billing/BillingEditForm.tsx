@@ -6,15 +6,15 @@
  * surfaces failures as an inline `FormError` (no native alert). Pickers are the
  * accessible `Select` (no raw select element); the provider-config CRUD lives in an
  * accessible modal. `customAgentHoursLimit` here is the PERMANENT per-user limit
- * — the temporary period boost gets its own card in a later PR (TER-6xx).
- * Colours are monitoring tokens only.
+ * — the temporary period boost gets its own card. Presentation: nested ds
+ * `Card` sections, `FieldLabel` / `Field` / `ChipBtn`, `Btn` actions.
  */
 
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "../../../components/monitoring/colors"
+import { View } from "react-native"
+import { Badge, Btn, Card, FieldHelp, T } from "../../../components/ui/ds"
 import type { BillingInfo, TerosProviderConfig, UserSummary } from "../../../services/AdminApi"
 import { getTerosClient } from "../../../services/terosClientSingleton"
 import { Select, type SelectOption } from "../Select"
@@ -26,7 +26,7 @@ import {
   type SubStatus,
   validateBillingInputs,
 } from "./billingForm"
-import { Button, Chip, FieldLabel, FormError, Hint, TextField } from "./formPrimitives"
+import { Chip, FieldLabel, FormError, Hint, TextField } from "./formPrimitives"
 import { TerosProviderConfigModal } from "./TerosProviderConfigModal"
 
 interface PlanOption {
@@ -129,17 +129,22 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
   const dirty = JSON.stringify(values) !== JSON.stringify(initial)
 
   return (
-    <YStack gap={12} paddingTop={4} testID="billing-edit-form">
-      <XStack ai="center" jc="space-between" gap={8}>
-        <Text fontSize={14} fontWeight="700" color={tokens.text}>
-          {t("windows.usersPanel.billing.editTitle")}
-        </Text>
+    <View style={{ gap: 12 }} testID="billing-edit-form">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <T step="base">{t("windows.usersPanel.billing.editTitle")}</T>
         {dirty ? (
-          <Text fontSize={11} fontWeight="600" color={tokens.warning}>
+          <Badge tone="a" dot>
             {t("windows.usersPanel.billing.unsavedChanges")}
-          </Text>
+          </Badge>
         ) : null}
-      </XStack>
+      </View>
 
       <Section title={t("windows.usersPanel.billing.sections.plan")}>
         <PlanField
@@ -148,8 +153,8 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
           onSelect={(id) => setField("planId", id)}
           internalSuffix={t("windows.usersPanel.billing.internalTier")}
         />
-        <XStack gap={10} flexWrap="wrap">
-          <YStack flex={1} minWidth={160}>
+        <View style={{ flexDirection: "row", gap: 12, flexWrap: "wrap" }}>
+          <View style={{ flex: 1, minWidth: 160 }}>
             <FieldLabel>{t("windows.usersPanel.billing.customPrice")}</FieldLabel>
             <TextField
               testID="billing-custom-price"
@@ -159,8 +164,8 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
               numeric
               invalid={errorField === "price"}
             />
-          </YStack>
-          <YStack flex={1} minWidth={160}>
+          </View>
+          <View style={{ flex: 1, minWidth: 160 }}>
             <FieldLabel>{t("windows.usersPanel.billing.priceNote")}</FieldLabel>
             <TextField
               testID="billing-price-note"
@@ -168,12 +173,12 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
               onChangeText={(v) => setField("customPriceNote", v)}
               placeholder={t("windows.usersPanel.billing.priceNotePlaceholder")}
             />
-          </YStack>
-        </XStack>
+          </View>
+        </View>
       </Section>
 
       <Section title={t("windows.usersPanel.billing.sections.limit")}>
-        <YStack maxWidth={280}>
+        <View style={{ maxWidth: 300 }}>
           <FieldLabel>{t("windows.usersPanel.billing.permanentLimit")}</FieldLabel>
           <TextField
             testID="billing-custom-limit"
@@ -184,7 +189,7 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
             invalid={errorField === "limit"}
           />
           <Hint>{t("windows.usersPanel.billing.permanentLimitHint")}</Hint>
-        </YStack>
+        </View>
       </Section>
 
       <Section title={t("windows.usersPanel.billing.sections.routing")}>
@@ -218,22 +223,28 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
 
       {errorMessage ? <FormError message={errorMessage} testID="billing-error" /> : null}
 
-      <XStack ai="center" jc="flex-end" gap={8} paddingTop={2}>
-        <Button
-          label={t("windows.usersPanel.billing.cancel")}
-          onPress={onCancel}
-          testID="billing-cancel"
-        />
-        <Button
-          label={
-            saving ? t("windows.usersPanel.billing.saving") : t("windows.usersPanel.billing.save")
-          }
-          tone="primary"
-          busy={saving}
-          onPress={handleSave}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 8,
+          paddingTop: 2,
+        }}
+      >
+        <Btn testID="billing-cancel" variant="ghost" onPress={onCancel}>
+          {t("windows.usersPanel.billing.cancel")}
+        </Btn>
+        <Btn
           testID="billing-save"
-        />
-      </XStack>
+          variant="primary"
+          icon="floppy-disk"
+          loading={saving}
+          onPress={handleSave}
+        >
+          {saving ? t("windows.usersPanel.billing.saving") : t("windows.usersPanel.billing.save")}
+        </Btn>
+      </View>
 
       <TerosProviderConfigModal
         open={configModalOpen}
@@ -248,32 +259,19 @@ export function BillingEditForm({ user, billing, onCancel, onSaved }: BillingEdi
           )
         }}
       />
-    </YStack>
+    </View>
   )
 }
 
-/** A titled card grouping related fields. */
+/** A titled nested card grouping related fields. */
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <YStack
-      gap={12}
-      padding={14}
-      borderRadius={12}
-      borderWidth={1}
-      borderColor={tokens.border}
-      backgroundColor={tokens.bgCard}
-    >
-      <Text
-        fontSize={11}
-        fontWeight="700"
-        letterSpacing={0.6}
-        textTransform="uppercase"
-        color={tokens.textTertiary}
-      >
+    <Card nested pad>
+      <T step="xs" tone="text2" style={{ marginBottom: 12 }}>
         {title}
-      </Text>
-      {children}
-    </YStack>
+      </T>
+      <View style={{ gap: 12 }}>{children}</View>
+    </Card>
   )
 }
 
@@ -290,9 +288,9 @@ function PlanField({
 }) {
   const { t } = useTranslation()
   return (
-    <YStack gap={6}>
+    <View>
       <FieldLabel>{t("windows.usersPanel.billing.plan")}</FieldLabel>
-      <XStack gap={6} flexWrap="wrap">
+      <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
         {plans.map((p) => (
           <Chip
             key={p.id}
@@ -302,8 +300,8 @@ function PlanField({
             onPress={() => onSelect(p.id)}
           />
         ))}
-      </XStack>
-    </YStack>
+      </View>
+    </View>
   )
 }
 
@@ -316,19 +314,17 @@ function SubStatusField({
 }) {
   const { t } = useTranslation()
   return (
-    <YStack gap={6}>
-      <XStack gap={6} flexWrap="wrap">
-        {SUB_STATUSES.map((s) => (
-          <Chip
-            key={s}
-            testID={`billing-substatus-${s}`}
-            label={t(`windows.usersPanel.billing.subStatusName.${s}`)}
-            active={selected === s}
-            onPress={() => onSelect(s)}
-          />
-        ))}
-      </XStack>
-    </YStack>
+    <View style={{ flexDirection: "row", gap: 6, flexWrap: "wrap" }}>
+      {SUB_STATUSES.map((s) => (
+        <Chip
+          key={s}
+          testID={`billing-substatus-${s}`}
+          label={t(`windows.usersPanel.billing.subStatusName.${s}`)}
+          active={selected === s}
+          onPress={() => onSelect(s)}
+        />
+      ))}
+    </View>
   )
 }
 
@@ -350,25 +346,22 @@ function ProviderConfigField({
     ...configs.filter((c) => !c.isDefault).map((c) => ({ key: c._id, label: c.name })),
   ]
   return (
-    <YStack gap={6}>
+    <View style={{ zIndex: 2 }}>
       <FieldLabel>{t("windows.usersPanel.billing.providerConfig")}</FieldLabel>
-      <XStack gap={8} ai="center" flexWrap="wrap">
+      <View style={{ flexDirection: "row", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <Select
           testID="billing-provider-config"
           value={value}
           options={options}
           onChange={onChange}
-          minWidth={200}
+          minWidth={220}
           ariaLabel={t("windows.usersPanel.billing.providerConfig")}
         />
-        <Button
-          testID="billing-manage-configs"
-          label={t("windows.usersPanel.billing.manageConfigs")}
-          tone="primary"
-          onPress={onManage}
-        />
-      </XStack>
-    </YStack>
+        <Btn testID="billing-manage-configs" variant="sec" icon="gear-six" onPress={onManage}>
+          {t("windows.usersPanel.billing.manageConfigs")}
+        </Btn>
+      </View>
+    </View>
   )
 }
 
@@ -396,21 +389,21 @@ function TeamField({
     })),
   ]
   return (
-    <YStack gap={6}>
+    <View style={{ zIndex: 1 }}>
       <FieldLabel>{t("windows.usersPanel.billing.team")}</FieldLabel>
-      <Select
-        testID="billing-team"
-        value={value}
-        options={options}
-        onChange={onChange}
-        minWidth={200}
-        ariaLabel={t("windows.usersPanel.billing.team")}
-      />
+      <View style={{ alignItems: "flex-start" }}>
+        <Select
+          testID="billing-team"
+          value={value}
+          options={options}
+          onChange={onChange}
+          minWidth={220}
+          ariaLabel={t("windows.usersPanel.billing.team")}
+        />
+      </View>
       {value !== "" ? (
-        <Text fontSize={11} color={invalid ? tokens.error : tokens.textMuted} marginTop={4}>
-          {t("windows.usersPanel.billing.teamOverrideHint")}
-        </Text>
+        <FieldHelp error={invalid}>{t("windows.usersPanel.billing.teamOverrideHint")}</FieldHelp>
       ) : null}
-    </YStack>
+    </View>
   )
 }

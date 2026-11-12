@@ -1,25 +1,31 @@
-import { LinearGradient } from "expo-linear-gradient"
 import { useRouter } from "expo-router"
 import React, { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { KeyboardAvoidingView, Platform, ScrollView } from "react-native"
-import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { Button, Text, XStack, YStack } from "tamagui"
-import { GitHubIcon, GoogleIcon, MicrosoftIcon } from "../../../src/components/SocialIcons"
-import { TerosLogo } from "../../../src/components/TerosLogo"
-import { useToast } from "../../../src/components/Toast"
-import { normalizeAuthUser, useAuthStore } from "../../../src/store/authStore"
+import { View } from "react-native"
+import { GoogleIcon, MicrosoftIcon } from "../../../src/components/SocialIcons"
+import { useAuthStore } from "../../../src/store/authStore"
 import { getTerosClient } from "../../../src/services/terosClientSingleton"
 import { useColors } from "../../../src/components/mca/primitives/useColors"
+import { Btn, Ph, T } from "../../../src/components/ui/ds"
+import {
+  AuthBrand,
+  AuthDivider,
+  AuthHelp,
+  AuthShell,
+  AuthSwitch,
+  AuthTitle,
+  ProviderBtn,
+} from "../../../src/components/auth/AuthShell"
+import { useSocialAuth } from "../../../src/components/auth/useSocialAuth"
+import { useDevAutologin } from "../../../src/components/auth/useDevAutologin"
+import { wsUrl } from "../../../src/config/runtime"
 
 export default function Login() {
   const [checkingAuth, setCheckingAuth] = useState(true)
 
   const router = useRouter()
   const client = getTerosClient()
-  const toast = useToast()
-  const insets = useSafeAreaInsets()
-  const { login, isAuthenticated } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
   const { t } = useTranslation()
   const c = useColors()
 
@@ -36,230 +42,84 @@ export default function Login() {
   useEffect(() => {
     if (checkingAuth) return
     if (!client.isConnectedOrConnecting()) {
-      const serverUrl = process.env.EXPO_PUBLIC_WS_URL
+      const serverUrl = wsUrl()
       if (serverUrl) client.connect(serverUrl)
     }
   }, [client, checkingAuth])
 
-  const handleGoogleLogin = async () => {
-    try {
-      const serverUrl = process.env.EXPO_PUBLIC_WS_URL || ""
-      const backendUrl = serverUrl
-        .replace(/^wss:/, "https:")
-        .replace(/^ws:/, "http:")
-        .replace(/\/ws\/?$/, "")
+  const social = useSocialAuth()
+  // Local dev backend with TEROS_DEV_AUTOLOGIN=1: straight in, no form. Inert in prod.
+  const devAutologin = useDevAutologin(!checkingAuth)
 
-      const oauthUrl = `${backendUrl}/auth/google/connect`
-
-      if (Platform.OS === "web") {
-        const popup = window.open(
-          oauthUrl,
-          "google_oauth",
-          "width=500,height=600,menubar=no,toolbar=no",
-        )
-
-        if (!popup) {
-          toast.error(t("auth.error"), t("auth.popupBlocked"))
-          return
-        }
-
-        const handleMessage = async (event: MessageEvent) => {
-          if (event.data?.type === "oauth_result") {
-            window.removeEventListener("message", handleMessage)
-
-            if (event.data.success && event.data.token) {
-              // login() persists to storage internally
-              const { user, sessionToken } = normalizeAuthUser({
-                ...event.data,
-                userId: event.data.userId,
-                token: event.data.token,
-              })
-              login(user, sessionToken)
-
-              if (client.isConnected()) {
-                try {
-                  await client.authenticateWithToken(event.data.token)
-                } catch (authError) {
-                  console.error("Failed to authenticate WebSocket:", authError)
-                }
-              } else {
-                client.setSessionToken(event.data.token)
-              }
-
-              router.replace("/")
-            } else {
-              toast.error(t("auth.signInFailed"), event.data.error || t("auth.couldNotSignInGoogle"))
-            }
-          }
-        }
-
-        window.addEventListener("message", handleMessage)
-      } else {
-        const { Linking } = await import("react-native")
-        await Linking.openURL(oauthUrl)
-      }
-    } catch (error) {
-      console.error("Google login error:", error)
-      toast.error(t("auth.error"), t("auth.couldNotSignInGoogle"))
-    }
-  }
-
-  if (checkingAuth) {
-    return (
-      <LinearGradient
-        colors={[c.bgPage, c.bgCard, c.bgPage]}
-        locations={[0, 0.5, 1]}
-        style={{ flex: 1 }}
-      />
-    )
+  if (checkingAuth || devAutologin !== "off") {
+    return <View style={{ flex: 1, backgroundColor: c.bgFrame }} />
   }
 
   return (
-    <LinearGradient
-      colors={[c.bgPage, c.bgCard, c.bgPage]}
-      locations={[0, 0.5, 1]}
-      style={{ flex: 1, paddingTop: insets.top, paddingBottom: insets.bottom }}
-    >
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+    <AuthShell footer testID="login-card">
+      <AuthBrand />
+      <AuthTitle
+        title={t("auth.signInTitle", { defaultValue: "Sign in to Teros" })}
+        lead={t("auth.signInLead", {
+          defaultValue: "Your team of agents picks up where you left off.",
+        })}
+      />
+
+      {/* Providers — Google full width, GitHub / Microsoft half width (all live) */}
+      <View style={{ gap: 8, marginTop: 24 }}>
+        <ProviderBtn
+          full
+          icon={<GoogleIcon size={18} />}
+          label={t("auth.continueWithGoogle")}
+          onPress={social.google}
+          testID="login-google"
+        />
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <ProviderBtn
+            icon={<Ph name="github-logo" size={17} color={c.text2} />}
+            label="GitHub"
+            onPress={social.github}
+            testID="login-github"
+          />
+          <ProviderBtn
+            icon={<MicrosoftIcon size={15} />}
+            label="Microsoft"
+            onPress={social.microsoft}
+            testID="login-microsoft"
+          />
+        </View>
+      </View>
+
+      <AuthDivider label={t("auth.orWithEmail", { defaultValue: "or with your email" })} />
+
+      {/* Email path — the visible strings are pinned by the smoke tests */}
+      <Btn
+        variant="primary"
+        size="lg"
+        full
+        icon="envelope-simple"
+        onPress={() => router.push("/(auth)/login/email")}
+        testID="login-email"
       >
-        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-          <YStack
-            flex={1}
-            justifyContent="center"
-            alignItems="center"
-            padding="$5"
-            paddingTop="$8"
-            maxWidth={400}
-            width="100%"
-            alignSelf="center"
-          >
-            {/* Logo & Title */}
-            <YStack alignItems="center" marginBottom="$10" gap="$4">
-              <TerosLogo size={80} animated={false} />
-              <Text fontSize={36} fontWeight="200" color={c.text} letterSpacing={8} marginTop="$4">
-                TEROS
-              </Text>
-            </YStack>
+        {t("auth.signInWithEmail")}
+      </Btn>
 
-            {/* Social Login Buttons */}
-            <YStack width="100%" gap="$3" marginBottom="$6">
-              {/* Google — fully functional */}
-              <Button
-                height={48}
-                borderRadius="$3"
-                backgroundColor={c.bgInner}
-                borderWidth={1}
-                borderColor={c.borderStrong}
-                pressStyle={{ backgroundColor: c.bgCardHover }}
-                onPress={handleGoogleLogin}
-              >
-                <XStack gap="$3" alignItems="center">
-                  <GoogleIcon />
-                  <Text color={c.text} fontSize="$4" fontWeight="500">
-                    {t("auth.continueWithGoogle")}
-                  </Text>
-                </XStack>
-              </Button>
+      <AuthHelp>
+        <T step="12" tone="text2">
+          {t("auth.helpLine", { defaultValue: "Can't get in? Write to " })}
+          <T step="12" tone="text2" style={{ textDecorationLine: "underline" }}>
+            soporte@teros.ai
+          </T>
+          {t("auth.helpLineTail", { defaultValue: " and the support team restores your access." })}
+        </T>
+      </AuthHelp>
 
-              {/* GitHub — coming soon */}
-              <Button
-                height={48}
-                borderRadius="$3"
-                backgroundColor={c.bgInner}
-                borderWidth={1}
-                borderColor={c.border}
-                pressStyle={{ backgroundColor: c.bgCardHover }}
-                onPress={() => toast.info(t("auth.comingSoon"), t("auth.comingSoonGithub"))}
-              >
-                <XStack gap="$3" alignItems="center" flex={1}>
-                  <GitHubIcon />
-                  <Text color={c.text2} fontSize="$4" fontWeight="500" flex={1}>
-                    {t("auth.continueWithGitHub")}
-                  </Text>
-                  <XStack
-                    backgroundColor={c.bgInner}
-                    paddingHorizontal="$2"
-                    paddingVertical={3}
-                    borderRadius="$2"
-                  >
-                    <Text color={c.text3} fontSize={10} fontWeight="600" letterSpacing={0.5}>
-                      {t("common.soon")}
-                    </Text>
-                  </XStack>
-                </XStack>
-              </Button>
-
-              {/* Microsoft — coming soon */}
-              <Button
-                height={48}
-                borderRadius="$3"
-                backgroundColor={c.bgInner}
-                borderWidth={1}
-                borderColor={c.border}
-                pressStyle={{ backgroundColor: c.bgCardHover }}
-                onPress={() => toast.info(t("auth.comingSoon"), t("auth.comingSoonMicrosoft"))}
-              >
-                <XStack gap="$3" alignItems="center" flex={1}>
-                  <MicrosoftIcon />
-                  <Text color={c.text2} fontSize="$4" fontWeight="500" flex={1}>
-                    {t("auth.continueWithMicrosoft")}
-                  </Text>
-                  <XStack
-                    backgroundColor={c.bgInner}
-                    paddingHorizontal="$2"
-                    paddingVertical={3}
-                    borderRadius="$2"
-                  >
-                    <Text color={c.text3} fontSize={10} fontWeight="600" letterSpacing={0.5}>
-                      {t("common.soon")}
-                    </Text>
-                  </XStack>
-                </XStack>
-              </Button>
-            </YStack>
-
-            {/* Divider */}
-            <XStack width="100%" alignItems="center" gap="$3" marginBottom="$6">
-              <YStack flex={1} height={1} backgroundColor={c.border} />
-              <Text color={c.text3} fontSize="$2">{t("common.or")}</Text>
-              <YStack flex={1} height={1} backgroundColor={c.border} />
-            </XStack>
-
-            {/* Email login / Sign up */}
-            <YStack width="100%" gap="$3" alignItems="center">
-              <Button
-                width="100%"
-                height={48}
-                borderRadius="$3"
-                backgroundColor="transparent"
-                borderWidth={1}
-                borderColor={c.borderStrong}
-                pressStyle={{ backgroundColor: c.bgCardHover }}
-                onPress={() => router.push("/(auth)/login/email")}
-              >
-                <Text color={c.text2} fontSize="$4" fontWeight="500">
-                  {t("auth.signInWithEmail")}
-                </Text>
-              </Button>
-
-              <XStack gap="$2" alignItems="center" marginTop="$2">
-                <Text color={c.text3} fontSize="$3">{t("auth.dontHaveAccount")}</Text>
-                <Button
-                  chromeless
-                  onPress={() => router.push("/(auth)/login/signup")}
-                  pressStyle={{ opacity: 0.7 }}
-                  padding={0}
-                  height="auto"
-                >
-                  <Text color="#06B6D4" fontSize="$3" fontWeight="500">{t("auth.signUp")}</Text>
-                </Button>
-              </XStack>
-            </YStack>
-          </YStack>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </LinearGradient>
+      <AuthSwitch
+        question={t("auth.dontHaveAccount")}
+        action={t("auth.signUp")}
+        onPress={() => router.push("/(auth)/login/signup")}
+        testID="login-signup-link"
+      />
+    </AuthShell>
   )
 }

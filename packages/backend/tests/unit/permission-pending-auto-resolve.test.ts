@@ -64,11 +64,15 @@ describe('PendingApprovalsRegistry.findPendingByTool', () => {
 // PermissionManager: pending promises resolve with the persisted permission
 // ---------------------------------------------------------------------------
 
-describe('PermissionManager — persisted permission resolves same-tool pendings', () => {
+describe('PermissionManager — persisted permission resolves same-tool pendings (v4: server-side)', () => {
   async function setup() {
     const broadcasts: any[] = []
+    const wakes: any[] = []
     const pm = createPermissionManager({
       broadcastToChannel: (_ch: string, msg: any) => broadcasts.push(msg),
+      onBatchResolved: async (args) => {
+        wakes.push(args)
+      },
     })
     const ask = pm.createAskPermissionCallback(
       'ch_batch',
@@ -76,19 +80,24 @@ describe('PermissionManager — persisted permission resolves same-tool pendings
       (toolCallId?: string) => ({ messageId: `m_${toolCallId}`, toolCallId: toolCallId ?? 'tc' }),
       undefined,
     )
-    // Three parallel asks of the same tool + one of a different tool
-    const sameTool = [
+    // Three parallel asks of the same tool + one of a different tool.
+    // v4: every ask settles IMMEDIATELY with the { kind: 'requested' } marker
+    // — the pendings live in the registry, decoupled from any turn. The
+    // requestId travels in the marker (the executor serializes it into the
+    // awaiting-user output the frontend renders from).
+    const sameTool = await Promise.all([
       ask('notion_create-page', 'app_notion', {}, false, 'tc1'),
       ask('notion_create-page', 'app_notion', {}, false, 'tc2'),
       ask('notion_create-page', 'app_notion', {}, false, 'tc3'),
-    ]
-    const otherTool = ask('notion_delete-block', 'app_notion', {}, false, 'tc4')
-    await new Promise((r) => setTimeout(r, 5))
-    return { pm, broadcasts, sameTool, otherTool }
+    ])
+    const otherTool = await ask('notion_delete-block', 'app_notion', {}, false, 'tc4')
+    expect(sameTool.every((r) => r.kind === 'requested' && typeof r.requestId === 'string')).toBe(true)
+    expect(otherTool.kind).toBe('requested')
+    return { pm, broadcasts, wakes, sameTool, otherTool }
   }
 
   it('grants every pending of the tool; other tools stay pending', async () => {
-    const { pm, sameTool } = await setup()
+    const { pm } = await setup()
 
     const ids = pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')
     expect(ids).toHaveLength(3)
@@ -96,24 +105,38 @@ describe('PermissionManager — persisted permission resolves same-tool pendings
       await pm.handleResponse(id, true)
     }
 
-    expect(await Promise.all(sameTool)).toEqual(['granted', 'granted', 'granted'])
+    // v4: the pendings are resolved server-side (registry) — no parked
+    // promises to settle, but every same-tool request is consumed.
+    expect(pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')).toHaveLength(0)
     // The other tool's request is untouched
     expect(pm.findPendingRequestIdsForTool('app_notion', 'notion_delete-block')).toHaveLength(1)
     expect(pm.getPendingCount()).toBe(1)
   })
 
   it('denies every pending of the tool on forbid', async () => {
-    const { pm, sameTool } = await setup()
+    const { pm, wakes } = await setup()
 
     for (const id of pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')) {
       await pm.handleResponse(id, false)
     }
 
-    expect(await Promise.all(sameTool)).toEqual(['denied', 'denied', 'denied'])
+    // PERMB-REQ-3: no wake per deny — the other tool's request of the same
+    // batch is still pending, so the batch is not complete yet.
+    await new Promise((r) => setTimeout(r, 25))
+    expect(wakes).toHaveLength(0)
+    expect(pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')).toHaveLength(0)
+
+    // Deciding the last pending request completes the batch: one wake with
+    // every outcome.
+    const [last] = pm.findPendingRequestIdsForTool('app_notion', 'notion_delete-block')
+    await pm.handleResponse(last, false)
+    await new Promise((r) => setTimeout(r, 25))
+    expect(wakes).toHaveLength(1)
+    expect(wakes[0].outcomes).toHaveLength(4)
   })
 
   it('is idempotent with an individual response racing the bulk resolve', async () => {
-    const { pm, sameTool } = await setup()
+    const { pm } = await setup()
     const ids = pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')
 
     // The user clicks Allow on one widget just before the bulk pass reaches it
@@ -123,7 +146,9 @@ describe('PermissionManager — persisted permission resolves same-tool pendings
       if (id === ids[0]) expect(result?.idempotent).toBe(true)
     }
 
-    expect(await Promise.all(sameTool)).toEqual(['granted', 'granted', 'granted'])
+    // v4: all three are consumed exactly once; the duplicate is an idempotent no-op.
+    expect(pm.findPendingRequestIdsForTool('app_notion', 'notion_create-page')).toHaveLength(0)
+    expect(pm.getPendingCount()).toBe(1) // the other tool
   })
 })
 
@@ -134,9 +159,13 @@ describe('PermissionManager — persisted permission resolves same-tool pendings
 describe('app.update-tool-permission → applyPermissionToPendingRequests', () => {
   function makeHandler(opts: { alwaysAsk?: boolean } = {}) {
     const applied: Array<{ appId: string; toolName: string; permission: string }> = []
-    const app = { appId: 'app_notion', ownerId: 'user_1', name: 'notion', mcaId: 'mca.notion' }
+    const app = { appId: 'app_notion', ownerId: 'user_1', name: 'notion', mcaId: 'mca.notion', scope: 'shared' }
     const mcaService = {
       getApp: async () => app,
+      // MUW-REQ-13 gates (visibility + manageability) are covered by their own
+      // suites; this one exercises the pending pass, so the caller is authorized.
+      isAppVisibleTo: () => true,
+      canManageApp: async () => true,
       getMcaFromCatalog: async () => ({ name: 'notion', tools: ['create-page', 'delete-block'] }),
       updateToolPermission: async () => ({ ...app, permissions: { tools: {}, defaultPermission: 'ask' } }),
     } as any

@@ -45,4 +45,26 @@ describe('McaToolAnnotationsSchema', () => {
   it('rejects invalid stability values', () => {
     expect(() => McaToolAnnotationsSchema.parse({ stability: 'beta' })).toThrow();
   });
+
+  // `loadStaticTools` REPLACES `tool.annotations` with this schema's output, so an
+  // unknown key is stripped before it ever reaches the wire. That makes the parse —
+  // not the tools.json text — what keeps an author's `intentTemplate` alive.
+  it('preserves intentTemplate through the parse', () => {
+    const parsed = McaToolAnnotationsSchema.parse({
+      intentTemplate: 'Delete the file at {path}',
+      irreversible: true,
+    });
+    expect(parsed.intentTemplate).toBe('Delete the file at {path}');
+  });
+
+  it('leaves intentTemplate undefined when the author declares none', () => {
+    expect(McaToolAnnotationsSchema.parse({ summary: 'Lists your files' }).intentTemplate)
+      .toBeUndefined();
+  });
+
+  it('rejects a non-string intentTemplate', () => {
+    expect(() => McaToolAnnotationsSchema.parse({ intentTemplate: { text: 'Delete {path}' } }))
+      .toThrow();
+    expect(() => McaToolAnnotationsSchema.parse({ intentTemplate: 42 })).toThrow();
+  });
 });

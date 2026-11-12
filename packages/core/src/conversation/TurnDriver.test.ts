@@ -91,7 +91,7 @@ describe('TurnDriver.runTurn — happy path', () => {
       text: 'fin',
       timestamp: 0,
       toolCalls: undefined,
-      usage: { inputTokens: 250, outputTokens: 15, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 },
+      usage: { inputTokens: 250, outputTokens: 15, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0, usageEstimated: false },
       breakdown: undefined,
       // TER-615: responseMetadata is now the real per-turn telemetry (was
       // hardcoded undefined). The scripted LLM emits no metadata/onFinish, so
@@ -300,7 +300,14 @@ describe('TurnDriver — queued message never aborts in-flight tools', () => {
     expect(phases(t.events).at(-1)).toBe('idle');
   }, 10000);
 
-  it('sequential: the not-yet-started sibling tool ALSO runs to completion', async () => {
+  // Contract change (2026-10-29 regression fix): the not-yet-started sibling is
+  // now SKIPPED when a user message is queued — it used to run to completion,
+  // which made the queued message wait for every sibling of the step (the
+  // regression Pablo reported: multi-minute steps → minutes of queue wait).
+  // The in-flight tool still completes with its REAL result (TER-445 core
+  // guarantee); the sibling gets a synthesized Skipped result (INV-1 holds) and
+  // the turn breaks at step_end so the message enters the next turn.
+  it('sequential: the in-flight tool completes with its REAL result; the not-yet-started sibling is Skipped so the queued message enters now', async () => {
     const t = mkDeps();
     t.store.seedUserMessage('message_u01', 'hola');
     let release!: () => void;
@@ -329,18 +336,121 @@ describe('TurnDriver — queued message never aborts in-flight tools', () => {
     release();
     await run;
 
-    // BOTH tools reached the executor and kept their real results (INV-1 holds).
-    expect(t.executor.executions.map((e) => e.name)).toEqual(['slow', 'after']);
-    for (const [callId, output] of [
-      ['call_s', 'ok:slow'],
-      ['call_a', 'ok:after'],
-    ] as const) {
-      const part = t.store.partByCallId(callId)!;
-      expect(part.state.status).toBe('completed');
-      expect((part.state as { output?: string }).output).toBe(output);
-    }
+    // Only the in-flight tool reached the executor — the sibling was skipped.
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['slow']);
+    // The in-flight tool kept its REAL result — nothing was aborted (TER-445).
+    const slowPart = t.store.partByCallId('call_s')!;
+    expect(slowPart.state.status).toBe('completed');
+    expect((slowPart.state as { output?: string }).output).toBe('ok:slow');
+    // The sibling holds INV-1 with a synthesized Skipped result.
+    const afterPart = t.store.partByCallId('call_a')!;
+    expect(afterPart.state.status).toBe('completed');
+    expect((afterPart.state as { output?: string }).output).toContain('Skipped');
     // Still only one LLM call — the queued message cut the turn at step_end.
     expect(t.llm.calls.length).toBe(1);
+  }, 10000);
+
+  // Regression (2026-10-29, Pablo report): a message queued while a LONG step
+  // was running waited for every sibling tool of the step (multi-minute
+  // remote-raw/bash steps → p90 76s, outliers 419s) because the queue check
+  // only ran at step_end. Now the queue is consulted after EVERY tool settles:
+  // the not-yet-started siblings are skipped (Skipped, INV-1) and the turn
+  // breaks at the step end — the queued message enters the next turn without
+  // waiting for the rest of the step. The in-flight tool keeps its real result.
+  it('sequential: a message queued mid-step skips the REMAINING sibling tools (mid-turn entry without waiting for the whole step)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    // slow = the multi-minute tool in flight when the user's message lands.
+    // after1/after2 = the siblings that would have kept the step (and the
+    // queued message) waiting under the old step_end-only check.
+    let release!: () => void;
+    t.executor.behave(
+      'slow',
+      () =>
+        new Promise((res) => {
+          release = () => res({ output: 'ok:slow', isError: false });
+        }),
+    );
+    t.executor.behave('after1', async () => ({ output: 'ok:after1', isError: false }));
+    t.executor.behave('after2', async () => ({ output: 'ok:after2', isError: false }));
+    t.llm.scripts = [
+      {
+        toolCalls: [
+          tc('call_s', 'slow', {}),
+          tc('call_a1', 'after1', {}),
+          tc('call_a2', 'after2', {}),
+        ],
+        response: r('tool_calls', 10, 1),
+      },
+    ];
+
+    let pending = 0;
+    const run = new TurnDriver(t.deps).runTurn(mkInput({ toolExecutionMode: 'sequential' }), {
+      signal: new AbortController().signal,
+      getPendingItemCount: () => pending,
+    });
+    await until(() => t.executor.executions.length === 1);
+    // The user's message lands while `slow` is still in flight.
+    pending = 1;
+    release(); // `slow` settles — the per-tool check sees the queue NOW
+
+    const result = await run;
+
+    // Only the in-flight tool executed; the two siblings were skipped, not run.
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['slow']);
+    // The in-flight tool kept its REAL result — nothing was aborted.
+    const slowPart = t.store.partByCallId('call_s')!;
+    expect(slowPart.state.status).toBe('completed');
+    expect((slowPart.state as { output?: string }).output).toBe('ok:slow');
+    // The skipped siblings hold INV-1: a tool_result exists, marked Skipped.
+    for (const callId of ['call_a1', 'call_a2']) {
+      const part = t.store.partByCallId(callId)!;
+      expect(part.state.status).toBe('completed');
+      expect((part.state as { output?: string }).output).toContain('Skipped');
+    }
+    // Only one LLM call — the turn was cut so the queued message enters the
+    // next turn immediately instead of waiting for after1/after2.
+    expect(t.llm.calls.length).toBe(1);
+    // The interrupted turn resolves with the step's assistant message.
+    expect(result).toBeDefined();
+    expect(phases(t.events).at(-1)).toBe('idle');
+  }, 10000);
+
+  // The per-tool check must NOT fire when a permission/form marker is pending
+  // (PERMB-REQ-1): the step is already ending for the user's answer and every
+  // ask of the batch must register before the turn ends.
+  it('sequential: a pending permission marker beats the queue check — remaining tools still dispatch (PERMB-REQ-1)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    // ask = returns the endsTurn permission marker; after = a sibling that
+    // must still run so its own ask registers (PERMB-REQ-1 semantics).
+    t.executor.behave('ask', async () => ({
+      output: JSON.stringify({ status: 'permission_requested', instruction: 'end your turn' }),
+      isError: false,
+      endsTurn: true,
+      awaiting: 'permission' as const,
+    }));
+    t.executor.behave('after', async () => ({ output: 'ok:after', isError: false }));
+    t.llm.scripts = [
+      {
+        toolCalls: [tc('call_ask', 'ask', {}), tc('call_a', 'after', {})],
+        response: r('tool_calls', 10, 1),
+      },
+    ];
+
+    let pending = 1; // a user message is queued the whole time
+    const run = new TurnDriver(t.deps).runTurn(mkInput({ toolExecutionMode: 'sequential' }), {
+      signal: new AbortController().signal,
+      getPendingItemCount: () => pending,
+    });
+    await run;
+
+    // BOTH tools dispatched: the permission marker did not skip its sibling
+    // (PERMB-REQ-1) — the queue check must not preempt the batch either.
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['ask', 'after']);
+    expect(t.llm.calls.length).toBe(1);
+    // turnEndRequested ended the turn deterministically.
+    expect(phases(t.events).at(-1)).toBe('idle');
   }, 10000);
 });
 
@@ -434,9 +544,10 @@ describe('TurnDriver — isPromptTooLongError matcher (each branch alone)', () =
 });
 
 describe('TurnDriver — max steps', () => {
-  it('blocks tool execution once maxSteps is reached and clears the flag on exit', async () => {
+  it('blocks tool execution once maxSteps is reached and clears the flag on exit (board agent)', async () => {
     const t = mkDeps({ maxSteps: 1 });
     t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [mkTool('search'), mkTool('board-runner_add-progress-note')];
     t.executor.behave('search', async () => ({ output: 'ok', isError: false }));
     t.llm.scripts = [
       { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
@@ -451,10 +562,478 @@ describe('TurnDriver — max steps', () => {
     const blocked = t.store.partByCallId('call_2')!;
     expect(blocked.state.status).toBe('error');
     expect((blocked.state as { error?: string }).error).toBe(
-      'Tool execution blocked: maximum steps (1) reached. You have reached the execution limit. Add a progress note summarizing what you accomplished and what remains — this resets your execution counter so you can continue.',
+      'Tool execution blocked: maximum steps (1) reached. You have reached the execution limit. Add a progress note with add-progress-note summarizing what you accomplished and what remains — this resets your execution counter so you can continue working. Do not call any other tools.',
     );
     // finally cleanup: the next turn must NOT inherit the stale flag.
     expect(t.deps.maxStepsReached.size).toBe(0);
+  });
+
+  it('blocks tool execution with conversational message when agent has no board tools', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    // No add-progress-note in the tool list → conversational agent
+    t.executor.tools = [mkTool('search'), mkTool('alpha')];
+    t.executor.behave('search', async () => ({ output: 'ok', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['me detengo'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // Step 0 executed normally; step 1's tool was BLOCKED (never reached executor).
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1']);
+    const blocked = t.store.partByCallId('call_2')!;
+    expect(blocked.state.status).toBe('error');
+    expect((blocked.state as { error?: string }).error).toBe(
+      'Tool execution blocked: maximum steps (1) reached. You have reached the execution limit for this turn. Give the user a status update — what you accomplished, what remains — and wait for their instructions. Do not call any more tools.',
+    );
+    // finally cleanup: the next turn must NOT inherit the stale flag.
+    expect(t.deps.maxStepsReached.size).toBe(0);
+  });
+
+  // ---- maxSteps + tool-execution proxy (bug fix) ----
+
+  it('proxied progress note passes the maxSteps block (tool=execute-tool, input.tool=add-progress-note)', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    // The executor receives 'execute-tool' as the tool name (proxy mode).
+    // It must still execute because input.tool is 'add-progress-note'.
+    t.executor.behave('execute-tool', async () => ({ output: 'note saved', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // Step 1: maxSteps reached, agent calls execute-tool with add-progress-note
+      {
+        toolCalls: [tc('call_2', 'execute-tool', { app: 'board-runner', tool: 'add-progress-note', input: { taskId: 't1', text: 'progress' } })],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // Step 0: search executed normally.
+    // Step 1: execute-tool with add-progress-note should have been ALLOWED through the block.
+    const proxiedExec = t.executor.executions.find((e) => e.options.toolCallId === 'call_2');
+    expect(proxiedExec).toBeDefined();
+    expect(proxiedExec!.name).toBe('execute-tool');
+    // The blocked tool from step 1 (search) was NOT executed.
+    // Wait — search was step 0. Let's verify call_2 was not blocked.
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('completed');
+    expect((part2.state as { output?: string }).output).toBe('note saved');
+  });
+
+  it('successful proxied progress note sets the step reset (stepResetRequested)', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('execute-tool', async () => ({ output: 'note saved', isError: false }));
+    // Also need a behavior for the tool that runs AFTER the reset
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // Step 1: maxSteps reached, proxied progress note → should reset
+      {
+        toolCalls: [tc('call_2', 'execute-tool', { app: 'board-runner', tool: 'add-progress-note', input: { taskId: 't1', text: 'progress' } })],
+        response: r('tool_calls', 10, 1),
+      },
+      // After reset, agent can continue with a real tool call
+      { toolCalls: [tc('call_3', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // The proxied progress note (call_2) executed successfully
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('completed');
+    // After the reset, the agent got a fresh batch of steps — call_3 (search) also executed
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+    expect((part3.state as { output?: string }).output).toBe('ok:search');
+    // The step reset was requested and then consumed (cleared by the finally block)
+    expect(t.deps.stepResetRequested.size).toBe(0);
+  });
+
+  it('discovery meta-tools (list-installed-apps, list-app-tools) pass the maxSteps block', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('list-installed-apps', async () => ({ output: '{"apps":[]}', isError: false }));
+    t.executor.behave('list-app-tools', async () => ({ output: '{"tools":[]}', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // Step 1: maxSteps reached, agent calls discovery meta-tools
+      {
+        toolCalls: [
+          tc('call_2', 'list-installed-apps', {}),
+          tc('call_3', 'list-app-tools', { app: 'some-app' }),
+        ],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // Both discovery meta-tools executed despite maxSteps being reached
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('completed');
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+  });
+
+  it('non-note proxied calls are still blocked by maxSteps (no regression of the safety valve)', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('execute-tool', async () => ({ output: 'should not run', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // Step 1: maxSteps reached, agent calls execute-tool with a NON-note tool
+      {
+        toolCalls: [tc('call_2', 'execute-tool', { app: 'some-host-app', tool: 'bash', input: { command: 'ls' } })],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['me detengo'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // The non-note proxied call was BLOCKED — never reached the executor
+    const blockedExec = t.executor.executions.find((e) => e.options.toolCallId === 'call_2');
+    expect(blockedExec).toBeUndefined();
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('error');
+    expect((part2.state as { error?: string }).error).toContain('Tool execution blocked');
+  });
+
+  // ---- To Do app: add-log-entry is a progress-note tool (TODOAP-REQ-19) ----
+
+  it('[TODOAP-AC-24] with To Do tools the block message names set-state + add-log-entry; set-state passes WITHOUT reset; add-log-entry passes and resets', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [mkTool('search'), mkTool('todo-list_set-state'), mkTool('todo-list_add-log-entry')];
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.executor.behave('todo-list_set-state', async () => ({ output: 'ok:state', isError: false }));
+    t.executor.behave('todo-list_add-log-entry', async () => ({ output: 'logged', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: search is blocked — the message must NAME the
+      // reporting tools (set-state + add-log-entry), not a vague status update
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      // set-state passes the block (task-completion tool) — WITHOUT reset
+      { toolCalls: [tc('call_3', 'todo-list_set-state', {})], response: r('tool_calls', 10, 1) },
+      // no reset happened: search is still blocked right after
+      { toolCalls: [tc('call_4', 'search', {})], response: r('tool_calls', 10, 1) },
+      // add-log-entry passes the block and resets the counter
+      { toolCalls: [tc('call_5', 'todo-list_add-log-entry', { text: 'half done' })], response: r('tool_calls', 10, 1) },
+      // fresh batch of steps: search runs again
+      { toolCalls: [tc('call_6', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('error');
+    expect((part2.state as { error?: string }).error).toBe(
+      'Tool execution blocked: maximum steps (1) reached. You\'ve reached the step limit without finishing. Add a progress note with add-log-entry (what you accomplished, what remains) — this resets your execution counter so you can continue working. Only if the work is actually complete: move to review with set-state. If you need something from the operator: set-state blocked with your question. No other tools.',
+    );
+    // set-state passed the block (task-completion tool)…
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+    expect((part3.state as { output?: string }).output).toBe('ok:state');
+    // …but did NOT reset the counter: search is still blocked right after
+    const part4 = t.store.partByCallId('call_4')!;
+    expect(part4.state.status).toBe('error');
+    // add-log-entry passed and reset the counter
+    const part5 = t.store.partByCallId('call_5')!;
+    expect(part5.state.status).toBe('completed');
+    // fresh batch of steps: search executes again
+    const part6 = t.store.partByCallId('call_6')!;
+    expect(part6.state.status).toBe('completed');
+    expect((part6.state as { output?: string }).output).toBe('ok:search');
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1', 'call_3', 'call_5', 'call_6']);
+  });
+
+  it('[TODOAP-AC-24] a proxied add-log-entry (execute-tool, input.tool=add-log-entry) passes the block and resets the counter', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('execute-tool', async () => ({ output: 'logged', isError: false }));
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      {
+        toolCalls: [tc('call_2', 'execute-tool', { app: 'todo-list', tool: 'add-log-entry', input: { nodeId: 'n1', text: 'progress' } })],
+        response: r('tool_calls', 10, 1),
+      },
+      { toolCalls: [tc('call_3', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    expect(t.store.partByCallId('call_2')!.state.status).toBe('completed');
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+    expect((part3.state as { output?: string }).output).toBe('ok:search');
+    expect(t.deps.stepResetRequested.size).toBe(0);
+  });
+
+  // ---- flat tool-call format: names sanitized to underscores (bug 2026-10-30) ----
+  // With tools.flat-toolcalls enabled, the runner's tools are exposed as
+  // todo_list_add_log_entry (hyphens → underscores, agent-proxy-flat-tools.ts).
+  // The hyphen-only matcher missed it: at the step limit the note was blocked
+  // AND the block message fell back to the conversational variant — the agent
+  // never learned about the reset valve. Both must now work.
+
+  it('[FLAT-BUG-2026-10-30] a flat-format add_log_entry passes the maxSteps block, resets the counter, and the block message names it', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [mkTool('search'), mkTool('todo_list_set_state'), mkTool('todo_list_add_log_entry')];
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.executor.behave('todo_list_set_state', async () => ({ output: 'ok:state', isError: false }));
+    t.executor.behave('todo_list_add_log_entry', async () => ({ output: 'logged', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: search blocked — the message must name the runner
+      // tools (set-state + add-log-entry), NOT the conversational fallback,
+      // and it must detect them in the FLAT (underscore) format
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      // flat add_log_entry passes the block and resets the counter
+      { toolCalls: [tc('call_3', 'todo_list_add_log_entry', { text: 'half done' })], response: r('tool_calls', 10, 1) },
+      // fresh batch of steps: search runs again
+      { toolCalls: [tc('call_4', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('error');
+    expect((part2.state as { error?: string }).error).toBe(
+      'Tool execution blocked: maximum steps (1) reached. You\'ve reached the step limit without finishing. Add a progress note with add-log-entry (what you accomplished, what remains) — this resets your execution counter so you can continue working. Only if the work is actually complete: move to review with set-state. If you need something from the operator: set-state blocked with your question. No other tools.',
+    );
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+    const part4 = t.store.partByCallId('call_4')!;
+    expect(part4.state.status).toBe('completed');
+    expect((part4.state as { output?: string }).output).toBe('ok:search');
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1', 'call_3', 'call_4']);
+  });
+
+  it('[FLAT-BUG-2026-10-30] a flat-format set_progress also passes the block and resets (set-progress decision)', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [mkTool('search'), mkTool('todo_list_set_progress')];
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.executor.behave('todo_list_set_progress', async () => ({ output: 'ok:progress', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: search blocked
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      // flat set_progress passes the block and resets the counter
+      { toolCalls: [tc('call_3', 'todo_list_set_progress', { progress: 60 })], response: r('tool_calls', 10, 1) },
+      // fresh batch of steps: search runs again
+      { toolCalls: [tc('call_4', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    expect(t.store.partByCallId('call_2')!.state.status).toBe('error');
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+    expect((part3.state as { output?: string }).output).toBe('ok:progress');
+    const part4 = t.store.partByCallId('call_4')!;
+    expect(part4.state.status).toBe('completed');
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1', 'call_3', 'call_4']);
+  });
+
+  it('[FLAT-BUG-2026-10-30] a flat-format board runner add_progress_note passes the block and resets (boards parity)', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [mkTool('board_runner_move_task'), mkTool('board_runner_add_progress_note')];
+    t.executor.behave('board_runner_move_task', async () => ({ output: 'ok:move', isError: false }));
+    t.executor.behave('board_runner_add_progress_note', async () => ({ output: 'noted', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'board_runner_move_task', {})], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: move_task blocked, message names add-progress-note
+      { toolCalls: [tc('call_2', 'board_runner_move_task', {})], response: r('tool_calls', 10, 1) },
+      // flat add_progress_note passes and resets
+      { toolCalls: [tc('call_3', 'board_runner_add_progress_note', { taskId: 't1', text: 'progress' })], response: r('tool_calls', 10, 1) },
+      // fresh batch of steps: move_task runs again
+      { toolCalls: [tc('call_4', 'board_runner_move_task', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const part2 = t.store.partByCallId('call_2')!;
+    expect(part2.state.status).toBe('error');
+    expect((part2.state as { error?: string }).error).toBe(
+      'Tool execution blocked: maximum steps (1) reached. You have reached the execution limit. Add a progress note with add-progress-note summarizing what you accomplished and what remains — this resets your execution counter so you can continue working. Do not call any other tools.',
+    );
+    expect(t.store.partByCallId('call_3')!.state.status).toBe('completed');
+    expect(t.store.partByCallId('call_4')!.state.status).toBe('completed');
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1', 'call_3', 'call_4']);
+  });
+
+  it('discovery-only round-trips do not increment the step counter', async () => {
+    // maxSteps=2: without the fix, the discovery round-trip at step 1 would
+    // consume the budget (step → 2), and the subsequent real work at step 2
+    // would be blocked. With the fix, discovery rolls back the step so the
+    // real work runs at step 1 (step → 2 after), fitting within the budget.
+    const t = mkDeps({ maxSteps: 2 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('list-installed-apps', async () => ({ output: '{"apps":[]}', isError: false }));
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      // Step 0: real work (search) → step becomes 1
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // Step 1: discovery only (list-installed-apps) → step becomes 2, then
+      // rolled back to 1 (discovery-only round-trip doesn't count)
+      { toolCalls: [tc('call_2', 'list-installed-apps', {})], response: r('tool_calls', 10, 1) },
+      // Step 1 (again, because discovery didn't count): real work (search)
+      // → step becomes 2. Without the fix this would be step 2 >= maxSteps 2 → BLOCKED.
+      { toolCalls: [tc('call_3', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // All 3 tool calls executed: the discovery round-trip (call_2) didn't
+    // consume a step, so the agent had enough budget for call_3.
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual([
+      'call_1', 'call_2', 'call_3',
+    ]);
+    // call_3 was NOT blocked (would be blocked without the fix at step 2 >= maxSteps 2)
+    const part3 = t.store.partByCallId('call_3')!;
+    expect(part3.state.status).toBe('completed');
+  });
+
+  // ---- 2026-11-02: the block message names the reporting tools (Pablo) ----
+  // The runner at the execution limit must be told HOW to report on the task
+  // (set-output + set-state + add-log-entry), not just "give the user a
+  // status update" — and those reporting tools must pass the block so the
+  // report is actually persisted.
+
+  it('[2026-11-02] a full To Do runner toolset gets a block message naming set-output + set-state + add-log-entry', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [
+      mkTool('search'),
+      mkTool('todo-list_set-output'),
+      mkTool('todo-list_set-state'),
+      mkTool('todo-list_add-log-entry'),
+    ];
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['me detengo'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const blocked = t.store.partByCallId('call_2')!;
+    expect(blocked.state.status).toBe('error');
+    expect((blocked.state as { error?: string }).error).toBe(
+      "Tool execution blocked: maximum steps (1) reached. You've reached the step limit without finishing. Add a progress note with add-log-entry (what you accomplished, what remains) — this resets your execution counter so you can continue working. Only if the work is actually complete: deliver with set-output and move to review with set-state. If you need something from the operator: set-state blocked with your question. No other tools.",
+    );
+  });
+
+  it('[2026-11-02] a proxied set-output (execute-tool, input.tool=set-output) passes the block WITHOUT resetting the counter', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('execute-tool', async () => ({ output: 'output delivered', isError: false }));
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: a proxied set-output must pass (task-completion tool)
+      {
+        toolCalls: [tc('call_2', 'execute-tool', { app: 'todo-list', tool: 'set-output', input: { nodeId: 'n1', output: { format: 'markdown' } } })],
+        response: r('tool_calls', 10, 1),
+      },
+      // no reset: search is still blocked right after
+      { toolCalls: [tc('call_3', 'search', {})], response: r('tool_calls', 10, 1) },
+      // a proxied add-log-entry passes AND resets
+      {
+        toolCalls: [tc('call_4', 'execute-tool', { app: 'todo-list', tool: 'add-log-entry', input: { nodeId: 'n1', text: 'progress' } })],
+        response: r('tool_calls', 10, 1),
+      },
+      // fresh batch of steps: search runs again
+      { toolCalls: [tc('call_5', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['done'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    // set-output passed the block…
+    expect(t.store.partByCallId('call_2')!.state.status).toBe('completed');
+    // …but did NOT reset: search still blocked
+    expect(t.store.partByCallId('call_3')!.state.status).toBe('error');
+    // add-log-entry passed and reset
+    expect(t.store.partByCallId('call_4')!.state.status).toBe('completed');
+    // fresh batch: search executes
+    expect(t.store.partByCallId('call_5')!.state.status).toBe('completed');
+    expect(t.executor.executions.map((e) => e.options.toolCallId)).toEqual(['call_1', 'call_2', 'call_4', 'call_5']);
+  });
+
+  it('[2026-11-02] proxy mode: getAllToolNames() supplies the inventory getTools() hides, so the block message names the runner tools', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    // Proxy mode: the LLM-facing toolset is ONLY the meta-tools — the runner's
+    // real tools are executable behind execute-tool but hidden from getTools().
+    // Before the fix the block message fell back to the conversational
+    // variant; getAllToolNames() must close that gap.
+    t.executor.tools = [mkTool('execute-tool'), mkTool('list-installed-apps'), mkTool('list-app-tools')];
+    t.executor.allToolNames = [
+      'todo-list_set-output',
+      'todo-list_set-state',
+      'todo-list_add-log-entry',
+      'todo-list_get-node',
+    ];
+    t.executor.behave('execute-tool', async () => ({ output: 'ok', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'execute-tool', { app: 'todo-list', tool: 'get-node', input: {} })], response: r('tool_calls', 10, 1) },
+      // maxSteps reached: a proxied get-node is blocked (not a reporting tool)
+      { toolCalls: [tc('call_2', 'execute-tool', { app: 'todo-list', tool: 'get-node', input: {} })], response: r('tool_calls', 10, 1) },
+      { onText: ['me detengo'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const blocked = t.store.partByCallId('call_2')!;
+    expect(blocked.state.status).toBe('error');
+    expect((blocked.state as { error?: string }).error).toBe(
+      "Tool execution blocked: maximum steps (1) reached. You've reached the step limit without finishing. Add a progress note with add-log-entry (what you accomplished, what remains) — this resets your execution counter so you can continue working. Only if the work is actually complete: deliver with set-output and move to review with set-state. If you need something from the operator: set-state blocked with your question. No other tools.",
+    );
+  });
+
+  it('[2026-11-02] a board runner toolset gets a block message naming complete-my-task + block-my-task + add-progress-note', async () => {
+    const t = mkDeps({ maxSteps: 1 });
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.tools = [
+      mkTool('search'),
+      mkTool('board-runner_complete-my-task'),
+      mkTool('board-runner_block-my-task'),
+      mkTool('board-runner_add-progress-note'),
+    ];
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_1', 'search', {})], response: r('tool_calls', 10, 1) },
+      { toolCalls: [tc('call_2', 'search', {})], response: r('tool_calls', 10, 1) },
+      { onText: ['me detengo'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    const blocked = t.store.partByCallId('call_2')!;
+    expect(blocked.state.status).toBe('error');
+    expect((blocked.state as { error?: string }).error).toBe(
+      'Tool execution blocked: maximum steps (1) reached. You\'ve reached the step limit without finishing. Add a progress note with add-progress-note (what you accomplished, what remains) — this resets your execution counter so you can continue working. Only if the work is actually complete: deliver the output and move the task to review with complete-my-task. If you need something from the operator: block-my-task with your question. No other tools.',
+    );
   });
 });
 
@@ -494,6 +1073,31 @@ describe('TurnDriver — emergency compaction (prompt too long)', () => {
     expect(t.llm.calls[1]!.messages.length).toBe(t.llm.calls[0]!.messages.length + 1);
     expect(JSON.stringify(t.llm.calls[1]!.messages)).toContain('RESUMEN-EMERGENCIA');
     expect(result.parts.some((p) => p.type === 'text')).toBe(true);
+  });
+
+  it('[TLANE-AC-5] forwards the turn lane to every LLM request and to the compaction summary', async () => {
+    const t = mkDeps();
+    seedMany(t.store, 12);
+    const compaction = mkCompaction({
+      success: true,
+      summary: 'RESUMEN',
+      messagesCompacted: 2,
+      tokensBefore: 1000,
+      tokensAfter: 100,
+    });
+    t.deps.compactionService = compaction.service;
+    t.deps.compactionConfig = COMPACTION_CONFIG;
+    t.llm.scripts = [
+      { throws: new Error('prompt is too long.') },
+      { onText: ['ok'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn({ ...mkInput(), lane: 'background' }, {
+      signal: new AbortController().signal,
+    });
+
+    expect(t.llm.calls.map((c) => c.lane)).toEqual(['background', 'background']);
+    expect(compaction.compactOpts[0]?.lane).toBe('background');
   });
 
   it('falls back to aggressive truncation when compaction fails (keeps last 10, no summary)', async () => {
@@ -554,6 +1158,109 @@ describe('TurnDriver — emergency compaction (prompt too long)', () => {
       new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal }),
     ).rejects.toThrow('prompt is too long');
     expect(t.llm.calls.length).toBe(1);
+  });
+
+  it('CTX-020: compaction timeout in the normal path degrades to truncation instead of killing the turn', async () => {
+    // 2026-09-30 M6 incident regression: a slow summarizer (thinking model on a
+    // ~200K-token prompt) blew the 120s compaction timeout; the error propagated
+    // and killed the turn, and every retry looped to death. The fix: the normal
+    // path falls back to the same aggressive truncation the emergency path uses.
+    const t = mkDeps();
+    seedMany(t.store, 12);
+    let compactAttempts = 0;
+    const compaction = {
+      checkNeedsCompaction: () => ({
+        shouldCompact: true,
+        currentTokens: 1500,
+        threshold: 1000,
+        protectedTokens: 0,
+      }),
+      // Never settles — simulates the hung >120s summarization call.
+      compact: async () => {
+        compactAttempts++;
+        return new Promise(() => {}) as never;
+      },
+    } as unknown as CompactionService;
+    t.deps.compactionService = compaction;
+    t.deps.compactionConfig = COMPACTION_CONFIG;
+    t.deps.compactionTimeoutMs = 5; // ms — force the timeout deterministically
+    t.llm.scripts = [
+      { onText: ['recuperado'], response: r('end_turn', 10, 1) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // The turn SURVIVED: compaction was attempted once, timed out, and the
+    // turn continued with the truncated window instead of throwing.
+    expect(compactAttempts).toBe(1);
+    expect(result.parts.some((p) => p.type === 'text')).toBe(true);
+    // No summary persisted on the truncation path.
+    expect(t.store.compactionUpdates).toEqual([]);
+    expect(t.deps.sessionSummaries.has(SESSION)).toBe(false);
+  });
+
+  it('CTX-020: non-timeout compaction errors still propagate (kill the turn)', async () => {
+    const t = mkDeps();
+    seedMany(t.store, 12);
+    const compaction = {
+      checkNeedsCompaction: () => ({
+        shouldCompact: true,
+        currentTokens: 1500,
+        threshold: 1000,
+        protectedTokens: 0,
+      }),
+      compact: async () => {
+        throw new Error('summarizer exploded');
+      },
+    } as unknown as CompactionService;
+    t.deps.compactionService = compaction;
+    t.deps.compactionConfig = COMPACTION_CONFIG;
+    t.deps.compactionTimeoutMs = 5_000;
+
+    await expect(
+      new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal }),
+    ).rejects.toThrow('summarizer exploded');
+  });
+
+  it('CTX-020: emergency compaction timeout degrades to truncation (fallback no longer bypassed)', async () => {
+    // The emergency path (prompt-too-long retry) had the same latent bug as the
+    // normal path: a timeout throw bypassed its own aggressive-truncation
+    // fallback, killing the turn. Regression: hung summarizer + context-length
+    // error → the turn must still retry with the truncated window.
+    const t = mkDeps();
+    seedMany(t.store, 12);
+    const compaction = {
+      checkNeedsCompaction: () => ({
+        shouldCompact: false,
+        currentTokens: 0,
+        threshold: 1000,
+        protectedTokens: 0,
+      }),
+      compact: async () => {
+        return new Promise(() => {}) as never; // never settles
+      },
+    } as unknown as CompactionService;
+    t.deps.compactionService = compaction;
+    t.deps.compactionConfig = COMPACTION_CONFIG;
+    t.deps.compactionTimeoutMs = 5;
+    t.llm.scripts = [
+      { throws: new Error('prompt is too long.') },
+      { onText: ['recuperado'], response: r('end_turn', 10, 1) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // Turn survived: the timeout fell through to truncation and the retry ran.
+    expect(t.llm.calls.length).toBe(2);
+    // 12 messages → slice(-max(floor(12*0.3),10)) = last 10 → 2 fewer than the
+    // original window (which also gained the in-flight assistant skeleton).
+    expect(result.parts.some((p) => p.type === 'text')).toBe(true);
+    expect(t.store.compactionUpdates).toEqual([]);
+    expect(t.deps.sessionSummaries.has(SESSION)).toBe(false);
   });
 });
 
@@ -924,6 +1631,7 @@ describe('TurnAccumulator', () => {
       cacheReadTokens: 5,
       cacheWriteTokens: 7,
       reasoningTokens: 0, // TER-615: new accumulator field, 0 when no provider reports it
+      usageEstimated: false, // false when no step reported estimated usage
     });
   });
 
@@ -1213,6 +1921,15 @@ class FakeToolExecutor {
     return this.tools;
   }
 
+  /** Mirrors McaToolExecutor.getAllToolNames(): the FULL inventory including
+   * tools hidden from getTools() in proxy mode. Empty by default so existing
+   * tests (no proxy) see the union = getTools() names only. */
+  allToolNames: string[] = [];
+
+  getAllToolNames(): string[] {
+    return this.allToolNames;
+  }
+
   async executeTool(
     name: string,
     input: Record<string, unknown>,
@@ -1241,6 +1958,7 @@ function mkCompaction(result: {
   tokensAfter: number;
 }) {
   const compactCalls: MessageWithParts[][] = [];
+  const compactOpts: Array<{ signal?: AbortSignal; lane?: string } | undefined> = [];
   const service = {
     checkNeedsCompaction: () => ({
       shouldCompact: false,
@@ -1248,12 +1966,13 @@ function mkCompaction(result: {
       threshold: 1000,
       protectedTokens: 0,
     }),
-    compact: async (messages: MessageWithParts[]) => {
+    compact: async (messages: MessageWithParts[], opts?: { signal?: AbortSignal; lane?: string }) => {
       compactCalls.push(messages);
+      compactOpts.push(opts);
       return result;
     },
   } as unknown as CompactionService;
-  return { service, compactCalls };
+  return { service, compactCalls, compactOpts };
 }
 
 function mkDeps(overrides: Partial<TurnDriverDeps> = {}) {
@@ -1296,7 +2015,9 @@ function mkDeps(overrides: Partial<TurnDriverDeps> = {}) {
     interruptStrategy: boundaryAware,
     maxStepsReached: new Map(),
     stepResetRequested: new Map(),
+    turnEndRequested: new Map(),
     sessionSummaries: new Map(),
+    lastCompactionAt: new Map(),
     toolExecutionMode: 'sequential',
     // Deterministic clock so the wrapper-measured latency/ttft (TER-615
     // follow-up) is 0 by default → the timing fallback stays silent and these
@@ -1464,5 +2185,407 @@ describe('TurnDriver — mid-turn billing cut (FASE 0.5)', () => {
     // Both LLM calls ran; gate checked once (only at step 1, never at step 0).
     expect(t.llm.calls.length).toBe(2);
     expect(billingCalls).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Silent-turn regression (2026-09-24): max_tokens + 0 content + 0 tool calls.
+//
+// Real repro (glm-5p3 via fireworks): the model spent the whole output budget
+// on reasoning (finish_reason=length, contentChars=0). The turn then "completed"
+// with an EMPTY assistant message - no channel text_chunk ever fired, so no
+// channel message was created, no error thrown, nothing persisted the user
+// could see. Every new user message repeated the identical cycle: the channel
+// appeared dead. Contract after the fix: a turn NEVER ends silently - it either
+// produces content/tool calls (retry with a larger budget) or leaves a visible
+// error part in the channel.
+// ---------------------------------------------------------------------------
+
+describe('TurnDriver - silent turn on max_tokens with zero content', () => {
+  // The glm-5p3 repro shape: budget exhausted in reasoning, no content chunks,
+  // no tool calls. usage.outputTokens is the wall the model actually hit.
+  const emptyMaxTokens = (): LLMResponse => ({
+    stopReason: 'max_tokens',
+    usage: { inputTokens: 800, outputTokens: 1682, reasoningTokens: 940 },
+  });
+
+  // Pre-fix repro (kept as documentation): an empty max_tokens response used to
+  // end the turn with ZERO parts, zero channel events and zero errors - silent
+  // death. That exact test now fails against the fix BY DESIGN (the guard
+  // retries, consuming a second script), so it lives on as this edge case:
+  // the same silent shape but with NO usage figures (degraded provider path)
+  // must still retry, using the 8192 floor budget.
+  it('empty max_tokens with NO usage - retry fires with the 8192 floor budget', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.llm.scripts = [
+      // Silent shape, no usage at all (some degraded Together/Fireworks paths).
+      { response: { stopReason: 'max_tokens' } },
+      { onText:['recuperado'], response: r('end_turn', 10, 5) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    expect(t.llm.calls.length).toBe(2);
+    // No outputTokens to scale -> the floor kicks in.
+    expect(t.llm.calls[1]!.maxTokens).toBe(8192);
+    expect(
+      result.parts.some((p) => p.type === 'text' && (p as { text: string }).text === 'recuperado'),
+    ).toBe(true);
+  });
+
+  it('(a) max_tokens + empty - retry with larger budget - content OK, no duplicate turn header', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.llm.scripts = [
+      { response: emptyMaxTokens() }, // attempt 1: silent shape
+      { onText: ['respuesta recuperada'], response: r('end_turn', 800, 50) }, // retry: OK
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // Retry happened exactly once, with a larger explicit maxTokens.
+    expect(t.llm.calls.length).toBe(2);
+    expect(t.llm.calls[1]!.maxTokens).toBeGreaterThan(0);
+    // 1682 output tokens hit the wall - retry budget scales the real wall x4.
+    expect(t.llm.calls[1]!.maxTokens).toBeGreaterThanOrEqual(1682 * 4);
+    // The turn now ends with visible content.
+    expect(
+      result.parts.some(
+        (p) => p.type === 'text' && (p as { text: string }).text === 'respuesta recuperada',
+      ),
+    ).toBe(true);
+    expect(result.info.error).toBeUndefined();
+    // text_chunk events fired - the backend would create the channel message.
+    const textChunks = t.events.filter(
+      (ev) => (ev.message as { type?: string }).type === 'text_chunk',
+    );
+    expect(textChunks.length).toBeGreaterThan(0);
+    // No error part leaked into the store from the failed first attempt.
+    expect(result.parts.every((p) => p.type !== 'tool')).toBe(true);
+  });
+
+  it('(b) max_tokens + empty - retry ALSO empty - typed MessageOutputLengthError thrown, never silence', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.llm.scripts = [
+      { response: emptyMaxTokens() }, // attempt 1: silent shape
+      { response: emptyMaxTokens() }, // retry: still silent shape
+    ];
+
+    // Fix B (2026-09-30): the error is now a TYPED throw (MessageOutputLengthError,
+    // an AgentError) so the backend renders the standard error card with a working
+    // Retry button — not a plain assistant text bubble masquerading as a reply.
+    await expect(
+      new TurnDriver(t.deps).runTurn(mkInput(), {
+        signal: new AbortController().signal,
+      }),
+    ).rejects.toMatchObject({
+      name: 'MessageOutputLengthError',
+      type: 'llm',
+      userMessage: expect.stringContaining('max_tokens'),
+    });
+
+    expect(t.llm.calls.length).toBe(2); // exactly one retry, no loop
+    // No error text masquerading as an assistant reply — nothing persisted.
+    const textChunks = t.events.filter(
+      (ev) => (ev.message as { type?: string }).type === 'text_chunk',
+    );
+    expect(textChunks.length).toBe(0);
+  });
+
+  it('(b2) user abort mid-reasoning - no budget retry, no error text, turn ends silently for the user', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    // The 2026-09-30 incident shape: adapter promotes an aborted stream to
+    // max_tokens (legacy behavior — the adapter is since fixed too, but the
+    // TurnDriver must defend on its own). The signal is already aborted when
+    // the response lands.
+    const aborted = new AbortController();
+    aborted.abort();
+    t.llm.scripts = [
+      { response: emptyMaxTokens() }, // silent shape + aborted signal
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: aborted.signal,
+    });
+
+    // No retry fired, no error surfaced — the user asked to stop.
+    expect(t.llm.calls.length).toBe(1);
+    const textChunks = t.events.filter(
+      (ev) => (ev.message as { type?: string }).type === 'text_chunk',
+    );
+    expect(textChunks.length).toBe(0);
+    expect(result.parts.filter((p) => p.type === 'text')).toHaveLength(0);
+    expect(result.info.error).toBeUndefined();
+  });
+
+  it('(c) normal end_turn response - behavior unchanged (no retry, single call)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.llm.scripts = [{ onText: ['hola!'], response: r('end_turn', 10, 2) }];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    expect(t.llm.calls.length).toBe(1);
+    expect(t.llm.calls[0]!.maxTokens).toBeUndefined(); // no explicit budget injection
+    expect(
+      result.parts.some((p) => p.type === 'text' && (p as { text: string }).text === 'hola!'),
+    ).toBe(true);
+    expect(result.info.error).toBeUndefined();
+  });
+
+  it('(d) tool_calls response - behavior unchanged (no retry, tools dispatch normally)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('search', async () => ({ output: 'ok:search', isError: false }));
+    t.llm.scripts = [
+      { toolCalls: [tc('call_a', 'search', { q: 'x' })], response: r('tool_calls', 100, 10) },
+      { onText: ['fin'], response: r('end_turn', 150, 5) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // Two calls, but BOTH are the normal tool loop - no budget retry involved
+    // (the first call had tool calls, so the silent-turn path never triggers).
+    expect(t.llm.calls.length).toBe(2);
+    expect(t.llm.calls[1]!.maxTokens).toBeUndefined();
+    expect(t.executor.executions.length).toBe(1);
+    expect(
+      result.parts.some((p) => p.type === 'text' && (p as { text: string }).text === 'fin'),
+    ).toBe(true);
+    expect(result.info.error).toBeUndefined();
+  });
+
+  it('max_tokens WITH partial content - no retry (content exists, turn is not silent)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    // Truncated mid-answer: stopReason max_tokens but content was produced -
+    // the user sees a (cut) reply. Retrying here would duplicate the partial
+    // answer, so the fix must NOT trigger.
+    t.llm.scripts = [
+      { onText: ['respuesta parcia'], response: r('max_tokens', 100, 2000) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    expect(t.llm.calls.length).toBe(1);
+    expect(
+      result.parts.some(
+        (p) => p.type === 'text' && (p as { text: string }).text === 'respuesta parcia',
+      ),
+    ).toBe(true);
+    expect(result.info.error).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Deterministic turn end on endsTurn (2026-10-25, Pablo decision — task
+// task_5a96f0ee5c7fede9). A tool result with endsTurn: true (the
+// permission_requested / form_displayed markers) must end the turn IN THE
+// SYSTEM — no second LLM call hoping the model obeys the textual
+// instruction. Reuses the existing step_end 'break' path (TER-445 queue
+// interrupt): remaining tools of the step are synthesized (INV-1 intact).
+// ---------------------------------------------------------------------------
+describe('TurnDriver — deterministic turn end on endsTurn', () => {
+  it('a tool result with endsTurn: true ends the turn with NO second LLM call', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('search', async () => ({
+      output: JSON.stringify({ status: 'permission_requested', instruction: 'end your turn' }),
+      isError: false,
+      endsTurn: true,
+    }));
+    // Script 2 exists to prove it is NEVER consumed — the turn must die at the
+    // step_end after the tool, not continue the loop.
+    t.llm.scripts = [
+      { toolCalls: [tc('call_a', 'search', { q: 'x' })], response: r('tool_calls', 100, 10) },
+      { onText: ['no debe correr'], response: r('end_turn', 150, 5) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // Exactly ONE LLM call — the marker cut the turn deterministically.
+    expect(t.llm.calls.length).toBe(1);
+    // The tool ran and its marker result was persisted (completed, isError false).
+    const part = t.store.partByCallId('call_a')!;
+    expect(part.state.status).toBe('completed');
+    expect((part.state as { output?: string }).output).toContain('permission_requested');
+    // The turn resolves with the step's assistant message (queue-interrupt
+    // path contract): callers expect a MessageWithParts, not undefined.
+    expect(result.info.id).toBe('message_turn_1');
+    // Usage was published — the consumed LLM call is not silently lost.
+    expect(t.completions.length).toBe(1);
+    // Cleanup ran on this exit path.
+    expect(phases(t.events).at(-1)).toBe('idle');
+  });
+
+  it('[PERMB-AC-1] a form marker (form_displayed) still synthesizes the rest of the step as Skipped (INV-1 intact)', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('alpha', async () => ({
+      output: 'marker',
+      isError: false,
+      endsTurn: true,
+      awaiting: 'form' as const,
+    }));
+    t.executor.behave('beta', async () => ({ output: 'ok:beta', isError: false }));
+    t.executor.behave('hang', async () => ({ output: 'ok:hang', isError: false }));
+    t.llm.scripts = [
+      {
+        toolCalls: [
+          tc('call_a', 'alpha', {}),
+          tc('call_b', 'beta', {}),
+          tc('call_c', 'hang', {}),
+        ],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['no debe correr'], response: r('end_turn', 10, 1) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // Only the first tool reached the executor — 2 and 3 never executed.
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['alpha']);
+    // INV-1: every tool_use has its tool_result — 3 tool parts, all settled.
+    const partA = t.store.partByCallId('call_a')!;
+    const partB = t.store.partByCallId('call_b')!;
+    const partC = t.store.partByCallId('call_c')!;
+    expect(partA.state.status).toBe('completed'); // real marker result
+    expect((partA.state as { output?: string }).output).toBe('marker');
+    // Synthesized as skipped — NOT executed, NOT error.
+    expect(partB.state.status).toBe('completed');
+    expect((partB.state as { output?: string }).output).toContain('Skipped');
+    expect(partC.state.status).toBe('completed');
+    expect((partC.state as { output?: string }).output).toContain('Skipped');
+    // The turn died at the step_end — one LLM call total.
+    expect(t.llm.calls.length).toBe(1);
+    expect(result.info.id).toBe('message_turn_1');
+  });
+
+  it('a kind-less endsTurn (backward compatible) behaves as the form case: the rest is Skipped', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    t.executor.behave('alpha', async () => ({ output: 'marker', isError: false, endsTurn: true }));
+    t.executor.behave('beta', async () => ({ output: 'ok:beta', isError: false }));
+    t.llm.scripts = [
+      {
+        toolCalls: [tc('call_a', 'alpha', {}), tc('call_b', 'beta', {})],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['no debe correr'], response: r('end_turn', 10, 1) },
+    ];
+
+    await new TurnDriver(t.deps).runTurn(mkInput(), { signal: new AbortController().signal });
+
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['alpha']);
+    expect((t.store.partByCallId('call_b')!.state as { output?: string }).output).toContain('Skipped');
+    expect(t.llm.calls.length).toBe(1);
+  });
+
+  it('[PERMB-AC-1] permission markers do not skip the step: A(ask) B(allow) C(ask) all dispatch, one LLM call', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    const marker = (tool: string) =>
+      JSON.stringify({ status: 'permission_requested', tool, instruction: 'end your turn' });
+    t.executor.behave('alpha', async () => ({
+      output: marker('alpha'),
+      isError: false,
+      endsTurn: true,
+      awaiting: 'permission' as const,
+    }));
+    t.executor.behave('beta', async () => ({ output: 'ok:beta', isError: false }));
+    t.executor.behave('gamma', async () => ({
+      output: marker('gamma'),
+      isError: false,
+      endsTurn: true,
+      awaiting: 'permission' as const,
+    }));
+    t.llm.scripts = [
+      {
+        toolCalls: [
+          tc('call_a', 'alpha', {}),
+          tc('call_b', 'beta', {}),
+          tc('call_c', 'gamma', {}),
+        ],
+        response: r('tool_calls', 10, 1),
+      },
+      { onText: ['no debe correr'], response: r('end_turn', 10, 1) },
+    ];
+
+    const result = await new TurnDriver(t.deps).runTurn(mkInput(), {
+      signal: new AbortController().signal,
+    });
+
+    // All three reached the executor, in array order, one at a time.
+    expect(t.executor.executions.map((e) => e.name)).toEqual(['alpha', 'beta', 'gamma']);
+    const partA = t.store.partByCallId('call_a')!;
+    const partB = t.store.partByCallId('call_b')!;
+    const partC = t.store.partByCallId('call_c')!;
+    expect(partA.state.status).toBe('completed');
+    expect((partA.state as { output?: string }).output).toBe(marker('alpha'));
+    expect(partB.state.status).toBe('completed');
+    expect((partB.state as { output?: string }).output).toBe('ok:beta');
+    expect(partC.state.status).toBe('completed');
+    expect((partC.state as { output?: string }).output).toBe(marker('gamma'));
+    for (const p of [partA, partB, partC]) {
+      expect((p.state as { output?: string }).output ?? '').not.toContain('Skipped');
+    }
+    // The turn still ends deterministically at the step end.
+    expect(t.llm.calls.length).toBe(1);
+    expect(result.info.id).toBe('message_turn_1');
+  });
+
+  it('the flag is NOT inherited by the next turn on the same session', async () => {
+    const t = mkDeps();
+    t.store.seedUserMessage('message_u01', 'hola');
+    let callCount = 0;
+    t.executor.behave('search', async () => {
+      callCount++;
+      return callCount === 1
+        ? { output: 'marker', isError: false, endsTurn: true }
+        : { output: 'ok:search', isError: false };
+    });
+    t.llm.scripts = [
+      // Turn 1: tool with endsTurn → turn dies.
+      { toolCalls: [tc('call_a', 'search', { q: 'x' })], response: r('tool_calls', 100, 10) },
+      // Turn 2 (next user message): normal tool → text. Two calls.
+      { toolCalls: [tc('call_b', 'search', { q: 'y' })], response: r('tool_calls', 100, 10) },
+      { onText: ['fin'], response: r('end_turn', 150, 5) },
+    ];
+
+    const driver = new TurnDriver(t.deps);
+    await driver.runTurn(mkInput(), { signal: new AbortController().signal });
+    expect(t.llm.calls.length).toBe(1);
+
+    // Second turn on the SAME session (same deps maps): must run to completion
+    // with the normal tool loop — the endsTurn flag was cleaned in the finally.
+    const result2 = await driver.runTurn(
+      mkInput({ assistantTurnId: 'message_turn_2' }),
+      { signal: new AbortController().signal },
+    );
+    expect(t.llm.calls.length).toBe(3); // 1 (turn 1) + 2 (turn 2 tool + text)
+    expect(
+      result2.parts.some((p) => p.type === 'text' && (p as { text: string }).text === 'fin'),
+    ).toBe(true);
+    // The second turn's tool executed normally — no synthesized skip.
+    const partB = t.store.partByCallId('call_b')!;
+    expect(partB.state.status).toBe('completed');
+    expect((partB.state as { output?: string }).output).toBe('ok:search');
   });
 });

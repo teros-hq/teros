@@ -1,6 +1,5 @@
 export {
   type FormsToolContext,
-  ensureAuthenticated,
   type GoogleClients,
   getGoogleClients,
   initializeGoogleClients,

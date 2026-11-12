@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 // Layout names mapped to Google's predefinedLayout enum values.
 // See: https://developers.google.com/slides/api/reference/rest/v1/presentations/request#LayoutReference
@@ -42,7 +42,6 @@ export const addSlide: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const {
       presentationId,

@@ -30,15 +30,21 @@ export function createGetUserHandler(userService: UserService, db: Db) {
       throw new HandlerError('USER_NOT_FOUND', 'User not found')
     }
 
+    // apps.ownerId is a workspaceId: the user's apps are those of the
+    // workspaces they own (MOD-1)
+    const ownedWorkspaceIds = await db
+      .collection('workspaces')
+      .distinct('workspaceId', { ownerId: targetUserId })
+
     const [appsCount, sessionsCount, credentialsCount] = await Promise.all([
-      db.collection('apps').countDocuments({ ownerId: targetUserId }),
+      db.collection('apps').countDocuments({ ownerId: { $in: ownedWorkspaceIds } }),
       db.collection('sessions').countDocuments({ userId: targetUserId }),
       db.collection('user_credentials').countDocuments({ userId: targetUserId }),
     ])
 
     const apps = await db
       .collection('apps')
-      .find({ ownerId: targetUserId })
+      .find({ ownerId: { $in: ownedWorkspaceIds } })
       .project({ appId: 1, name: 1, mcaId: 1, status: 1, createdAt: 1 })
       .toArray()
 

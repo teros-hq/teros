@@ -7,7 +7,7 @@
  */
 import bcrypt from 'bcrypt'
 import { MongoClient, ObjectId } from 'mongodb'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, randomUUID } from 'node:crypto'
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017'
 const DB_NAME = process.env.MONGODB_DATABASE || 'teros'
@@ -44,6 +44,8 @@ const boards = db.collection('boards')
 const tasks = db.collection('tasks')
 const apps = db.collection('apps')
 const mcaCatalog = db.collection('mca_catalog')
+const workspaceMembers = db.collection('workspace_members')
+const billingSubscriptions = db.collection('billing_subscriptions')
 
 if (RESET) {
   console.log('🧹 RESET=1 → wiping playwright test artifacts')
@@ -51,6 +53,9 @@ if (RESET) {
   await users.deleteMany({ 'profile.email': { $regex: '^playwright[123]@test.com$' } })
   await identities.deleteMany({ email: { $regex: '^playwright[123]@test.com$' } })
   if (userIds.length) {
+    const wsIds = (await workspaces.find({ ownerId: { $in: userIds } }).toArray()).map((w) => w.workspaceId)
+    await workspaceMembers.deleteMany({ $or: [{ workspaceId: { $in: wsIds } }, { userId: { $in: userIds } }] })
+    await billingSubscriptions.deleteMany({ userId: { $in: userIds } })
     await workspaces.deleteMany({ ownerId: { $in: userIds } })
     await agents.deleteMany({ ownerId: { $in: userIds } })
     await channels.deleteMany({ userId: { $in: userIds } })
@@ -67,9 +72,12 @@ if (RESET) {
 // Ensure a minimal agent core exists so we can attach default agents to it.
 // modelId es OBLIGATORIO: sin él, getEffectiveAgentConfig lanza "Could not resolve config for
 // agent" y el turno termina sin llamar al LLM → todos los specs @llm fallan (incident: el @llm
-// env quedaba roto). teros-kimi-k2.6 es el modelo del provider `teros` (Kimi) que
-// ensureTerosProvider asigna al agente. Upsert (no insert-if-absent) para reparar cores ya
-// sembrados sin modelId.
+// env quedaba roto). teros-l es el tamaño L del provider `teros` — su default (TPROV-REQ-1).
+// Desde TPROV (2026-11-03, migración 20261103_001_teros_sizes) los únicos modelos ACTIVE del
+// provider son los tamaños teros-l / teros-m / teros-s; teros-kimi-k3 y el resto de ids legacy
+// quedaron deprecated, y agent.setModel (helpers/provider.ts) valida el pin contra los ACTIVE
+// del provider → MODEL_NOT_SERVED con un id legacy (CI run 41562797422).
+// Upsert (no insert-if-absent) para reparar cores ya sembrados sin modelId.
 const TEST_CORE_ID = 'core:pw-test'
 await agentCores.updateOne(
   { coreId: TEST_CORE_ID },
@@ -81,14 +89,14 @@ await agentCores.updateOne(
       personality: ['friendly', 'helpful'],
       capabilities: ['chat'],
       baseSystemPrompt: 'You are a helpful test assistant.',
-      modelId: 'teros-kimi-k2.6',
+      modelId: 'teros-l',
       updatedAt: new Date().toISOString(),
     },
     $setOnInsert: { createdAt: new Date().toISOString() },
   },
   { upsert: true },
 )
-console.log(`✓ Ensured agent core ${TEST_CORE_ID} (modelId teros-kimi-k2.6)`)
+console.log(`✓ Ensured agent core ${TEST_CORE_ID} (modelId teros-l)`)
 
 const results = []
 for (const u of USERS) {
@@ -197,6 +205,38 @@ for (const u of USERS) {
   results.push({ email, userId, password: u.password, privateWorkspaceId: workspaceId, agentId })
 }
 
+// Every real signup gets an active default subscription (user-service →
+// createDefaultSubscription); without one the billing gate (TER-621) refuses every Teros
+// model turn with NoActiveSubscriptionError. This seed writes users straight to Mongo and
+// the boot backfill migration ran before it, so mirror signup here (idempotent).
+for (const r of results) {
+  if (!r.userId) continue
+  if (await billingSubscriptions.findOne({ userId: r.userId, status: 'active' })) continue
+  const now = new Date()
+  const periodEnd = new Date(now)
+  periodEnd.setMonth(periodEnd.getMonth() + 1)
+  await billingSubscriptions.insertOne({
+    _id: randomUUID(),
+    userId: r.userId,
+    planId: 'plan_seed', // DEFAULT_PLAN_ID
+    customAgentHoursLimit: null,
+    customPrice: 0,
+    customPriceNote: null,
+    agentHoursUsed: 0,
+    overageHours: 0,
+    currentPeriodStart: now,
+    currentPeriodEnd: periodEnd,
+    status: 'active',
+    startDate: now,
+    endDate: null,
+    paymentMethod: 'manual',
+    billingNotes: 'playwright seed',
+    createdAt: now,
+    updatedAt: now,
+  })
+  console.log(`✓ active plan_seed subscription for ${r.email}`)
+}
+
 // Create a shared workspace owned by playwright1, with playwright2 as member.
 // Used by the cross-user test.
 const userA = results[0]
@@ -222,7 +262,6 @@ if (!sharedWs && userA && userB) {
     type: 'shared',
     ownerId: userA.userId,
     volumeId: sharedVolumeId,
-    members: [{ userId: userB.userId, role: 'write', addedAt: now.toISOString(), addedBy: userA.userId }],
     settings: {},
     status: 'active',
     createdAt: now.toISOString(),
@@ -230,6 +269,20 @@ if (!sharedWs && userA && userB) {
   })
   console.log(`✅ Created shared workspace: ${sharedWsId} (owner=${userA.userId}, member=${userB.userId})`)
   sharedWs = { workspaceId: sharedWsId }
+}
+// Membership lives in `workspace_members` (single source of truth since f5b9c1dde — access
+// checks and workspace broadcasts read only that collection; the embedded `members` array
+// is legacy and the boot migration that converted it runs BEFORE this seed). Upsert on
+// every run so an older seed gets repaired too.
+if (sharedWs && userA && userB) {
+  await workspaceMembers.updateOne(
+    { workspaceId: sharedWs.workspaceId, userId: userB.userId },
+    {
+      $set: { role: 'write', status: 'active', addedBy: userA.userId },
+      $setOnInsert: { joinedAt: new Date().toISOString() },
+    },
+    { upsert: true },
+  )
 }
 
 await client.close()

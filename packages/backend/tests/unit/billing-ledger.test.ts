@@ -19,6 +19,9 @@ import { describe, expect, it } from 'bun:test'
 import { MongoServerError } from 'mongodb'
 import { AgentHoursTracker } from '../../src/services/agent-hours-tracker'
 
+/** Every rolled-up hour counts as final here (the billable horizon has its own tests). */
+const billAllHours = async () => new Date(8_640_000_000_000_000)
+
 const stubLogger = {
   info: () => {},
   warn: () => {},
@@ -180,7 +183,7 @@ describe('billing_hour_ledger — append-only audit trail (FASE 2a)', () => {
     const sub: Sub = { _id: 's1', userId: 'A', status: 'active', agentHoursUsed: 0 }
     const rollups = [roll('A', 1), roll('A', 2), roll('A', 3)]
     const ledger: LedgerEntry[] = []
-    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
 
@@ -205,7 +208,7 @@ describe('billing_hour_ledger — append-only audit trail (FASE 2a)', () => {
     const sub: Sub = { _id: 's1', userId: 'A', status: 'active', agentHoursUsed: 0 }
     const rollups = [roll('A', 1), roll('A', 2)]
     const ledger: LedgerEntry[] = []
-    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce() // bucket 1..2
     rollups.push(roll('A', 3), roll('A', 4))
@@ -222,7 +225,7 @@ describe('billing_hour_ledger — append-only audit trail (FASE 2a)', () => {
     const sub: Sub = { _id: 's1', userId: 'A', status: 'active', agentHoursUsed: 0 }
     const rollups = [roll('A', 1), roll('A', 2)]
     const ledger: LedgerEntry[] = []
-    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
     await tracker.runOnce() // no new rollups → aggregation count 0 → no entry
@@ -236,7 +239,7 @@ describe('billing_hour_ledger — append-only audit trail (FASE 2a)', () => {
     // 600 buckets > LEDGER_MAX_ROLLUP_IDS (500).
     const rollups = Array.from({ length: 600 }, (_, i) => roll('A', i + 1))
     const ledger: LedgerEntry[] = []
-    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null)
+    const tracker = new AgentHoursTracker(makeDb([sub], rollups, ledger), stubLogger, null, undefined, undefined, billAllHours)
 
     await tracker.runOnce()
 
@@ -256,6 +259,9 @@ describe('billing_hour_ledger — append-only audit trail (FASE 2a)', () => {
       makeDb([sub], rollups, ledger, { failIncOnce }),
       stubLogger,
       null,
+      undefined,
+      undefined,
+      billAllHours,
     )
 
     await tracker.runOnce() // ledger written, $inc suppressed

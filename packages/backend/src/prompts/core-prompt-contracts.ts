@@ -92,6 +92,41 @@ const SHARED_MUST_CONTAIN: PromptInvariant[] = [
     why: "a non-erroring tool call is not proof of success; verify once, don't loop",
     needle: "Verify once; don't loop",
   },
+  {
+    label: "terminal-capability",
+    why: "agents must know the Terminal + Claude Code capability exists, also when it is not installed",
+    needle: "Teros has a Terminal app",
+  },
+  {
+    label: "terminal-check-preference",
+    why: "the remembered answer about Claude Code is checked before proposing it",
+    needle: "check the user's remembered preference",
+  },
+  {
+    label: "terminal-propose-once",
+    why: "Claude Code is proposed at most once per conversation, never nagged",
+    needle: "at most once per conversation",
+  },
+  {
+    label: "terminal-no-after-no",
+    why: "after a no the agent must not propose Claude Code again",
+    needle: "do not propose it again",
+  },
+  {
+    label: "terminal-remember-answer",
+    why: "the user's answer is saved in memory as a preference",
+    needle: "`user_preferences` item",
+  },
+  {
+    label: "terminal-no-auto-install",
+    why: "the Terminal app is never installed, granted or signed in without the user's yes",
+    needle: "without the user's explicit yes",
+  },
+  {
+    label: "terminal-guide-topic",
+    why: "the full playbook lives in the platform guide topic (mca.teros.guide)",
+    needle: "guide topic `terminal-claude-code`",
+  },
 ]
 
 /**

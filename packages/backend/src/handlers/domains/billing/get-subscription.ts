@@ -46,15 +46,19 @@ export function createGetSubscriptionHandler(
     // plan/boost entry point); there is no plan to apply the metered gate to.
     if (!sub) return { subscription: null, paymentMethod: null, boostPricing: baseBoostPricing }
 
-    const [view, paymentMethod, plan] = await Promise.all([
+    const [view, paymentMethod, plan, customer] = await Promise.all([
       shapeSubscriptionView(db, sub),
       stripe ? stripe.getDefaultCard(ctx.userId) : Promise.resolve(null),
       getBillingPlansCollection(db).findOne({ _id: sub.planId }),
+      stripe ? stripe.getCustomer(ctx.userId).catch(() => null) : Promise.resolve(null),
     ])
+    const billingDetails = customer
+      ? { country: customer.country ?? null, taxId: customer.taxId ?? null, taxIdType: customer.taxIdType ?? null }
+      : null
     // Per-plan half of the gate: a boost only adds hours on a metered Teros plan,
     // so don't advertise a price the backend would reject with
     // PURCHASE_NOT_APPLICABLE (mirrors billing.purchase-boost exactly).
     const metered = !!plan?.features.terosModel && getEffectiveLimit(sub, plan) > 0
-    return { subscription: view, paymentMethod, boostPricing: metered ? baseBoostPricing : null }
+    return { subscription: view, paymentMethod, billingDetails, boostPricing: metered ? baseBoostPricing : null }
   }
 }

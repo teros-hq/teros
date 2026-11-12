@@ -1,5 +1,6 @@
 import type { ToolConfig } from '@teros/mca-sdk'
-import { createGraphClient, buildRecipients } from '../lib'
+import { createGraphClient, buildRecipients, processEmailBody } from '../lib'
+import { resolveSignatureHtml, withSignature } from '../lib/signature'
 import type { OutlookSecrets } from '../lib'
 
 export const forwardMessage: ToolConfig = {
@@ -29,8 +30,18 @@ export const forwardMessage: ToolConfig = {
 
     const messageId = args.messageId as string
 
+    // Forward comment: process (auto Markdown → HTML) and append the signature
+    // when a comment is provided. The forwarded message body is untouched.
+    const rawComment = (args.comment as string) || ''
+    let comment = rawComment
+    if (rawComment) {
+      const { body: processedBody, isHtml } = await processEmailBody(rawComment, undefined)
+      const signature = resolveSignatureHtml(secrets.SIGNATURE_HTML)
+      comment = withSignature(processedBody, isHtml, signature)
+    }
+
     await graphRequest('POST', `/me/messages/${messageId}/forward`, {
-      comment: (args.comment as string) || '',
+      comment,
       toRecipients: buildRecipients(args.to as string),
     })
 

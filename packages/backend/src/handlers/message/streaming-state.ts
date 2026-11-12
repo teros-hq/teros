@@ -36,6 +36,10 @@ export interface UpdateToolStatusOptions {
   irreversible?: boolean;
   /** Inline user form (request-user-input) — set with status 'pending_user_input'. */
   formRequestId?: string;
+  /** Workspace where the tool was invoked. Persisted alongside appId so
+   *  restored executions target the exact workspace-scoped app instance
+   *  instead of re-resolving by name (incident-2026-08-14). */
+  workspaceId?: string;
 }
 
 export interface ToolCallInput {
@@ -54,6 +58,8 @@ export interface StreamingState {
   lastContentType: 'text' | 'tool' | null;
   /** Pre-reserved id for the first bubble of the turn; shared with `PromptInput.assistantTurnId`. */
   pendingSeedId: string | null;
+  /** MUW-F1: the turn's seed ID, preserved for the entire turn (unlike pendingSeedId which is consumed by the first bubble). Stamped on every channel message for redaction linkage. */
+  turnId: string | null;
 }
 
 export interface StreamingStateDeps {
@@ -83,6 +89,8 @@ export function createStreamingState(assistantTurnSeedId?: string): StreamingSta
     savedMessages: [],
     lastContentType: null,
     pendingSeedId: assistantTurnSeedId ?? null,
+    // MUW-F1: preserve the seed for the entire turn so every bubble gets stamped.
+    turnId: assistantTurnSeedId ?? null,
   };
 }
 
@@ -108,6 +116,9 @@ export interface ToolStatusContent {
   irreversible?: boolean;
   formRequestId?: string;
   formRequestedAt?: string;
+  /** Workspace where the tool was invoked — persisted for exact restoration
+   *  (incident-2026-08-14). Only set when status = 'pending_permission'. */
+  workspaceId?: string;
 }
 
 interface ToolStatusOptions {
@@ -116,6 +127,7 @@ interface ToolStatusOptions {
   appId?: string;
   irreversible?: boolean;
   formRequestId?: string;
+  workspaceId?: string;
 }
 
 /**
@@ -141,6 +153,7 @@ export function buildToolStatusContent(
     if (options.permissionRequestId) content.permissionRequestId = options.permissionRequestId;
     if (options.appId) content.appId = options.appId;
     if (options.irreversible) content.irreversible = true;
+    if (options.workspaceId) content.workspaceId = options.workspaceId;
     permissionRequestedAt = now.toISOString();
     content.permissionRequestedAt = permissionRequestedAt;
   }
@@ -165,6 +178,7 @@ export function buildToolStatusChunk(args: {
   permissionRequestedAt?: string;
   irreversible?: boolean;
   formRequestId?: string;
+  workspaceId?: string;
   now?: number;
 }): Record<string, any> {
   const includePermFields =
@@ -184,6 +198,7 @@ export function buildToolStatusChunk(args: {
           appId: args.appId,
           ...(args.permissionRequestedAt ? { permissionRequestedAt: args.permissionRequestedAt } : {}),
           ...(args.irreversible ? { irreversible: true } : {}),
+          ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         }
       : {}),
     ...(includeFormFields ? { formRequestId: args.formRequestId } : {}),
@@ -220,6 +235,7 @@ export async function persistToolStatusFields(
   if (content.appId) fields.appId = content.appId;
   if (content.permissionRequestedAt) fields.permissionRequestedAt = content.permissionRequestedAt;
   if (content.irreversible) fields.irreversible = true;
+  if (content.workspaceId) fields.workspaceId = content.workspaceId;
   if (content.formRequestId) fields.formRequestId = content.formRequestId;
   if (content.formRequestedAt) fields.formRequestedAt = content.formRequestedAt;
   await channelManager.updateMessageContentFields(messageId, fields);
@@ -258,6 +274,22 @@ export async function notifyObserverPermission(args: {
     console.log(`🔔 channel_permission event sent to observer channel ${observerChannelId}`);
   } catch (err) {
     console.error('[StreamingState] Error sending channel_permission event:', err);
+  }
+}
+
+/**
+ * True when a tool output is the v4 `permission_requested` awaiting-user
+ * marker (McaToolExecutor.enforcePermissionPolicy). Defensive: any non-JSON
+ * or non-object output is simply "not the marker".
+ * @spec PERMB-REQ-2
+ */
+export function isPermissionRequestedMarker(output: string | undefined): boolean {
+  if (!output) return false;
+  try {
+    const parsed = JSON.parse(output);
+    return !!parsed && typeof parsed === 'object' && parsed.status === 'permission_requested';
+  } catch {
+    return false;
   }
 }
 
@@ -332,6 +364,11 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
             caption: mediaMsg.caption,
             mimeType: mediaMsg.mimeType,
             size: mediaMsg.size,
+            // FVU live mode (send-file tool): keep the volume reference so
+            // "Abrir en FileViewer" works — without these the button silently
+            // no-ops (handleOpenViewer returns early). Pattern of html_file.
+            ...(mediaMsg.filePath ? { filePath: mediaMsg.filePath } : {}),
+            ...(mediaMsg.workspaceId ? { workspaceId: mediaMsg.workspaceId } : {}),
           };
           break;
         case 'html':
@@ -371,6 +408,8 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
         sender: agentSender,
         content: mediaContent,
         timestamp: new Date().toISOString(),
+        // MUW-F1: stamp turnId for redaction linkage across all bubbles of the turn.
+        ...(state.turnId ? { turnId: state.turnId } : {}),
       };
 
       await channelManager.saveMessage(mediaMessage);
@@ -411,6 +450,8 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
             text: state.currentTextContent,
           },
           timestamp: new Date().toISOString(),
+          // MUW-F1: stamp turnId for redaction linkage across all bubbles of the turn.
+          ...(state.turnId ? { turnId: state.turnId } : {}),
         };
 
         await channelManager.saveMessage(textMessage);
@@ -502,6 +543,7 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
           permissionRequestedAt,
           irreversible: options?.irreversible,
           formRequestId: options?.formRequestId,
+          workspaceId: options?.workspaceId,
         }),
       );
       console.log(
@@ -524,6 +566,15 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
     /**
      * Complete and update a tool message by toolCallId
      * Updates the existing message with final status and output
+     *
+     * PERMB-REQ-2: when the completion carries the `permission_requested`
+     * marker and the channel message is in `pending_permission`, the message
+     * is left untouched — status and permission fields (permissionRequestId,
+     * appId, irreversible, permissionRequestedAt, workspaceId, toolCallId)
+     * stay as the ask persisted them, and nothing is broadcast that would flip
+     * the card to completed. The marker still reaches the session store as the
+     * tool part's output (MessageProcessor — not this function).
+     * @spec PERMB-REQ-2
      * 
      * @param toolCallId - The ID of the tool call to complete
      * @param toolData - The completion data (status, output, error, duration)
@@ -545,6 +596,21 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
       if (!trackedTool) {
         // tool_result for a turn we never owned — silent drop.
         return;
+      }
+
+      // PERMB-REQ-2: a pending request stays pending_permission in the record.
+      if (isPermissionRequestedMarker(toolData.output)) {
+        const current = await channelManager.getMessage(trackedTool.messageId);
+        if ((current?.content as { status?: string } | undefined)?.status === 'pending_permission') {
+          state.savedMessages.push({ messageId: trackedTool.messageId, type: 'tool_execution' });
+          console.log(
+            `🔧 Settled tool ${trackedTool.toolName} (${toolCallId}) with the permission marker — stays pending_permission`,
+          );
+          await handleTerosMessage(toolData.output);
+          state.activeToolCalls.delete(toolCallId);
+          if (untrackToolCall) untrackToolCall(toolCallId);
+          return;
+        }
       }
 
       const toolMessage: Message = {
@@ -658,6 +724,8 @@ export function createStreamingHelpers(state: StreamingState, deps: StreamingSta
             status: 'pending',
           },
           timestamp: new Date().toISOString(),
+          // MUW-F1: stamp turnId for redaction linkage across all bubbles of the turn.
+          ...(state.turnId ? { turnId: state.turnId } : {}),
         };
 
         await channelManager.saveMessage(toolMessage);

@@ -23,8 +23,8 @@ import {
   KeyValueGrid,
   type KeyValueRow,
   ResourceCard,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -71,6 +71,10 @@ export function ListDesignsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
+  // Hoisted above the conditional JSX below: hooks must run unconditionally,
+  // or a status/items change flips the branch and the hook count with it.
+  const scrollStyle = useScrollStyle(360);
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items: designs, nextCursor, total } = unwrapList<CanvaDesign>(parsed, 'designs');
 
@@ -93,7 +97,7 @@ export function ListDesignsRenderer({
           {designs.length === 0 ? (
             <Empty message="No designs" />
           ) : (
-            <ScrollView style={useScrollStyle(360)} showsVerticalScrollIndicator>
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
               <XStack flexWrap="wrap" gap={8} padding={4}>
                 {designs.map((d) => (
                   <Polaroid
@@ -114,12 +118,12 @@ export function ListDesignsRenderer({
           {(nextCursor || typeof total === 'number') && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof total === 'number' && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {total} shown
                 </Text>
               )}
               {nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · more · cursor available
                 </Text>
               )}
@@ -268,6 +272,9 @@ export function GetDesignPagesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  // Hoisted above the conditional JSX below: hooks must run unconditionally,
+  // or a status/items change flips the branch and the hook count with it.
+  const scrollStyle = useScrollStyle(320);
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = narrowObject<DesignPagesShape>(parsed);
   const pages = data?.pages ?? [];
@@ -284,7 +291,7 @@ export function GetDesignPagesRenderer({
           {pages.length === 0 ? (
             <Empty message="No pages" />
           ) : (
-            <ScrollView style={useScrollStyle(320)} showsVerticalScrollIndicator>
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
               <XStack flexWrap="wrap" gap={8} padding={4}>
                 {pages.map((p: { index?: number | null; thumbnailUrl?: string | null; width?: number | null; height?: number | null }, i: number) => (
                   <Polaroid

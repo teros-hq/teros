@@ -17,16 +17,25 @@ import type {
   ApiKeyField,
   AppAuthInfo,
   AppCredentialStatus,
+  GitHubInstallationSummary,
+  GitHubSavedBranch,
   McaAuthType,
   McaOAuthState,
   OAuthTokenResponse,
 } from "@teros/core"
+import { readFile } from "fs/promises"
+import { join } from "path"
+import { config } from "../config"
+import { COLLECTIONS, collection, ensureCollectionIndexes } from "../db"
 import { createHash, randomBytes } from "crypto"
 import { type Collection, type Db, ObjectId } from "mongodb"
 import { HttpClient } from "../lib/HttpClient"
+import { createLogger } from "../lib/logger"
 import type { SecretsManager } from "../secrets/secrets-manager"
-import type { McpCatalogEntry } from "../types/database"
+import type { App, McpCatalogEntry } from "../types/database"
 import type { AuthManager } from "./auth-manager"
+
+const log = createLogger("McaOAuth")
 
 // Shared HTTP client for all OAuth token/userinfo exchanges
 const oauthHttpClient = new HttpClient({
@@ -108,7 +117,21 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderConfig> = {
     userInfoUrl: "https://graph.microsoft.com/v1.0/me",
     userInfoFields: { email: "mail", name: "displayName" },
     emailFallbackFields: ["userPrincipalName"],
-    requestRefreshToken: true,
+    // Microsoft issues refresh tokens via the `offline_access` scope (present
+    // in all Microsoft MCA manifests) — the Google-style `access_type=offline`
+    // / `prompt=consent` params are not needed and are actively harmful:
+    // `prompt=consent` forces an interactive user-consent screen on every
+    // login, ignoring admin consent already granted for the organization. In
+    // tenants where user consent is disabled (common in corporate Microsoft
+    // 365), users get stuck at "admin approval required" even though the
+    // admin already consented.
+    requestRefreshToken: false,
+    // Always show the account picker so each user selects their own account
+    // instead of silently reusing whatever session is open in the browser
+    // (e.g. an IT admin who logged in earlier to approve consent).
+    customizeAuthorizeParams: (params) => {
+      params.set("prompt", "select_account")
+    },
   },
   canva: {
     kind: "url-based",
@@ -325,11 +348,101 @@ export function buildTokenRequest(
   return { headers, body: new URLSearchParams(bodyParams) }
 }
 
+function tokenResponseError(tokens: ProviderTokenResponse): string | undefined {
+  if (tokens.error != null || tokens.ok === false) return String(tokens.error ?? "ok: false")
+  return undefined
+}
+
+type GitHubInstallationLookup =
+  | { kind: "ok"; installations: GitHubInstallationSummary[] }
+  | { kind: "unauthorized" }
+  | { kind: "unknown" }
+
+const GITHUB_INSTALLATION_CACHE_MS = 5 * 60 * 1000
+const githubInstallationCache = new Map<string, { at: number; value: GitHubInstallationLookup }>()
+
+export function clearGitHubInstallationCache(): void {
+  githubInstallationCache.clear()
+}
+
+function pendingGitHubPermissions(wanted: Record<string, string>, granted: Record<string, string> | undefined): string[] {
+  return Object.entries(wanted)
+    .filter(([key, level]) => {
+      const has = granted?.[key]
+      return !has || (level === "write" && has !== "write" && has !== "admin")
+    })
+    .map(([key]) => key)
+}
+
+async function fetchGitHubInstallations(token: string, wanted: Record<string, string>): Promise<GitHubInstallationLookup> {
+  try {
+    const res = await fetch("https://api.github.com/user/installations?per_page=100", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "Teros",
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (res.status === 401) return { kind: "unauthorized" }
+    if (!res.ok) return { kind: "unknown" }
+    const body = (await res.json()) as {
+      installations?: Array<{
+        id: number
+        account?: { login?: string; type?: string }
+        html_url?: string
+        permissions?: Record<string, string>
+        suspended_at?: string | null
+      }>
+    }
+    return {
+      kind: "ok",
+      installations: (body.installations ?? []).map((i) => {
+        const pending = pendingGitHubPermissions(wanted, i.permissions)
+        return {
+          id: String(i.id),
+          account: i.account?.login ?? "",
+          ...(i.account?.type ? { accountType: i.account.type } : {}),
+          ...(i.html_url ? { manageUrl: i.html_url } : {}),
+          ...(i.suspended_at ? { suspended: true } : {}),
+          ...(pending.length > 0 ? { pendingPermissions: pending } : {}),
+        }
+      }),
+    }
+  } catch {
+    return { kind: "unknown" }
+  }
+}
+
+async function cachedGitHubInstallations(
+  key: string,
+  token: string,
+  wanted: Record<string, string>,
+): Promise<GitHubInstallationLookup> {
+  const hit = githubInstallationCache.get(key)
+  if (hit && Date.now() - hit.at < GITHUB_INSTALLATION_CACHE_MS) return hit.value
+  const value = await fetchGitHubInstallations(token, wanted)
+  if (value.kind !== "unknown") githubInstallationCache.set(key, { at: Date.now(), value })
+  return value
+}
+
 export class McaOAuth {
   private statesCollection: Collection<McaOAuthStateDocument>
+  private refreshesInFlight = new Map<string, Promise<{ success: boolean; error?: string }>>()
   private connectionManager?: {
     sendCredentialsUpdate: (appId: string, credentials: Record<string, string>) => boolean
   }
+  /**
+   * v2 non-blocking interactions: fired from handleCallback when a user's
+   * OAuth flow completes (auth state → ready). The backend wires this to wake
+   * the channel whose agent asked the user to connect the app ("the user
+   * connected X — you can continue"). show-app-auth registers the
+   * (userId, appId) → channelId mapping in an awaiting-auth registry; this
+   * hook consumes it. Without the hook (legacy/tests) the callback just
+   * doesn't wake anyone — same as v1.
+   */
+  private onAppAuthReady?: (userId: string, appId: string) => void
 
   constructor(
     private db: Db,
@@ -349,14 +462,18 @@ export class McaOAuth {
     this.connectionManager = connectionManager
   }
 
+  /** v2 non-blocking interactions: wire the auth-ready wake hook (see field). */
+  setOnAppAuthReady(hook: (userId: string, appId: string) => void): void {
+    this.onAppAuthReady = hook
+  }
+
   /**
    * Initialize indexes for the states collection
    */
   async ensureIndexes(): Promise<void> {
-    // Unique state token
-    await this.statesCollection.createIndex({ state: 1 }, { unique: true })
-    // TTL: auto-delete expired states
-    await this.statesCollection.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.statesCollection, COLLECTIONS.mcaOauthStates)
   }
 
   /**
@@ -517,9 +634,9 @@ export class McaOAuth {
       providerCfg?.customizeAuthorizeParams?.(params)
 
       url = `${authConfig.authorizeUrl}?${params.toString()}`
-      console.log(`[McaOAuth] AUTHORIZE URL for ${provider}/${mcaId}:`)
-      console.log(`  scope=     ${params.get("scope") || "(none)"}`)
-      console.log(`  user_scope=${params.get("user_scope") || "(none)"}`)
+      log.debug({ provider, mcaId }, "Authorize URL generated")
+      log.debug({ scope: params.get("scope") || "(none)" }, "OAuth scope")
+      log.debug({ userScope: params.get("user_scope") || "(none)" }, "OAuth user_scope")
     }
 
     return { url, state }
@@ -677,8 +794,9 @@ export class McaOAuth {
           : ""
       if (grantedScopes.length > 0) {
         credentials.GRANTED_SCOPES = grantedScopes
-        console.log(
-          `[McaOAuth] ${stateDoc.provider}/${stateDoc.mcaId} granted scopes: ${grantedScopes}`,
+        log.info(
+          { provider: stateDoc.provider, mcaId: stateDoc.mcaId, grantedScopes },
+          "Granted scopes",
         )
       }
 
@@ -696,7 +814,13 @@ export class McaOAuth {
       // When a user installs a GitHub App, GitHub redirects with ?installation_id=xxx&code=yyy
       if (stateDoc.provider === "github" && extraParams?.installation_id) {
         credentials.INSTALLATION_ID = extraParams.installation_id
-        console.log(`[McaOAuth] GitHub App installation_id captured: ${extraParams.installation_id}`)
+        log.info({ installationId: extraParams.installation_id }, "GitHub App installation_id captured")
+      }
+
+      // QuickBooks (Intuit): capture realmId from callback params
+      if (extraParams?.realmId) {
+        credentials.REALM_ID = extraParams.realmId
+        log.info({ realmId: extraParams.realmId }, "QuickBooks realmId captured")
       }
 
       // Provider-specific credentials extracted from the token response
@@ -705,7 +829,17 @@ export class McaOAuth {
         Object.assign(credentials, providerConfig.extraCredentials(tokensExt))
       }
 
+      if (!credentials.ACCESS_TOKEN) {
+        throw new Error("Token exchange failed: no access_token in response")
+      }
+
+      if (stateDoc.provider === "github" && !credentials.INSTALLATION_ID) {
+        const previous = await this.authManager.get(stateDoc.userId, stateDoc.appId)
+        if (previous?.INSTALLATION_ID) credentials.INSTALLATION_ID = previous.INSTALLATION_ID
+      }
+
       await this.authManager.set(stateDoc.userId, stateDoc.appId, stateDoc.mcaId, credentials)
+
 
       // 7. Notify MCA via WebSocket if connected
       if (this.connectionManager) {
@@ -714,11 +848,23 @@ export class McaOAuth {
           credentials as Record<string, string>,
         )
         if (sent) {
-          console.log(`[McaOAuth] Notified MCA ${stateDoc.appId} of new credentials`)
+          log.info({ appId: stateDoc.appId }, "Notified MCA of new credentials")
         } else {
-          console.log(
-            `[McaOAuth] MCA ${stateDoc.appId} not connected, credentials will be loaded on next spawn`,
+          log.info(
+            { appId: stateDoc.appId },
+            "MCA not connected, credentials will be loaded on next spawn",
           )
+        }
+      }
+
+      // 8. v2 non-blocking interactions: the auth state just became ready —
+      // wake the channel whose agent showed the auth widget. Fire-and-forget
+      // (never let a wake failure fail the OAuth callback itself).
+      if (this.onAppAuthReady) {
+        try {
+          this.onAppAuthReady(stateDoc.userId, stateDoc.appId)
+        } catch (err) {
+          console.error("[McaOAuth] onAppAuthReady (wake) failed:", err)
         }
       }
 
@@ -772,7 +918,12 @@ export class McaOAuth {
       throw new Error(`Token exchange failed: ${error}`)
     }
 
-    return response.json() as Promise<OAuthTokenResponse>
+    const tokens = (await response.json()) as ProviderTokenResponse
+    const tokenError = tokenResponseError(tokens)
+    if (tokenError) {
+      throw new Error(`Token exchange failed: ${tokenError}`)
+    }
+    return tokens
   }
 
   /**
@@ -811,32 +962,116 @@ export class McaOAuth {
     }
 
     // 2. Check system secrets (required for OAuth client credentials or shared API keys)
+    // userSecrets hoisted here because the hybrid-apikey fall-through below
+    // needs to check the completeness of the user's own key set.
     const systemSecrets = this.getRequiredSystemSecrets(mca)
+    const userSecrets = this.getRequiredUserSecrets(mca)
+    // userSecretsOptional:false (manifest override) — user secrets are
+    // complementary: mandatory alongside the system secrets, NOT an optional
+    // override of the shared credential (e.g. mca.teros.email: MAIL_ACCOUNT
+    // is the mailbox identity, the transport secrets are separate). Absent
+    // keeps the default hybrid semantics (2026-10-26).
+    const userSecretsOptional = mca.userSecretsOptional !== false
+    // Alternative groups (api-key MCAs with more than one valid credential
+    // combination, e.g. mca.teros.email lab proxy vs direct token):
+    // configured = ALL non-grouped secrets present + SOME complete group —
+    // not the flat union of every mode's secrets. Evaluated once here and
+    // reused by the hybrid fallback in step 3.
+    const systemEval = systemSecrets.length > 0 ? this.evaluateSystemSecrets(mca, this.secretsManager.mca(mca.mcaId)) : { configured: true, missing: [] as string[] }
     if (systemSecrets.length > 0) {
-      const secrets = this.secretsManager.mca(mca.mcaId)
-      const missingSecrets = systemSecrets.filter((key) => !secrets?.[key])
+      const { configured: systemConfigured, missing: missingSecrets } = systemEval
 
-      if (missingSecrets.length > 0) {
+      if (!systemConfigured) {
         const userAuth = authType === "apikey" ? await this.authManager.get(userId, appId) : undefined
-        return {
-          status: "needs_system_setup",
-          authType,
-          message: `Requiere configuracion de admin: ${missingSecrets.join(", ")}`,
-          apikey: authType === "apikey" ? {
-            configured: !!userAuth,
-            fields: this.buildApiKeyFields(mca),
-          } : undefined,
+        // Hybrid apikey MCA (system + user secrets): the user's own key fully
+        // replaces the shared system key, so a user with a COMPLETE personal
+        // key set stays functional even when the shared key is missing — fall
+        // through to the user-credentials check below instead of blocking
+        // them with needs_system_setup. Users without their own key (or with
+        // a partial one) still get the admin-setup message (with the API-key
+        // form so they can self-serve). NOT when userSecretsOptional:false —
+        // complementary user secrets cannot replace the system secrets.
+        const hasCompleteUserAuth =
+          authType === "apikey" &&
+          userSecretsOptional &&
+          !!userAuth &&
+          userSecrets.every((key) => !!userAuth[key])
+        if (!hasCompleteUserAuth) {
+          return {
+            status: "needs_system_setup",
+            authType,
+            message: `Requiere configuracion de admin: ${missingSecrets.join(", ")}`,
+            apikey: authType === "apikey" ? {
+              configured: !!userAuth,
+              fields: this.buildApiKeyFields(mca, userAuth),
+            } : undefined,
+          }
         }
       }
     }
 
     // 3. Check user credentials
-    const userSecrets = this.getRequiredUserSecrets(mca)
     if (userSecrets.length > 0) {
       const userAuth = await this.authManager.get(userId, appId)
 
       if (!userAuth) {
+        // Hybrid apikey MCA (system + user secrets, e.g. elevenlabs/twilio):
+        // the system secrets are a VALID shared fallback, so a user without
+        // their own key is still functional — the user secret is an optional
+        // override, not a requirement. Only report needs_user_auth when the
+        // system fallback is ALSO unusable (missing system secrets), i.e.
+        // there is genuinely no way to call the provider.
+        //
+        // Decision (2026-10-26, user-secrets post-demo migration): generic
+        // rule — authType 'apikey' + all system secrets present → 'ready'
+        // with apikey.configured=false + fields so the UI still renders the
+        // optional-key form. No manifest flag needed: for apikey MCAs the
+        // presence of system secrets IS the "userSecretsOptional" signal.
+        // OAuth2/github-app MCAs are unaffected (their system secrets are
+        // client credentials, not a usable fallback).
+        //
+        // userSecretsOptional:false (manifest override) flips this to
+        // complementary semantics: the user secrets are mandatory even with
+        // complete system secrets (e.g. mca.teros.email — MAIL_ACCOUNT is the
+        // mailbox identity, not an override of the transport credentials), so
+        // fall through to needs_user_auth instead of the fake 'ready'.
+        if (authType === "apikey" && systemSecrets.length > 0 && userSecretsOptional) {
+          if (systemEval.configured) {
+            return {
+              status: "ready",
+              authType,
+              apikey: {
+                configured: false,
+                fields: this.buildApiKeyFields(mca),
+              },
+              message: "App funcional con la credencial compartida — configura tu propia API key para usar tu cuenta",
+            }
+          }
+        }
+
         return this.buildNeedsAuthResponse(mca, authType)
+      }
+
+      // userSecretsRequired (api-key only): a record that exists but lacks
+      // the MANDATORY user secrets is still needs_user_auth — e.g.
+      // mca.teros.email with MAIL_FROM_NAME set but no MAIL_ACCOUNT (the
+      // mailbox identity) is not operational. Absent = all declared
+      // userSecrets are mandatory (the historic rule), so flat MCAs are
+      // unchanged.
+      if (authType === "apikey") {
+        const mandatory = mca.userSecretsRequired && mca.userSecretsRequired.length > 0 ? mca.userSecretsRequired : userSecrets
+        const missingUser = mandatory.filter((key) => !userAuth[key])
+        if (missingUser.length > 0) {
+          return {
+            status: "needs_user_auth",
+            authType,
+            apikey: {
+              configured: true,
+              fields: this.buildApiKeyFields(mca, userAuth),
+            },
+            message: `Faltan secrets del usuario: ${missingUser.join(", ")}`,
+          }
+        }
       }
 
       // GitHub App in user-OAuth mode: re-auth obligatoria si el user solo
@@ -868,14 +1103,14 @@ export class McaOAuth {
         if (expiry < expiryBuffer) {
           // Token expired or expiring soon - try to refresh
           if (userAuth.REFRESH_TOKEN) {
-            console.log(`[McaOAuth] Token expired/expiring for ${appId}, attempting refresh...`)
+            log.info({ appId }, "Token expired/expiring, attempting refresh")
             const refreshResult = await this.refreshToken(userId, appId, mca.mcaId)
 
             if (refreshResult.success) {
-              console.log(`[McaOAuth] Token refreshed successfully for ${appId}`)
+              log.info({ appId }, "Token refreshed successfully")
               // Get updated credentials after refresh
               const updatedAuth = await this.authManager.get(userId, appId)
-              return {
+              const refreshed: AppAuthInfo = {
                 status: "ready",
                 authType,
                 oauth: {
@@ -894,6 +1129,9 @@ export class McaOAuth {
                     }
                   : undefined,
               }
+              return isGhAppUserOAuth && updatedAuth
+                ? this.withGitHubInstallations(refreshed, userId, appId, mca, updatedAuth)
+                : refreshed
             } else {
               console.warn(`[McaOAuth] Token refresh failed for ${appId}: ${refreshResult.error}`)
               // Refresh failed - token is truly expired
@@ -932,7 +1170,7 @@ export class McaOAuth {
       }
 
       // 5. All good!
-      return {
+      const ready: AppAuthInfo = {
         status: "ready",
         authType,
         oauth:
@@ -950,7 +1188,7 @@ export class McaOAuth {
           authType === "apikey"
             ? {
                 configured: true,
-                fields: this.buildApiKeyFields(mca),
+                fields: this.buildApiKeyFields(mca, userAuth),
               }
             : undefined,
         githubApp:
@@ -962,6 +1200,7 @@ export class McaOAuth {
               }
             : undefined,
       }
+      return isGhAppUserOAuth ? this.withGitHubInstallations(ready, userId, appId, mca, userAuth) : ready
     }
 
     // No user secrets required, just system secrets - ready
@@ -982,10 +1221,21 @@ export class McaOAuth {
   }
 
   /**
+   * Read a user's stored credentials for an app (decrypted object).
+   * Agent secret tools (docs/specs/20261031_agent-secret-tools.md): the
+   * get-app-secret backend route uses this to build a MASKED preview —
+   * the raw value never leaves the backend.
+   */
+  async getCredentials(userId: string, appId: string): Promise<Record<string, any> | undefined> {
+    return this.authManager.get(userId, appId)
+  }
+
+  /**
    * Disconnect OAuth - revoke credentials
    */
   async disconnect(userId: string, appId: string): Promise<void> {
     await this.authManager.revoke(userId, appId)
+
   }
 
   /**
@@ -996,12 +1246,27 @@ export class McaOAuth {
     appId: string,
     mcaId: string,
   ): Promise<{ success: boolean; error?: string }> {
+    const key = `${userId}:${appId}`
+    const inFlight = this.refreshesInFlight.get(key)
+    if (inFlight) return inFlight
+    const refresh = this.runRefresh(userId, appId, mcaId).finally(() => this.refreshesInFlight.delete(key))
+    this.refreshesInFlight.set(key, refresh)
+    return refresh
+  }
+
+  private async runRefresh(
+    userId: string,
+    appId: string,
+    mcaId: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    let usedRefreshToken: string | undefined
     try {
       // 1. Get current credentials
       const currentAuth = await this.authManager.get(userId, appId)
       if (!currentAuth?.REFRESH_TOKEN) {
         return { success: false, error: "No refresh token available" }
       }
+      usedRefreshToken = currentAuth.REFRESH_TOKEN
 
       // 2. Get MCA config
       const mca = await this.catalogCollection.findOne({ mcaId: mcaId })
@@ -1045,10 +1310,15 @@ export class McaOAuth {
 
       if (!response.ok) {
         const error = await response.text()
-        return { success: false, error: `Refresh failed: ${error}` }
+        return this.refreshFailed(userId, appId, usedRefreshToken, `Refresh failed: ${error}`)
       }
 
-      const tokens = (await response.json()) as OAuthTokenResponse
+      const tokens = (await response.json()) as ProviderTokenResponse
+      const tokenError =
+        tokenResponseError(tokens) ?? (tokens.access_token ? undefined : "no access_token in response")
+      if (tokenError) {
+        return this.refreshFailed(userId, appId, usedRefreshToken, `Refresh failed: ${tokenError}`)
+      }
 
       // 4. Update stored credentials
       const expiryDate = tokens.expires_in
@@ -1069,15 +1339,42 @@ export class McaOAuth {
       // preserved across refreshes.
       await this.authManager.merge(userId, appId, mcaId, updated)
 
+
       return { success: true }
     } catch (error) {
       console.error("[McaOAuth] Refresh token error:", error)
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : "Refresh failed",
-      }
+      return this.refreshFailed(
+        userId,
+        appId,
+        usedRefreshToken,
+        error instanceof Error ? error.message : "Refresh failed",
+      )
     }
   }
+
+  private async refreshFailed(
+    userId: string,
+    appId: string,
+    usedRefreshToken: string | undefined,
+    error: string,
+  ): Promise<{ success: boolean; error?: string }> {
+    if (usedRefreshToken) {
+      const latest = await this.authManager.get(userId, appId).catch(() => null)
+      if (
+        latest?.REFRESH_TOKEN &&
+        latest.REFRESH_TOKEN !== usedRefreshToken &&
+        (latest.ACCESS_TOKEN || latest.USER_ACCESS_TOKEN)
+      ) {
+        log.info({ appId }, "Refresh failed but the credentials were already rotated by another caller")
+        return { success: true }
+      }
+    }
+    return { success: false, error }
+  }
+
+  // =========================================================================
+  // Per-user credential helpers (REQ-11 — personal apps)
+  // =========================================================================
 
   // =========================================================================
   // Private helpers
@@ -1115,6 +1412,53 @@ export class McaOAuth {
     return mca.systemSecrets || []
   }
 
+  /**
+   * Evaluate system-secret completeness for an MCA (task tn_Qcpm5ajAOTRuuHlE).
+   *
+   * Default (no systemSecretsAny): ALL declared systemSecrets must be present —
+   * unchanged behavior for every existing MCA (gmail, notion, elevenlabs…).
+   *
+   * With systemSecretsAny (api-key MCAs with alternative credential
+   * combinations, e.g. mca.teros.email: Stalwart Lab proxy vs direct admin
+   * token): configured = ALL non-grouped systemSecrets present AND at least
+   * one complete group. The MCA is operational in ANY of its transport modes
+   * — demanding the union of every mode's secrets misreports a working app
+   * as needs_system_setup.
+   *
+   * `missing` (for the needs_system_setup message) lists the non-grouped
+   * secrets that are absent plus, when no group is complete, the secrets of
+   * the closest incomplete group (fewest missing) — actionable without
+   * demanding every alternative at once.
+   */
+  private evaluateSystemSecrets(
+    mca: McpCatalogEntry,
+    secrets: Record<string, string | undefined> | undefined,
+  ): { configured: boolean; missing: string[] } {
+    const declared = this.getRequiredSystemSecrets(mca)
+    const groups = mca.systemSecretsAny && mca.systemSecretsAny.length > 0 ? mca.systemSecretsAny : undefined
+
+    // Flat semantics — the historic behavior
+    if (!groups) {
+      const missing = declared.filter((key) => !secrets?.[key])
+      return { configured: missing.length === 0, missing }
+    }
+
+    // Group semantics: non-grouped secrets are required unconditionally
+    const grouped = new Set(groups.flat())
+    const missing = declared.filter((key) => !grouped.has(key) && !secrets?.[key])
+
+    // …and at least one group must be complete
+    const groupGaps = groups.map((group) => group.filter((key) => !secrets?.[key]))
+    const completeGroupIdx = groupGaps.findIndex((gaps) => gaps.length === 0)
+    if (completeGroupIdx !== -1) {
+      return { configured: missing.length === 0, missing }
+    }
+
+    // No complete group — report the closest one's gaps for the admin message
+    const closest = groupGaps.reduce((best, gaps) => (gaps.length < best.length ? gaps : best), groupGaps[0])
+    return { configured: false, missing: [...missing, ...closest] }
+  }
+
   private getRequiredUserSecrets(mca: McpCatalogEntry): string[] {
     // Use new userSecrets field
     return mca.userSecrets || []
@@ -1141,6 +1485,63 @@ export class McaOAuth {
     // Fallback to legacy authSchema
     const authConfig = mca.authSchema as any
     return authConfig?.auth?.provider || "custom"
+  }
+
+  private async withGitHubInstallations(
+    info: AppAuthInfo,
+    userId: string,
+    appId: string,
+    mca: McpCatalogEntry,
+    userAuth: Record<string, string | undefined>,
+  ): Promise<AppAuthInfo> {
+    const token = userAuth.USER_ACCESS_TOKEN
+    if (!token || !info.githubApp) return info
+    const savedBranches = await this.savedGitHubBranches(appId)
+    if (savedBranches.length) info = { ...info, githubApp: { ...info.githubApp, savedBranches } }
+    const ghApp = info.githubApp
+    if (!ghApp) return info
+    const wanted = ((mca.auth as { permissions?: Record<string, string> } | undefined)?.permissions) ?? {}
+    const lookup = await cachedGitHubInstallations(`${userId}:${appId}:${token.slice(-12)}`, token, wanted)
+    if (lookup.kind === "unauthorized") {
+      return {
+        status: "expired",
+        authType: info.authType,
+        oauth: info.oauth ? { ...info.oauth, connected: false } : undefined,
+        githubApp: info.githubApp,
+        message: "GitHub no longer accepts this connection (it was revoked or has expired). Reconnect GitHub.",
+      }
+    }
+    if (lookup.kind !== "ok") return info
+    const installUrl = `https://github.com/apps/${ghApp.appSlug}/installations/select_target`
+    const githubApp = {
+      ...ghApp,
+      installed: lookup.installations.length > 0,
+      installUrl,
+      installations: lookup.installations,
+    }
+    if (lookup.installations.length > 0) return { ...info, githubApp }
+    return {
+      ...info,
+      githubApp,
+      message:
+        "Connected, but the Teros GitHub App is not installed on any account or organization yet, so agents cannot reach any repository. Install it where your repositories live.",
+    }
+  }
+
+  private async savedGitHubBranches(appId: string): Promise<GitHubSavedBranch[]> {
+    try {
+      const app = await this.db.collection<App>("apps").findOne({ appId })
+      if (!app || app.ownerType !== "workspace") return []
+      const ws = await collection(this.db, COLLECTIONS.workspaces).findOne({ workspaceId: app.ownerId })
+      const volumeId = (ws as { volumeId?: string } | null)?.volumeId
+      if (!volumeId) return []
+      const base = process.env.VOLUMES_BASE_PATH || config.volumes.basePath
+      const raw = await readFile(join(base, "workspaces", volumeId, ".teros-github", "saved-branches.json"), "utf-8")
+      const list = JSON.parse(raw) as GitHubSavedBranch[]
+      return Array.isArray(list) ? list.slice(-20) : []
+    } catch {
+      return []
+    }
   }
 
   private buildNeedsAuthResponse(mca: McpCatalogEntry, authType: McaAuthType): AppAuthInfo {
@@ -1196,13 +1597,25 @@ export class McaOAuth {
     return auth?.appSlug ?? "teros"
   }
 
-  private buildApiKeyFields(mca: McpCatalogEntry): ApiKeyField[] {
+  /**
+   * Campos del formulario de user secrets. `userAuth` (credenciales del user,
+   * cuando están a mano) solo alimenta `isSet` — presencia por variable, sin
+   * exponer valores — para que la UI (widget in-chat, panel de config) pueda
+   * listar las variables del manifest con su estado seteada/vacía.
+   */
+  private buildApiKeyFields(mca: McpCatalogEntry, userAuth?: Record<string, any>): ApiKeyField[] {
     const userSecrets = this.getRequiredUserSecrets(mca)
+    // userSecretsRequired (api-key only): only the mandatory subset is
+    // required:true in the form — declared-but-optional overrides (e.g.
+    // mca.teros.email MAIL_PASSWORD/MAIL_FROM_NAME) render as optional.
+    // Absent = all declared (the historic rule).
+    const required = mca.userSecretsRequired && mca.userSecretsRequired.length > 0 ? new Set(mca.userSecretsRequired) : null
     return userSecrets.map((key) => ({
       name: key,
       label: this.formatLabel(key),
       type: this.isSecretField(key) ? "password" : "text",
-      required: true,
+      required: required ? required.has(key) : true,
+      isSet: !!userAuth?.[key],
     }))
   }
 

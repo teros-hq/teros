@@ -2,7 +2,7 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.guide",
   "name": "Teros Guide",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Platform self-knowledge for agents. Lets an agent look up how Teros works on demand (agents, apps, boards, providers, workspaces, files…) so it can walk the user through the real steps. Two read-only tools: list-guide-topics and get-guide-section.",
   "type": "system",
   "icon": "icon.png",
@@ -33,5 +33,12 @@
     "permissions": false,
     "auth": false,
     "agent": false
-  }
+  },
+  "changelog": [
+    {
+      "version": "1.1.0",
+      "date": "2026-10-21",
+      "notes": "New topic terminal-claude-code: Claude Code in a terminal the user watches, on their own sign-in — when it fits, proposing it once and remembering the answer, enabling it, and driving a session (the wheel, sign-in, closing sessions)."
+    }
+  ]
 }

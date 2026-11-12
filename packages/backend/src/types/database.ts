@@ -41,6 +41,7 @@ export interface Model {
    * - 'minimax': MiniMax Token Plan (Anthropic-compatible API)
    * - 'teros': Teros official provider via Fireworks AI (Zero Data Retention, OpenAI-compatible API, system secret)
    * - 'cloudflare': User-owned Cloudflare Workers AI (OpenAI-compatible API, user secret)
+   * - 'helmcode': Helmcode (EU private inference, open-weight, flat-rate, BYOK, OpenAI-compatible)
 
    */
   provider:
@@ -61,6 +62,7 @@ export interface Model {
     | 'cloudflare'
     | 'fireworks'
     | 'together'
+    | 'helmcode'
 
 
   /** Human-readable name */
@@ -315,14 +317,51 @@ export interface AgentInstance {
    */
   cacheBlockSize?: number;
 
-  /** Providers this agent may use. Empty array = use the user's system default. */
+  /**
+   * @deprecated DEAD FIELD (2026-10-21): the per-agent provider list no longer
+   * exists as a concept. Kept in the type only so legacy documents that still
+   * carry it typecheck — the runtime never reads or writes it, and the
+   * migration 20261021_001 unsets it from every document.
+   */
   availableProviders?: string[];
 
-  /** Preferred provider (null = use the user's system default). */
+  /** Pinned provider (null = System Default, the user's default provider). */
   selectedProviderId?: string | null;
+  /**
+   * How this agent executes tasks it is assigned (CCR-REQ-1). Absent: a Teros
+   * agent — a conversation turn. `claude-code`: no LLM core of its own; each
+   * task is a Claude Code session in the workspace's terminal host, started
+   * by the Claude Code runner (services/terminal/claude-code-runner.ts).
+   * @spec CCR-REQ-1
+   */
+  runner?: 'claude-code';
 
-  /** Preferred model (null = use the core/model default). */
+  /** Pinned model within selectedProviderId (null = provider default). */
   selectedModelId?: string | null;
+
+  /**
+   * System capabilities toggles (v1.4.4) — control which auto-provisioned
+   * system MCAs (availability.system: true) this agent actually gets.
+   *
+   * Model: two per-agent lists keyed by mcaId:
+   * - `disabledSystemApps`: denylist for default-ON capabilities (memory,
+   *   tasks, boards, automate, workflows…). Empty/absent = all ON — the
+   *   historical behaviour.
+   * - `enabledSystemApps`: allowlist overrides for default-OFF capabilities
+   *   (terminal, filesystem, browser, ui — availability.defaultEnabled:
+   *   false). Absent = all OFF.
+   *
+   * A capability is provisioned iff
+   *   (defaultEnabled !== false && !disabledSystemApps.includes(mcaId))
+   *   || enabledSystemApps.includes(mcaId)
+   *
+   * `ensureProvisionedApps` reconciles both directions (grants when ON,
+   * revokes when OFF — self-healing on re-enable). See
+   * docs/specs/agents/20261030_isolated-agents.md for the leak-channel map
+   * this generalizes (isolated agent = agent with memory in the denylist).
+   */
+  disabledSystemApps?: string[];
+  enabledSystemApps?: string[];
 
   /** Metadata */
   createdAt: string;
@@ -428,6 +467,23 @@ export interface McpCatalogEntry {
      */
     hidden: boolean;
     /**
+     * System-capability default (v1.4.4): for system MCAs, whether the
+     * capability is provisioned to agents by default (true, opt-out via
+     * agent.disabledSystemApps) or only when explicitly enabled per agent
+     * (false, opt-in via agent.enabledSystemApps — the power capabilities:
+     * terminal, filesystem, browser, ui). Absent = true.
+     */
+    defaultEnabled?: boolean;
+    /**
+     * Provisioning scope (tn_PcquTN30AawbK8uE): 'super-agents' = the MCA is
+     * auto-provisioned only to superagents (agents without workspaceId);
+     * workspace agents get it only via an explicit human grant (the grant is
+     * the toggle). Absent = no scope restriction (all agents).
+     */
+    provisions?: {
+      scope: 'super-agents';
+    };
+    /**
      * Minimum role required to use this MCA
      * - 'user': Available to all users
      * - 'admin': Only admins can use
@@ -443,10 +499,36 @@ export interface McpCatalogEntry {
   systemSecrets?: string[];
 
   /**
+   * Alternative system-secret groups (api-key MCAs with more than one valid
+   * credential combination, e.g. mca.teros.email: Stalwart Lab proxy vs
+   * direct admin token). When present, 'configured' = ALL non-grouped
+   * systemSecrets present AND at least one complete group. `systemSecrets`
+   * remains the complete inventory (secret injection, admin UI).
+   */
+  systemSecretsAny?: string[][];
+
+  /**
    * User-level secrets required (e.g., ['ACCESS_TOKEN', 'REFRESH_TOKEN', 'EMAIL'])
    * These are unique per user, stored encrypted in user_credentials collection
    */
   userSecrets?: string[];
+
+  /**
+   * When false, userSecrets are complementary — mandatory even with complete
+   * system secrets (e.g. mca.teros.email: MAIL_ACCOUNT is the mailbox
+   * identity, not an override of the transport). Absent/true keeps the
+   * default api-key semantics (system secrets = valid shared fallback).
+   */
+  userSecretsOptional?: boolean;
+
+  /**
+   * Subset of userSecrets that are individually required (api-key only).
+   * Absent = all declared userSecrets are required. Use when some declared
+   * user secrets are optional overrides — e.g. mca.teros.email declares
+   * MAIL_PASSWORD (overrides the derived password) and MAIL_FROM_NAME
+   * (cosmetic) but only requires MAIL_ACCOUNT.
+   */
+  userSecretsRequired?: string[];
 
   /**
    * OAuth/Auth configuration from manifest
@@ -479,7 +561,6 @@ export interface McpCatalogEntry {
     }>;
     // --- GitHub App specific fields ---
     appSlug?: string;
-    setupUrl?: string;
     permissions?: Record<string, 'read' | 'write' | 'admin'>;
     events?: string[];
   };
@@ -531,7 +612,8 @@ export interface McpCatalogEntry {
     | 'storage'
     | 'utility'
     | 'other'
-    | 'google';
+    | 'google'
+    | 'microsoft';
 
   /** Icon identifier (lucide icon name) or URL */
   icon?: string;
@@ -546,6 +628,31 @@ export interface McpCatalogEntry {
   author?: { name: string; email?: string; url?: string };
   /** Search keywords / tags */
   keywords?: string[];
+
+  /**
+   * Event topics this MCA emits (manifest `events` or the MCA's events.json),
+   * served by app.list-event-topics. `filters` (v1.4.4) declares the unified
+   * subscription filter fields the backend validates _subscribe filters against.
+   */
+  events?: Array<{
+    topic: string;
+    description?: string;
+    payload?: Record<string, string>;
+    filters?: Record<string, { type: 'string' | 'number' | 'boolean'; operator?: 'anyOf' | 'equals' | 'contains'; mapsTo?: string; description?: string }>;
+  }>;
+
+  /** WsRouter actions the MCA may invoke through the WS bridge (manifest `backend.actions`). */
+  backendActions?: string[];
+  /**
+   * Context prehook (Fase 2 — app context in the prompt, manifest `contextPrehook`):
+   * how this app contributes environment context to the system prompt of agents
+   * that have it installed. Consumed by model-service.buildSystemPrompt().
+   */
+  contextPrehook?: MCAContextPrehook;
+  /** The MCA may open MCA streams (manifest `layers.streams`, spec MCS-REQ-1). */
+  streams?: boolean;
+  /** Functional dependencies on other catalog MCAs (manifest `dependencies`) — the install UI warns when unsatisfied. */
+  dependencies?: string[];
   /** Logo/avatar image URL */
   image?: string;
   /** Background/hero image URL */
@@ -660,6 +767,55 @@ export interface McpCatalogEntry {
  *
  * Users can have multiple workspaces and share them with others.
  */
+/**
+ * Invitation state — stored on the member entry, workspace-scoped.
+ * Only present for pending/invited members (not for direct active adds).
+ */
+export interface InvitationState {
+  /** userId of the inviter */
+  invitedBy: string;
+  /** ISO timestamp of the initial invitation */
+  invitedAt: string;
+  /** Opaque token embedded in the email CTA (NOT an access credential) */
+  token: string;
+  /** History of email sends (initial + resends), ISO timestamps */
+  sentAt: string[];
+  /** Set when membership activates on signup */
+  acceptedAt?: string;
+  /** Set when the invitation is revoked */
+  cancelledAt?: string;
+}
+
+/**
+ * Workspace member — active or pending.
+ *
+ * Active members have `userId` set and full workspace access.
+ * Pending members are keyed by `email` (no userId), have zero access,
+ * and activate automatically when someone creates an account with that email.
+ *
+ * Backward compatibility: existing entries without `status` are treated as
+ * 'active'; entries without `invitation` were never invited (direct add).
+ */
+export interface WorkspaceMember {
+  /** User ID — absent while status === 'pending' */
+  userId?: string;
+  /** Member role (owner is implicit, never listed as a member) */
+  role: 'admin' | 'write' | 'read';
+  /** When the member joined (set on activation or immediately for active adds) */
+  joinedAt: string;
+  /** userId who added/invited this member */
+  addedBy: string;
+
+  // ── MUW-14: Invitations & pending membership ──────────────────────────
+
+  /** 'active' (default, backward compat) or 'pending' (invited, no account yet) */
+  status?: 'active' | 'pending';
+  /** Normalized lowercase email — key for pending members */
+  email?: string;
+  /** Invitation state (only for pending/invited entries) */
+  invitation?: InvitationState;
+}
+
 export interface Workspace {
   /** Unique identifier (e.g., "work_teros-v2", "work_hexagon") */
   workspaceId: string;
@@ -685,20 +841,30 @@ export interface Workspace {
   volumeId: string;
 
   /**
-   * Members with access (owner has implicit 'owner' role, not listed here)
-   * For future collaboration feature
+   * Workspace settings
    */
-  members: Array<{
-    userId: string;
-    role: 'admin' | 'write' | 'read';
-    addedAt: string;
-    addedBy: string;
-  }>;
-
-  /** Workspace settings */
   settings: {
     /** Default git branch for dev workspaces */
     defaultBranch?: string;
+    /**
+     * Zero Data Retention only — when true, model selection is restricted to
+     * models whose resolved retention tier is `zdr` (local Ollama models,
+     * ZDR-by-contract providers, or models marked `providerConfig.zdr`).
+     * The picker hides everything else; the backend also refuses to resolve a
+     * non-ZDR model for agents in this workspace (defense in depth).
+     */
+    zdrOnly?: boolean;
+    /**
+     * 🛡️ Teros Guard (docs/specs/security/20261106_teros-guard.md): per-workspace
+     * switch for the review layer over `allow` calls. The GLOBAL rollout switch
+     * is the feature flag `tools.teros-guard` — both must be ON for the guard
+     * to run. `apps` empty/absent = the conservative default watch list
+     * (bash, http, email, payments — see mca-tool-executor DEFAULT_GUARD_APPS).
+     */
+    terosGuard?: {
+      enabled: boolean;
+      apps?: string[];
+    };
   };
 
   /**
@@ -741,6 +907,42 @@ export interface Workspace {
  * - auth: User-level credentials (from McpCatalogEntry.authSchema)
  * - permissions: Tool-level permissions (allow/ask/forbid per tool)
  */
+/** @spec NAV-REQ-2 */
+export type NavbarPinScope = 'workspace' | 'personal';
+/** @spec NAV-REQ-2 — a window serialized by its definition (`serialize(props)`). */
+export interface NavbarPinWindow {
+  type: string;
+  props: Record<string, unknown>;
+}
+/**
+ * One anchored window of the navbar (NAV spec v2.0.0). Workspace-scope pins are
+ * shared by every member; personal pins belong to `userId` and are local to
+ * `workspaceId` unless `global` (then `workspaceId` is the user's private workspace).
+ * @spec NAV-REQ-2
+ */
+export interface NavbarPin {
+  pinId: string;
+  workspaceId: string;
+  scope: NavbarPinScope;
+  userId?: string;
+  global?: boolean;
+  window: NavbarPinWindow;
+  /** `type` + serialized props, for deduplication. */
+  key: string;
+  label?: string;
+  /** i18n key, used by factory pins. */
+  labelKey?: string;
+  /** Phosphor icon name; the window definition's `phIcon` when absent. */
+  icon?: string;
+  display: 'row' | 'widget';
+  enabled: boolean;
+  order: number;
+  factory: boolean;
+  createdBy: { kind: 'user' | 'agent' | 'system'; id: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface App {
   /** Unique identifier (e.g., 'app_abc123') */
   appId: string;
@@ -757,6 +959,14 @@ export interface App {
    * Type of owner — always 'workspace' (all apps are workspace-scoped)
    */
   ownerType?: 'workspace';
+
+  /**
+   * The member who installed the app — its owner (MUW-REQ-10). Permanent and
+   * REQUIRED: migration 20261102_002 backfilled every existing app with the
+   * workspace owner; the code never infers an owner from a missing field.
+   * @spec MUW-REQ-10
+   */
+  installedBy: string;
 
   /** Human-readable name for this instance */
   name: string;
@@ -812,12 +1022,72 @@ export interface App {
    */
   context?: string;
 
+  /**
+   * App scope — controls credential isolation and usage in shared conversations.
+   * - 'personal': per-user credentials, blocked in shared conversations (REQ-7)
+   * - 'shared': workspace-level credentials, usable in all conversations
+   *
+   * Default: 'personal'. Existing apps without this field are treated as 'personal'.
+   */
+  /**
+   * REQUIRED (MUW-REQ-11): 'personal' = only installedBy sees and uses it;
+   * 'shared' = the whole workspace. Backfilled by migration 20261102_002.
+   */
+  scope: 'personal' | 'shared';
+
+  /**
+   * Per-user authentication data for personal apps.
+   * Keyed by userId, each value is that user's auth credentials (OAuth tokens, API keys, etc.).
+   * Only used when scope is 'personal'; shared apps use the top-level `auth` field.
+   *
+   * Note: the decision to use a separate `app_user_auth` collection is deferred to
+   * the per-user credentials task. This type is declared here for forward compatibility.
+   */
+  userAuth?: Record<string, Record<string, any>>;
+
   /** App status */
   status?: 'active' | 'disabled';
 
   /** Metadata */
   createdAt: string;
   updatedAt: string;
+}
+
+// ============================================================================
+// APP_USER_AUTH COLLECTION — per-user credentials for personal apps (REQ-11, NFR-4)
+// ============================================================================
+
+/**
+ * Per-user authentication credentials for personal apps.
+ *
+ * Personal apps (scope='personal') store each user's OAuth tokens in this
+ * separate collection rather than in `app.auth` (which is workspace-level).
+ * This ensures credential isolation: a user's tokens are never read by another
+ * user's tool execution (Security Considerations).
+ *
+ * Unique index: `{ appId: 1, userId: 1 }` — O(1) lookup by userId (NFR-4).
+ */
+export interface AppUserAuth {
+  /** App instance ID (foreign key to apps.appId) */
+  appId: string;
+
+  /** User ID — the channel creator whose credentials these are */
+  userId: string;
+
+  /**
+   * Legacy plaintext OAuth credentials. Replaced by `enc` (SEC-4); removed
+   * when the record is next read or written, and by migration 20261017_008.
+   */
+  auth?: Record<string, any>;
+
+  /** OAuth credentials encrypted with the user's key, AAD app_user_auth:<appId> */
+  enc?: { data: string; iv: string; tag: string };
+  encryptionFormat?: number;
+  /** Incremented on every write; merge() writes conditioned on it (MOD-6) */
+  rev?: number;
+
+  updatedAt: string;
+  createdAt: string;
 }
 
 // ============================================================================
@@ -879,6 +1149,68 @@ export interface AgentAppAccess {
    * If null/undefined, all tools default to 'ask'
    */
   permissions?: AppToolPermissions;
+}
+
+// ============================================================================
+// AGENT MAILBOXES COLLECTION (mca.teros.email lifecycle — tn_PcquTN30AawbK8uE)
+// ============================================================================
+
+/**
+ * AgentMailbox — the mailbox auto-provisioned for an agent when the email app
+ * is granted to it. ONE mailbox per agent (unique index on agentId); the
+ * address is globally unique too (unique index, never reassigned after burn).
+ *
+ * Written by the grantAccess hook (mca-service) and the lazy safety-net;
+ * read by the runtime credential injection (mca-manager.spawn-impl) to
+ * resolve the agent's MAIL_ACCOUNT without a per-user user-secret.
+ */
+export interface AgentMailbox {
+  /** Agent that owns this mailbox (unique — one mailbox per agent). */
+  agentId: string;
+
+  /** Full address, e.g. 'nira@agents.teros.ai' or 'chen-marcos@agents.teros.ai'. */
+  address: string;
+
+  /** Stalwart internal account id (x:Account id) — needed for rename/alias ops. */
+  stalwartAccountId?: string;
+
+  /** Display name for outgoing mail (agent's fullName at provision time). */
+  fromName?: string;
+
+  /** Stalwart domainId of the mailbox (e.g. 'c' = agents.teros.ai). */
+  domainId: string;
+
+  /** Provisioning state: pending = Stalwart call failed, retry pending. */
+  status: 'active' | 'pending' | 'renamed';
+
+  /** Addresses this mailbox had before renames (kept alive as aliases). */
+  renamedFrom?: string[];
+
+  /** Last provisioning error (when status = 'pending'). */
+  lastError?: string;
+
+  /** Provisioning attempts (when status = 'pending'). */
+  attempts?: number;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * BurnedAddress — addresses of deleted mailboxes, never reassigned
+ * (no-recycling rule, Pablo 1-nov). Written when a mailbox is destroyed.
+ */
+export interface BurnedAddress {
+  /** The burned address (unique). */
+  address: string;
+
+  /** The agent that owned it before deletion (audit trail). */
+  agentId: string;
+
+  /** The agent's owner (audit trail). */
+  ownerId?: string;
+
+  burnedAt: string;
 }
 
 // ============================================================================
@@ -979,6 +1311,9 @@ export interface Board {
   /** Project this board belongs to (1:1) */
   projectId: string;
 
+  /** Workspace of the project (shard key). Optional: boards created before 2026-10-17 lack it */
+  workspaceId?: string;
+
   /** Ordered list of columns */
   columns: BoardColumn[];
 
@@ -1066,6 +1401,42 @@ export interface ProgressNote {
  * Tasks live in columns on a board and can be assigned to agents.
  * When started, a conversation (channel) is created and linked.
  */
+/**
+ * A typed value attached to a task: its input or its deliverable.
+ * See docs/specs/tasks/artifacts.md.
+ */
+export interface TaskArtifact {
+  /** Artifact type (`artifacts` collection) — null when untyped. `"markdown"` is the built-in free-text type. */
+  schemaId: string | null;
+  /** Snapshot of the type's schema at creation time (form-first ArtifactSchema), so UI and agents render without a lookup. */
+  schema?: Record<string, unknown>;
+  /** The value. Input: set at creation. Output: set on save / complete. */
+  data?: unknown;
+}
+
+/**
+ * A single-flight review claim on a task, held by one session of one agent.
+ * See `Task.reviewClaim` for the full design rationale.
+ */
+export interface ReviewClaim {
+  /** Agent that holds the claim */
+  agentId: string;
+
+  /**
+   * Channel (= conversation session) that holds the claim. This is the
+   * session identifier available in the MCA tool-call path — the WS
+   * `sessionId` never reaches the tool context, but `channelId` does
+   * (via `ActiveConnection.currentChannelId`).
+   */
+  channelId: string;
+
+  /** ISO timestamp when the claim was acquired */
+  claimedAt: string;
+
+  /** ISO timestamp when the claim expires and becomes stealable */
+  expiresAt: string;
+}
+
 export interface Task {
   /** Unique identifier (e.g., "task_abc123") */
   taskId: string;
@@ -1121,6 +1492,15 @@ export interface Task {
    */
   autoWakeCount?: number;
 
+  /**
+   * Consecutive failed autoplay STARTS (TODOAP-REQ-32). Incremented on each
+   * start that fails (the roll-back write), reset by every state transition,
+   * progress note and successful start. When it reaches the cap the task is
+   * moved to `blocked` with the error as the reason — a failed start never
+   * becomes a silent retry loop. System-controlled.
+   */
+  startFailCount?: number;
+
   /** Parent task ID for sub-tasks (nullable) */
   parentTaskId?: string;
 
@@ -1156,6 +1536,67 @@ export interface Task {
   /** agentId or userId that requested the stop */
   stopRequestedBy?: string;
 
+  // --------------------------------------------------------------------------
+  // Review claim (single-flight anti-duplicate — see docs/specs/20261019_single-flight-review-claims.md)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Atomic claim for review actions on this task, scoped per agent.
+   *
+   * When multiple concurrent sessions of the SAME agent react to the same
+   * board event (e.g. task_moved → Review), only ONE session may hold the
+   * claim and execute the review actions (post review note + move column).
+   * The others see the live claim and skip (logged as 'skipped: claimed by
+   * session X').
+   *
+   * The claim is acquired via an atomic `findOneAndUpdate` with a conditioned
+   * filter — Mongo's atomicity IS the mutex. It expires after a TTL
+   * (default 15 min, env BOARD_REVIEW_CLAIM_TTL_MS) so a dead session's claim
+   * can be stolen by a live one.
+   *
+   * Released when the review's terminal action (the column move) completes,
+   * or by expiry. Per (taskId, agentId) — different agents have independent
+   * claims on the same task (AC-3: multi-agent flow unaffected).
+   *
+   * Stored as a map keyed by agentId so each agent holds its own claim.
+   */
+  reviewClaims?: Record<string, ReviewClaim>;
+
+  // --------------------------------------------------------------------------
+  // Workflow extensions (§WF2 — workflow task integration)
+  //
+  // These fields are set when a task is created by the workflow engine.
+  // They allow the engine to validate task output against a gate, link the
+  // task back to its execution and node, and track input/output data.
+  //
+  // The backend stores them as opaque JSON — the workflow engine owns
+  // validation logic. See @teros/workflows WorkflowTaskExtensions.
+  // --------------------------------------------------------------------------
+
+  /** Input gate — routing metadata of the workflow node (gateId, schemaId, label) */
+  workflowInputGate?: Record<string, unknown>;
+
+  /** Output gate — routing metadata of the workflow node (gateId, schemaId, label) */
+  workflowOutputGate?: Record<string, unknown>;
+
+  // --------------------------------------------------------------------------
+  // Artifacts (docs/specs/tasks/artifacts.md) — owned by the task itself.
+  // The workflow engine, Automate, humans and agents all read/write these;
+  // the workflow* fields above are only the engine's routing linkage.
+  // --------------------------------------------------------------------------
+
+  /** What the task receives (event payload, upstream gate data, …). */
+  input?: TaskArtifact;
+
+  /** What the task delivers (form answers, report, structured output, …). */
+  output?: TaskArtifact;
+
+  /** Reference to the workflow execution that created this task (foreign key to executions.executionId) */
+  workflowExecutionId?: string;
+
+  /** Reference to the workflow node that created this task (matches WorkflowNode.nodeId) */
+  workflowNodeId?: string;
+
   /** Metadata */
   createdAt: string;
   updatedAt: string;
@@ -1175,6 +1616,16 @@ export interface ResolvedApp extends Omit<App, 'mcaId'> {
 /**
  * Agent's resolved apps - All apps an agent has access to
  */
+/**
+ * Who is looking at an agent's apps: a member (visibility) and, inside a
+ * conversation, that conversation's creator + scope (MUW-REQ-12).
+ * @spec MUW-REQ-12
+ */
+export interface AppViewer {
+  userId: string;
+  channelScope?: 'personal' | 'shared';
+}
+
 export interface AgentApps {
   agentId: string;
   apps: Array<{
@@ -1509,7 +1960,8 @@ export interface LLMUsage {
     | 'zhipu-coding'
     | 'ollama'
     | 'ollama-cloud'
-    | 'openai-compatible';
+    | 'openai-compatible'
+    | 'helmcode';
 
   /** Model ID in our system (e.g., 'deepseek-v3', 'claude-sonnet-4-5') */
   modelId: string;
@@ -1665,6 +2117,14 @@ export interface Skill {
   content: string;
 
   /**
+   * Loading mode for this skill.
+   * - 'always': Content is always injected into the system prompt (legacy behavior).
+   * - 'on-demand': Only name+description appear in the index; content is loaded per-request.
+   * Defaults to 'on-demand' for new skills; existing skills migrated to 'always'.
+   */
+  loadMode?: 'always' | 'on-demand';
+
+  /**
    * Optional category for organization
    * - 'development': Coding, git, CI/CD
    * - 'communication': Style, tone, language
@@ -1760,6 +2220,8 @@ export interface BoardSubscriptionFilter {
   columnIds?: string[];
   /** Only tasks that have ALL of these tags */
   tags?: string[];
+  /** Only events for these specific tasks (by taskId) */
+  taskIds?: string[];
   /** Only these event types */
   eventTypes?: BoardEventType[];
   /** Event types that wake the subscribed agent (trigger a response turn) */
@@ -1795,6 +2257,312 @@ export interface BoardSubscription {
 }
 
 // ============================================================================
+// TODO LIST EVENTS & SUBSCRIPTIONS (parity with the board — docs/specs/todo/events.md)
+// ============================================================================
+
+/**
+ * Event types of the to-do list, published under the `todo.` namespace on the
+ * MCA event bus (`todo.task_created` …) and delivered to subscribed
+ * conversations. Board↔todo mapping:
+ *
+ *   board.task_created       → todo.task_created
+ *   board.task_moved         → todo.task_state_changed (+ granular task_started/
+ *                              task_completed/task_blocked) and todo.task_moved
+ *                              (reparenting)
+ *   board.task_assigned      → todo.task_assigned / todo.task_unassigned
+ *   board.task_updated       → todo.task_updated
+ *   board.task_progress_note → todo.task_progress (log entries + set-progress)
+ *   board.task_archived      → todo.task_deleted
+ *   board.agent_play_changed → todo.agent_play_changed
+ *   board.agent_slots_changed→ todo.agent_slots_changed
+ *   (no board equivalent)    → todo.task_planned, todo.task_output_delivered
+ */
+export type TodoEventType =
+  | 'task_created'
+  | 'task_started'
+  | 'task_completed'
+  | 'task_blocked'
+  | 'task_state_changed'
+  | 'task_assigned'
+  | 'task_unassigned'
+  | 'task_planned'
+  | 'task_output_delivered'
+  | 'task_progress'
+  | 'task_updated'
+  | 'task_moved'
+  | 'task_deleted'
+  | 'agent_play_changed'
+  | 'agent_slots_changed'
+  | 'global_play_changed'
+  | 'dependency_added'
+  | 'dependency_removed';
+
+/**
+ * Filter for a to-do subscription.
+ * All fields are optional — an empty filter matches all events.
+ * Multiple fields are AND-ed; multiple values within a field are OR-ed.
+ *
+ * Kept flat for the same migration reason as BoardSubscriptionFilter.
+ */
+export interface TodoSubscriptionFilter {
+  /** Only events for these specific tasks (by nodeId) — "avísame cuando ESTA acabe" */
+  nodeIds?: string[];
+  /** Only events where the task is assigned to one of these agents/users */
+  assigneeIds?: string[];
+  /** Only events where the task's reviewer is one of these agents/users (TODORV) */
+  reviewerIds?: string[];
+  /** Only events where the task's NEW state is one of these */
+  states?: string[];
+  /** Only events for tasks inside these groups' subtrees (by group nodeId) */
+  groupNodeIds?: string[];
+  /** Only these event types (TodoEventType values) */
+  eventTypes?: TodoEventType[];
+  /** Event types that wake the subscribed agent (trigger a response turn) */
+  wakeUpOn?: TodoEventType[];
+}
+
+/**
+ * Workspace-level Tasks autoplay global play/pause state (TODOAP-REQ-30).
+ *
+ * One document per workspace in `todo_autoplay_state`. A MISSING document
+ * means `playing` — the default, so workspaces that never touched the global
+ * control keep working exactly as before. Only a deliberate pause writes the
+ * doc (`playing: false`); resuming deletes it (back to the default).
+ *
+ * The two-level model (Pablo, 2026-10-30):
+ *   - global: playing / paused — the panel's Play/Pause control;
+ *   - per-runner: playEnabled (config) + slots;
+ *   - a runner only works iff global=playing ∧ runner=playEnabled ∧ slots≥1.
+ */
+export interface TodoAutoplayState {
+  /** Workspace this global state belongs to */
+  workspaceId: string;
+  /** false = paused (the only reason the doc exists); true never stored */
+  playing: boolean;
+  updatedAt: Date;
+}
+
+/**
+ * A to-do subscription — links a conversation channel to a workspace's task
+ * tree. The channel receives to-do events filtered by `filter`.
+ *
+ * Collection: todo_subscriptions
+ * Indexes:
+ *   { workspaceId: 1 }                    — find all subscribers of a workspace
+ *   { channelId: 1 }                      — manage subscriptions from a channel
+ *   { workspaceId: 1, channelId: 1 } unique — prevent duplicates
+ */
+export interface TodoSubscription {
+  /** Unique ID, e.g. "tsub_xxx" */
+  subscriptionId: string;
+  /** Workspace whose task tree is watched */
+  workspaceId: string;
+  /** Conversation that receives the events */
+  channelId: string;
+  /** Agent that owns the subscribed conversation */
+  agentId: string;
+  /** Optional filter — empty = receive all events */
+  filter: TodoSubscriptionFilter;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================================================
+// BOARD EVENTS COLLECTION (unified activity feed)
+// ============================================================================
+
+/**
+ * Board Event — a single activity event on a board.
+ *
+ * Replaces the embedded `activity: TaskActivityEntry[]` array on Task documents.
+ * Each event is its own document, enabling efficient pagination, filtering by
+ * board/project/workspace, and TTL-based retention without unbounded document growth.
+ *
+ * Collection: board_events
+ * Indexes:
+ *   { boardId: 1, timestamp: -1 }              — chronological feed per board
+ *   { taskId: 1, timestamp: -1 }               — activity history per task
+ *   { projectId: 1, timestamp: -1 }            — project-level activity
+ *   { workspaceId: 1, timestamp: -1 }           — workspace-wide feed
+ *   { eventType: 1, timestamp: -1 }             — filter by event type
+ *   { actor: 1, timestamp: -1 }                 — filter by actor
+ *   { timestamp: 1 }, { expireAfterSeconds }    — TTL for retention
+ */
+export interface BoardEvent {
+  /** Unique event ID, e.g. "bevt_xxx" */
+  eventId: string;
+
+  /** Board where the event occurred */
+  boardId: string;
+
+  /** Project that owns the board (denormalized for efficient queries) */
+  projectId: string;
+
+  /** Workspace that owns the project (denormalized for efficient queries) */
+  workspaceId: string;
+
+  /** Task involved in the event (null for board-level events like agent_play_changed) */
+  taskId: string | null;
+
+  /** Task title at the time of the event (denormalized for feed display) */
+  taskTitle: string | null;
+
+  /** Event type — same vocabulary as TaskActivityEventType + BoardEventType */
+  eventType: BoardEventCategory;
+
+  /** Who performed the action (userId, agentId, or 'system' / 'system:autoplay') */
+  actor: string;
+
+  /** When the event occurred (ISO 8601) */
+  timestamp: string;
+
+  /** Event-specific details (same shape as TaskActivityEntry.details, extended) */
+  details?: BoardEventDetails;
+}
+
+/**
+ * Unified event type vocabulary.
+ * Combines TaskActivityEventType (structural changes) and BoardEventType (subscription events).
+ * The first column ('task.*') are the granular structural events that replace the old
+ * embedded activity array. The second column ('board.*') are the subscription-level events.
+ */
+export type BoardEventCategory =
+  // Task structural events (from TaskActivityEventType)
+  | 'task.created'
+  | 'task.moved'
+  | 'task.assigned'
+  | 'task.unassigned'
+  | 'task.started'
+  | 'task.linked'
+  | 'task.priority_changed'
+  | 'task.updated'
+  | 'task.deleted'
+  | 'task.archived'
+  | 'task.unarchived'
+  | 'task.progress_note'
+  | 'task.running_changed'
+  | 'task.dependency_added'
+  | 'task.dependency_removed'
+  | 'task.circular_dependency_detected'
+  | 'task.blocked'
+  | 'task.completed'
+  | 'task.cancelled'
+  | 'task.stop_requested'
+  // Board-level events (from BoardEventType, kept for subscription compatibility)
+  | 'board.task_moved'
+  | 'board.task_archived'
+  | 'board.task_assigned'
+  | 'board.task_created'
+  | 'board.task_updated'
+  | 'board.task_progress_note'
+  | 'board.agent_play_changed'
+  | 'board.agent_slots_changed'
+  | 'board.dependency_added'
+  | 'board.dependency_removed';
+
+/**
+ * Event details — extended from TaskActivityEntry.details with additional fields.
+ * Not all fields are set for all event types; consumers check by eventType.
+ */
+export interface BoardEventDetails {
+  fromColumn?: string;
+  toColumn?: string;
+  fromColumnName?: string;
+  toColumnName?: string;
+  agentId?: string;
+  channelId?: string;
+  oldPriority?: string;
+  newPriority?: string;
+  field?: string;
+  fromStatus?: string;
+  toStatus?: string;
+  note?: string;
+  running?: boolean;
+  slots?: number;
+  playEnabled?: boolean;
+  dependsOnTaskId?: string;
+  tags?: string[];
+  assignedAgentId?: string;
+  archiveNote?: string;
+  [key: string]: unknown;
+}
+
+// ============================================================================
+// BOARD DAILY STATS COLLECTION (aggregated metrics per board per day)
+// ============================================================================
+
+/**
+ * Board Daily Stats — aggregated metrics for a board on a specific day.
+ *
+ * One document per board per UTC day. Updated incrementally as events arrive
+ * (using $inc and $push to a capped array for recent activity highlights).
+ *
+ * Collection: board_daily_stats
+ * Indexes:
+ *   { boardId: 1, date: 1 } unique   — one doc per board per day
+ *   { projectId: 1, date: -1 }        — project-level trend queries
+ *   { workspaceId: 1, date: -1 }      — workspace-level dashboard
+ *   { date: -1 }                       — cross-board daily queries
+ */
+export interface BoardDailyStats {
+  /** Unique ID, e.g. "bds_xxx" */
+  statsId: string;
+
+  /** Board these stats belong to */
+  boardId: string;
+
+  /** Project that owns the board (denormalized) */
+  projectId: string;
+
+  /** Workspace that owns the project (denormalized) */
+  workspaceId: string;
+
+  /** The UTC calendar day this stats document covers (YYYY-MM-DD) */
+  date: string;
+
+  // --- Task counts by column (snapshot at end of day) ---
+  /** Number of tasks in each column at the end of this day */
+  columnCounts: Record<string, number>;
+
+  // --- Flow metrics (cumulative for the day) ---
+  /** Tasks created during the day */
+  tasksCreated: number;
+  /** Tasks moved during the day (total moves, not unique tasks) */
+  tasksMoved: number;
+  /** Tasks completed (moved to Done) during the day */
+  tasksCompleted: number;
+  /** Tasks blocked (moved to Blocked) during the day */
+  tasksBlocked: number;
+  /** Tasks archived during the day */
+  tasksArchived: number;
+  /** Tasks started (moved to In Progress) during the day */
+  tasksStarted: number;
+  /** Progress notes posted during the day */
+  progressNotesPosted: number;
+  /** Dependencies added during the day */
+  dependenciesAdded: number;
+  /** Dependencies removed during the day */
+  dependenciesRemoved: number;
+
+  // --- Agent activity ---
+  /** Distinct agents that were active on this board during the day */
+  activeAgents: string[];
+  /** Agent assignments made during the day */
+  assignmentsMade: number;
+  /** Agent unassignments made during the day */
+  unassignmentsMade: number;
+
+  // --- Recent activity highlights (capped array, last N events) ---
+  /** Up to 20 most recent event IDs for quick preview (oldest first, $slice) */
+  recentEventIds: string[];
+
+  /** When this stats document was first created */
+  createdAt: string;
+  /** When this stats document was last updated */
+  updatedAt: string;
+}
+
+// ============================================================================
 // USER DESKTOP STATE
 // ============================================================================
 
@@ -1823,6 +2591,7 @@ import type {
   FeatureFlagDefinition,
   FeatureFlagTargetType,
   FeatureFlagValue,
+  MCAContextPrehook,
 } from '@teros/shared';
 
 export type { FeatureFlagDefinition, FeatureFlagTargetType, FeatureFlagValue };
@@ -1952,6 +2721,39 @@ export interface FeatureFlagAuditLog {
 }
 
 // ============================================================================
+// USER CONSENT AUDIT
+// ============================================================================
+
+/**
+ * ConsentAuditLog — Immutable record of every user consent change.
+ * Same pattern as FeatureFlagAuditLog: who, when, on/off, and the version of
+ * the consent copy shown at the time (SOC 2 style audit trail).
+ * Written by UserService.setEvaluationConsent (profile.set-evaluation-consent).
+ */
+export interface ConsentAuditLog {
+  /** Audit entry ID */
+  auditId: string;
+
+  /** The user whose consent changed */
+  userId: string;
+
+  /** Which consent flag changed */
+  key: 'evaluation_opt_in';
+
+  /** The change performed */
+  action: 'on' | 'off';
+
+  /** Who performed the change (self-service: the user themself) */
+  actor: string;
+
+  /** ISO timestamp */
+  timestamp: string;
+
+  /** Version of the consent copy shown when the change was made */
+  consentVersion: string;
+}
+
+// ============================================================================
 // AGENT USAGE INSTRUMENTATION COLLECTIONS
 // ============================================================================
 // New subsystem to measure, per user, tokens + active time per agent /
@@ -1959,7 +2761,7 @@ export interface FeatureFlagAuditLog {
 // sourcing with 6 projections (sessions, tool executions, rollups hourly +
 // user_hourly, and an idempotency log).
 //
-//
+// Design doc: docs/usage-instrumentation.md
 // ============================================================================
 
 /**
@@ -2081,6 +2883,8 @@ export interface SessionStartedPayload {
   actualProvider?: string;
   /** Expected actual model string for the same reason. See `actualProvider`. */
   actualModel?: string;
+  /** Latency lane of a Teros turn (TLANE-REQ-9). */
+  lane?: 'interactive' | 'background';
   /**
    * Enqueue timestamp (when `processAgentResponse` opened the session). The
    * turn is `queued` at this point — NOT yet executing. The applier stores the
@@ -2126,6 +2930,8 @@ export interface SessionDeltaPayload {
   primaryErrorClass?: string;
   /** True if the provider returned a partial/null usage object. */
   usagePartial?: boolean;
+  /** True if token counts were estimated locally (provider returned no usage). */
+  usageEstimated?: boolean;
   /**
    * Per-category token breakdown for the input side, scaled so that the
    * sum matches the provider's real `inputTokens` (factor correction).
@@ -2172,6 +2978,17 @@ export interface SessionEndedPayload {
   endedAt: Date;
   durationMs: number;
   durationSource: AgentUsageDurationSource;
+  /**
+   * True when the turn was killed by the absolute turn deadline
+   * (`OperationTimeoutError` with operation 'turn-deadline', TER-650) — the
+   * recorded `durationMs` is then "elapsed until the watchdog killed the
+   * turn", NOT real agent work. Reporting must exclude/adjust these sessions
+   * (same convention as the legacy range [1_795_000–1_805_000]). Absent on
+   * every other close — including reconciled timeouts, which already carry
+   * `durationSource: 'wallclock_reconciled'` + `errorKind:
+   * 'reconciled_timeout'`.
+   */
+  durationCapped?: boolean;
   /** Terminal status only — a session never ends `queued` or `running`. */
   status: Exclude<AgentUsageSessionStatus, 'running' | 'queued'>;
   errorKind?: AgentUsageErrorKind;
@@ -2339,6 +3156,12 @@ export interface AgentUsageSession {
    * `session.delta` (TER-615/F0). Drives the per-upstream health rollup (F1/C1).
    */
   actualProvider?: string;
+  /**
+   * Latency lane the turn ran on (`interactive` | `background`). Teros turns
+   * only (TLANE-REQ-9); absent for every other provider.
+   * @spec TLANE-REQ-9
+   */
+  lane?: 'interactive' | 'background';
 
   // Timing (wall-clock for display; durationMs is the authoritative figure).
   // `startedAt` is null while the session is `queued` and set to the
@@ -2348,6 +3171,15 @@ export interface AgentUsageSession {
   endedAt: Date | null;
   durationMs: number | null;
   durationSource: AgentUsageDurationSource | null;
+  /**
+   * True when the turn was killed by the absolute turn deadline
+   * (`turn-deadline`, TER-650) so `durationMs` measures "elapsed until the
+   * watchdog killed the turn", not real work. Set from `session.ended`
+   * (see SessionEndedPayload). Absent/undefined on normal closes. Reporting
+   * uses it (or the legacy range [1_795_000–1_805_000] for pre-flag rows) to
+   * produce adjusted agent-hours.
+   */
+  durationCapped?: boolean;
   /**
    * LLM wall-clock latency of the turn (ms, summed across steps) and
    * time-to-first-token of the first step (ms), measured client-side by the
@@ -2366,6 +3198,8 @@ export interface AgentUsageSession {
   /** Literal upstream provider message (TER-698, sanitized). Feeds the ops feed. */
   upstreamMessage?: string;
   usagePartial?: boolean;
+  /** True if token counts were estimated locally (provider returned no usage). */
+  usageEstimated?: boolean;
   /**
    * Provider finish_reason of the turn's last LLM step (`stop` / `length` /
    * `tool_calls` / …). Projected from session.delta (TER-616/R4). `length` is
@@ -2671,7 +3505,8 @@ export interface AgentUsageRollupRun {
   jobRunId: string;
   agentDocsWritten: number;
   userDocsWritten: number;
-  schemaVersion: 1;
+  /** 2 = user_hourly docs of this hour carry userWorkMs (decision #29). */
+  schemaVersion: 1 | 2;
 }
 
 /**
@@ -2690,14 +3525,23 @@ export interface AgentUsageRollupUserHourly {
     userId: string;
     workspaceId: string;
   };
-  /** Union of session intervals truncated to the hour. <= 3_600_000. */
+  /** Union of session intervals truncated to the hour. <= 3_600_000. Analytical metric (decision #26). */
   userActiveMs: number;
+  /**
+   * Sum of the per-session overlap (billable work) inside the hour — NOT
+   * coalesced: 2 agents working the same 10 min in parallel = 20 min of work.
+   * This is the QUOTA metric (decision #29): the agent-hour is Teros's unit of
+   * business, so parallelism burns quota faster. Present from schemaVersion 2;
+   * readers fall back to `userActiveMs` on v1 buckets.
+   */
+  userWorkMs?: number;
   sessionCount: number;
   totalTokens: number;
   costUsd: number;
   computedAt: Date;
   jobRunId: string;
-  schemaVersion: 1;
+  /** 2 = userWorkMs present (decision #29). 1 = pre-#29 buckets (no userWorkMs). */
+  schemaVersion: 1 | 2;
   createdAt: Date;
 }
 

@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, formatAnswer, initializeGoogleClients, withAuthRetry } from '../lib';
+import { formatAnswer, initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const listResponses: ToolConfig = {
   annotations: { readOnlyHint: true },
@@ -31,7 +31,6 @@ export const listResponses: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { formId, pageSize = 10, pageToken, filter } = args as {
       formId: string;

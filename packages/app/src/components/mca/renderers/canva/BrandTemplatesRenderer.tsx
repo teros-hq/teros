@@ -41,7 +41,8 @@ import {
 } from './shared';
 
 function StatusChip({ status }: { status: string | null }) {
-  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? globalColors.muted;
+  const c = useColors();
+  const accent = (status && JOB_STATUS_ACCENTS[status]) ?? c.text3;
   const text = (status && JOB_STATUS_LABELS[status]) ?? (status ?? '—').toUpperCase();
   return <IconChip text={text} accent={accent} />;
 }
@@ -61,6 +62,10 @@ export function ListBrandTemplatesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
+  // Hoisted above the conditional JSX below: hooks must run unconditionally,
+  // or a status/items change flips the branch and the hook count with it.
+  const scrollStyle = useScrollStyle(360);
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items, total, nextCursor } = unwrapList<CanvaBrandTemplate>(parsed, 'templates');
 
@@ -76,7 +81,7 @@ export function ListBrandTemplatesRenderer({
           {items.length === 0 ? (
             <Empty message="No brand templates" />
           ) : (
-            <ScrollView style={useScrollStyle(360)} showsVerticalScrollIndicator>
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
               <XStack flexWrap="wrap" gap={8} padding={4}>
                 {items.map((t) => (
                   <Polaroid
@@ -93,12 +98,12 @@ export function ListBrandTemplatesRenderer({
           {(typeof total === 'number' || nextCursor) && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof total === 'number' && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {total} shown
                 </Text>
               )}
               {nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · cursor available
                 </Text>
               )}
@@ -265,6 +270,7 @@ export function GetAutofillJobRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const job = narrowObject<CanvaJob<CanvaDesign>>(parsed);
   const design = job?.result ?? null;
@@ -290,9 +296,9 @@ export function GetAutofillJobRenderer({
               />
             ) : (
               <IconTile
-                accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted}
+                accent={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3}
                 icon={
-                  <Sparkles size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? globalColors.muted} />
+                  <Sparkles size={16} color={JOB_STATUS_ACCENTS[job.status ?? ''] ?? c.text3} />
                 }
                 size={36}
               />

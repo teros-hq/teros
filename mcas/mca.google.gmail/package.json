@@ -6,6 +6,6 @@
     "@teros/mca-sdk": "0.1.0",
     "googleapis": "^144.0.0",
     "google-auth-library": "^9.15.1",
-    "marked": "^15.0.6"
+    "@teros/shared": "2.0.0"
   }
 }

@@ -5,7 +5,7 @@ import { assertBackendConnected, pickFieldsList, withRetry, withTimeout } from '
 
 export const getBoardStatus: ToolConfig = {
   description:
-    'Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. Use to identify bottlenecks.',
+    'Operational status of a board: per-agent workload + summary. Returns: { boardId, boardName, agents: [{ agentName, slots, playEnabled, activeSlots, activeTasks: [{ taskId, title, projectName }], tasksInProgress, tasksInReview, tasksBlocked, tasksToDo }], summary: { total, byColumn, blockedTasks } }. activeTasks lists the running tasks for each agent with activeSlots > 0. Use to identify bottlenecks.',
   annotations: { readOnlyHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
@@ -20,8 +20,10 @@ export const getBoardStatus: ToolConfig = {
     },
     required: ['boardId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const boardId = args?.boardId as string;
     if (!boardId) throw new Error('boardId is required');
@@ -29,7 +31,7 @@ export const getBoardStatus: ToolConfig = {
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('get_board_status', { boardId }),
+          wsClient.queryConversations<any>('get_board_status', { boardId, callerAgentId }),
           15_000,
           'get_board_status',
         ),

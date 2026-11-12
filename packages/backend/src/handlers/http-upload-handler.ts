@@ -6,11 +6,16 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import type { IncomingMessage, ServerResponse } from 'http';
-import type { Db } from 'mongodb';
+import type { Collection, Db } from 'mongodb';
 import { extname, join } from 'path';
 import { config } from '../config';
 import type { AuthService } from '../auth/auth-service';
+import { canAccessAgent } from '../auth/workspace-access';
+import { broadcastAgentUpdated, buildAgentUpdatedPayload } from '../lib/agent-payload';
+import type { AgentInstance } from '../types/database';
 import { staticDir, uploadDir } from '../lib/static-paths';
+import { extractSessionToken } from '../lib/session-cookie';
+import type { PubSubService } from '../services/pubsub-service';
 
 // ---------------------------------------------------------------------------
 // Security constants
@@ -352,8 +357,22 @@ async function handleAvatarUpload(
   res: ServerResponse,
   db: Db,
   agentId: string,
+  userId: string,
+  pubSubService?: PubSubService | null,
 ): Promise<void> {
   try {
+    // Ownership/tenant gate (TER-733): only a user who can access the agent —
+    // its owner for a global agent, or any member of its workspace for a
+    // workspace agent — may upload its avatar. Use the canonical canAccessAgent
+    // helper so this matches the sibling update path (handleAgentUpdate,
+    // mca-resources-handlers.ts). Check BEFORE parsing/persisting so an
+    // unauthorized request never writes an orphan file.
+    if (!(await canAccessAgent(db, userId, agentId))) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: 'Access denied to agent' }));
+      return;
+    }
+
     // Parse with the avatar-specific size cap (streaming guard).
     const fileData = await parseMultipartFormData(req, AVATAR_MAX_SIZE);
 
@@ -415,7 +434,10 @@ async function handleAvatarUpload(
     // ("iria.png"). The various buildAvatarUrl() resolvers prepend the static
     // base, so storing an absolute URL here produced double-wrapping
     // (`<base>/<base>/<file>` → 404, broken avatar on reload).
-    const agentsCollection = db.collection('agents');
+    // Access already enforced by canAccessAgent above; scope by agentId only so
+    // legitimate workspace-collaborator uploads aren't silently no-op'd. Mirrors
+    // handleAgentUpdate. matchedCount === 0 below still guards a concurrent delete.
+    const agentsCollection: Collection<AgentInstance> = db.collection('agents');
     const result = await agentsCollection.updateOne(
       { agentId },
       { $set: { avatarUrl: newFilename, updatedAt: new Date().toISOString() } },
@@ -437,6 +459,36 @@ async function handleAvatarUpload(
         url: publicUrl,
       }),
     );
+
+    // Refresh the navbar / agents panel in realtime (TER-644). This REST path is
+    // separate from the WS `agent.update` handler, so it must emit its own
+    // `agent.updated` event or subscribers keep showing the old avatar until a
+    // reload. Fire AFTER the 200 with a non-fatal catch: the upload is already
+    // persisted, so a transient broadcast failure must not turn it into a 500.
+    if (pubSubService) {
+      try {
+        const updatedAgent = await agentsCollection.findOne({ agentId });
+        if (updatedAgent) {
+          // No `coreAvatarUrl` fallback arg (unlike the WS update path): this
+          // upload just wrote `avatarUrl`, so `agent.avatarUrl || coreAvatarUrl`
+          // never reaches the fallback. Skipping the extra agent_cores lookup.
+          // Recipient for a global (non-workspace) agent is its OWNER, not the
+          // uploader: an admin uploading on someone else's behalf must refresh
+          // the owner's sessions. Fall back to the uploader only if ownerId is
+          // somehow unset.
+          await broadcastAgentUpdated(
+            pubSubService,
+            updatedAgent.ownerId ?? userId,
+            buildAgentUpdatedPayload(updatedAgent),
+          );
+        }
+      } catch (broadcastError) {
+        console.warn(
+          `[avatar-upload] agent.updated broadcast failed for ${agentId}:`,
+          broadcastError,
+        );
+      }
+    }
   } catch (error) {
     console.error('❌ Error uploading avatar:', error);
     res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -559,15 +611,20 @@ async function handleStaticUpload(req: IncomingMessage, res: ServerResponse): Pr
 // ---------------------------------------------------------------------------
 
 export class HttpUploadHandler {
-  constructor(private db: Db, private authService: AuthService) {}
+  constructor(
+    private db: Db,
+    private authService: AuthService,
+    private pubSubService?: PubSubService | null,
+  ) {}
 
   /**
    * Extract userId from Bearer token. Returns null if missing/invalid.
    */
   private async getUserId(req: IncomingMessage): Promise<string | null> {
-    const authHeader = req.headers['authorization'];
-    if (authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.slice(7);
+    // Bearer header (primary) or teros_session cookie (F2: web after reload
+    // has no in-memory token; the cookie is httpOnly and same-site).
+    const token = extractSessionToken(req);
+    if (token) {
       const result = await this.authService.validateSession(token);
       return result.success ? (result.user?.userId ?? null) : null;
     }
@@ -591,7 +648,7 @@ export class HttpUploadHandler {
         return true;
       }
       const agentId = decodeURIComponent(avatarMatch[1]);
-      await handleAvatarUpload(req, res, this.db, agentId);
+      await handleAvatarUpload(req, res, this.db, agentId, userId, this.pubSubService);
       return true;
     }
 

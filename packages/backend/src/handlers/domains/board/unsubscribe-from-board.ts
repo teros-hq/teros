@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import type { ChannelManager } from '../../../services/channel-manager'
 
 interface UnsubscribeFromBoardData {
   boardId: string
@@ -13,6 +14,7 @@ interface UnsubscribeFromBoardData {
 
 export function createUnsubscribeFromBoardHandler(
   boardSubscriptionService: BoardSubscriptionService,
+  channelManager: ChannelManager,
 ) {
   return async function unsubscribeFromBoard(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as UnsubscribeFromBoardData
@@ -20,6 +22,12 @@ export function createUnsubscribeFromBoardHandler(
 
     if (!boardId) throw new HandlerError('MISSING_FIELDS', 'boardId is required')
     if (!channelId) throw new HandlerError('MISSING_FIELDS', 'channelId is required')
+
+    // Subscriptions are keyed by (boardId, channelId): only someone with access
+    // to the conversation may remove its subscription.
+    if (!(await channelManager.canAccessChannel(channelId, ctx.userId))) {
+      throw new HandlerError('FORBIDDEN', 'No access to this channel')
+    }
 
     const deleted = await boardSubscriptionService.unsubscribe(boardId, channelId)
     if (!deleted) {

@@ -12,16 +12,22 @@
 
 import { Gauge } from "@tamagui/lucide-icons"
 import type { WindowTypeDefinition } from "../../services/windowRegistry"
-import { ModelHealthWindowContent, type ModelHealthWindowProps } from "./ModelHealthWindowContent"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { ModelHealthWindowProps } from "./ModelHealthWindowContent"
+const ModelHealthWindowContent = lazyWithRetry(() =>
+  import("./ModelHealthWindowContent").then((m) => ({ default: m.ModelHealthWindowContent })),
+)
 
 // Re-export the component's real prop type (now carries the optional deep-link period).
 export type { ModelHealthWindowProps }
 
 export const modelHealthWindowDefinition: WindowTypeDefinition<ModelHealthWindowProps> = {
   type: "model-health",
+  audience: "admin",
   displayName: "Model Health",
   icon: Gauge,
-  color: "#F59E0B",
+  phIcon: "heartbeat",
+  color: "#6F27FF",
   component: ModelHealthWindowContent,
 
   defaultSize: { width: 1100, height: 760 },

@@ -4,62 +4,59 @@
  * Admin surface to inspect and manage agent cores (the engines behind agents:
  * systemPrompt + model + modelOverrides + defaultApps[MCAs] + capabilities).
  *
- * Layout: master-detail split (core list on the left, editor on the right).
- * Responsive — on a narrow tile it collapses to a single column (list ⇄ form
- * with a back arrow). The editor groups the ~14 engine fields into collapsible
- * sections and supersedes the old full-screen Sheet modals.
+ * Layout (OS prototype vocabulary): a `Page` with the cores as a `Card hov`
+ * grid; selecting one (or "create") opens the editor page — `Card` sections
+ * per form group, with a back arrow in the head. The editor groups the ~14
+ * engine fields into collapsible sections.
  *
  * coreId/coreType are identity and immutable on edit; everything else (model,
  * overrides, personality, capabilities, defaultApps, prompt, status) is editable.
  * The gradual rollout (super-only) lives as a section under the STABLE core.
  */
 
+import type React from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { Animated, Easing, Platform, Pressable, ScrollView, View } from "react-native"
+import { XStack, YStack } from "tamagui"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { colors as semantic } from "../../components/mca/primitives/colors"
+import { resolveRetention } from "@teros/shared"
+import { AppSpinner, FullscreenLoader } from "../../components/ui"
+import { Avatar } from "../../components/Avatar"
 import {
-  AlertTriangle,
-  ArrowLeft,
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Cpu,
-  Hash,
-  History,
-  Plus,
-  RotateCcw,
-  Save,
-  Sparkles,
-  User,
-  Wrench,
-  X,
-  Zap,
-} from '@tamagui/lucide-icons';
-import type React from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Animated, Easing, Platform, TouchableOpacity } from 'react-native';
-import {
-  Avatar,
-  Button,
-  Input,
-  ScrollView,
-  Separator,
-  Text,
-  TextArea,
-  XStack,
-  YStack,
-} from 'tamagui';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, indicators, surface } from '../../components/mca/primitives/colors';
-import { resolveRetention } from '@teros/shared';
-import { AppSpinner, FullscreenLoader } from '../../components/ui';
+  Badge,
+  Btn,
+  Card,
+  ChipBtn,
+  Dot,
+  EmptyState,
+  Field,
+  FieldHelp,
+  FieldLabel,
+  Grid,
+  IconBtn,
+  LGroup,
+  LRow,
+  Page,
+  PageHead,
+  Ph,
+  SectionLabel,
+  SelectField,
+  Stat,
+  Stats,
+  T,
+} from "../../components/ui/ds"
+import type { BadgeTone } from "../../components/ui/ds"
 import {
   RetentionBadge,
   RetentionConfirmModal,
   RetentionNotice,
   useRetentionGuard,
-} from '../../components/dataRetention';
-import type { AgentCoreData } from '../../services/AgentApi';
-import type { ModelData } from '../../services/ProviderApi';
-import { getTerosClient } from '../../services/terosClientSingleton';
+} from "../../components/dataRetention"
+import type { AgentCoreData } from "../../services/AgentApi"
+import type { ModelData } from "../../services/ProviderApi"
+import { getTerosClient } from "../../services/terosClientSingleton"
 
 // ============================================================================
 // Types
@@ -67,151 +64,103 @@ import { getTerosClient } from '../../services/terosClientSingleton';
 
 // Reuse the API-layer contracts directly (single source of truth — no local
 // re-declaration that can silently drift from the wire shape).
-type AgentCore = AgentCoreData;
-type Model = ModelData;
+type AgentCore = AgentCoreData
+type Model = ModelData
 
 /** Rollout state of a coreType flag (core.agent / core.super-agent). */
 interface RolloutState {
-  experimentalCoreId: string | null;
-  percentage: number;
+  experimentalCoreId: string | null
+  percentage: number
 }
 
 /** Dry-run of a rollout (admin-api.core-rollout-preview) — drives the impact UI. */
 interface RolloutPreview {
-  total: number;
-  distribution: Array<{ coreId: string; count: number }>;
-  plan: { migrate: number; revert: number; stay: number };
-  resulting: Array<{ coreId: string; count: number }>;
-  unbucketed: number;
+  total: number
+  distribution: Array<{ coreId: string; count: number }>
+  plan: { migrate: number; revert: number; stay: number }
+  resulting: Array<{ coreId: string; count: number }>
+  unbucketed: number
 }
 
 /** One agent in the rollout cohort (admin-api.core-rollout-cohort) — the "who". */
 interface CohortEntry {
-  agentId: string;
-  agentName: string;
-  ownerId: string | null;
-  ownerName: string;
-  current: string;
-  target: string;
-  kind: 'migrate' | 'revert' | 'stay';
-  bucket: number | null;
+  agentId: string
+  agentName: string
+  ownerId: string | null
+  ownerName: string
+  current: string
+  target: string
+  kind: "migrate" | "revert" | "stay"
+  bucket: number | null
 }
 
 /** One audit-log entry (admin-api.feature-flags-audit-log) — the rollout timeline. */
 interface AuditEntry {
-  auditId: string;
-  action: string;
-  actor: string;
-  timestamp: string;
-  note?: string;
+  auditId: string
+  action: string
+  actor: string
+  timestamp: string
+  note?: string
 }
 
-type Selection = { mode: 'edit'; core: AgentCore } | { mode: 'create' } | null;
+type Selection = { mode: "edit"; core: AgentCore } | { mode: "create" } | null
 
-const ACCENT = semanticColors.indigo;
-const STATUS_COLORS: Record<string, string> = {
-  active: semanticColors.green,
-  inactive: '#71717A',
-};
-/** Below this tile width the split collapses to a single navigable column. */
-const SPLIT_BREAKPOINT = 640;
+const EYEBROW_KEY = "admin.platformEyebrow"
+const EYEBROW_DEFAULT = "Administración de la plataforma"
 
 /**
  * The canonical (stable) core of a coreType has `coreId === coreType` (e.g.
  * `coreId: 'agent'`). Experimental cores share the coreType but have their own id.
  * Invariant defined backend-side in agent-provisioning-service.ts / model-service.ts.
  */
-const isStableCore = (c: AgentCore): boolean => !!c.coreType && c.coreId === c.coreType;
+const isStableCore = (c: AgentCore): boolean => !!c.coreType && c.coreId === c.coreType
 
 // ============================================================================
 // Small shared pieces
 // ============================================================================
 
-function Badge({ children, color }: { children: React.ReactNode; color: string }) {
-  return (
-    <XStack
-      paddingHorizontal="$2"
-      paddingVertical="$1"
-      backgroundColor={`${color}15`}
-      borderRadius="$2"
-      borderWidth={1}
-      borderColor={`${color}30`}
-    >
-      <Text fontSize="$1" color={color}>
-        {children}
-      </Text>
-    </XStack>
-  );
-}
-
-/** Selectable badge — used for coreType / status / model-less pickers. */
-function ToggleBadge({
-  label,
-  selected,
-  onPress,
-  color = ACCENT,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-  color?: string;
-}) {
-  const c = useWindowColors();
-  return (
-    <TouchableOpacity onPress={onPress}>
-      <Badge color={selected ? color : c.text3}>{label}</Badge>
-    </TouchableOpacity>
-  );
-}
-
-function Field({
+/** Label + control + hint — the prototype's form vocabulary. */
+function FormField({
   label,
   hint,
+  required,
   children,
 }: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
+  label: string
+  hint?: string
+  required?: boolean
+  children: React.ReactNode
 }) {
   return (
-    <YStack gap="$1.5">
-      <Text fontSize="$2" color="$gray11">
-        {label}
-      </Text>
+    <View>
+      <FieldLabel required={required}>{label}</FieldLabel>
       {children}
-      {hint ? (
-        <Text fontSize="$1" color="$gray10">
-          {hint}
-        </Text>
-      ) : null}
-    </YStack>
-  );
+      {hint ? <FieldHelp>{hint}</FieldHelp> : null}
+    </View>
+  )
 }
 
 /**
- * Theme-adaptive colors for AgentCoresWindow — extends useColors() with
- * isDark + a theme-matched scrollbar color for web ScrollViews.
+ * Theme-adaptive colors for AgentCoresWindow — extends useColors() with a
+ * theme-matched scrollbar color for web ScrollViews.
  */
 function useWindowColors() {
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
-  const scrollbarColor = isDark ? 'rgba(63, 63, 70, 0.5)' : 'rgba(10,10,15,0.12)';
-  return { ...c, isDark, scrollbarColor };
+  const c = useColors()
+  return { ...c, scrollbarColor: c.borderStrong }
 }
 
-/**
- * Web-only thin scrollbar style. Pass a theme-adaptive color
- * (dark: 'rgba(63,63,70,0.5)', light: 'rgba(10,10,15,0.12)').
- */
+/** Web-only thin scrollbar style. */
 const scrollbarStyle = (color: string) =>
-  ({
-    scrollbarWidth: 'thin',
-    scrollbarColor: `${color} transparent`,
-    // biome-ignore lint/suspicious/noExplicitAny: web-only CSS keys not in RN ViewStyle
-  }) as any;
+  Platform.OS === "web"
+    ? ({
+        scrollbarWidth: "thin",
+        scrollbarColor: `${color} transparent`,
+        // biome-ignore lint/suspicious/noExplicitAny: web-only CSS keys not in RN ViewStyle
+      } as any)
+    : null
 
 // ----------------------------------------------------------------------------
-// Collapsible form section (chevron animation matches AppConfigPanel)
+// Collapsible form section — a Card with a caret header
 // ----------------------------------------------------------------------------
 
 function FormSection({
@@ -220,14 +169,15 @@ function FormSection({
   defaultOpen = true,
   children,
 }: {
-  title: string;
-  icon: React.ReactNode;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
+  title: string
+  /** Phosphor icon name. */
+  icon: string
+  defaultOpen?: boolean
+  children: React.ReactNode
 }) {
-  const c = useWindowColors();
-  const [open, setOpen] = useState(defaultOpen);
-  const rotate = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current;
+  const c = useWindowColors()
+  const [open, setOpen] = useState(defaultOpen)
+  const rotate = useRef(new Animated.Value(defaultOpen ? 1 : 0)).current
 
   useEffect(() => {
     Animated.timing(rotate, {
@@ -235,39 +185,52 @@ function FormSection({
       duration: 150,
       easing: Easing.inOut(Easing.ease),
       useNativeDriver: true,
-    }).start();
-  }, [open, rotate]);
+    }).start()
+  }, [open, rotate])
 
-  const rotation = rotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '90deg'] });
+  const rotation = rotate.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "90deg"] })
 
   return (
-    <YStack
-      borderWidth={1}
-      borderColor={c.border}
-      borderRadius="$3"
-      backgroundColor={c.bgCard}
-      overflow="hidden"
-    >
-      <TouchableOpacity
+    <Card>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded: open }}
         onPress={() => setOpen((o) => !o)}
-        activeOpacity={0.7}
-        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 }}
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
+          },
+          Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+        ]}
       >
-        {icon}
-        <Text flex={1} fontSize="$3" fontWeight="600" color="$color">
+        <View
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            backgroundColor: c.tile,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ph name={icon} size={15} color={c.accent} />
+        </View>
+        <T step="base" style={{ flex: 1 }}>
           {title}
-        </Text>
+        </T>
         <Animated.View style={{ transform: [{ rotate: rotation }] }}>
-          <ChevronRight size={16} color={c.text3} />
+          <Ph name="caret-right" size={14} color={c.text3} />
         </Animated.View>
-      </TouchableOpacity>
+      </Pressable>
       {open ? (
-        <YStack padding="$3" paddingTop={0} gap="$3">
-          {children}
-        </YStack>
+        <View style={{ paddingHorizontal: 16, paddingBottom: 16, gap: 16 }}>{children}</View>
       ) : null}
-    </YStack>
-  );
+    </Card>
+  )
 }
 
 // ----------------------------------------------------------------------------
@@ -277,70 +240,89 @@ function FormSection({
 function ChipEditor({
   values,
   onChange,
-  color,
+  tone = "i",
   placeholder,
 }: {
-  values: string[];
-  onChange: (next: string[]) => void;
-  color: string;
-  placeholder: string;
+  values: string[]
+  onChange: (next: string[]) => void
+  tone?: BadgeTone
+  placeholder: string
 }) {
-  const c = useWindowColors();
-  const [draft, setDraft] = useState('');
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  const [draft, setDraft] = useState("")
 
   const add = () => {
-    const v = draft.trim();
-    if (v && !values.includes(v)) onChange([...values, v]);
-    setDraft('');
-  };
-  const remove = (v: string) => onChange(values.filter((x) => x !== v));
+    const v = draft.trim()
+    if (v && !values.includes(v)) onChange([...values, v])
+    setDraft("")
+  }
+  const remove = (v: string) => onChange(values.filter((x) => x !== v))
+  const tint =
+    tone === "g" || tone === "a" || tone === "r" || tone === "i" || tone === "m"
+      ? c.tint[tone]
+      : null
 
   return (
-    <YStack gap="$2">
+    <View style={{ gap: 10 }}>
       {values.length > 0 ? (
-        <XStack flexWrap="wrap" gap="$2">
+        <XStack flexWrap="wrap" gap={6}>
           {values.map((v) => (
-            <XStack
+            <View
               key={v}
-              alignItems="center"
-              gap="$1"
-              paddingLeft="$2"
-              paddingRight="$1"
-              paddingVertical="$1"
-              backgroundColor={`${color}15`}
-              borderRadius="$2"
-              borderWidth={1}
-              borderColor={`${color}30`}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+                height: 28,
+                paddingLeft: 12,
+                paddingRight: 4,
+                borderRadius: 100,
+                backgroundColor: tint ? tint.bg : c.wash,
+              }}
             >
-              <Text fontSize="$1" color={color}>
+              <T step="12" color={tint ? tint.tx : c.text2}>
                 {v}
-              </Text>
-              <TouchableOpacity onPress={() => remove(v)} hitSlop={6}>
-                <X size={12} color={color} />
-              </TouchableOpacity>
-            </XStack>
+              </T>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t("common.delete")} ${v}`}
+                onPress={() => remove(v)}
+                hitSlop={6}
+                style={[
+                  {
+                    width: 20,
+                    height: 20,
+                    borderRadius: 10,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  },
+                  Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+                ]}
+              >
+                <Ph name="x" size={11} color={tint ? tint.tx : c.text2} />
+              </Pressable>
+            </View>
           ))}
         </XStack>
       ) : null}
-      <XStack gap="$2">
-        <Input
-          flex={1}
+      <XStack gap={8} alignItems="center">
+        <Field
+          containerStyle={{ flex: 1 }}
           value={draft}
           onChangeText={setDraft}
           placeholder={placeholder}
-          backgroundColor={c.bgInner}
-          borderColor={c.border}
           onSubmitEditing={add}
           blurOnSubmit={false}
         />
-        <Button size="$3" disabled={!draft.trim()} onPress={add} icon={<Plus size={16} />} />
+        <Btn variant="sec" icon="plus" disabled={!draft.trim()} onPress={add} />
       </XStack>
-    </YStack>
-  );
+    </View>
+  )
 }
 
 // ----------------------------------------------------------------------------
-// MCA picker (defaultApps) — toggleable badges from the catalog
+// MCA picker (defaultApps) — toggleable chips from the catalog
 // ----------------------------------------------------------------------------
 
 function McaPicker({
@@ -348,35 +330,39 @@ function McaPicker({
   selected,
   onToggle,
 }: {
-  catalog: { mcaId: string; name: string }[];
-  selected: Set<string>;
-  onToggle: (mcaId: string) => void;
+  catalog: { mcaId: string; name: string }[]
+  selected: Set<string>
+  onToggle: (mcaId: string) => void
 }) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
   if (catalog.length === 0) {
     return (
-      <Text fontSize="$1" color="$gray10">
-        {t('agentCores.noCatalog')}
-      </Text>
-    );
+      <T step="12" tone="text3">
+        {t("agentCores.noCatalog")}
+      </T>
+    )
   }
   return (
-    <XStack gap="$2" flexWrap="wrap">
-      {catalog.map((m) => (
-        <ToggleBadge
-          key={m.mcaId}
-          label={m.name}
-          selected={selected.has(m.mcaId)}
-          color={semanticColors.green}
-          onPress={() => onToggle(m.mcaId)}
-        />
-      ))}
+    <XStack gap={6} flexWrap="wrap">
+      {catalog.map((m) => {
+        const on = selected.has(m.mcaId)
+        return (
+          <ChipBtn
+            key={m.mcaId}
+            on={on}
+            icon={on ? "check" : "cube"}
+            onPress={() => onToggle(m.mcaId)}
+          >
+            {m.name}
+          </ChipBtn>
+        )
+      })}
     </XStack>
-  );
+  )
 }
 
 // ----------------------------------------------------------------------------
-// Inline model dropdown (no portal) — fits inside the editor pane
+// Inline model select (no portal) — a SelectField that opens a nested list card
 // ----------------------------------------------------------------------------
 
 function ModelSelect({
@@ -384,97 +370,87 @@ function ModelSelect({
   value,
   onChange,
 }: {
-  models: Model[];
-  value: string;
-  onChange: (modelId: string) => void;
+  models: Model[]
+  value: string
+  onChange: (modelId: string) => void
 }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const { guard, modalProps } = useRetentionGuard();
-  const active = models.filter((m) => m.status === 'active');
-  const selected = active.find((m) => m.modelId === value);
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const { guard, modalProps } = useRetentionGuard()
+  const active = models.filter((m) => m.status === "active")
+  const selected = active.find((m) => m.modelId === value)
   const selectedRetention = selected
     ? (selected.retention ?? resolveRetention(selected.provider))
-    : null;
+    : null
 
   return (
-    <YStack gap="$2">
-      <TouchableOpacity
+    <View style={{ gap: 10 }}>
+      <SelectField
+        icon="cpu"
+        label={selected?.name ?? value ?? t("agentCores.selectModel")}
+        meta={selected?.provider}
         onPress={() => setOpen((o) => !o)}
-        activeOpacity={0.7}
-        style={{
-          backgroundColor: c.bgInner,
-          borderWidth: 1,
-          borderColor: c.border,
-          borderRadius: 8,
-          paddingVertical: 10,
-          paddingHorizontal: 12,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <XStack alignItems="center" gap="$2" flex={1}>
-          <Text color={selected ? c.text : c.text3} fontSize="$3">
-            {selected?.name ?? value ?? t('agentCores.selectModel')}
-          </Text>
-          {selectedRetention ? <RetentionBadge info={selectedRetention} compact /> : null}
-        </XStack>
-        <ChevronDown size={16} color={c.text3} />
-      </TouchableOpacity>
+        right={
+          <XStack alignItems="center" gap={8}>
+            {selectedRetention ? <RetentionBadge info={selectedRetention} compact /> : null}
+            <Ph name={open ? "caret-up" : "caret-down"} size={13} color={c.text3} />
+          </XStack>
+        }
+      />
       {open ? (
-        <YStack
-          maxHeight={240}
-          borderWidth={1}
-          borderColor={c.border}
-          borderRadius="$3"
-          overflow="hidden"
-        >
+        <Card nested style={{ maxHeight: 240 }}>
           <ScrollView style={scrollbarStyle(c.scrollbarColor)}>
-            {active.map((m) => {
-              const isSel = m.modelId === value;
+            {active.map((m, i) => {
+              const isSel = m.modelId === value
               return (
-                <TouchableOpacity
+                <Pressable
                   key={m.modelId}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSel }}
                   onPress={() => {
-                    const info = m.retention ?? resolveRetention(m.provider);
+                    const info = m.retention ?? resolveRetention(m.provider)
                     guard(info, m.modelId, m.name, () => {
-                      onChange(m.modelId);
-                      setOpen(false);
-                    });
+                      onChange(m.modelId)
+                      setOpen(false)
+                    })
                   }}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    backgroundColor: isSel ? semanticColors.indigoGlow : 'transparent',
-                  }}
+                  style={({ pressed }) => [
+                    {
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 12,
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      backgroundColor: isSel ? c.navActive : pressed ? c.nestHover : "transparent",
+                      borderTopWidth: i > 0 ? 1 : 0,
+                      borderTopColor: c.border,
+                    },
+                    Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+                  ]}
                 >
-                  <YStack flex={1} gap={4}>
-                    <Text fontSize="$2" color={c.text}>
+                  <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+                    <T step="sm" color={isSel ? c.accent : c.text}>
                       {m.name}
-                    </Text>
-                    <XStack alignItems="center" gap="$2">
-                      <Text fontSize="$1" color="$gray10">
+                    </T>
+                    <XStack alignItems="center" gap={8}>
+                      <T step="codenote" tone="text3">
                         {m.provider}
-                      </Text>
+                      </T>
                       <RetentionBadge info={m.retention ?? resolveRetention(m.provider)} compact />
                     </XStack>
-                  </YStack>
-                  {isSel ? <Check size={16} color={ACCENT} /> : null}
-                </TouchableOpacity>
-              );
+                  </View>
+                  {isSel ? <Ph name="check" size={15} color={c.accent} /> : null}
+                </Pressable>
+              )
             })}
           </ScrollView>
-        </YStack>
+        </Card>
       ) : null}
       {selectedRetention ? <RetentionNotice info={selectedRetention} /> : null}
       <RetentionConfirmModal {...modalProps} />
-    </YStack>
-  );
+    </View>
+  )
 }
 
 // ============================================================================
@@ -482,64 +458,70 @@ function ModelSelect({
 // ============================================================================
 
 interface RolloutSectionProps {
-  coreType: 'agent' | 'super-agent';
+  coreType: "agent" | "super-agent"
   /** All cores of this coreType (stable + experimental) — for legible labels. */
-  cores: AgentCore[];
-  candidates: AgentCore[];
-  rollout: RolloutState;
-  onSet: (coreType: string, experimentalCoreId: string, percentage: number) => Promise<void>;
-  onClear: (coreType: string) => Promise<void>;
+  cores: AgentCore[]
+  candidates: AgentCore[]
+  rollout: RolloutState
+  onSet: (coreType: string, experimentalCoreId: string, percentage: number) => Promise<void>
+  onClear: (coreType: string) => Promise<void>
   onApply: (
     coreType: string,
-  ) => Promise<{ migrated: number; reverted: number; unchanged: number; total: number }>;
+  ) => Promise<{ migrated: number; reverted: number; unchanged: number; total: number }>
   onPreview: (
     coreType: string,
     hypothetical?: { experimentalCoreId: string; percentage: number },
-  ) => Promise<RolloutPreview>;
+  ) => Promise<RolloutPreview>
   onCohort: (
     coreType: string,
     hypothetical?: { experimentalCoreId: string; percentage: number },
-  ) => Promise<CohortEntry[]>;
-  onAuditLog: (coreType: string) => Promise<AuditEntry[]>;
-  onListOverrides: (coreType: string) => Promise<{ targetId: string; value: string }[]>;
-  onSetOverride: (coreType: string, userId: string, value: string) => Promise<void>;
-  onDeleteOverride: (coreType: string, userId: string) => Promise<void>;
+  ) => Promise<CohortEntry[]>
+  onAuditLog: (coreType: string) => Promise<AuditEntry[]>
+  onListOverrides: (coreType: string) => Promise<{ targetId: string; value: string }[]>
+  onSetOverride: (coreType: string, userId: string, value: string) => Promise<void>
+  onDeleteOverride: (coreType: string, userId: string) => Promise<void>
 }
 
-/** A horizontal bar row for one core's agent count, sized to its share of total. */
+/** A thin progress row for one core's agent count, sized to its share of total. */
 function DistroBar({
   label,
   count,
   total,
   stable,
 }: {
-  label: string;
-  count: number;
-  total: number;
-  stable: boolean;
+  label: string
+  count: number
+  total: number
+  stable: boolean
 }) {
-  const c = useWindowColors();
-  const color = stable ? STATUS_COLORS.active : semanticColors.amber;
-  const frac = total > 0 ? Math.round((count / total) * 100) : 0;
+  const c = useWindowColors()
+  const fill = stable ? c.accent : semantic.mint300
+  const frac = total > 0 ? Math.round((count / total) * 100) : 0
   return (
-    <XStack alignItems="center" gap="$2">
-      <Text fontSize="$1" color="$gray11" width={116} numberOfLines={1}>
+    <XStack alignItems="center" gap={12}>
+      <T step="sm" tone="text2" numberOfLines={1} style={{ width: 150 }}>
         {label}
-      </Text>
-      <YStack
-        flex={1}
-        height={8}
-        backgroundColor={c.bgInner}
-        borderRadius={4}
-        overflow="hidden"
+      </T>
+      <View
+        style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: c.wash, overflow: "hidden" }}
       >
-        <YStack height={8} width={`${frac}%`} backgroundColor={color} borderRadius={4} />
-      </YStack>
-      <Text fontSize="$2" color="$color" width={26} textAlign="right">
+        <View
+          style={[
+            { height: 6, width: `${frac}%`, borderRadius: 3, backgroundColor: fill },
+            Platform.OS === "web"
+              ? ({ transition: "width 0.5s cubic-bezier(.16,1,.3,1)" } as any)
+              : null,
+          ]}
+        />
+      </View>
+      <T step="code" style={{ width: 30, textAlign: "right" }}>
         {count}
-      </Text>
+      </T>
+      <T step="code" tone="text3" style={{ width: 40, textAlign: "right" }}>
+        {frac} %
+      </T>
     </XStack>
-  );
+  )
 }
 
 /**
@@ -549,159 +531,156 @@ function DistroBar({
  * render stays focused on presentation.
  */
 function useRolloutPreview(
-  coreType: 'agent' | 'super-agent',
+  coreType: "agent" | "super-agent",
   exp: string,
   parsedPct: number,
-  onPreview: RolloutSectionProps['onPreview'],
+  onPreview: RolloutSectionProps["onPreview"],
 ) {
-  const [saved, setSaved] = useState<RolloutPreview | null>(null);
-  const [live, setLive] = useState<RolloutPreview | null>(null);
+  const [saved, setSaved] = useState<RolloutPreview | null>(null)
+  const [live, setLive] = useState<RolloutPreview | null>(null)
 
   const refreshSaved = useCallback(async () => {
     try {
-      setSaved(await onPreview(coreType));
+      setSaved(await onPreview(coreType))
     } catch {
-      setSaved(null);
+      setSaved(null)
     }
-  }, [coreType, onPreview]);
+  }, [coreType, onPreview])
 
   // Load on mount / coreType change. Mutations from this section call refreshSaved
   // directly (see `run`), so the saved rollout changing never needs to be a dep.
   useEffect(() => {
-    refreshSaved();
-  }, [refreshSaved]);
+    refreshSaved()
+  }, [refreshSaved])
 
   // Live preview of the in-progress selection, debounced. Needs an experimental
   // core selected; the percentage may be anything in [0, 100] (0 = full revert).
   useEffect(() => {
     if (!exp) {
-      setLive(null);
-      return;
+      setLive(null)
+      return
     }
     const id = setTimeout(() => {
       onPreview(coreType, { experimentalCoreId: exp, percentage: parsedPct })
         .then(setLive)
-        .catch(() => setLive(null));
-    }, 350);
-    return () => clearTimeout(id);
-  }, [coreType, exp, parsedPct, onPreview]);
+        .catch(() => setLive(null))
+    }, 350)
+    return () => clearTimeout(id)
+  }, [coreType, exp, parsedPct, onPreview])
 
-  return { saved, live, refreshSaved };
+  return { saved, live, refreshSaved }
 }
 
 /** Compact diff of what a migrated agent gains/loses moving stable → experimental. */
 function CoreDiff({ stable, exp }: { stable?: AgentCore; exp?: AgentCore }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  if (!stable || !exp || stable.coreId === exp.coreId) return null;
-  const stableApps = new Set(stable.defaultApps ?? []);
-  const expApps = new Set(exp.defaultApps ?? []);
-  const added = [...expApps].filter((a) => !stableApps.has(a));
-  const removed = [...stableApps].filter((a) => !expApps.has(a));
-  const modelChanged = stable.modelId !== exp.modelId;
-  const promptChanged = (stable.systemPrompt ?? '') !== (exp.systemPrompt ?? '');
-  const short = (id: string) => id.replace(/^mca\./, '');
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  if (!stable || !exp || stable.coreId === exp.coreId) return null
+  const stableApps = new Set(stable.defaultApps ?? [])
+  const expApps = new Set(exp.defaultApps ?? [])
+  const added = [...expApps].filter((a) => !stableApps.has(a))
+  const removed = [...stableApps].filter((a) => !expApps.has(a))
+  const modelChanged = stable.modelId !== exp.modelId
+  const promptChanged = (stable.systemPrompt ?? "") !== (exp.systemPrompt ?? "")
+  const short = (id: string) => id.replace(/^mca\./, "")
 
   if (!modelChanged && !promptChanged && added.length === 0 && removed.length === 0) {
     return (
-      <Text fontSize="$1" color="$gray10">
-        {t('agentCores.diffIdentical')}
-      </Text>
-    );
+      <T step="12" tone="text3">
+        {t("agentCores.diffIdentical")}
+      </T>
+    )
   }
   return (
-    <YStack gap="$1" padding="$2.5" borderRadius="$2" backgroundColor={c.bgInner}>
-      <Text fontSize="$1" color="$gray11" fontWeight="600">
-        {t('agentCores.diffTitle')}
-      </Text>
+    <Card nested pad={12} style={{ gap: 4 }}>
+      <T step="xs" tone="text2">
+        {t("agentCores.diffTitle")}
+      </T>
       {modelChanged ? (
-        <Text fontSize="$1" color="$gray11">
-          {t('agentCores.diffModel')}: {stable.modelId} →{' '}
-          <Text color={semanticColors.amber}>{exp.modelId}</Text>
-        </Text>
+        <T step="12" tone="text2">
+          {t("agentCores.diffModel")}:{" "}
+          <T step="code" tone="text2">
+            {stable.modelId}
+          </T>{" "}
+          →{" "}
+          <T step="code" color={c.tint.a.tx}>
+            {exp.modelId}
+          </T>
+        </T>
       ) : null}
       {added.length > 0 ? (
-        <Text fontSize="$1" color={semanticColors.green}>
-          + {added.map(short).join(', ')}
-        </Text>
+        <T step="code" color={c.tint.g.tx}>
+          + {added.map(short).join(", ")}
+        </T>
       ) : null}
       {removed.length > 0 ? (
-        <Text fontSize="$1" color={semanticColors.red}>
-          − {removed.map(short).join(', ')}
-        </Text>
+        <T step="code" color={c.tint.r.tx}>
+          − {removed.map(short).join(", ")}
+        </T>
       ) : null}
       {promptChanged ? (
-        <Text fontSize="$1" color="$gray10">
-          {t('agentCores.diffPrompt')}
-        </Text>
+        <T step="12" tone="text3">
+          {t("agentCores.diffPrompt")}
+        </T>
       ) : null}
-    </YStack>
-  );
+    </Card>
+  )
 }
 
-/** Percentage control: quick ramp chips (5/25/50/100) + numeric input. */
+/** Percentage control: mono field + quick ramp chips (5/25/50/100). */
 function RampInput({
   value,
   onChange,
   disabled,
 }: {
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
+  value: string
+  onChange: (v: string) => void
+  disabled?: boolean
 }) {
-  const c = useWindowColors();
-  const current = parseInt(value, 10);
+  const current = parseInt(value, 10)
   return (
-    <YStack gap="$2">
-      <XStack gap="$2" alignItems="center">
-        <Text fontSize="$2" color="$gray11" width={16}>
-          %
-        </Text>
-        <Input
-          flex={1}
-          keyboardType="number-pad"
-          value={value}
-          onChangeText={onChange}
-          placeholder="0"
-          backgroundColor={c.bgInner}
-          borderColor={c.border}
-          disabled={disabled}
-        />
-      </XStack>
-      <XStack gap="$2" flexWrap="wrap">
+    <XStack gap={10} alignItems="center" flexWrap="wrap">
+      <Field
+        mono
+        keyboardType="number-pad"
+        value={value}
+        onChangeText={onChange}
+        placeholder="0"
+        editable={!disabled}
+        containerStyle={{ width: 110 }}
+        right={
+          <T step="codenote" tone="text3">
+            %
+          </T>
+        }
+      />
+      <XStack gap={4} flexWrap="wrap">
         {[5, 25, 50, 100].map((s) => (
-          <ToggleBadge
+          <ChipBtn
             key={s}
-            label={`${s}%`}
-            selected={current === s}
+            mono
+            on={current === s}
+            disabled={disabled}
             onPress={() => onChange(String(s))}
-          />
+          >
+            {`${s} %`}
+          </ChipBtn>
         ))}
       </XStack>
-    </YStack>
-  );
+    </XStack>
+  )
 }
 
 /** Hero figures for an impact plan: migrate / revert / unchanged. */
 function PlanFigures({ plan }: { plan: { migrate: number; revert: number; stay: number } }) {
-  const { t } = useTranslation();
-  const Fig = ({ n, label, color }: { n: number; label: string; color: string }) => (
-    <YStack alignItems="center" minWidth={58}>
-      <Text fontSize="$7" fontWeight="700" color={n > 0 ? color : '$gray9'}>
-        {n}
-      </Text>
-      <Text fontSize="$1" color="$gray10">
-        {label}
-      </Text>
-    </YStack>
-  );
+  const { t } = useTranslation()
   return (
-    <XStack gap="$4">
-      <Fig n={plan.migrate} label={t('agentCores.figMigrate')} color={semanticColors.amber} />
-      <Fig n={plan.revert} label={t('agentCores.figRevert')} color={semanticColors.green} />
-      <Fig n={plan.stay} label={t('agentCores.figStay')} color="$gray11" />
-    </XStack>
-  );
+    <Stats cols={3}>
+      <Stat v={plan.migrate} label={t("agentCores.figMigrate")} accent={plan.migrate > 0} />
+      <Stat v={plan.revert} label={t("agentCores.figRevert")} accent={plan.revert > 0} />
+      <Stat v={plan.stay} label={t("agentCores.figStay")} />
+    </Stats>
+  )
 }
 
 /** The "who" panel: the rollout cohort grouped by owner, scrollable. */
@@ -709,119 +688,140 @@ function CohortPanel({
   cohort,
   labelFor,
 }: {
-  cohort: CohortEntry[];
-  labelFor: (coreId: string) => string;
+  cohort: CohortEntry[]
+  labelFor: (coreId: string) => string
 }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  const byOwner = new Map<string, CohortEntry[]>();
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  const byOwner = new Map<string, CohortEntry[]>()
   for (const e of cohort) {
-    const list = byOwner.get(e.ownerName) ?? [];
-    list.push(e);
-    byOwner.set(e.ownerName, list);
+    const list = byOwner.get(e.ownerName) ?? []
+    list.push(e)
+    byOwner.set(e.ownerName, list)
   }
-  const kindColor = (kind: CohortEntry['kind']) =>
-    kind === 'migrate' ? semanticColors.amber : kind === 'revert' ? semanticColors.green : '$gray10';
+  const kindColor = (kind: CohortEntry["kind"]) =>
+    kind === "migrate" ? c.tint.a.tx : kind === "revert" ? c.tint.g.tx : c.text3
 
   if (cohort.length === 0) {
     return (
-      <Text fontSize="$1" color="$gray10">
-        {t('agentCores.cohortEmpty')}
-      </Text>
-    );
+      <T step="12" tone="text3">
+        {t("agentCores.cohortEmpty")}
+      </T>
+    )
   }
   return (
-    <YStack
-      maxHeight={260}
-      borderWidth={1}
-      borderColor={c.border}
-      borderRadius="$3"
-      overflow="hidden"
-    >
+    <Card nested style={{ maxHeight: 260 }}>
       <ScrollView style={scrollbarStyle(c.scrollbarColor)}>
-        <YStack padding="$2.5" gap="$2">
-          {[...byOwner.entries()].map(([owner, entries]) => (
-            <YStack key={owner} gap="$1">
-              <XStack justifyContent="space-between" alignItems="center">
-                <Text fontSize="$2" color="$color" fontWeight="600" numberOfLines={1}>
-                  {owner}
-                </Text>
-                {entries[0].bucket != null ? (
-                  <Text fontSize="$1" color="$gray10">
-                    bucket {entries[0].bucket}
-                  </Text>
-                ) : (
-                  <Badge color={semanticColors.red}>{t('agentCores.noBucket')}</Badge>
-                )}
+        {[...byOwner.entries()].map(([owner, entries], i) => (
+          <View
+            key={owner}
+            style={{
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              gap: 4,
+              borderTopWidth: i > 0 ? 1 : 0,
+              borderTopColor: c.border,
+            }}
+          >
+            <XStack justifyContent="space-between" alignItems="center" gap={8}>
+              <T step="sm" numberOfLines={1} style={{ flex: 1 }}>
+                {owner}
+              </T>
+              {entries[0].bucket != null ? (
+                <T step="codenote" tone="text3">
+                  bucket {entries[0].bucket}
+                </T>
+              ) : (
+                <Badge tone="r" sm>
+                  {t("agentCores.noBucket")}
+                </Badge>
+              )}
+            </XStack>
+            {entries.map((e) => (
+              <XStack key={e.agentId} gap={8} alignItems="center" paddingLeft={10}>
+                <T step="12" tone="text2" numberOfLines={1} style={{ flex: 1 }}>
+                  {e.agentName}
+                </T>
+                <T step="codenote" tone="text3">
+                  {labelFor(e.current)}
+                </T>
+                {e.kind !== "stay" ? (
+                  <T step="codenote" color={kindColor(e.kind)}>
+                    → {labelFor(e.target)}
+                  </T>
+                ) : null}
               </XStack>
-              {entries.map((e) => (
-                <XStack key={e.agentId} gap="$2" alignItems="center" paddingLeft="$2">
-                  <Text fontSize="$1" color="$gray11" flex={1} numberOfLines={1}>
-                    {e.agentName}
-                  </Text>
-                  <Text fontSize="$1" color="$gray10">
-                    {labelFor(e.current)}
-                  </Text>
-                  {e.kind !== 'stay' ? (
-                    <Text fontSize="$1" color={kindColor(e.kind)}>
-                      → {labelFor(e.target)}
-                    </Text>
-                  ) : null}
-                </XStack>
-              ))}
-            </YStack>
-          ))}
-        </YStack>
+            ))}
+          </View>
+        ))}
       </ScrollView>
-    </YStack>
-  );
+    </Card>
+  )
 }
 
 /** Rollout timeline from the audit log (set / clear / apply), most recent first. */
 function AuditTimeline({ entries }: { entries: AuditEntry[] }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
+  const c = useWindowColors()
+  const { t } = useTranslation()
   const describe = (e: AuditEntry) => {
-    if (e.action === 'apply_rollout') {
-      const m = /migrated=(\d+) reverted=(\d+)/.exec(e.note ?? '');
-      return t('agentCores.auditApply', { migrated: m?.[1] ?? '?', reverted: m?.[2] ?? '?' });
+    if (e.action === "apply_rollout") {
+      const m = /migrated=(\d+) reverted=(\d+)/.exec(e.note ?? "")
+      return t("agentCores.auditApply", { migrated: m?.[1] ?? "?", reverted: m?.[2] ?? "?" })
     }
-    if (e.action === 'set_rollout') {
-      const p = /percentage=(\d+)/.exec(e.note ?? '')?.[1];
-      return t('agentCores.auditSet', { pct: p ?? '?' });
+    if (e.action === "set_rollout") {
+      const p = /percentage=(\d+)/.exec(e.note ?? "")?.[1]
+      return t("agentCores.auditSet", { pct: p ?? "?" })
     }
-    if (e.action === 'clear_rollout') return t('agentCores.auditClear');
-    return e.action;
-  };
+    if (e.action === "clear_rollout") return t("agentCores.auditClear")
+    return e.action
+  }
+  const toneFor = (action: string): BadgeTone =>
+    action === "apply_rollout"
+      ? "g"
+      : action === "set_rollout"
+        ? "i"
+        : action === "clear_rollout"
+          ? "a"
+          : "neutral"
+  const shortAction = (action: string) => action.replace(/_rollout$/, "")
   const when = (ts: string) => {
-    const d = new Date(ts);
-    return Number.isNaN(d.getTime()) ? ts : d.toLocaleString();
-  };
+    const d = new Date(ts)
+    return Number.isNaN(d.getTime()) ? ts : d.toLocaleString()
+  }
   if (entries.length === 0) {
     return (
-      <Text fontSize="$1" color="$gray10">
-        {t('agentCores.auditEmpty')}
-      </Text>
-    );
+      <T step="12" tone="text3">
+        {t("agentCores.auditEmpty")}
+      </T>
+    )
   }
   return (
-    <YStack maxHeight={200} borderWidth={1} borderColor={c.border} borderRadius="$3" overflow="hidden">
+    <Card nested style={{ maxHeight: 220 }}>
       <ScrollView style={scrollbarStyle(c.scrollbarColor)}>
-        <YStack padding="$2.5" gap="$1.5">
-          {entries.map((e) => (
-            <XStack key={e.auditId} gap="$2" alignItems="flex-start">
-              <Text fontSize="$1" color="$gray10" width={132} numberOfLines={1}>
-                {when(e.timestamp)}
-              </Text>
-              <Text fontSize="$1" color="$gray11" flex={1}>
-                {describe(e)} · {e.actor}
-              </Text>
-            </XStack>
-          ))}
-        </YStack>
+        {entries.map((e, i) => (
+          <XStack
+            key={e.auditId}
+            gap={12}
+            alignItems="center"
+            paddingHorizontal={14}
+            paddingVertical={9}
+            borderTopWidth={i > 0 ? 1 : 0}
+            borderTopColor={c.border}
+          >
+            <T step="codenote" tone="text3" numberOfLines={1} style={{ width: 150 }}>
+              {when(e.timestamp)}
+            </T>
+            <T step="sm" tone="text2" style={{ flex: 1 }}>
+              {describe(e)} · {e.actor}
+            </T>
+            <Badge mono sm tone={toneFor(e.action)}>
+              {shortAction(e.action)}
+            </Badge>
+          </XStack>
+        ))}
       </ScrollView>
-    </YStack>
-  );
+    </Card>
+  )
 }
 
 /** Per-user overrides: force/exclude a specific user onto stable or experimental.
@@ -834,94 +834,120 @@ function OverridesPanel({
   onSet,
   onDelete,
 }: {
-  coreType: string;
-  expCoreId: string | null;
-  labelFor: (coreId: string) => string;
-  onList: (coreType: string) => Promise<{ targetId: string; value: string }[]>;
-  onSet: (coreType: string, userId: string, value: string) => Promise<void>;
-  onDelete: (coreType: string, userId: string) => Promise<void>;
+  coreType: string
+  expCoreId: string | null
+  labelFor: (coreId: string) => string
+  onList: (coreType: string) => Promise<{ targetId: string; value: string }[]>
+  onSet: (coreType: string, userId: string, value: string) => Promise<void>
+  onDelete: (coreType: string, userId: string) => Promise<void>
 }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  const [overrides, setOverrides] = useState<{ targetId: string; value: string }[]>([]);
-  const [uid, setUid] = useState('');
-  const [target, setTarget] = useState(coreType);
-  const [busy, setBusy] = useState(false);
+  const { t } = useTranslation()
+  const [overrides, setOverrides] = useState<{ targetId: string; value: string }[]>([])
+  const [uid, setUid] = useState("")
+  const [target, setTarget] = useState(coreType)
+  const [busy, setBusy] = useState(false)
 
   const reload = useCallback(() => {
     onList(coreType)
       .then(setOverrides)
-      .catch(() => setOverrides([]));
-  }, [coreType, onList]);
+      .catch(() => setOverrides([]))
+  }, [coreType, onList])
   useEffect(() => {
-    reload();
-  }, [reload]);
+    reload()
+  }, [reload])
 
   const run = (fn: () => Promise<void>) => {
-    setBusy(true);
+    setBusy(true)
     fn()
       .then(reload)
-      .finally(() => setBusy(false));
-  };
+      .finally(() => setBusy(false))
+  }
 
   return (
-    <YStack gap="$2">
+    <View style={{ gap: 12 }}>
       {overrides.length === 0 ? (
-        <Text fontSize="$1" color="$gray10">
-          {t('agentCores.noOverrides')}
-        </Text>
+        <T step="12" tone="text3">
+          {t("agentCores.noOverrides")}
+        </T>
       ) : (
-        overrides.map((o) => (
-          <XStack key={o.targetId} gap="$2" alignItems="center">
-            <Text fontSize="$1" color="$gray11" flex={1} numberOfLines={1}>
-              {o.targetId}
-            </Text>
-            <Badge color={o.value === coreType ? STATUS_COLORS.active : semanticColors.amber}>
-              {labelFor(o.value)}
-            </Badge>
-            <TouchableOpacity
-              onPress={() => run(() => onDelete(coreType, o.targetId))}
-              hitSlop={6}
-              disabled={busy}
-            >
-              <X size={14} color={c.text3} />
-            </TouchableOpacity>
-          </XStack>
-        ))
+        <LGroup>
+          {overrides.map((o) => (
+            <LRow key={o.targetId} padV={8} padH={14} gap={10}>
+              <T step="code" numberOfLines={1} style={{ flex: 1 }}>
+                {o.targetId}
+              </T>
+              <Badge tone={o.value === coreType ? "g" : "i"} sm>
+                {labelFor(o.value)}
+              </Badge>
+              <IconBtn
+                icon="x"
+                plain
+                sm
+                title={t("common.delete")}
+                onPress={() => run(() => onDelete(coreType, o.targetId))}
+                disabled={busy}
+              />
+            </LRow>
+          ))}
+        </LGroup>
       )}
-      <XStack gap="$2" alignItems="center" flexWrap="wrap">
-        <Input
-          flex={1}
+      <XStack gap={8} alignItems="center" flexWrap="wrap">
+        <Field
+          mono
+          containerStyle={{ flex: 1, minWidth: 180 }}
           value={uid}
           onChangeText={setUid}
-          placeholder={t('agentCores.overrideUserPlaceholder')}
+          placeholder={t("agentCores.overrideUserPlaceholder")}
           autoCapitalize="none"
-          backgroundColor={c.bgInner}
-          borderColor={c.border}
         />
-        <ToggleBadge
-          label={labelFor(coreType)}
-          selected={target === coreType}
-          color={STATUS_COLORS.active}
-          onPress={() => setTarget(coreType)}
-        />
+        <ChipBtn on={target === coreType} onPress={() => setTarget(coreType)}>
+          {labelFor(coreType)}
+        </ChipBtn>
         {expCoreId ? (
-          <ToggleBadge
-            label={labelFor(expCoreId)}
-            selected={target === expCoreId}
-            color={semanticColors.amber}
-            onPress={() => setTarget(expCoreId)}
-          />
+          <ChipBtn on={target === expCoreId} onPress={() => setTarget(expCoreId)}>
+            {labelFor(expCoreId)}
+          </ChipBtn>
         ) : null}
-        <Button
-          size="$2"
-          icon={<Plus size={14} />}
+        <Btn
+          variant="sec"
+          icon="plus"
           disabled={busy || !uid.trim()}
-          onPress={() => run(() => onSet(coreType, uid.trim(), target).then(() => setUid('')))}
+          onPress={() => run(() => onSet(coreType, uid.trim(), target).then(() => setUid("")))}
         />
       </XStack>
-    </YStack>
-  );
+    </View>
+  )
+}
+
+/** Tinted notice box (amber / red / green). */
+function Notice({
+  tone,
+  icon,
+  children,
+}: {
+  tone: "a" | "r" | "g"
+  icon?: string
+  children: React.ReactNode
+}) {
+  const c = useWindowColors()
+  const tint = c.tint[tone]
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 10,
+        padding: 12,
+        borderRadius: 12,
+        backgroundColor: tint.bg,
+        borderWidth: 1,
+        borderColor: tint.bd,
+      }}
+    >
+      {icon ? <Ph name={icon} size={15} color={tint.tx} style={{ marginTop: 1 }} /> : null}
+      <View style={{ flex: 1, gap: 10 }}>{children}</View>
+    </View>
+  )
 }
 
 function RolloutSection({
@@ -939,145 +965,134 @@ function RolloutSection({
   onSetOverride,
   onDeleteOverride,
 }: RolloutSectionProps) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  const [exp, setExp] = useState<string>(rollout.experimentalCoreId ?? '');
-  const [pct, setPct] = useState<string>(String(rollout.percentage ?? 0));
-  const [busy, setBusy] = useState(false);
-  const [confirm, setConfirm] = useState<'apply' | 'clear' | 'revert' | null>(null);
-  const [msg, setMsg] = useState<{ text: string; kind: 'ok' | 'error' } | null>(null);
-  const [cohort, setCohort] = useState<CohortEntry[] | null>(null);
-  const [audit, setAudit] = useState<AuditEntry[] | null>(null);
-  const [overridesOpen, setOverridesOpen] = useState(false);
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  const [exp, setExp] = useState<string>(rollout.experimentalCoreId ?? "")
+  const [pct, setPct] = useState<string>(String(rollout.percentage ?? 0))
+  const [busy, setBusy] = useState(false)
+  const [confirm, setConfirm] = useState<"apply" | "clear" | "revert" | null>(null)
+  const [msg, setMsg] = useState<{ text: string; kind: "ok" | "error" } | null>(null)
+  const [cohort, setCohort] = useState<CohortEntry[] | null>(null)
+  const [audit, setAudit] = useState<AuditEntry[] | null>(null)
+  const [overridesOpen, setOverridesOpen] = useState(false)
 
   // Resync the form with the server state when it changes (e.g. after Clear/Set
   // reloads the flags). This component is not remounted on those changes — without
   // this, exp/pct keep the stale pre-clear values and "Set rollout" would re-create
   // the rollout the admin just cleared.
   useEffect(() => {
-    setExp(rollout.experimentalCoreId ?? '');
-    setPct(String(rollout.percentage ?? 0));
-  }, [rollout.experimentalCoreId, rollout.percentage]);
+    setExp(rollout.experimentalCoreId ?? "")
+    setPct(String(rollout.percentage ?? 0))
+  }, [rollout.experimentalCoreId, rollout.percentage])
 
-  const parsedPct = Math.max(0, Math.min(100, parseInt(pct, 10) || 0));
-  const { saved, live, refreshSaved } = useRolloutPreview(coreType, exp, parsedPct, onPreview);
+  const parsedPct = Math.max(0, Math.min(100, parseInt(pct, 10) || 0))
+  const { saved, live, refreshSaved } = useRolloutPreview(coreType, exp, parsedPct, onPreview)
 
-  const hasRollout = !!rollout.experimentalCoreId && rollout.percentage > 0;
+  const hasRollout = !!rollout.experimentalCoreId && rollout.percentage > 0
 
-  const labelFor = (coreId: string) => cores.find((c) => c.coreId === coreId)?.fullName ?? coreId;
-  const isStable = (coreId: string) => coreId === coreType;
+  const labelFor = (coreId: string) => cores.find((c) => c.coreId === coreId)?.fullName ?? coreId
+  const isStable = (coreId: string) => coreId === coreType
 
   // Order the distribution rows: stable core first, then experimentals.
   const distRows = (p: RolloutPreview | null) =>
     (p?.distribution ?? [])
       .slice()
-      .sort((a, b) => Number(isStable(b.coreId)) - Number(isStable(a.coreId)));
+      .sort((a, b) => Number(isStable(b.coreId)) - Number(isStable(a.coreId)))
 
   // Agents currently sitting on an experimental core. Clear does NOT move them —
   // only an Apply (at 0%) reverts them. We surface that so "Clear" is not mistaken
   // for a rollback, and to gate the one-click "Revert all".
-  const migratedRows = distRows(saved).filter((d) => !isStable(d.coreId) && d.count > 0);
-  const migratedAway = migratedRows.reduce((sum, d) => sum + d.count, 0);
-  const migratedExp = migratedRows[0]?.coreId;
+  const migratedRows = distRows(saved).filter((d) => !isStable(d.coreId) && d.count > 0)
+  const migratedAway = migratedRows.reduce((sum, d) => sum + d.count, 0)
+  const migratedExp = migratedRows[0]?.coreId
 
   // Diff stable ↔ in-progress experimental (what migrated agents would receive).
-  const stableCore = cores.find((c) => isStable(c.coreId));
-  const expCore = cores.find((c) => c.coreId === exp);
+  const stableCore = cores.find((c) => isStable(c.coreId))
+  const expCore = cores.find((c) => c.coreId === exp)
 
   // The SAVED rollout may point at a core deactivated after Set → Apply would throw.
   // Warn up-front and gate Apply instead of failing at click time.
-  const savedExpCore = cores.find((c) => c.coreId === rollout.experimentalCoreId);
-  const savedExpInactive = hasRollout && (!savedExpCore || savedExpCore.status !== 'active');
+  const savedExpCore = cores.find((c) => c.coreId === rollout.experimentalCoreId)
+  const savedExpInactive = hasRollout && (!savedExpCore || savedExpCore.status !== "active")
 
   // Target declared (flag) vs reality (applied): Set without Apply leaves them out
   // of sync. saved.plan counts what an Apply right now would still move.
-  const pending = saved ? saved.plan.migrate + saved.plan.revert : 0;
+  const pending = saved ? saved.plan.migrate + saved.plan.revert : 0
 
-  const ok = (text: string) => setMsg({ text, kind: 'ok' });
+  const ok = (text: string) => setMsg({ text, kind: "ok" })
 
   const run = async (fn: () => Promise<void>) => {
-    setBusy(true);
-    setMsg(null);
+    setBusy(true)
+    setMsg(null)
     try {
-      await fn();
+      await fn()
     } catch (err) {
-      setMsg({ text: err instanceof Error ? err.message : String(err), kind: 'error' });
+      setMsg({ text: err instanceof Error ? err.message : String(err), kind: "error" })
     } finally {
       // Always resync — Apply is non-transactional, so even on a mid-run failure the
       // distribution may have partially changed and must reflect reality.
-      await refreshSaved();
-      setBusy(false);
+      await refreshSaved()
+      setBusy(false)
     }
-  };
+  }
 
   // Revert everyone to the stable core: set the saved experimental to 0% and Apply.
   const revertAll = () =>
     run(async () => {
-      if (rollout.experimentalCoreId) await onSet(coreType, rollout.experimentalCoreId, 0);
-      const res = await onApply(coreType);
-      setConfirm(null);
-      ok(t('agentCores.rolloutApplied', res));
-    });
+      if (rollout.experimentalCoreId) await onSet(coreType, rollout.experimentalCoreId, 0)
+      const res = await onApply(coreType)
+      setConfirm(null)
+      ok(t("agentCores.rolloutApplied", res))
+    })
 
   return (
-    <FormSection
-      title={t('agentCores.rollout')}
-      icon={<Cpu size={16} color={semanticColors.amber} />}
-      defaultOpen={hasRollout}
-    >
+    <FormSection title={t("agentCores.rollout")} icon="rocket-launch" defaultOpen={hasRollout}>
       {/* What this does — Set declares the plan; Apply moves agents. */}
-      <Text fontSize="$1" color="$gray10" lineHeight={16}>
-        {t('agentCores.rolloutHelp')}
-      </Text>
+      <T step="12" tone="text3">
+        {t("agentCores.rolloutHelp")}
+      </T>
 
       {/* The saved rollout points at a core that is no longer active → Apply throws. */}
       {savedExpInactive ? (
-        <XStack
-          gap="$2"
-          alignItems="center"
-          padding="$2.5"
-          borderRadius="$3"
-          borderWidth={1}
-          borderColor={indicators.irreversible.border}
-          backgroundColor={indicators.irreversible.bg}
-        >
-          <AlertTriangle size={16} color={semanticColors.red} />
-          <Text fontSize="$1" color={semanticColors.red} flex={1}>
-            {t('agentCores.experimentalInactive', {
-              exp: labelFor(rollout.experimentalCoreId ?? ''),
+        <Notice tone="r" icon="warning">
+          <T step="sm" color={c.tint.r.tx}>
+            {t("agentCores.experimentalInactive", {
+              exp: labelFor(rollout.experimentalCoreId ?? ""),
             })}
-          </Text>
-        </XStack>
+          </T>
+        </Notice>
       ) : null}
 
       {/* Current state: stable + experimental + sync (declared vs applied) */}
-      <XStack gap="$2" flexWrap="wrap" alignItems="center">
-        <Badge color={STATUS_COLORS.active}>
-          {t('agentCores.stable')}: {coreType}
+      <XStack gap={6} flexWrap="wrap" alignItems="center">
+        <Badge tone="g" dot>
+          {t("agentCores.stable")}: {coreType}
         </Badge>
         {hasRollout ? (
-          <Badge color={semanticColors.amber}>
-            {t('agentCores.experimental')}: {labelFor(rollout.experimentalCoreId ?? '')} ·{' '}
+          <Badge tone="i" dot>
+            {t("agentCores.experimental")}: {labelFor(rollout.experimentalCoreId ?? "")} ·{" "}
             {rollout.percentage}%
           </Badge>
         ) : (
-          <Text fontSize="$1" color="$gray10">
-            {t('agentCores.noActiveRollout')}
-          </Text>
+          <T step="12" tone="text3">
+            {t("agentCores.noActiveRollout")}
+          </T>
         )}
         {saved && saved.total > 0 ? (
-          <Badge color={pending > 0 ? semanticColors.amber : STATUS_COLORS.active}>
-            {pending > 0 ? t('agentCores.pendingApply', { count: pending }) : t('agentCores.synced')}
+          <Badge tone={pending > 0 ? "a" : "g"}>
+            {pending > 0
+              ? t("agentCores.pendingApply", { count: pending })
+              : t("agentCores.synced")}
           </Badge>
         ) : null}
       </XStack>
 
       {/* Current distribution — who runs what today. */}
       {saved && saved.total > 0 ? (
-        <YStack gap="$2">
-          <Text fontSize="$2" color="$gray11">
-            {t('agentCores.currentDistribution', { total: saved.total })}
-          </Text>
+        <View style={{ gap: 10 }}>
+          <T step="sm" tone="text2">
+            {t("agentCores.currentDistribution", { total: saved.total })}
+          </T>
           {distRows(saved).map((d) => (
             <DistroBar
               key={d.coreId}
@@ -1088,14 +1103,15 @@ function RolloutSection({
             />
           ))}
           {saved.unbucketed > 0 ? (
-            <Text fontSize="$1" color={semanticColors.red}>
-              {t('agentCores.neverMigrate', { count: saved.unbucketed })}
-            </Text>
+            <T step="12" color={c.tint.r.tx}>
+              {t("agentCores.neverMigrate", { count: saved.unbucketed })}
+            </T>
           ) : null}
           <XStack>
-            <Button
-              size="$2"
-              chromeless
+            <Btn
+              variant="ghost"
+              size="sm"
+              icon="users-three"
               onPress={() =>
                 cohort
                   ? setCohort(null)
@@ -1105,223 +1121,223 @@ function RolloutSection({
               }
             >
               {cohort
-                ? t('agentCores.hideCohort')
-                : t('agentCores.viewCohort', { count: saved.total })}
-            </Button>
+                ? t("agentCores.hideCohort")
+                : t("agentCores.viewCohort", { count: saved.total })}
+            </Btn>
           </XStack>
           {cohort ? <CohortPanel cohort={cohort} labelFor={labelFor} /> : null}
-        </YStack>
+        </View>
       ) : null}
 
       {candidates.length === 0 ? (
-        <Text fontSize="$1" color="$gray10">
-          {t('agentCores.noExperimentalCandidates')}
-        </Text>
+        <T step="12" tone="text3">
+          {t("agentCores.noExperimentalCandidates")}
+        </T>
       ) : (
-        <YStack gap="$2">
-          <Text fontSize="$2" color="$gray11">
-            {t('agentCores.chooseExperimental')}
-          </Text>
-          <XStack gap="$2" flexWrap="wrap">
-            {candidates.map((c) => (
-              <ToggleBadge
-                key={c.coreId}
-                label={labelFor(c.coreId)}
-                selected={exp === c.coreId}
-                onPress={() => setExp(c.coreId)}
-              />
+        <View style={{ gap: 12 }}>
+          <T step="sm" tone="text2">
+            {t("agentCores.chooseExperimental")}
+          </T>
+          <XStack gap={6} flexWrap="wrap">
+            {candidates.map((cand) => (
+              <ChipBtn
+                key={cand.coreId}
+                on={exp === cand.coreId}
+                icon={exp === cand.coreId ? "check" : undefined}
+                onPress={() => setExp(cand.coreId)}
+              >
+                {labelFor(cand.coreId)}
+              </ChipBtn>
             ))}
           </XStack>
 
           {/* What migrated agents would receive (model / MCAs / prompt). */}
           {exp ? <CoreDiff stable={stableCore} exp={expCore} /> : null}
 
-          <RampInput value={pct} onChange={setPct} disabled={busy} />
-          <XStack justifyContent="flex-end">
-            <Button
-              size="$2"
-              variant="outlined"
+          <XStack gap={10} alignItems="center" justifyContent="space-between" flexWrap="wrap">
+            <RampInput value={pct} onChange={setPct} disabled={busy} />
+            <Btn
+              variant="sec"
+              size="sm"
+              icon="floppy-disk"
               disabled={busy || !exp}
               onPress={() =>
                 run(async () => {
-                  await onSet(coreType, exp, parsedPct);
-                  ok(t('agentCores.rolloutSaved'));
+                  await onSet(coreType, exp, parsedPct)
+                  ok(t("agentCores.rolloutSaved"))
                 })
               }
             >
-              {t('agentCores.setRollout')}
-            </Button>
+              {t("agentCores.setRollout")}
+            </Btn>
           </XStack>
 
           {/* Live impact of the in-progress selection (before saving). */}
           {exp && live ? (
-            <YStack
-              gap="$1.5"
-              padding="$2.5"
-              borderRadius="$3"
-              borderWidth={1}
-              borderColor={indicators.risk.border}
-              backgroundColor={indicators.risk.bg}
-            >
-              <Text fontSize="$1" color={semanticColors.amber}>
-                {t('agentCores.liveImpactAt', { percentage: parsedPct })}
-              </Text>
+            <Notice tone="a">
+              <T step="xs" color={c.tint.a.tx}>
+                {t("agentCores.liveImpactAt", { percentage: parsedPct })}
+              </T>
               <PlanFigures plan={live.plan} />
-              <Text fontSize="$1" color="$gray11">
-                {t('agentCores.wouldResult', {
+              <T step="12" tone="text2">
+                {t("agentCores.wouldResult", {
                   summary: distRows(live)
                     .map((d) => `${labelFor(d.coreId)} ${d.count}`)
-                    .join(' · '),
+                    .join(" · "),
                 })}
-              </Text>
-            </YStack>
+              </T>
+            </Notice>
           ) : null}
 
-          {confirm === 'apply' ? (
-            <YStack gap="$2">
+          {confirm === "apply" ? (
+            <Notice tone="a" icon="lightning">
               {saved ? (
                 <>
-                  <Text fontSize="$1" color={semanticColors.amber}>
-                    {t('agentCores.confirmApplyTitle')}
-                  </Text>
+                  <T step="sm" color={c.tint.a.tx}>
+                    {t("agentCores.confirmApplyTitle")}
+                  </T>
                   <PlanFigures plan={saved.plan} />
                 </>
               ) : (
-                <Text fontSize="$1" color={semanticColors.amber}>
-                  {t('agentCores.confirmApply', { coreType })}
-                </Text>
+                <T step="sm" color={c.tint.a.tx}>
+                  {t("agentCores.confirmApply", { coreType })}
+                </T>
               )}
-              <XStack gap="$2" justifyContent="flex-end">
-                <Button size="$2" disabled={busy} onPress={() => setConfirm(null)}>
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  size="$2"
-                  backgroundColor={semanticColors.amber}
-                  color="white"
+              <XStack gap={8} justifyContent="flex-end">
+                <Btn variant="sec" size="sm" disabled={busy} onPress={() => setConfirm(null)}>
+                  {t("common.cancel")}
+                </Btn>
+                <Btn
+                  variant="amber"
+                  size="sm"
+                  icon="lightning"
                   disabled={busy}
                   onPress={() =>
                     run(async () => {
-                      const res = await onApply(coreType);
-                      setConfirm(null);
-                      ok(t('agentCores.rolloutApplied', res));
+                      const res = await onApply(coreType)
+                      setConfirm(null)
+                      ok(t("agentCores.rolloutApplied", res))
                     })
                   }
                 >
-                  {t('common.confirm')}
-                </Button>
+                  {t("common.confirm")}
+                </Btn>
               </XStack>
-            </YStack>
-          ) : confirm === 'revert' ? (
+            </Notice>
+          ) : confirm === "revert" ? (
             // One-click rollback: set the saved experimental to 0% and Apply.
-            <XStack gap="$2" alignItems="center" flexWrap="wrap">
-              <Text fontSize="$1" color={semanticColors.green} flex={1}>
-                {t('agentCores.confirmRevert', { count: migratedAway })}
-              </Text>
-              <Button size="$2" disabled={busy} onPress={() => setConfirm(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button size="$2" theme="active" disabled={busy} onPress={revertAll}>
-                {t('agentCores.revertAll')}
-              </Button>
-            </XStack>
-          ) : confirm === 'clear' ? (
+            <Notice tone="g" icon="arrow-counter-clockwise">
+              <XStack gap={8} alignItems="center" flexWrap="wrap">
+                <T step="sm" color={c.tint.g.tx} style={{ flex: 1, minWidth: 200 }}>
+                  {t("agentCores.confirmRevert", { count: migratedAway })}
+                </T>
+                <Btn variant="sec" size="sm" disabled={busy} onPress={() => setConfirm(null)}>
+                  {t("common.cancel")}
+                </Btn>
+                <Btn variant="primary" size="sm" disabled={busy} onPress={revertAll}>
+                  {t("agentCores.revertAll")}
+                </Btn>
+              </XStack>
+            </Notice>
+          ) : confirm === "clear" ? (
             // Clear only drops the flag — it does NOT move migrated agents back.
-            <XStack gap="$2" alignItems="center" flexWrap="wrap">
-              <Text fontSize="$1" color={semanticColors.amber} flex={1}>
-                {t('agentCores.confirmClear', {
-                  count: migratedAway,
-                  exp: migratedExp ? labelFor(migratedExp) : '',
-                })}
-              </Text>
-              <Button size="$2" disabled={busy} onPress={() => setConfirm(null)}>
-                {t('common.cancel')}
-              </Button>
-              <Button
-                size="$2"
-                disabled={busy}
-                onPress={() =>
-                  run(async () => {
-                    await onClear(coreType);
-                    setConfirm(null);
-                  })
-                }
-              >
-                {t('agentCores.clearRollout')}
-              </Button>
-            </XStack>
-          ) : (
-            <XStack gap="$2" flexWrap="wrap" alignItems="center">
-              {/* Apply is the only action that mutates production now → it leads. */}
-              <Button
-                size="$2"
-                backgroundColor={savedExpInactive ? undefined : semanticColors.amber}
-                color={savedExpInactive ? undefined : 'white'}
-                icon={<Zap size={14} />}
-                disabled={busy || savedExpInactive}
-                onPress={() => setConfirm('apply')}
-              >
-                {t('agentCores.applyRollout')}
-              </Button>
-              {migratedAway > 0 ? (
-                <Button
-                  size="$2"
-                  variant="outlined"
-                  icon={<RotateCcw size={14} />}
+            <Notice tone="a" icon="warning">
+              <XStack gap={8} alignItems="center" flexWrap="wrap">
+                <T step="sm" color={c.tint.a.tx} style={{ flex: 1, minWidth: 200 }}>
+                  {t("agentCores.confirmClear", {
+                    count: migratedAway,
+                    exp: migratedExp ? labelFor(migratedExp) : "",
+                  })}
+                </T>
+                <Btn variant="sec" size="sm" disabled={busy} onPress={() => setConfirm(null)}>
+                  {t("common.cancel")}
+                </Btn>
+                <Btn
+                  variant="dangerSoft"
+                  size="sm"
                   disabled={busy}
-                  onPress={() => setConfirm('revert')}
+                  onPress={() =>
+                    run(async () => {
+                      await onClear(coreType)
+                      setConfirm(null)
+                    })
+                  }
                 >
-                  {t('agentCores.revertAll')}
-                </Button>
+                  {t("agentCores.clearRollout")}
+                </Btn>
+              </XStack>
+            </Notice>
+          ) : (
+            <XStack gap={8} flexWrap="wrap" alignItems="center">
+              {/* Apply is the only action that mutates production now → it leads. */}
+              <Btn
+                variant={savedExpInactive ? "sec" : "amber"}
+                size="sm"
+                icon="lightning"
+                disabled={busy || savedExpInactive}
+                onPress={() => setConfirm("apply")}
+              >
+                {t("agentCores.applyRollout")}
+              </Btn>
+              {migratedAway > 0 ? (
+                <Btn
+                  variant="sec"
+                  size="sm"
+                  icon="arrow-counter-clockwise"
+                  disabled={busy}
+                  onPress={() => setConfirm("revert")}
+                >
+                  {t("agentCores.revertAll")}
+                </Btn>
               ) : null}
               {hasRollout ? (
-                <Button
-                  size="$2"
-                  chromeless
+                <Btn
+                  variant="ghost"
+                  size="sm"
                   disabled={busy}
                   // With agents already on the experimental, Clear is easy to mistake
                   // for a rollback — confirm and explain it isn't. Otherwise clear directly.
                   onPress={() =>
-                    migratedAway > 0 ? setConfirm('clear') : run(() => onClear(coreType))
+                    migratedAway > 0 ? setConfirm("clear") : run(() => onClear(coreType))
                   }
                 >
-                  {t('agentCores.clearRollout')}
-                </Button>
+                  {t("agentCores.clearRollout")}
+                </Btn>
               ) : null}
             </XStack>
           )}
-        </YStack>
+        </View>
       )}
 
       {busy ? (
-        <XStack gap="$2" alignItems="center">
+        <XStack gap={8} alignItems="center">
           <AppSpinner size="sm" />
           {saved && saved.total > 0 ? (
-            <Text fontSize="$1" color="$gray10">
-              {t('agentCores.applyingTo', { total: saved.total })}
-            </Text>
+            <T step="12" tone="text3">
+              {t("agentCores.applyingTo", { total: saved.total })}
+            </T>
           ) : null}
         </XStack>
       ) : null}
       {msg ? (
-        <YStack gap="$1">
-          <Text fontSize="$1" color={msg.kind === 'error' ? '$red10' : '$gray11'}>
+        <View style={{ gap: 4 }}>
+          <T step="12" color={msg.kind === "error" ? c.tint.r.tx : c.text2}>
             {msg.text}
-          </Text>
-          {msg.kind === 'error' ? (
-            <Text fontSize="$1" color="$gray10">
-              {t('agentCores.applyRetryHint')}
-            </Text>
+          </T>
+          {msg.kind === "error" ? (
+            <T step="12" tone="text3">
+              {t("agentCores.applyRetryHint")}
+            </T>
           ) : null}
-        </YStack>
+        </View>
       ) : null}
 
       {/* History — who changed / applied the rollout, when (from the audit log). */}
       <XStack>
-        <Button
-          size="$2"
-          chromeless
-          icon={<History size={14} />}
+        <Btn
+          variant="ghost"
+          size="sm"
+          icon="clock-counter-clockwise"
           onPress={() =>
             audit
               ? setAudit(null)
@@ -1330,22 +1346,22 @@ function RolloutSection({
                   .catch(() => setAudit([]))
           }
         >
-          {audit ? t('agentCores.hideHistory') : t('agentCores.showHistory')}
-        </Button>
+          {audit ? t("agentCores.hideHistory") : t("agentCores.showHistory")}
+        </Btn>
       </XStack>
       {audit ? <AuditTimeline entries={audit} /> : null}
 
       {/* Per-user overrides — force/exclude a specific user (beats the percentage). */}
       <XStack>
-        <Button size="$2" chromeless onPress={() => setOverridesOpen((o) => !o)}>
-          {overridesOpen ? t('agentCores.hideOverrides') : t('agentCores.showOverrides')}
-        </Button>
+        <Btn variant="ghost" size="sm" icon="user-gear" onPress={() => setOverridesOpen((o) => !o)}>
+          {overridesOpen ? t("agentCores.hideOverrides") : t("agentCores.showOverrides")}
+        </Btn>
       </XStack>
       {overridesOpen ? (
-        <YStack gap="$1.5">
-          <Text fontSize="$1" color="$gray10">
-            {t('agentCores.overridesHint')}
-          </Text>
+        <View style={{ gap: 10 }}>
+          <T step="12" tone="text3">
+            {t("agentCores.overridesHint")}
+          </T>
           <OverridesPanel
             coreType={coreType}
             expCoreId={rollout.experimentalCoreId ?? (exp || null)}
@@ -1354,42 +1370,42 @@ function RolloutSection({
             onSet={onSetOverride}
             onDelete={onDeleteOverride}
           />
-        </YStack>
+        </View>
       ) : null}
     </FormSection>
-  );
+  )
 }
 
 // ============================================================================
-// Core editor (create + edit) — the detail pane
+// Core editor (create + edit) — the detail page
 // ============================================================================
 
 interface CoreFormPayload {
-  coreId: string;
-  coreType: 'agent' | 'super-agent';
-  name: string;
-  fullName: string;
-  version?: string;
-  systemPrompt: string;
-  personality: string[];
-  capabilities: string[];
-  defaultApps: string[];
-  modelId: string;
-  modelOverrides?: { temperature?: number; maxTokens?: number };
-  status: 'active' | 'inactive';
+  coreId: string
+  coreType: "agent" | "super-agent"
+  name: string
+  fullName: string
+  version?: string
+  systemPrompt: string
+  personality: string[]
+  capabilities: string[]
+  defaultApps: string[]
+  modelId: string
+  modelOverrides?: { temperature?: number; maxTokens?: number }
+  status: "active" | "inactive"
 }
 
 interface CoreFormProps {
-  mode: 'create' | 'edit';
-  core?: AgentCore;
-  models: Model[];
-  catalog: { mcaId: string; name: string; system: boolean }[];
+  mode: "create" | "edit"
+  core?: AgentCore
+  models: Model[]
+  catalog: { mcaId: string; name: string; system: boolean }[]
   /** Rollout controls (stable core + super only). Rendered as a trailing section. */
-  rollout?: React.ReactNode;
-  /** Back arrow in the header — present only in the single-column (narrow) layout. */
-  onBack?: () => void;
-  onSubmit: (payload: CoreFormPayload) => Promise<void>;
-  onCancel: () => void;
+  rollout?: React.ReactNode
+  /** Back arrow in the header. */
+  onBack?: () => void
+  onSubmit: (payload: CoreFormPayload) => Promise<void>
+  onCancel: () => void
 }
 
 function CoreForm({
@@ -1402,45 +1418,45 @@ function CoreForm({
   onSubmit,
   onCancel,
 }: CoreFormProps) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
+  const c = useWindowColors()
+  const { t } = useTranslation()
 
-  const [coreId, setCoreId] = useState(core?.coreId ?? '');
-  const [coreType, setCoreType] = useState<'agent' | 'super-agent'>(core?.coreType ?? 'agent');
-  const [name, setName] = useState(core?.name ?? '');
-  const [fullName, setFullName] = useState(core?.fullName ?? '');
-  const [version, setVersion] = useState(core?.version ?? '');
-  const [status, setStatus] = useState<'active' | 'inactive'>(core?.status ?? 'active');
-  const [modelId, setModelId] = useState(core?.modelId ?? '');
+  const [coreId, setCoreId] = useState(core?.coreId ?? "")
+  const [coreType, setCoreType] = useState<"agent" | "super-agent">(core?.coreType ?? "agent")
+  const [name, setName] = useState(core?.name ?? "")
+  const [fullName, setFullName] = useState(core?.fullName ?? "")
+  const [version, setVersion] = useState(core?.version ?? "")
+  const [status, setStatus] = useState<"active" | "inactive">(core?.status ?? "active")
+  const [modelId, setModelId] = useState(core?.modelId ?? "")
   const [temperature, setTemperature] = useState(
-    core?.modelOverrides?.temperature?.toString() ?? '',
-  );
-  const [maxTokens, setMaxTokens] = useState(core?.modelOverrides?.maxTokens?.toString() ?? '');
-  const [personality, setPersonality] = useState<string[]>(core?.personality ?? []);
-  const [capabilities, setCapabilities] = useState<string[]>(core?.capabilities ?? []);
-  const [defaultApps, setDefaultApps] = useState<Set<string>>(new Set(core?.defaultApps ?? []));
-  const [systemPrompt, setSystemPrompt] = useState(core?.systemPrompt ?? '');
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+    core?.modelOverrides?.temperature?.toString() ?? "",
+  )
+  const [maxTokens, setMaxTokens] = useState(core?.modelOverrides?.maxTokens?.toString() ?? "")
+  const [personality, setPersonality] = useState<string[]>(core?.personality ?? [])
+  const [capabilities, setCapabilities] = useState<string[]>(core?.capabilities ?? [])
+  const [defaultApps, setDefaultApps] = useState<Set<string>>(new Set(core?.defaultApps ?? []))
+  const [systemPrompt, setSystemPrompt] = useState(core?.systemPrompt ?? "")
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
   const valid =
-    coreId.trim() && name.trim() && fullName.trim() && systemPrompt.trim() && modelId.trim();
+    coreId.trim() && name.trim() && fullName.trim() && systemPrompt.trim() && modelId.trim()
 
   const toggleApp = (id: string) =>
     setDefaultApps((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
 
   const handleSubmit = async () => {
-    if (!valid) return;
-    setSaving(true);
-    setErr(null);
+    if (!valid) return
+    setSaving(true)
+    setErr(null)
     try {
-      const overrides: { temperature?: number; maxTokens?: number } = {};
-      if (temperature.trim()) overrides.temperature = parseFloat(temperature);
-      if (maxTokens.trim()) overrides.maxTokens = parseInt(maxTokens, 10);
+      const overrides: { temperature?: number; maxTokens?: number } = {}
+      if (temperature.trim()) overrides.temperature = parseFloat(temperature)
+      if (maxTokens.trim()) overrides.maxTokens = parseInt(maxTokens, 10)
       await onSubmit({
         coreId: coreId.trim(),
         coreType,
@@ -1457,273 +1473,271 @@ function CoreForm({
         // dropped by JSON and leave the old override in place silently.
         modelOverrides: overrides,
         status,
-      });
+      })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      setErr(e instanceof Error ? e.message : String(e))
     } finally {
-      setSaving(false);
+      setSaving(false)
     }
-  };
+  }
 
-  const isEdit = mode === 'edit';
+  const isEdit = mode === "edit"
   const title = isEdit
-    ? t('agentCores.editCore', { name: core?.fullName ?? '' })
-    : t('agentCores.createCore');
+    ? t("agentCores.editCore", { name: core?.fullName ?? "" })
+    : t("agentCores.createCore")
+
+  const actions = (
+    <>
+      <Btn variant="sec" onPress={onCancel} disabled={saving}>
+        {t("common.cancel")}
+      </Btn>
+      <Btn
+        variant="primary"
+        icon="floppy-disk"
+        onPress={handleSubmit}
+        disabled={!valid || saving}
+        loading={saving}
+      >
+        {saving
+          ? t("common.saving")
+          : isEdit
+            ? t("agentCores.saveChanges")
+            : t("agentCores.createCore")}
+      </Btn>
+    </>
+  )
 
   return (
-    <YStack flex={1}>
-      {/* Header */}
-      <XStack
-        alignItems="center"
-        gap="$2"
-        padding="$3"
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-      >
-        {onBack ? (
-          <Button size="$2" circular chromeless icon={<ArrowLeft size={18} />} onPress={onBack} />
-        ) : null}
-        <Text flex={1} fontSize="$5" fontWeight="600" color="$color" numberOfLines={1}>
-          {title}
-        </Text>
-      </XStack>
+    <Page>
+      {onBack ? (
+        <View style={{ flexDirection: "row", marginBottom: 14 }}>
+          <Btn variant="ghost" size="sm" icon="arrow-left" onPress={onBack}>
+            {t("common.back")}
+          </Btn>
+        </View>
+      ) : null}
 
-      <ScrollView flex={1} style={scrollbarStyle(c.scrollbarColor)}>
-        <YStack padding="$3" gap="$3">
-          {/* Identity */}
-          <FormSection
-            title={t('agentCores.sectionIdentity')}
-            icon={<Hash size={16} color={ACCENT} />}
-          >
-            {isEdit ? (
-              <XStack gap="$2" flexWrap="wrap">
-                <Badge color={c.text3}>coreId: {coreId}</Badge>
-                {core?.coreType ? <Badge color={c.text3}>coreType: {core.coreType}</Badge> : null}
-              </XStack>
-            ) : (
-              <>
-                <Field label="coreId" hint={t('agentCores.coreIdHint')}>
-                  <Input
-                    value={coreId}
-                    onChangeText={setCoreId}
-                    placeholder="super-agent-v2"
-                    autoCapitalize="none"
-                    backgroundColor={c.bgInner}
-                    borderColor={c.border}
-                  />
-                </Field>
-                <Field label={t('agentCores.coreType')}>
-                  <XStack gap="$2">
-                    {(['agent', 'super-agent'] as const).map((ct) => (
-                      <ToggleBadge
-                        key={ct}
-                        label={ct}
-                        selected={coreType === ct}
-                        onPress={() => setCoreType(ct)}
-                      />
-                    ))}
-                  </XStack>
-                </Field>
-              </>
-            )}
-            <Field label="name">
-              <Input
-                value={name}
-                onChangeText={setName}
-                placeholder="Super Agent v2"
-                backgroundColor={c.bgInner}
-                borderColor={c.border}
-              />
-            </Field>
-            <Field label="fullName">
-              <Input
-                value={fullName}
-                onChangeText={setFullName}
-                placeholder="Teros Super Agent v2"
-                backgroundColor={c.bgInner}
-                borderColor={c.border}
-              />
-            </Field>
-            <Field label="version">
-              <Input
-                value={version}
-                onChangeText={setVersion}
-                placeholder="v1.0"
-                backgroundColor={c.bgInner}
-                borderColor={c.border}
-              />
-            </Field>
-            <Field label={t('agentCores.status')}>
-              <XStack gap="$2">
-                {(['active', 'inactive'] as const).map((s) => (
-                  <ToggleBadge
-                    key={s}
-                    label={t(`agentCores.${s}`)}
-                    selected={status === s}
-                    color={STATUS_COLORS[s]}
-                    onPress={() => setStatus(s)}
-                  />
-                ))}
-              </XStack>
-            </Field>
-          </FormSection>
-
-          {/* Engine */}
-          <FormSection
-            title={t('agentCores.sectionEngine')}
-            icon={<Cpu size={16} color={semanticColors.amber} />}
-          >
-            <Field label={t('agentCores.model')}>
-              <ModelSelect models={models} value={modelId} onChange={setModelId} />
-            </Field>
-            <XStack gap="$3">
-              <YStack flex={1}>
-                <Field label={t('agentCores.temperature')} hint={t('agentCores.temperatureHint')}>
-                  <Input
-                    keyboardType="decimal-pad"
-                    value={temperature}
-                    onChangeText={setTemperature}
-                    placeholder={t('agentCores.temperaturePlaceholder')}
-                    backgroundColor={c.bgInner}
-                    borderColor={c.border}
-                  />
-                </Field>
-              </YStack>
-              <YStack flex={1}>
-                <Field label={t('agentCores.maxTokens')} hint={t('agentCores.maxTokensHint')}>
-                  <Input
-                    keyboardType="number-pad"
-                    value={maxTokens}
-                    onChangeText={setMaxTokens}
-                    placeholder={t('agentCores.maxTokensPlaceholder')}
-                    backgroundColor={c.bgInner}
-                    borderColor={c.border}
-                  />
-                </Field>
-              </YStack>
+      <PageHead
+        eyebrow={t(EYEBROW_KEY, { defaultValue: EYEBROW_DEFAULT })}
+        eyebrowRight={
+          isEdit && core ? (
+            <XStack alignItems="center" gap={6}>
+              <Badge tone={isStableCore(core) ? "g" : "i"}>
+                {isStableCore(core) ? t("agentCores.stable") : t("agentCores.experimental")}
+              </Badge>
+              <Badge tone={core.status === "active" ? "g" : "neutral"} dot>
+                {t(`agentCores.${core.status}`)}
+              </Badge>
             </XStack>
-          </FormSection>
+          ) : null
+        }
+        title={title}
+        lead={
+          isEdit && core ? (
+            <XStack alignItems="center" gap={8} flexWrap="wrap">
+              <T step="code" tone="text3">
+                {core.coreId}
+              </T>
+              <T step="code" tone="text3">
+                ·
+              </T>
+              <T step="code" tone="text3">
+                {core.modelId}
+              </T>
+            </XStack>
+          ) : undefined
+        }
+      />
 
-          {/* Behavior */}
-          <FormSection
-            title={t('agentCores.sectionBehavior')}
-            icon={<Sparkles size={16} color={semanticColors.violet} />}
-          >
-            <Field label={t('agentCores.personality')}>
-              <ChipEditor
-                values={personality}
-                onChange={setPersonality}
-                color={semanticColors.violet}
-                placeholder={t('agentCores.addTraitPlaceholder')}
-              />
-            </Field>
-            <Field label={t('agentCores.capabilities')}>
-              <ChipEditor
-                values={capabilities}
-                onChange={setCapabilities}
-                color={ACCENT}
-                placeholder={t('agentCores.addTraitPlaceholder')}
-              />
-            </Field>
-          </FormSection>
-
-          {/* MCAs — the core's editable defaultApps + the always-on system apps so
-              the editor shows the COMPLETE engine each agent receives. */}
-          <FormSection title={t('agentCores.defaultApps')} icon={<Cpu size={16} color={semanticColors.green} />}>
-            <McaPicker
-              catalog={catalog.filter((m) => !m.system)}
-              selected={defaultApps}
-              onToggle={toggleApp}
-            />
-            {catalog.some((m) => m.system) ? (
-              <YStack
-                gap="$1.5"
-                paddingTop="$2.5"
-                borderTopWidth={1}
-                borderTopColor={c.border}
-              >
-                <Text fontSize="$2" color="$gray11" fontWeight="600">
-                  {t('agentCores.systemApps')}
-                </Text>
-                <Text fontSize="$1" color="$gray10">
-                  {t('agentCores.systemAppsHint')}
-                </Text>
-                <XStack gap="$2" flexWrap="wrap">
-                  {catalog
-                    .filter((m) => m.system)
-                    .map((m) => (
-                      <Badge key={m.mcaId} color={c.text3}>
-                        {m.name}
-                      </Badge>
-                    ))}
+      <YStack gap={14}>
+        {/* Identity */}
+        <FormSection title={t("agentCores.sectionIdentity")} icon="identification-card">
+          {isEdit ? (
+            <XStack gap={6} flexWrap="wrap">
+              <Badge mono>coreId: {coreId}</Badge>
+              {core?.coreType ? <Badge mono>coreType: {core.coreType}</Badge> : null}
+            </XStack>
+          ) : (
+            <>
+              <FormField label="coreId" hint={t("agentCores.coreIdHint")} required>
+                <Field
+                  mono
+                  value={coreId}
+                  onChangeText={setCoreId}
+                  placeholder="super-agent-v2"
+                  autoCapitalize="none"
+                />
+              </FormField>
+              <FormField label={t("agentCores.coreType")}>
+                <XStack gap={6}>
+                  {(["agent", "super-agent"] as const).map((ct) => (
+                    <ChipBtn key={ct} mono on={coreType === ct} onPress={() => setCoreType(ct)}>
+                      {ct}
+                    </ChipBtn>
+                  ))}
                 </XStack>
-              </YStack>
-            ) : null}
-          </FormSection>
+              </FormField>
+            </>
+          )}
+          <XStack gap={14} flexWrap="wrap">
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label="name" required>
+                <Field value={name} onChangeText={setName} placeholder="Super Agent v2" />
+              </FormField>
+            </View>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label="fullName" required>
+                <Field
+                  value={fullName}
+                  onChangeText={setFullName}
+                  placeholder="Teros Super Agent v2"
+                />
+              </FormField>
+            </View>
+          </XStack>
+          <XStack gap={14} flexWrap="wrap">
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label="version">
+                <Field mono value={version} onChangeText={setVersion} placeholder="v1.0" />
+              </FormField>
+            </View>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label={t("agentCores.status")}>
+                <XStack gap={6} alignItems="center" height={36}>
+                  {(["active", "inactive"] as const).map((s) => (
+                    <ChipBtn
+                      key={s}
+                      on={status === s}
+                      icon={status === s ? "check" : undefined}
+                      onPress={() => setStatus(s)}
+                    >
+                      {t(`agentCores.${s}`)}
+                    </ChipBtn>
+                  ))}
+                </XStack>
+              </FormField>
+            </View>
+          </XStack>
+        </FormSection>
 
-          {/* System prompt */}
-          <FormSection
-            title={t('agentCores.systemPrompt')}
-            icon={<Wrench size={16} color={ACCENT} />}
-          >
-            <TextArea
-              value={systemPrompt}
-              onChangeText={setSystemPrompt}
-              placeholder={t('agentCores.systemPromptPlaceholder')}
-              minHeight={220}
-              fontSize="$2"
-              fontFamily={Platform.OS === 'web' ? 'monospace' : '$mono'}
-              backgroundColor={c.bgInner}
-              borderColor={c.border}
-              style={scrollbarStyle(c.scrollbarColor)}
+        {/* Engine */}
+        <FormSection title={t("agentCores.sectionEngine")} icon="cpu">
+          <FormField label={t("agentCores.model")} required>
+            <ModelSelect models={models} value={modelId} onChange={setModelId} />
+          </FormField>
+          <XStack gap={14} flexWrap="wrap">
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label={t("agentCores.temperature")} hint={t("agentCores.temperatureHint")}>
+                <Field
+                  mono
+                  keyboardType="decimal-pad"
+                  value={temperature}
+                  onChangeText={setTemperature}
+                  placeholder={t("agentCores.temperaturePlaceholder")}
+                />
+              </FormField>
+            </View>
+            <View style={{ flex: 1, minWidth: 220 }}>
+              <FormField label={t("agentCores.maxTokens")} hint={t("agentCores.maxTokensHint")}>
+                <Field
+                  mono
+                  keyboardType="number-pad"
+                  value={maxTokens}
+                  onChangeText={setMaxTokens}
+                  placeholder={t("agentCores.maxTokensPlaceholder")}
+                />
+              </FormField>
+            </View>
+          </XStack>
+        </FormSection>
+
+        {/* Behavior */}
+        <FormSection title={t("agentCores.sectionBehavior")} icon="sparkle">
+          <FormField label={t("agentCores.personality")}>
+            <ChipEditor
+              values={personality}
+              onChange={setPersonality}
+              tone="i"
+              placeholder={t("agentCores.addTraitPlaceholder")}
             />
-            <Text fontSize="$1" color="$gray10">
-              {t('agentCores.charactersCount', { count: systemPrompt.length })}
-            </Text>
-          </FormSection>
+          </FormField>
+          <FormField label={t("agentCores.capabilities")}>
+            <ChipEditor
+              values={capabilities}
+              onChange={setCapabilities}
+              tone="m"
+              placeholder={t("agentCores.addTraitPlaceholder")}
+            />
+          </FormField>
+        </FormSection>
 
-          {/* Rollout (stable core + super) */}
-          {rollout}
-
-          {err ? (
-            <Text fontSize="$2" color="$red10">
-              {err}
-            </Text>
+        {/* MCAs — the core's editable defaultApps + the always-on system apps so
+            the editor shows the COMPLETE engine each agent receives. */}
+        <FormSection title={t("agentCores.defaultApps")} icon="cube">
+          <McaPicker
+            catalog={catalog.filter((m) => !m.system)}
+            selected={defaultApps}
+            onToggle={toggleApp}
+          />
+          {catalog.some((m) => m.system) ? (
+            <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: c.border }}>
+              <T step="xs" tone="text2">
+                {t("agentCores.systemApps")}
+              </T>
+              <T step="12" tone="text3">
+                {t("agentCores.systemAppsHint")}
+              </T>
+              <XStack gap={6} flexWrap="wrap">
+                {catalog
+                  .filter((m) => m.system)
+                  .map((m) => (
+                    <Badge key={m.mcaId} tone="muted" pill icon="lock-simple">
+                      {m.name}
+                    </Badge>
+                  ))}
+              </XStack>
+            </View>
           ) : null}
-        </YStack>
-      </ScrollView>
+        </FormSection>
 
-      {/* Actions */}
-      <XStack
-        gap="$3"
-        justifyContent="flex-end"
-        padding="$3"
-        borderTopWidth={1}
-        borderTopColor={c.border}
-      >
-        <Button variant="outlined" onPress={onCancel} disabled={saving}>
-          {t('common.cancel')}
-        </Button>
-        <Button
-          backgroundColor={ACCENT}
-          color="white"
-          icon={saving ? <AppSpinner size="sm" /> : <Save size={16} />}
-          onPress={handleSubmit}
-          disabled={!valid || saving}
-        >
-          {saving
-            ? t('common.saving')
-            : isEdit
-              ? t('agentCores.saveChanges')
-              : t('agentCores.createCore')}
-        </Button>
-      </XStack>
-    </YStack>
-  );
+        {/* System prompt */}
+        <FormSection title={t("agentCores.systemPrompt")} icon="terminal-window">
+          <Field
+            area
+            mono
+            minHeight={220}
+            value={systemPrompt}
+            onChangeText={setSystemPrompt}
+            placeholder={t("agentCores.systemPromptPlaceholder")}
+            style={scrollbarStyle(c.scrollbarColor)}
+          />
+          <T step="codenote" tone="text3">
+            {t("agentCores.charactersCount", { count: systemPrompt.length })}
+          </T>
+        </FormSection>
+
+        {/* Rollout (stable core + super) */}
+        {rollout}
+
+        {err ? (
+          <Notice tone="r" icon="warning">
+            <T step="sm" color={c.tint.r.tx}>
+              {err}
+            </T>
+          </Notice>
+        ) : null}
+
+        {/* Actions */}
+        <XStack gap={10} justifyContent="flex-end" paddingTop={6} flexWrap="wrap">
+          {actions}
+        </XStack>
+      </YStack>
+    </Page>
+  )
 }
 
 // ============================================================================
-// Core list (master pane)
+// Core list (the grid)
 // ============================================================================
 
 function CoreListItem({
@@ -1731,50 +1745,60 @@ function CoreListItem({
   active,
   onPress,
 }: {
-  core: AgentCore;
-  active: boolean;
-  onPress: () => void;
+  core: AgentCore
+  active: boolean
+  onPress: () => void
 }) {
-  const c = useWindowColors();
+  const c = useWindowColors()
+  const { t } = useTranslation()
+  const stable = isStableCore(core)
+  const live = core.status === "active"
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
-      <XStack
-        alignItems="center"
-        gap="$2.5"
-        padding="$2.5"
-        borderRadius="$3"
-        borderWidth={1}
-        borderColor={active ? `${ACCENT}50` : c.border}
-        backgroundColor={active ? semanticColors.indigoGlow : c.bgCard}
-      >
-        <Avatar circular size={34}>
-          <Avatar.Image src={core.avatarUrl} />
-          <Avatar.Fallback
-            backgroundColor={semanticColors.indigoGlow}
-            justifyContent="center"
-            alignItems="center"
-            delayMs={0}
-          >
-            <User size={16} color={ACCENT} />
-          </Avatar.Fallback>
-        </Avatar>
-        <YStack flex={1}>
-          <Text fontSize="$3" fontWeight="600" color="$color" numberOfLines={1}>
-            {core.fullName}
-          </Text>
-          <Text fontSize="$1" color="$gray10" numberOfLines={1}>
-            {core.coreId} · {core.modelId}
-          </Text>
-        </YStack>
-        <YStack
-          width={8}
-          height={8}
-          borderRadius={4}
-          backgroundColor={STATUS_COLORS[core.status]}
+    <Card
+      hov
+      pad
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      style={active ? { borderColor: c.borderAccentStrong } : undefined}
+    >
+      <XStack alignItems="center" gap={12}>
+        <Avatar
+          name={core.fullName}
+          imageUrl={core.avatarUrl}
+          size={40}
+          isAgent
+          status={live ? "live" : "idle"}
         />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T step="base" numberOfLines={1}>
+            {core.fullName}
+          </T>
+          <T step="code" tone="text3" numberOfLines={1}>
+            {core.coreId}
+          </T>
+        </View>
       </XStack>
-    </TouchableOpacity>
-  );
+      <T step="12" tone="text3" numberOfLines={1} style={{ marginTop: 10 }}>
+        {core.modelId}
+      </T>
+      <XStack alignItems="center" gap={6} marginTop={10} flexWrap="wrap">
+        <Badge tone={stable ? "g" : "i"}>
+          {stable ? t("agentCores.stable") : t("agentCores.experimental")}
+        </Badge>
+        {core.version ? (
+          <Badge mono sm>
+            {core.version}
+          </Badge>
+        ) : null}
+        <View style={{ flex: 1 }} />
+        <Dot color={live ? semantic.green : semantic.main500} size={7} />
+        <T step="codenote" tone="text3">
+          {t(`agentCores.${core.status}`)}
+        </T>
+      </XStack>
+    </Card>
+  )
 }
 
 function CoreList({
@@ -1783,46 +1807,42 @@ function CoreList({
   onSelect,
   onCreate,
 }: {
-  cores: AgentCore[];
-  selectedId: string | null;
-  onSelect: (core: AgentCore) => void;
-  onCreate: () => void;
+  cores: AgentCore[]
+  selectedId: string | null
+  onSelect: (core: AgentCore) => void
+  onCreate: () => void
 }) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
+  const { t } = useTranslation()
+  if (cores.length === 0) {
+    return (
+      <Card pad>
+        <EmptyState
+          icon="cpu"
+          title={t("agentCores.noCoresConfigured")}
+          action={
+            <Btn variant="primary" icon="plus" onPress={onCreate}>
+              {t("agentCores.createCore")}
+            </Btn>
+          }
+        />
+      </Card>
+    )
+  }
   return (
-    <YStack flex={1}>
-      <XStack alignItems="center" justifyContent="space-between" padding="$3" gap="$2">
-        <Text fontSize="$3" fontWeight="600" color="$gray11">
-          {t('agentCores.totalCores')} · {cores.length}
-        </Text>
-        <Button size="$2" theme="active" icon={<Plus size={14} />} onPress={onCreate}>
-          {t('agentCores.createCore')}
-        </Button>
-      </XStack>
-      <Separator borderColor={c.border} />
-      <ScrollView flex={1} style={scrollbarStyle(c.scrollbarColor)}>
-        <YStack gap="$2" padding="$3">
-          {cores.map((c) => (
-            <CoreListItem
-              key={c.coreId}
-              core={c}
-              active={c.coreId === selectedId}
-              onPress={() => onSelect(c)}
-            />
-          ))}
-          {cores.length === 0 ? (
-            <YStack padding="$6" alignItems="center" gap="$2">
-              <Cpu size={40} color={c.text3} />
-              <Text color="$gray10" textAlign="center">
-                {t('agentCores.noCoresConfigured')}
-              </Text>
-            </YStack>
-          ) : null}
-        </YStack>
-      </ScrollView>
-    </YStack>
-  );
+    <View>
+      <SectionLabel label={t("agentCores.totalCores")} count={cores.length} />
+      <Grid cols={3}>
+        {cores.map((core) => (
+          <CoreListItem
+            key={core.coreId}
+            core={core}
+            active={core.coreId === selectedId}
+            onPress={() => onSelect(core)}
+          />
+        ))}
+      </Grid>
+    </View>
+  )
 }
 
 // ============================================================================
@@ -1830,29 +1850,25 @@ function CoreList({
 // ============================================================================
 
 export interface AgentCoresWindowContentProps {
-  windowId: string;
+  windowId: string
 }
 
 export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
-  const c = useWindowColors();
-  const { t } = useTranslation();
-  const client = getTerosClient();
+  const { t } = useTranslation()
+  const client = getTerosClient()
 
-  const [cores, setCores] = useState<AgentCore[]>([]);
-  const [models, setModels] = useState<Model[]>([]);
-  const [mcaCatalog, setMcaCatalog] = useState<
-    { mcaId: string; name: string; system: boolean }[]
-  >([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selection, setSelection] = useState<Selection>(null);
-  const [width, setWidth] = useState(0);
+  const [cores, setCores] = useState<AgentCore[]>([])
+  const [models, setModels] = useState<Model[]>([])
+  const [mcaCatalog, setMcaCatalog] = useState<{ mcaId: string; name: string; system: boolean }[]>(
+    [],
+  )
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selection, setSelection] = useState<Selection>(null)
 
   // Rollout state per coreType (super-only; plain admins get FORBIDDEN → hidden).
-  const [rollouts, setRollouts] = useState<Record<string, RolloutState>>({});
-  const [rolloutAvailable, setRolloutAvailable] = useState(false);
-
-  const wide = width >= SPLIT_BREAKPOINT;
+  const [rollouts, setRollouts] = useState<Record<string, RolloutState>>({})
+  const [rolloutAvailable, setRolloutAvailable] = useState(false)
 
   // Load BOTH active and inactive cores: an admin who deactivates a core must
   // still see it in the list (with a grey StatusDot) to be able to re-activate it,
@@ -1867,30 +1883,30 @@ export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
   // coreType, so a deactivated experimental still shows (H1 intact).
   const fetchAllCores = useCallback(async (): Promise<AgentCore[]> => {
     const [active, inactive] = await Promise.all([
-      client.agent.listCores('active').then((r) => r.cores),
-      client.agent.listCores('inactive').then((r) => r.cores),
-    ]);
-    return [...active, ...inactive].filter((c) => !!c.coreType);
-  }, [client]);
+      client.agent.listCores("active").then((r) => r.cores),
+      client.agent.listCores("inactive").then((r) => r.cores),
+    ])
+    return [...active, ...inactive].filter((c) => !!c.coreType)
+  }, [client])
 
   const loadFlags = useCallback(async () => {
     try {
-      const { flags } = await client.admin.listFeatureFlags();
-      const next: Record<string, RolloutState> = {};
+      const { flags } = await client.admin.listFeatureFlags()
+      const next: Record<string, RolloutState> = {}
       for (const f of flags) {
-        if (f.key === 'core.agent' || f.key === 'core.super-agent') {
-          const coreType = f.key.slice('core.'.length);
+        if (f.key === "core.agent" || f.key === "core.super-agent") {
+          const coreType = f.key.slice("core.".length)
           next[coreType] = f.rollout
             ? { experimentalCoreId: String(f.rollout.value), percentage: f.rollout.percentage }
-            : { experimentalCoreId: null, percentage: 0 };
+            : { experimentalCoreId: null, percentage: 0 }
         }
       }
-      setRollouts(next);
-      setRolloutAvailable(true);
+      setRollouts(next)
+      setRolloutAvailable(true)
     } catch {
-      setRolloutAvailable(false);
+      setRolloutAvailable(false)
     }
-  }, [client]);
+  }, [client])
 
   const loadData = useCallback(async () => {
     try {
@@ -1904,83 +1920,83 @@ export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
           .listAllMcas()
           .then((r) => r.mcas)
           .catch(() => []),
-      ]);
-      setCores(coresList);
-      setModels(modelsList.models);
+      ])
+      setCores(coresList)
+      setModels(modelsList.models)
       setMcaCatalog(
         mcas.map((m) => ({
           mcaId: m.mcaId,
           name: m.name,
           system: m.availability?.system ?? false,
         })),
-      );
-      await loadFlags();
+      )
+      await loadFlags()
     } catch (err) {
-      console.error('Failed to load data:', err);
-      setError(err instanceof Error ? err.message : t('agentCores.failedToLoadData'));
+      console.error("Failed to load data:", err)
+      setError(err instanceof Error ? err.message : t("agentCores.failedToLoadData"))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  }, [client, fetchAllCores, loadFlags, t]);
+  }, [client, fetchAllCores, loadFlags, t])
 
   useEffect(() => {
     if (client.isConnected()) {
-      loadData();
+      loadData()
     } else {
       const onConnected = () => {
-        loadData();
-        client.off('connected', onConnected);
-      };
-      client.on('connected', onConnected);
-      return () => client.off('connected', onConnected);
+        loadData()
+        client.off("connected", onConnected)
+      }
+      client.on("connected", onConnected)
+      return () => client.off("connected", onConnected)
     }
-  }, [client, loadData]);
+  }, [client, loadData])
 
   const reloadCores = useCallback(async (): Promise<AgentCore[]> => {
-    const list = await fetchAllCores();
-    setCores(list);
-    return list;
-  }, [fetchAllCores]);
+    const list = await fetchAllCores()
+    setCores(list)
+    return list
+  }, [fetchAllCores])
 
   const retry = () => {
-    setError(null);
-    setLoading(true);
-    loadData();
-  };
+    setError(null)
+    setLoading(true)
+    loadData()
+  }
 
   const handleSubmit = async (payload: CoreFormPayload) => {
-    if (selection?.mode === 'create') {
-      const { core } = await client.agent.createCore(payload);
-      const list = await reloadCores();
-      const fresh = list.find((c) => c.coreId === core.coreId) ?? core;
-      setSelection({ mode: 'edit', core: fresh });
-    } else if (selection?.mode === 'edit') {
-      const { coreId: _omitId, coreType: _omitType, ...updates } = payload;
-      await client.agent.updateCore(selection.core.coreId, updates);
-      const list = await reloadCores();
-      const fresh = list.find((c) => c.coreId === selection.core.coreId);
-      if (fresh) setSelection({ mode: 'edit', core: fresh });
+    if (selection?.mode === "create") {
+      const { core } = await client.agent.createCore(payload)
+      const list = await reloadCores()
+      const fresh = list.find((c) => c.coreId === core.coreId) ?? core
+      setSelection({ mode: "edit", core: fresh })
+    } else if (selection?.mode === "edit") {
+      const { coreId: _omitId, coreType: _omitType, ...updates } = payload
+      await client.agent.updateCore(selection.core.coreId, updates)
+      const list = await reloadCores()
+      const fresh = list.find((c) => c.coreId === selection.core.coreId)
+      if (fresh) setSelection({ mode: "edit", core: fresh })
     }
-    await loadFlags();
-  };
+    await loadFlags()
+  }
 
   const handleSetRollout = async (
     coreType: string,
     experimentalCoreId: string,
     percentage: number,
   ) => {
-    await client.admin.setFeatureFlagRollout(`core.${coreType}`, experimentalCoreId, percentage);
-    await loadFlags();
-  };
+    await client.admin.setFeatureFlagRollout(`core.${coreType}`, experimentalCoreId, percentage)
+    await loadFlags()
+  }
   const handleClearRollout = async (coreType: string) => {
-    await client.admin.clearFeatureFlagRollout(`core.${coreType}`);
-    await loadFlags();
-  };
+    await client.admin.clearFeatureFlagRollout(`core.${coreType}`)
+    await loadFlags()
+  }
   const handleApplyRollout = (coreType: string) =>
-    client.admin.applyCoreRollout(coreType as 'agent' | 'super-agent').then(async (res) => {
-      await reloadCores();
-      return res;
-    });
+    client.admin.applyCoreRollout(coreType as "agent" | "super-agent").then(async (res) => {
+      await reloadCores()
+      return res
+    })
   // Memoized: RolloutSection drives effects off onPreview's identity, so a fresh
   // closure each render would loop the dry-run requests.
   const handlePreview = useCallback(
@@ -1988,72 +2004,79 @@ export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
       coreType: string,
       hypothetical?: { experimentalCoreId: string; percentage: number },
     ): Promise<RolloutPreview> =>
-      client.admin.previewCoreRollout(coreType as 'agent' | 'super-agent', hypothetical),
+      client.admin.previewCoreRollout(coreType as "agent" | "super-agent", hypothetical),
     [client],
-  );
+  )
   const handleCohort = useCallback(
     (
       coreType: string,
       hypothetical?: { experimentalCoreId: string; percentage: number },
     ): Promise<CohortEntry[]> =>
       client.admin
-        .cohortCoreRollout(coreType as 'agent' | 'super-agent', hypothetical)
+        .cohortCoreRollout(coreType as "agent" | "super-agent", hypothetical)
         .then((r) => r.cohort),
     [client],
-  );
+  )
   const handleAuditLog = useCallback(
     (coreType: string): Promise<AuditEntry[]> =>
       client.admin.getFeatureFlagAuditLog(`core.${coreType}`).then((r) => r.entries),
     [client],
-  );
+  )
   const handleListOverrides = useCallback(
     (coreType: string) =>
-      client.admin.getFeatureFlagOverrides(`core.${coreType}`).then((r) =>
-        r.overrides
-          .filter((o) => o.targetType === 'user')
-          .map((o) => ({ targetId: o.targetId, value: String(o.value) })),
-      ),
+      client.admin
+        .getFeatureFlagOverrides(`core.${coreType}`)
+        .then((r) =>
+          r.overrides
+            .filter((o) => o.targetType === "user")
+            .map((o) => ({ targetId: o.targetId, value: String(o.value) })),
+        ),
     [client],
-  );
+  )
   const handleSetOverride = useCallback(
     (coreType: string, userId: string, value: string): Promise<void> =>
-      client.admin.setFeatureFlagOverride(`core.${coreType}`, 'user', userId, value).then(() => {}),
+      client.admin.setFeatureFlagOverride(`core.${coreType}`, "user", userId, value).then(() => {}),
     [client],
-  );
+  )
   const handleDeleteOverride = useCallback(
     (coreType: string, userId: string): Promise<void> =>
-      client.admin.deleteFeatureFlagOverride(`core.${coreType}`, 'user', userId).then(() => {}),
+      client.admin.deleteFeatureFlagOverride(`core.${coreType}`, "user", userId).then(() => {}),
     [client],
-  );
+  )
+
+  const eyebrow = t(EYEBROW_KEY, { defaultValue: EYEBROW_DEFAULT })
 
   if (loading) {
-    return <FullscreenLoader variant="default" label={t('agentCores.loadingCores')} />;
+    return <FullscreenLoader variant="default" label={t("agentCores.loadingCores")} />
   }
 
   if (error) {
     return (
-      <YStack
-        flex={1}
-        backgroundColor="$background"
-        justifyContent="center"
-        alignItems="center"
-        padding="$4"
-        gap="$3"
-      >
-        <Text color="$red10" textAlign="center">
-          {error}
-        </Text>
-        <Button size="$3" onPress={retry}>
-          {t('common.retry')}
-        </Button>
-      </YStack>
-    );
+      <Page>
+        <PageHead
+          eyebrow={eyebrow}
+          title={t("windows.agentCores")}
+          lead={t("windows.agentCoresSub")}
+        />
+        <Card pad>
+          <EmptyState
+            icon="warning"
+            title={error}
+            action={
+              <Btn variant="sec" icon="arrows-clockwise" onPress={retry}>
+                {t("common.retry")}
+              </Btn>
+            }
+          />
+        </Card>
+      </Page>
+    )
   }
 
   // Build the rollout node for the selected core, if it's the stable core and
   // rollout controls are available (super-only).
   const rolloutNode =
-    selection?.mode === 'edit' &&
+    selection?.mode === "edit" &&
     selection.core.coreType &&
     isStableCore(selection.core) &&
     rolloutAvailable ? (
@@ -2062,7 +2085,7 @@ export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
         cores={cores.filter((c) => c.coreType === selection.core.coreType)}
         candidates={cores.filter(
           (c) =>
-            c.coreType === selection.core.coreType && !isStableCore(c) && c.status === 'active',
+            c.coreType === selection.core.coreType && !isStableCore(c) && c.status === "active",
         )}
         rollout={rollouts[selection.core.coreType] ?? { experimentalCoreId: null, percentage: 0 }}
         onSet={handleSetRollout}
@@ -2075,59 +2098,45 @@ export function AgentCoresWindowContent(_props: AgentCoresWindowContentProps) {
         onSetOverride={handleSetOverride}
         onDeleteOverride={handleDeleteOverride}
       />
-    ) : undefined;
+    ) : undefined
 
-  const selectedId = selection?.mode === 'edit' ? selection.core.coreId : null;
+  const selectedId = selection?.mode === "edit" ? selection.core.coreId : null
 
-  const list = (
-    <CoreList
-      cores={cores}
-      selectedId={selectedId}
-      onSelect={(core) => setSelection({ mode: 'edit', core })}
-      onCreate={() => setSelection({ mode: 'create' })}
-    />
-  );
-
-  const editor = selection ? (
-    <CoreForm
-      // Remount on selection change → form state resets cleanly.
-      key={selection.mode === 'edit' ? `edit:${selection.core.coreId}` : 'create'}
-      mode={selection.mode}
-      core={selection.mode === 'edit' ? selection.core : undefined}
-      models={models}
-      catalog={mcaCatalog}
-      rollout={rolloutNode}
-      onBack={wide ? undefined : () => setSelection(null)}
-      onSubmit={handleSubmit}
-      onCancel={() => setSelection(null)}
-    />
-  ) : (
-    <YStack flex={1} justifyContent="center" alignItems="center" padding="$6" gap="$2">
-      <Cpu size={48} color={c.text3} />
-      <Text color="$gray10" textAlign="center">
-        {t('agentCores.selectCorePrompt')}
-      </Text>
-    </YStack>
-  );
+  if (selection) {
+    return (
+      <CoreForm
+        // Remount on selection change → form state resets cleanly.
+        key={selection.mode === "edit" ? `edit:${selection.core.coreId}` : "create"}
+        mode={selection.mode}
+        core={selection.mode === "edit" ? selection.core : undefined}
+        models={models}
+        catalog={mcaCatalog}
+        rollout={rolloutNode}
+        onBack={() => setSelection(null)}
+        onSubmit={handleSubmit}
+        onCancel={() => setSelection(null)}
+      />
+    )
+  }
 
   return (
-    <YStack
-      flex={1}
-      backgroundColor="$background"
-      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
-    >
-      {wide ? (
-        <XStack flex={1}>
-          <YStack width={260} borderRightWidth={1} borderRightColor={c.border}>
-            {list}
-          </YStack>
-          <YStack flex={1}>{editor}</YStack>
-        </XStack>
-      ) : selection ? (
-        editor
-      ) : (
-        list
-      )}
-    </YStack>
-  );
+    <Page>
+      <PageHead
+        eyebrow={eyebrow}
+        title={t("windows.agentCores")}
+        lead={t("windows.agentCoresSub")}
+        actions={
+          <Btn variant="primary" icon="plus" onPress={() => setSelection({ mode: "create" })}>
+            {t("agentCores.createCore")}
+          </Btn>
+        }
+      />
+      <CoreList
+        cores={cores}
+        selectedId={selectedId}
+        onSelect={(core) => setSelection({ mode: "edit", core })}
+        onCreate={() => setSelection({ mode: "create" })}
+      />
+    </Page>
+  )
 }

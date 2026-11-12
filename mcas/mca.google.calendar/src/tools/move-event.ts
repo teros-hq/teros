@@ -45,7 +45,7 @@ export const moveEvent: ToolConfig = {
     const sendUpdates = normaliseSendUpdates(a.sendUpdates)
 
     try {
-      const response = await runCalendarCall(() =>
+      const response = await runCalendarCall(context, () =>
         calendar.events.move({
           calendarId: a.sourceCalendarId,
           eventId: a.eventId,

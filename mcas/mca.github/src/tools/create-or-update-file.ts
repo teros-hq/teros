@@ -1,10 +1,11 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, GitHubApiError, githubRequest } from '../lib';
+import { isWorkflowPath, workflowPermission, workflowPendingError } from '../lib/workflow-permission';
 
 export const createOrUpdateFile: ToolConfig = {
   annotations: { readOnlyHint: false },
   description:
-    'Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`.',
+    'Create or update a file in a repo. Pass `sha` of the existing file when updating. Path must not contain `..` or start with `/`. Files under .github/workflows/ need the installation to have accepted the Teros App\'s "Workflows" permission; if not, the error says where to accept it.',
   parameters: {
     type: 'object',
     properties: {
@@ -34,6 +35,7 @@ export const createOrUpdateFile: ToolConfig = {
       branch?: string;
       sha?: string;
     };
+    assertOwnerRepo(owner, repo);
     if (!path || path.trim() === '') {
       throw new Error('`path` must be a non-empty string.');
     }
@@ -53,9 +55,19 @@ export const createOrUpdateFile: ToolConfig = {
     };
     if (branch) body.branch = branch;
     if (sha) body.sha = sha;
-    return await githubRequest(context, `/repos/${owner}/${repo}/contents/${safePath}`, {
-      method: 'PUT',
-      body,
-    });
+    const workflowFile = isWorkflowPath(path);
+    const permission = workflowFile ? await workflowPermission(context, owner) : undefined;
+    if (permission?.state === 'pending') throw workflowPendingError(owner, path, permission.url);
+    try {
+      return await githubRequest(context, `/repos/${owner}/${repo}/contents/${safePath}`, {
+        method: 'PUT',
+        body,
+      });
+    } catch (error) {
+      if (workflowFile && permission?.state !== 'granted' && error instanceof GitHubApiError && [403, 404].includes(error.status)) {
+        throw workflowPendingError(owner, path, permission?.url);
+      }
+      throw error;
+    }
   },
 };

@@ -22,6 +22,15 @@ export function isWsConnected(): boolean {
 }
 
 export async function initializeWsClient(): Promise<void> {
+  if (!process.env.MCA_WS_URL) {
+    // Degraded mode (pattern of mca.teros.core provider-bridge): the tools.json
+    // generator spawns the MCA without the WS URL injected. Tools that need the
+    // backend fail fast if called; the rest of the MCA must still boot so
+    // listTools() works.
+    console.error('⚠️ [Conversations MCA] MCA_WS_URL not set — running in degraded mode');
+    wsConnected = false;
+    return;
+  }
   wsClient = createWebSocketClient();
 
   wsClient.on('disconnected', (code, reason) => {

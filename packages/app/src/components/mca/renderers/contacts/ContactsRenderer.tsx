@@ -2,30 +2,26 @@
  * Google Contacts Renderer - Contact Operations
  *
  * Renderers for list, get, search, create, update, delete contacts.
+ *
+ * Input/output shapes verified against the MCA source (src/tools/*.ts,
+ * 2026-10-06) — the 2026-10 rename also changed shapes:
+ *   - create/update-contact take `givenName`/`familyName` (NOT `name`), and
+ *     update has no `notes` param.
+ *   - create/update-contact return `{ success, resourceName, name }`.
+ *   - get-contact returns `organizations[{name,title}]`, `biographies[]`,
+ *     `addresses[{formattedValue,…}]` — normalized below into the `Contact`
+ *     shape the rows consume.
+ *   - list-contacts has NO `query` param (only pageSize/pageToken).
  */
 
-import {
-  Building2,
-  ExternalLink,
-  FileText,
-  Mail,
-  MapPin,
-  Phone,
-  Search,
-  User,
-  UserCog,
-  UserMinus,
-  UserPlus,
-  Users,
-} from '../../primitives';
+import { Building2, FileText, Mail, MapPin, Phone } from '../../primitives';
 import type React from 'react';
-import { useState } from 'react';
 import { Linking } from 'react-native';
 import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { countBadgeVariant, formatCountBadge } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { ErrorBlock, SuccessBlock, ToolCallCard } from '../../primitives';
+import { ErrorBlock, KeyValueGrid, SuccessBlock, ToolCallCard } from '../../primitives';
 import {
   Badge,
   type Contact,
@@ -34,13 +30,12 @@ import {
   ContactRow,
   getDisplayName,
   getFieldValue,
-  getShortToolName,
   parseOutput,
   useContactsColors,
 } from './shared';
 
 // ============================================================================
-// List Contacts Renderer
+// Types — raw output shapes from the MCA handlers
 // ============================================================================
 
 interface ListContactsResult {
@@ -49,34 +44,121 @@ interface ListContactsResult {
   nextPageToken?: string;
 }
 
+interface SearchContactsResult {
+  contacts: Contact[];
+}
+
+/** get-contact raw output — richer than the shared `Contact` row shape. */
+interface GetContactOutput {
+  resourceName?: string;
+  name?: string;
+  givenName?: string;
+  familyName?: string;
+  emails?: Array<{ value?: string; type?: string }>;
+  phones?: Array<{ value?: string; type?: string }>;
+  organizations?: Array<{ name?: string; title?: string }>;
+  addresses?: Array<{ formattedValue?: string; type?: string; city?: string; country?: string }>;
+  biographies?: string[];
+  photo?: string;
+}
+
+/** create/update-contact output. */
+interface MutationOutput {
+  success?: boolean;
+  message?: string;
+  resourceName?: string;
+  name?: string;
+}
+
+interface DeleteResult {
+  success?: boolean;
+  message?: string;
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+function isResultError(result: unknown): boolean {
+  return typeof result === 'string' && result.toLowerCase().includes('error');
+}
+
+/** `givenName`/`familyName` input → display name (schema has no `name`). */
+function inputContactName(input: Record<string, any> | undefined): string {
+  const given = typeof input?.givenName === 'string' ? input.givenName : '';
+  const family = typeof input?.familyName === 'string' ? input.familyName : '';
+  return `${given} ${family}`.trim();
+}
+
+/** Normalizes get-contact's richer output into the shared `Contact` shape. */
+function toContact(raw: GetContactOutput): Contact {
+  return {
+    resourceName: raw.resourceName ?? '',
+    name: raw.name,
+    givenName: raw.givenName,
+    familyName: raw.familyName,
+    emails: raw.emails?.map((e) => ({ value: e.value ?? '', type: e.type })),
+    phones: raw.phones?.map((p) => ({ value: p.value ?? '', type: p.type })),
+    organization: raw.organizations?.[0]?.name,
+    title: raw.organizations?.[0]?.title,
+    photo: raw.photo,
+    addresses: raw.addresses?.map((a) => ({ value: a.formattedValue ?? '', type: a.type })),
+    notes: raw.biographies?.[0],
+  };
+}
+
+// ============================================================================
+// List Contacts Renderer
+// ============================================================================
+
 export function ListContactsRenderer({
-  toolName,
   status,
   output,
+  error,
+  input,
   appIcon,
 }: ToolCallRendererProps) {
   const c = useContactsColors();
-  const colors = useContactsColors();
 
   const result = output ? parseOutput<ListContactsResult>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const isError = isResultError(result);
 
   let badge: React.ReactNode = null;
-  let description = 'List contacts';
+  const count =
+    status === 'completed' && result && typeof result === 'object'
+      ? (result.contacts?.length ?? 0)
+      : 0;
 
-  if (status === 'completed' && result && typeof result === 'object') {
-    const count = result.contacts?.length || 0;
+  const description =
+    status === 'failed'
+      ? 'Failed to list contacts'
+      : status === 'completed'
+        ? `Listed ${count} contacts`
+        : 'List contacts';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && result && typeof result === 'object') {
     const total = result.totalItems;
     const text = total ? `${count}/${total}` : formatCountBadge(count, 'contact');
     badge = <Badge text={text} variant={countBadgeVariant(count)} />;
-    description = `Listed ${count} contacts`;
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
 
   return (
     <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {status === 'pending_permission' && input && (
+        <KeyValueGrid
+          rows={[
+            // list-contacts has no `query` param — only pageSize/pageToken.
+            ...(input.pageSize ? [{ key: 'Page size', value: String(input.pageSize) }] : []),
+            ...(input.pageToken ? [{ key: 'Page token', value: String(input.pageToken), mono: true }] : []),
+          ]}
+        />
+      )}
       {isError && <ErrorBlock error={result as string} />}
+      {status === 'failed' && error && <ErrorBlock error={error} />}
       {result && typeof result === 'object' && result.contacts && (
         <YStack gap={4} maxHeight={300}>
           <ScrollView>
@@ -106,30 +188,40 @@ export function ListContactsRenderer({
 // Get Contact Renderer
 // ============================================================================
 
-export function GetContactRenderer({ toolName, status, output, appIcon }: ToolCallRendererProps) {
+export function GetContactRenderer({ status, output, error, input, appIcon }: ToolCallRendererProps) {
   const c = useContactsColors();
-  const colors = useContactsColors();
 
-  const result = output ? parseOutput<Contact>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const result = output ? parseOutput<GetContactOutput>(output) : null;
+  const isError = isResultError(result);
+  const resourceName = typeof input?.resourceName === 'string' ? input.resourceName : '';
+  const contact = result && typeof result === 'object' ? toContact(result) : null;
 
   let badge: React.ReactNode = null;
-  let description = 'Get contact';
+  const completedName = contact ? getDisplayName(contact) : '';
 
-  if (status === 'completed' && result && typeof result === 'object') {
-    const name = getDisplayName(result as Contact);
+  const description =
+    status === 'failed'
+      ? 'Failed to get contact'
+      : status === 'completed'
+        ? completedName || 'Got contact'
+        : 'Get contact';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && contact) {
     badge = <Badge text="found" variant="success" />;
-    description = name;
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
 
-  const contact = result as Contact;
-
   return (
     <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {status === 'pending_permission' && resourceName && (
+        <KeyValueGrid rows={[{ key: 'Contact', value: resourceName, mono: true }]} />
+      )}
       {isError && <ErrorBlock error={result as string} />}
-      {contact && typeof contact === 'object' && (
+      {status === 'failed' && error && <ErrorBlock error={error} />}
+      {contact && (
         <YStack gap={8}>
           <XStack
             alignItems="center"
@@ -204,38 +296,49 @@ export function GetContactRenderer({ toolName, status, output, appIcon }: ToolCa
 // Search Contacts Renderer
 // ============================================================================
 
-interface SearchContactsResult {
-  contacts: Contact[];
-  totalItems?: number;
-}
-
 export function SearchContactsRenderer({
-  toolName,
   status,
   output,
+  error,
   input,
   appIcon,
 }: ToolCallRendererProps) {
   const c = useContactsColors();
-  const colors = useContactsColors();
 
   const result = output ? parseOutput<SearchContactsResult>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const isError = isResultError(result);
   const query = typeof input?.query === 'string' ? input.query : '';
 
   let badge: React.ReactNode = null;
-  const description = query ? `Search: "${query}"` : 'Search contacts';
+  const searchCount =
+    status === 'completed' && result && typeof result === 'object'
+      ? (result.contacts?.length ?? 0)
+      : 0;
 
-  if (status === 'completed' && result && typeof result === 'object') {
-    const count = result.contacts?.length || 0;
-    badge = <Badge text={formatCountBadge(count, 'result')} variant={countBadgeVariant(count)} />;
+  const description =
+    status === 'failed'
+      ? query
+        ? `Failed to search "${query}"`
+        : 'Failed to search contacts'
+      : query
+        ? `Search "${query}"`
+        : 'Searched contacts';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && result && typeof result === 'object') {
+    badge = <Badge text={formatCountBadge(searchCount, 'result')} variant={countBadgeVariant(searchCount)} />;
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
 
   return (
     <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {status === 'pending_permission' && query && (
+        <KeyValueGrid rows={[{ key: 'Query', value: query }]} />
+      )}
       {isError && <ErrorBlock error={result as string} />}
+      {status === 'failed' && error && <ErrorBlock error={error} />}
       {result && typeof result === 'object' && result.contacts && (
         <YStack gap={4} maxHeight={250}>
           <ScrollView>
@@ -262,31 +365,61 @@ export function SearchContactsRenderer({
 // ============================================================================
 
 export function CreateContactRenderer({
-  toolName,
   status,
   output,
+  error,
+  input,
   appIcon,
 }: ToolCallRendererProps) {
-  const result = output ? parseOutput<Contact>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const result = output ? parseOutput<MutationOutput>(output) : null;
+  const isError = isResultError(result);
+  const mutation = result && typeof result === 'object' ? (result as MutationOutput) : null;
+
+  // Schema fields: givenName/familyName (no `name`), email, phone,
+  // organization, title, notes.
+  const inputName = inputContactName(input);
+  const inputEmail = typeof input?.email === 'string' ? input.email : '';
+  const inputPhone = typeof input?.phone === 'string' ? input.phone : '';
+  const inputOrg = typeof input?.organization === 'string' ? input.organization : '';
 
   let badge: React.ReactNode = null;
-  let description = 'Create contact';
+  const completedName = mutation?.name ?? mutation?.resourceName ?? '';
 
-  if (status === 'completed' && result && typeof result === 'object') {
-    const name = getDisplayName(result as Contact);
+  const description =
+    status === 'failed'
+      ? 'Failed to create contact'
+      : status === 'completed' && completedName
+        ? `Created: ${completedName}`
+        : inputName
+          ? `Create contact "${inputName}"`
+          : 'Create contact';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && mutation && !isError) {
     badge = <Badge text="created" variant="success" />;
-    description = `Created: ${name}`;
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
 
   return (
     <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {status === 'pending_permission' && (
+        <KeyValueGrid
+          rows={[
+            ...(inputName ? [{ key: 'Name', value: inputName }] : []),
+            ...(inputEmail ? [{ key: 'Email', value: inputEmail }] : []),
+            ...(inputPhone ? [{ key: 'Phone', value: inputPhone }] : []),
+            ...(inputOrg ? [{ key: 'Organization', value: inputOrg }] : []),
+            ...(input?.notes ? [{ key: 'Notes', value: String(input.notes) }] : []),
+          ]}
+        />
+      )}
       {isError && <ErrorBlock error={result as string} />}
-      {result && typeof result === 'object' && (
+      {status === 'failed' && error && <ErrorBlock error={error} />}
+      {status === 'completed' && mutation && !isError && (
         <SuccessBlock
-          message={`Contact "${getDisplayName(result as Contact)}" created successfully`}
+          message={`Contact "${completedName || inputName || 'created'}" created successfully`}
         />
       )}
     </ToolCallCard>
@@ -298,31 +431,62 @@ export function CreateContactRenderer({
 // ============================================================================
 
 export function UpdateContactRenderer({
-  toolName,
   status,
   output,
+  error,
+  input,
   appIcon,
 }: ToolCallRendererProps) {
-  const result = output ? parseOutput<Contact>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const result = output ? parseOutput<MutationOutput>(output) : null;
+  const isError = isResultError(result);
+  const mutation = result && typeof result === 'object' ? (result as MutationOutput) : null;
+
+  const resourceName = typeof input?.resourceName === 'string' ? input.resourceName : '';
+
+  // Schema fields: resourceName, givenName/familyName (no `name`), email,
+  // phone, organization, title — update-contact has NO `notes` param.
+  const updateFields: Array<{ key: string; value: string }> = [];
+  if (resourceName) updateFields.push({ key: 'Contact', value: resourceName });
+  const inputName = inputContactName(input);
+  if (inputName) updateFields.push({ key: 'Name', value: inputName });
+  if (typeof input?.email === 'string' && input.email) updateFields.push({ key: 'Email', value: input.email });
+  if (typeof input?.phone === 'string' && input.phone) updateFields.push({ key: 'Phone', value: input.phone });
+  if (typeof input?.organization === 'string' && input.organization) updateFields.push({ key: 'Organization', value: input.organization });
+  if (typeof input?.title === 'string' && input.title) updateFields.push({ key: 'Title', value: input.title });
 
   let badge: React.ReactNode = null;
-  let description = 'Update contact';
+  const completedName = mutation?.name ?? mutation?.resourceName ?? '';
 
-  if (status === 'completed' && result && typeof result === 'object') {
-    const name = getDisplayName(result as Contact);
+  const description =
+    status === 'failed'
+      ? 'Failed to update contact'
+      : status === 'completed' && completedName
+        ? `Updated: ${completedName}`
+        : 'Update contact';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && mutation?.success === false) {
+    badge = <Badge text="no changes" variant="warning" />;
+  } else if (status === 'completed' && mutation && !isError) {
     badge = <Badge text="updated" variant="success" />;
-    description = `Updated: ${name}`;
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
 
   return (
     <ToolCallCard status={status} description={description} badge={badge} iconUri={appIcon}>
+      {status === 'pending_permission' && updateFields.length > 0 && (
+        <KeyValueGrid rows={updateFields} />
+      )}
       {isError && <ErrorBlock error={result as string} />}
-      {result && typeof result === 'object' && (
+      {status === 'failed' && error && <ErrorBlock error={error} />}
+      {status === 'completed' && mutation?.success === false && mutation.message && (
+        <ErrorBlock error={mutation.message} />
+      )}
+      {status === 'completed' && mutation && mutation.success !== false && !isError && (
         <SuccessBlock
-          message={`Contact "${getDisplayName(result as Contact)}" updated successfully`}
+          message={`Contact "${completedName || resourceName || 'updated'}" updated successfully`}
         />
       )}
     </ToolCallCard>
@@ -333,26 +497,31 @@ export function UpdateContactRenderer({
 // Delete Contact Renderer
 // ============================================================================
 
-interface DeleteResult {
-  success?: boolean;
-  message?: string;
-}
-
 export function DeleteContactRenderer({
-  toolName,
   status,
   output,
+  error,
+  input,
   appIcon,
 }: ToolCallRendererProps) {
   const result = output ? parseOutput<DeleteResult>(output) : null;
-  const isError = typeof result === 'string' && result.toLowerCase().includes('error');
+  const isError = isResultError(result);
+
+  const resourceName = typeof input?.resourceName === 'string' ? input.resourceName : '';
 
   let badge: React.ReactNode = null;
-  let description = 'Delete contact';
 
-  if (status === 'completed' && !isError) {
+  const description =
+    status === 'failed'
+      ? 'Failed to delete contact'
+      : status === 'completed'
+        ? 'Contact deleted'
+        : 'Delete contact';
+
+  if (status === 'pending_permission') {
+    badge = <Badge text="awaiting" variant="warning" />;
+  } else if (status === 'completed' && !isError) {
     badge = <Badge text="deleted" variant="success" />;
-    description = 'Contact deleted';
   } else if (status === 'failed' || isError) {
     badge = <Badge text="failed" variant="error" />;
   }
@@ -365,7 +534,11 @@ export function DeleteContactRenderer({
       iconUri={appIcon}
       irreversible
     >
+      {status === 'pending_permission' && resourceName && (
+        <KeyValueGrid rows={[{ key: 'Contact', value: resourceName, mono: true }]} />
+      )}
       {isError && <ErrorBlock error={result as string} />}
+      {status === 'failed' && error && <ErrorBlock error={error} />}
       {!isError && status === 'completed' && (
         <SuccessBlock message="Contact deleted successfully" />
       )}

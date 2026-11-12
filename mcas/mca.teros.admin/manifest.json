@@ -19,12 +19,25 @@
     "hidden": false,
     "role": "admin"
   },
-  "systemSecrets": ["ADMIN_API_URL", "ADMIN_API_KEY"],
+  "systemSecrets": [
+    "ADMIN_API_URL",
+    "ADMIN_API_KEY"
+  ],
   "runtime": {
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["admin", "panel", "agents", "workspaces", "apps", "access", "usage", "feature-flags", "management"],
+  "keywords": [
+    "admin",
+    "panel",
+    "agents",
+    "workspaces",
+    "apps",
+    "access",
+    "usage",
+    "feature-flags",
+    "management"
+  ],
   "layers": {
     "tools": true,
     "events": false,
@@ -39,5 +52,10 @@
       "date": "2026-05-19",
       "notes": "Manage agents, workspaces, members and apps, control access and feature flags, and track usage and costs"
     }
-  ]
+  ],
+  "backend": {
+    "actions": [
+      "admin-api.*"
+    ]
+  }
 }

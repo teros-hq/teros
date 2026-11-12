@@ -5,7 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
-import { buildTaskInitialMessage } from '../../../services/board-service'
+import { buildTaskInitialMessage, SYSTEM_SENDER } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { PubSubService } from '../../../services/pubsub-service'
 import type { ChannelManager } from '../../../services/channel-manager'
@@ -58,10 +58,24 @@ export function createStartTaskHandler(
       channel = await channelManager.getChannel(task.channelId)
     }
     if (!channel) {
+      // TER-157: Board task channels are headless — no human is watching directly.
+      // Without headless, tools with 'ask' permission block the turn indefinitely
+      // waiting for a human who never comes. The agent will get an auto-deny message
+      // and can either find an alternative or block the task with a note explaining
+      // what permission is needed.
       channel = await channelManager.createChannel(ctx.userId, assignedAgentId, {
         name: task.title,
-      }, { workspaceId: project.workspaceId })
+      }, {
+        workspaceId: project.workspaceId,
+        headless: true,
+      })
       await boardService.linkConversation(task.taskId, ctx.userId, channel.channelId)
+      // REQ-3: Board-linked channels are auto-shared (set by linkConversation handler,
+      // but start-task calls boardService directly — set it here too).
+      await channelManager.setChannelScope(channel.channelId, 'shared')
+    } else {
+      // Existing channel being reused — ensure it's public for board scope (REQ-3)
+      await channelManager.setChannelScope(channel.channelId, 'shared')
     }
 
     // Build initial message for the agent
@@ -78,12 +92,7 @@ export function createStartTaskHandler(
       try {
         const msgId = channelManager.createMessageId()
         const msgTimestamp = new Date().toISOString()
-        const sender =
-          (await channelManager.getUserSender(ctx.userId)) || {
-            type: 'user' as const,
-            id: ctx.userId,
-            name: 'User',
-          }
+        const sender = SYSTEM_SENDER
 
         await channelManager.saveMessage({
           messageId: msgId,

@@ -24,7 +24,8 @@
       "anthropicConsumer": "Claude Pro/Max entrena con tus conversaciones por defecto y las retiene hasta 5 años. Desactiva «Help improve Claude» en los ajustes de privacidad de tu cuenta para evitarlo.",
       "openaiConsumer": "ChatGPT Plus/Pro entrena con tus conversaciones por defecto. Desactiva «Improve the model for everyone» en Data Controls de tu cuenta para evitarlo.",
       "minimax": "La política de datos de MiniMax es opaca: no especifica si entrena con tus datos ni dónde los almacena, y su matriz está en China. No recomendado para datos sensibles.",
-      "unknown": "No hemos clasificado la política de datos de este proveedor. Trátalo como si retuviera tus datos."
+      "unknown": "No hemos clasificado la política de datos de este proveedor. Trátalo como si retuviera tus datos.",
+      "helmcode": "Helmcode ejecuta la inferencia en infraestructura de la UE con Zero Data Retention por defecto. Tus prompts no se almacenan ni se usan para entrenar."
     },
     "modal": {
       "title": "Atención a tus datos",
@@ -128,6 +129,7 @@
     "comingSoonPassword": "La recuperación de contraseña estará disponible pronto",
     "signInFailed": "Error al iniciar sesión",
     "couldNotSignInGoogle": "No se pudo iniciar sesión con Google",
+    "couldNotSignInGitHub": "No se pudo iniciar sesión con GitHub",
     "popupBlocked": "Por favor, permite las ventanas emergentes para iniciar sesión",
     "emailPlaceholder": "Email",
     "passwordPlaceholder": "Contraseña",
@@ -136,6 +138,15 @@
     "passwordMinCharsPlaceholder": "Contraseña (mín. 8 caracteres)",
     "pleaseEnterEmailPassword": "Por favor, ingresa tu email y contraseña",
     "requestTimedOut": "La solicitud expiró — el servidor no responde",
+    "verifyEmailTitle": "Revisa tu correo",
+    "verifyEmailLead": "Te hemos enviado un código de 6 dígitos a {{email}}. Introdúcelo para continuar.",
+    "verificationCode": "Código de verificación",
+    "verifyAndContinue": "Verificar y continuar",
+    "resendCode": "Enviar un código nuevo",
+    "resendCodeIn": "Puedes pedir otro código en {{seconds}} s",
+    "codeResent": "Te hemos enviado un código nuevo.",
+    "invalidCode": "Código incorrecto",
+    "couldNotResendCode": "No se ha podido enviar un código nuevo",
     "incorrectCredentials": "Email o contraseña incorrectos",
     "createYourAccount": "Crea tu cuenta",
     "earlyAlpha": "Alpha temprana",
@@ -147,7 +158,7 @@
     "signUpFailed": "Error al registrarse",
     "couldNotCreateAccount": "No se pudo crear la cuenta",
     "pleaseEnterName": "Por favor, ingresa tu nombre",
-    "pleaseEnterEmail": "Por favor, ingresa tu email",
+    "pleaseEnterEmail": "Introduce tu email",
     "invalidEmail": "Por favor, ingresa un email válido",
     "welcome": "Bienvenido",
     "welcomeUser": "Bienvenido, {{name}}",
@@ -161,7 +172,39 @@
     "getStarted": "Comenzar",
     "couldNotSavePreferences": "No se pudieron guardar tus preferencias. Por favor, inténtalo de nuevo.",
     "signingOut": "Cerrando sesión...",
-    "error": "Error"
+    "error": "Error",
+    "forgotPasswordTitle": "Restablecer contraseña",
+    "forgotPasswordLead": "Introduce tu email y te enviaremos un código para establecer una nueva contraseña.",
+    "sendResetCode": "Enviar código",
+    "resetPasswordTitle": "Establecer nueva contraseña",
+    "resetPasswordLead": "Introduce el código de 6 dígitos que enviamos a {{email}} y elige una nueva contraseña.",
+    "newPassword": "Nueva contraseña",
+    "confirmPassword": "Confirmar contraseña",
+    "resetAndSignIn": "Restablecer e iniciar sesión",
+    "enterValidEmail": "Introduce una dirección de email válida",
+    "enterTheCode": "Introduce el código de 6 dígitos",
+    "resetRequestFailed": "No se pudo iniciar el restablecimiento de contraseña",
+    "selfHosted": "Self-hosted",
+    "selfHostedLead": "Este Teros funciona en tu propia infraestructura",
+    "selfHostedNotice1": "Tus datos se quedan en esta máquina o servidor",
+    "selfHostedNotice2": "Fair source bajo FSL-1.1: cada versión pasa a Apache 2.0 a los dos años",
+    "selfHostedNotice3": "Alpha temprana: las funciones cambian y habrá cosas por pulir",
+    "selfHostedNotice4": "Haz copia de la carpeta data y de los volúmenes de Docker antes de actualizar",
+    "termsCheckboxSelfHosted": "Entiendo que Teros está en alpha temprana y acepto la <1>licencia</1>",
+    "sendResetCodeIn": "Puedes pedir otro código en {{seconds}} s",
+    "resetSessionExpired": "Tu sesión de restablecimiento expiró. Pide un código nuevo para continuar.",
+    "backToForgot": "Pedir un código nuevo",
+    "checkYourEmail": "Revisa tu correo",
+    "resetCodeLead": "Hemos enviado un código de 6 dígitos a {{email}}. Caduca en 15 minutos.",
+    "resetCodeLabel": "Código",
+    "resetCodeHint": "Pega el código o escríbelo. Se comprueba solo al completarlo.",
+    "checkingCode": "Comprobando el código…",
+    "continue": "Continuar",
+    "newPasswordTitle": "Elige una nueva contraseña",
+    "codeVerifiedFor": "Código verificado para {{email}}",
+    "ruleMinLength": "Al menos 8 caracteres",
+    "ruleMatch": "Las dos contraseñas coinciden",
+    "resetSignsOut": "Iniciarás sesión y se cerrará en tus otros dispositivos."
   },
   "nav": {
     "agents": "Agentes",
@@ -172,6 +215,9 @@
     "admin": "Admin",
     "catalog": "Catálogo",
     "skills": "Skills",
+    "todo": "Tareas",
+    "academy": "Academy",
+    "automate": "Automate",
     "profile": "Perfil",
     "providers": "Proveedores",
     "agentCores": "Agent Cores",
@@ -179,6 +225,7 @@
     "users": "Usuarios",
     "usageAndCosts": "Uso y costos",
     "featureFlags": "Feature Flags",
+    "terosProvider": "Proveedor Teros",
     "billingRequests": "Solicitudes de billing",
     "billingTeams": "Equipos de billing",
     "workspace": "Workspace",
@@ -195,7 +242,64 @@
     "moreConversations": "+{{count}} más...",
     "inactiveConversations": "+{{count}} inactivas...",
     "viewArchived": "Ver archivadas",
-    "whatsNew": "Novedades"
+    "whatsNew": "Novedades",
+    "inactive": "Inactivas",
+    "archived": "Archivadas",
+    "newChat": "Nuevo chat",
+    "collapse": "Contraer",
+    "expand": "Expandir",
+    "pendingApprovals_one": "{{count}} aprobación pendiente",
+    "pendingApprovals_other": "{{count}} aprobaciones pendientes",
+    "home": "Inicio",
+    "workspaceSettings": "Ajustes del workspace",
+    "viewAll": "Ver todos",
+    "search": "Buscar",
+    "themeToggle": "Cambiar tema",
+    "pendingNotices_one": "{{count}} aviso pendiente",
+    "pendingNotices_other": "{{count}} avisos pendientes",
+    "zoneWorkspace": "Workspace",
+    "zonePersonal": "Personal",
+    "visibleToAll": "Visible para todos en {{name}}",
+    "visibleToAllShort": "Visible para todos",
+    "widgetToday": "hoy",
+    "widgetOverdue": "{{n}} atrasadas",
+    "widgetDone": "{{n}} hechas",
+    "widgetOpenLabel": "abiertas",
+    "widgetMore": "+{{n}} más",
+    "widgetNoTasks": "Nada planificado para hoy",
+    "widgetAllTasks": "Todas las tareas",
+    "widgetNoProjects": "Aún no hay proyectos",
+    "widgetUnavailable": "No disponible aquí",
+    "onlyYou": "Solo tú",
+    "pinHere": "Anclar aquí",
+    "pinInWorkspace": "Anclar en {{name}}",
+    "pinInPersonal": "Anclar para ti",
+    "unpin": "Quitar",
+    "rename": "Renombrar",
+    "moveToPersonal": "Mover a personal",
+    "moveToWorkspace": "Mover a {{name}}",
+    "makeGlobal": "Hacer global",
+    "makeLocal": "Solo en {{name}}",
+    "showAsWidget": "Mostrar como widget",
+    "showAsRow": "Mostrar como fila",
+    "openInNewTab": "Abrir en pestaña nueva",
+    "nothingPinned": "Nada anclado todavía",
+    "dragHere": "Arrastra una pestaña aquí",
+    "disabledByAdmin": "Desactivado en {{name}} por un admin",
+    "openWindows": "Ventanas abiertas",
+    "pinWorkspace": "Workspaces",
+    "pinnedByAgent": "Anclado por un agente",
+    "zoneLocked": "Solo el owner o un admin pueden editar esta zona",
+    "pinned": "Anclada",
+    "alreadyPinned": "Ya estaba anclada",
+    "signOut": "Salir",
+    "theme": "Tema",
+    "themeDark": "oscuro",
+    "themeLight": "claro",
+    "administration": "Administración",
+    "monitoring": "Monitoring",
+    "latitudeSignals": "Latitude Signals",
+    "noAgents": "Aún no hay agentes"
   },
   "accessGate": {
     "privateBeta": "Beta privada",
@@ -295,6 +399,7 @@
       "loadFailed": "Error al cargar listado de directorio."
     },
     "windowContentLoadFailed": "Error al cargar contenido de ventana",
+    "retryLoad": "Reintentar",
     "mcas": {
       "loadFailed": "Error al cargar Agent Apps",
       "updateFailed": "Error al actualizar Agent App"
@@ -327,6 +432,62 @@
       "outputTruncated": "Salida truncada, no se pudo extraer contenido"
     }
   },
+  "feedback": {
+    "thumbsUp": "Pulgar arriba",
+    "thumbsDown": "Pulgar abajo",
+    "copy": "Copiar mensaje",
+    "copied": "Copiado al portapapeles",
+    "copyError": "No se pudo copiar",
+    "report": "Reportar problema",
+    "reportSent": "Reporte enviado al equipo",
+    "reportError": "No se pudo enviar el reporte",
+    "submitReport": "Enviar reporte",
+    "reportDescriptionLabel": "¿Qué salió mal?",
+    "reportPlaceholder": "Describe el problema…",
+    "why": "¿Por qué no fue útil?",
+    "commentPlaceholder": "Añade un comentario (opcional)",
+    "submit": "Enviar feedback",
+    "sending": "Enviando…",
+    "thankYou": "Gracias por tu feedback",
+    "submitError": "No se pudo guardar el feedback",
+    "tryAgain": "Inténtalo de nuevo",
+    "reasons": {
+      "inaccurate": "Incorrecto",
+      "incomplete": "Incompleto",
+      "not_helpful": "No útil",
+      "wrong_tone": "Tono inadecuado",
+      "did_not_follow_instructions": "No siguió las instrucciones",
+      "other": "Otro"
+    }
+  },
+  "notFoundScreen": {
+    "title": "Esta página no existe",
+    "description": "Puede que el enlace sea antiguo o que la página se haya movido. Todo lo que buscas te espera al inicio.",
+    "goHome": "Ir al inicio"
+  },
+  "rootResolver": {
+    "titleFailed": "No pudimos cargar tu espacio de trabajo",
+    "descriptionFailed": "No pudimos conectar con el servidor para cargar tus espacios de trabajo. Revisa tu conexión y reintenta — si el servicio volvió, entrarás directamente.",
+    "retry": "Reintentar",
+    "titleNoWorkspaces": "No hay espacio de trabajo para cargar",
+    "descriptionNoWorkspaces": "Tu cuenta todavía no tiene espacios de trabajo. Si te invitaron a uno, acepta la invitación y reintenta."
+  },
+  "invitations": {
+    "screenTitle": "Te han invitado a un workspace",
+    "screenDescription": "Acepta para unirte con el email {{email}} — recházala y no volverá a aparecer.",
+    "accept": "Aceptar",
+    "decline": "Rechazar",
+    "acceptedTitle": "Invitación aceptada",
+    "acceptedDescription": "El workspace ya está disponible en tu lista de workspaces.",
+    "declinedTitle": "Invitación rechazada",
+    "declinedDescription": "La invitación se descartó. Si cambias de opinión, pide que te inviten de nuevo.",
+    "errorTitle": "Esta invitación no se puede aceptar",
+    "errorNotFound": "La invitación ya no es válida — puede haber sido revocada, rechazada o ya aceptada.",
+    "errorMismatch": "Esta invitación se envió a un email distinto al de tu cuenta.",
+    "errorGeneric": "No pudimos procesar la invitación. Inténtalo de nuevo en un momento.",
+    "continue": "Continuar",
+    "bannerTitle": "{{inviter}} te ha invitado a {{workspace}}"
+  },
   "impersonation": {
     "impersonating": "Suplantando a",
     "backToMySession": "Volver a mi sesión"
@@ -342,9 +503,30 @@
     "notFound": "Conversación no encontrada",
     "notFoundDescription": "Esta conversación no existe o ha sido eliminada.",
     "startConversation": "Inicia una conversación",
+    "letter": {
+      "greeting": "Hola, {{name}}.",
+      "greetingGeneric": "Hola.",
+      "introStatic": "Soy tu asistente aquí. Puedo mover tareas del board, revisar código, escribir y buscar en la web — dime por dónde empezamos.",
+      "introLive": "Mientras no estabas: ",
+      "introLiveTail": " Te lo cuento todo si quieres — o dime por dónde empezamos.",
+      "factBoardPrefix": "el board de ",
+      "factInProgress": "{{count}} en curso",
+      "factTodo": "{{count}} en cola",
+      "factBlocked": "{{count}} bloqueadas",
+      "startHere": "POR DÓNDE EMPEZAMOS",
+      "promptBoardLabel": "¿Cómo va {{project}}?",
+      "promptBoard": "Dame el estado del board de {{project}} — qué se mueve, qué está atascado y qué necesita mi decisión.",
+      "promptStatic1": "¿Qué tengo hoy en el plato?",
+      "promptStatic1Message": "¿Qué tengo hoy en el plato? Dame la versión corta.",
+      "promptStatic2": "Borrador del post de lanzamiento para el jueves",
+      "promptStatic2Message": "Hazme un borrador del post de lanzamiento para el jueves — lo reviso y edito.",
+      "promptStatic3": "¿Qué quedó pendiente de la reunión del lunes?",
+      "promptStatic3Message": "¿Qué quedó pendiente de la reunión del lunes? Resume los puntos abiertos."
+    },
     "loadEarlierMessages": "Cargar mensajes anteriores",
     "unexpectedError": "Ha ocurrido un error inesperado",
     "boardEvent": "(evento de tablero)",
+    "systemLabel": "Teros",
     "board": "TABLERO",
     "rename": "Renombrar",
     "viewTokenUsage": "Ver uso de tokens",
@@ -417,7 +599,13 @@
       "open": "Abrir",
       "systemEvent": "Evento del sistema",
       "observedChannel": "Canal observado"
-    }
+    },
+    "authorUser": "Tú",
+    "authorAgent": "Agente",
+    "download": "Descargar",
+    "openInNewTab": "Abrir",
+    "share": "Compartir",
+    "refresh": "Refrescar"
   },
   "permission": {
     "required": "Permiso requerido",
@@ -463,16 +651,90 @@
     "download": "Descargar",
     "retrySending": "Reintentar envío",
     "retryTranscription": "Reintentar transcripción",
-    "retry": "Reintentar",
+    "mode": {
+      "title": "Modo de voz",
+      "available": "Disponible",
+      "availableDescription": "Responde si la nombras y no guarda nada de lo que oye",
+      "passive": "Escucha",
+      "passiveDescription": "Guarda lo que oye en el contexto y solo habla si la nombras",
+      "conversation": "Conversando",
+      "conversationDescription": "Responde a todo lo que oye",
+      "muted": "Silenciada",
+      "off": "Voz apagada"
+    },
+    "presence": {
+      "connecting": "Conectando…",
+      "turnOn": "Activar"
+    },
+    "activity": {
+      "idle": "En reposo",
+      "hearing": "Escuchando",
+      "thinking": "Pensando...",
+      "speaking": "Hablando",
+      "waitingWorker": "Trabajando: {{worker}}",
+      "reconnecting": "Reconectando ({{attempt}})...",
+      "muted": "Silenciado",
+      "error": "Error",
+      "connecting": "Conectando...",
+      "tapToStart": "Toca para iniciar"
+    },
+    "orb": {
+      "label": "Presencia de {{agent}}",
+      "agent": "Agente",
+      "lastHeard": "¿Qué has oído?",
+      "hangUp": "Colgar",
+      "resting": "en reposo",
+      "mute": "Silenciar micrófono",
+      "unmute": "Activar micrófono"
+    },
+    "bubble": {
+      "mark": "Voz"
+    },
+    "overheard": {
+      "meta": "Voz · escuchado"
+    },
+    "divider": {
+      "open": "{{name}} conectada · {{time}}",
+      "closed": "{{name}} conectada {{start}}–{{end}}",
+      "interrupted": "interrumpida",
+      "mode": "modo"
+    },
+    "delegation": {
+      "started": "{{name}} empezó a trabajar",
+      "finished": "{{name}} terminó",
+      "permission": "{{name}} necesita aprobación: {{tool}}",
+      "granted": "aprobado · {{tool}}",
+      "denied": "denegado · {{tool}}",
+      "approve": "Aprobar"
+    },
     "error": {
-      "auth": "Error de autenticación — vuelve a iniciar sesión",
-      "badRequest": "Solicitud no válida — revisa los parámetros",
-      "elevenlabs": "Servicio de voz no disponible (falló la conexión con ElevenLabs)",
-      "flagDisabled": "El modo de voz no está habilitado en tu cuenta",
-      "serverError": "Error del servidor — inténtalo de nuevo",
-      "timeout": "La conexión expiró — inténtalo de nuevo",
-      "unknown": "La conexión falló",
-      "workspace": "No se pudo resolver el workspace para la sesión de voz"
+      "bannerLabel": "Error de voz",
+      "auth": "Tu sesión ha caducado. Inicia sesión de nuevo para hablar con {{agent}}.",
+      "flagDisabled": "El modo voz aún no está activado para tu cuenta.",
+      "elevenlabs": "El servicio de voz no está disponible ahora mismo. Reintenta en un momento.",
+      "timeout": "La conexión está tardando demasiado.",
+      "workspace": "No hemos podido identificar tu workspace.",
+      "micPermission": "Para que {{agent}} te escuche necesitas dar acceso al micrófono.",
+      "serverError": "Algo ha fallado en nuestros servidores.",
+      "badRequest": "La petición no es válida.",
+      "stt": "No hemos podido transcribir tu voz. Reintenta en un momento.",
+      "tts": "No hemos podido generar la voz de {{agent}}. Reintenta en un momento.",
+      "unknown": "Algo ha fallado.",
+      "actionLogin": "Iniciar sesión",
+      "actionRequestAccess": "Solicitar acceso",
+      "actionOpenSettings": "Abrir ajustes de permisos",
+      "actionRetry": "Reintentar",
+      "copyCode": "Copiar código",
+      "autoRetry": "Reintentando en {{s}} s…",
+      "autoRetryStatic": "Reintentando en {{s}} s",
+      "cancelRetry": "cancelar"
+    },
+    "reconnect": {
+      "toast": "Reconectado",
+      "toastBody": "Sigue escuchando"
+    },
+    "earcons": {
+      "toggle": "Sonidos de presencia"
     }
   },
   "billing": {
@@ -588,6 +850,20 @@
       "removeError": "No se pudo eliminar el miembro.",
       "companySettings": "Ajustes de empresa",
       "companySettingsSoon": "Los ajustes self-serve para el propietario del equipo llegarán pronto."
+    },
+    "automateQuota": {
+      "title": "“{{name}}” se ha saltado: las ejecuciones de Automate de hoy están agotadas",
+      "titleGeneric": "Las ejecuciones de Automate de hoy están agotadas",
+      "body": "Tu plan {{plan}} permite {{limit}} ejecuciones de Automate al día entre todas tus automatizaciones. El presupuesto se reinicia a las {{time}}.",
+      "bodyGeneric": "Las ejecuciones de Automate de hoy de tu plan están agotadas. El presupuesto se reinicia a las {{time}}.",
+      "busiest": "“{{name}}” se ha ejecutado {{count}} veces hoy.",
+      "ctaUpgrade": "Subir de plan",
+      "openAutomate": "Abrir Automate",
+      "bannerTitle": "Las {{limit}} ejecuciones de Automate de hoy de tu plan {{plan}} están agotadas",
+      "bannerDetail": "Las ejecuciones se saltan hasta que el presupuesto se reinicie a las {{time}}. Espacia o pausa tus automatizaciones, o sube de plan.",
+      "bannerDetailBusiest": "“{{name}}” se ha ejecutado {{count}} veces hoy. Las ejecuciones se saltan hasta las {{time}}: espáciala, páusala o sube de plan.",
+      "toastTitle": "Las {{limit}} ejecuciones de Automate de hoy ({{plan}}) están agotadas",
+      "toastBody": "“{{name}}” se ha saltado. Se reanudan con el reinicio diario, o sube de plan."
     }
   },
   "windows": {
@@ -605,12 +881,14 @@
     "conversationsAll": "Todas",
     "createAgent": "Crear Agente",
     "featureFlags": "Feature Flags",
+    "terosProvider": "Proveedor Teros",
     "featureFlagsSub": "Gestión de feature flags",
     "mcaCatalog": "Catálogo de Agent Apps",
     "mcaCatalogSub": "Gestionar definiciones de Agent Apps",
     "myProviders": "Mis Proveedores",
     "myProvidersSub": "Gestionar tus claves API de LLM",
     "skills": "Skills",
+    "academy": "Academy",
     "usageAndCosts": "Uso y Costos",
     "usageAndCostsSub": "Analíticas de uso de LLM",
     "users": "Usuarios",
@@ -728,6 +1006,20 @@
         "blockedSelf": "No puedes cambiar tu propio acceso.",
         "blockedSuper": "Los super admins no se pueden modificar aquí.",
         "impersonateBlocked": "No puedes impersonar a un super admin ni a ti mismo.",
+        "stepUp": {
+          "passwordTitle": "Reautenticación requerida",
+          "passwordBody": "Esta acción requiere verificación. Introduce tu contraseña para continuar.",
+          "passwordPlaceholder": "Tu contraseña",
+          "mfaTitle": "Código de verificación requerido",
+          "mfaBody": "Esta acción requiere verificación. Introduce el código de 6 dígitos de tu app de autenticación.",
+          "mfaPlaceholder": "123456",
+          "confirm": "Verificar",
+          "verifying": "Verificando…",
+          "wrongPassword": "Contraseña incorrecta. Inténtalo de nuevo.",
+          "wrongMfa": "Código inválido. Inténtalo de nuevo.",
+          "mfaRequired": "Se requiere un código MFA para tu cuenta.",
+          "failed": "Verificación fallida. Inténtalo de nuevo."
+        },
         "confirm": {
           "role": {
             "title": "¿Cambiar el rol de {{name}}?",
@@ -867,6 +1159,7 @@
     "workspace": "Workspace",
     "console": "Consola",
     "terminal": "Terminal",
+    "browser": "Navegador",
     "newTab": "Nueva pestaña",
     "project": "Proyecto",
     "fileBrowser": "Explorador de archivos",
@@ -880,7 +1173,21 @@
     "splitBottom": "Dividir abajo",
     "splitHorizontal": "Dividir horizontal",
     "splitVertical": "Dividir vertical",
-    "closePanel": "Cerrar panel"
+    "closePanel": "Cerrar panel",
+    "todo": "Tareas",
+    "flowEditor": "Editor de Flujos",
+    "flowList": "Flujos",
+    "previewTab": "vista previa",
+    "previewTabHint": "Vista previa: sigue la selección. Doble clic o la chincheta la fijan.",
+    "pinTab": "Fijar pestaña",
+    "todoNode": "Tarea",
+    "feedbackAdmin": "Feedback Admin",
+    "feedbackAdminSub": "Triaje de feedback y bugs",
+    "browserDesktopOnly": "El navegador es una ventana de la app de escritorio",
+    "browserDesktopOnlyText": "La ventana Browser solo está disponible en la app de escritorio de Teros. Ábrela desde el launcher ahí para navegar en un navegador real y persistente.",
+    "browserDesktopOnlyCta": "Descargar la app de escritorio",
+    "agents": "Agentes",
+    "projects": "Proyectos"
   },
   "archivedConversations": {
     "searchPlaceholder": "Buscar en archivadas...",
@@ -1004,7 +1311,37 @@
     "archiveConfirmBody": "Esta conversación se moverá a archivadas. Puedes restaurarla más tarde desde la sección de archivadas.",
     "archiveConfirm": "Archivar",
     "archiveCancel": "Cancelar",
-    "newConversationTooltip": "Nueva conversación"
+    "moveToWorkspace": "Mover a workspace",
+    "moveToWorkspaceTitle": "Mover conversación",
+    "moveToWorkspaceBody": "Selecciona un workspace al que mover esta conversación.",
+    "moveToWorkspaceSuccess": "Conversación movida a {{workspace}}",
+    "moveToWorkspaceError": "Error al mover la conversación",
+    "moveToWorkspaceCancel": "Cancelar",
+    "moveToWorkspaceNoWorkspaces": "No hay otros workspaces disponibles",
+    "newConversationTooltip": "Nueva conversación",
+    "makeShared": "Hacer compartida",
+    "sharedConversation": "Compartida con el workspace",
+    "makePersonal": "Hacer personal",
+    "myConversations": "Mis Conversaciones",
+    "shared": "Compartidas",
+    "prePublishWarningTitle": "Apps personales detectadas",
+    "prePublishWarningBody": "Esta conversación usó las siguientes apps personales. Hacerla compartida expondrá el historial de la conversación a todos los miembros del workspace.",
+    "prePublishWarningAdvice": "Considera redactar el contenido sensible de estas apps antes de hacer compartida la conversación.",
+    "prePublishCancel": "Cancelar",
+    "prePublishConfirm": "Hacer compartida de todas formas",
+    "redacted": {
+      "redact": "Redactar",
+      "unredact": "Quitar redacción",
+      "redactedLabel": "Redactado",
+      "protectedBy": "Protegido por {{owner}}",
+      "owner": "Propietario",
+      "clickToReveal": "Click para revelar",
+      "clickToHide": "Click para ocultar",
+      "emptyContent": "[Contenido redactado]"
+    },
+    "scopeChangedShared": "Conversación ahora compartida",
+    "scopeChangedPersonal": "Conversación ahora personal",
+    "scopeError": "Error al cambiar el ámbito"
   },
   "profile": {
     "title": "Mi Perfil",
@@ -1031,6 +1368,20 @@
     "statAgents": "Agentes",
     "statDays": "Días",
     "madeWith": "Teros · Hecho con ♥",
+    "conversationSummary": {
+      "section": "Conversaciones",
+      "title": "Resumen al abrir una conversación",
+      "sub": "Tu agente abre cada conversación nueva con un resumen de lo que está pasando y algunas ideas para empezar. Desactivado: solo te saluda.",
+      "error": "No se pudo guardar el ajuste. Inténtalo de nuevo."
+    },
+    "improveTeros": {
+      "section": "Mejorar Teros",
+      "title": "Ayuda a mejorar Teros",
+      "sub": "Comparte conversaciones anonimizadas (identidades protegidas) para evaluar y mejorar Teros para todos. Tus conversaciones se guardan como siempre; esto solo autoriza su uso para evaluación.",
+      "on": "Gracias por ayudar a mejorar Teros",
+      "off": "Dejaste de compartir para evaluación",
+      "error": "No se pudo guardar el ajuste. Inténtalo de nuevo."
+    },
     "plan": {
       "entryTitle": "Plan y facturación",
       "entrySub": "Suscripción, uso, facturas",
@@ -1102,6 +1453,7 @@
       "toastUpgraded": "Plan actualizado a {{plan}}",
       "toastDowngrade": "Downgrade a {{plan}} programado",
       "toastDowngradeDetail": "Mantienes tu plan actual hasta el {{date}}.",
+      "toastDowngradeCancelled": "Te quedas en {{plan}}. Se ha cancelado el cambio programado.",
       "toastChangeError": "No pudimos cambiar tu plan",
       "toastPaymentSaved": "Método de pago guardado",
       "payment": {
@@ -1111,60 +1463,47 @@
         "save": "Guardar tarjeta",
         "unavailable": "El pago con tarjeta solo está disponible en la app web.",
         "initError": "No pudimos iniciar el formulario de pago. Inténtalo de nuevo.",
-        "loading": "Cargando formulario de pago…"
+        "loading": "Cargando formulario de pago…",
+        "countryLabel": "País de facturación",
+        "taxIdLabel": "NIF / IVA (opcional)",
+        "taxIdPlaceholder": "ESB12345678",
+        "taxIdHint": "Aparece en la factura y aplica el IVA que corresponda.",
+        "returnSuccess": "Tarjeta guardada.",
+        "returnFailed": "No se completó el alta de la tarjeta. Inténtalo de nuevo."
+      },
+      "automateRunsPerDay": "{{runs}} ejecuciones de Automate / día",
+      "automateRunsUnlimited": "Ejecuciones de Automate ilimitadas",
+      "linkOnFile": "Link · {{email}}",
+      "sepaOnFile": "SEPA ···· {{last4}}"
+    },
+    "dangerZone": {
+      "section": "Zona de peligro",
+      "signOutSub": "Sales de Teros en este dispositivo. Puedes volver a entrar cuando quieras."
+    },
+    "deleteAccount": {
+      "open": "Eliminar cuenta",
+      "dialogTitle": "¿Eliminar tu cuenta?",
+      "dialogBody": "Es permanente y no se puede deshacer. Se borrarán tu perfil, conversaciones, agentes, archivos y tu espacio de trabajo personal, y se cerrará tu sesión.",
+      "emailLabel": "Escribe tu email ({{email}}) para confirmar",
+      "passwordLabel": "Contraseña",
+      "passwordLabelOptional": "Contraseña (si tu cuenta tiene una)",
+      "passwordPlaceholder": "Tu contraseña actual",
+      "passwordHint": "Déjala en blanco si solo inicias sesión con Google u otro proveedor.",
+      "mfaLabel": "Código de verificación",
+      "mfaPlaceholder": "Código de 6 dígitos de tu app de autenticación",
+      "confirm": "Eliminar para siempre",
+      "deleting": "Eliminando…",
+      "errors": {
+        "confirmationMismatch": "El email no coincide con el de tu cuenta.",
+        "mfaRequired": "Tu cuenta tiene verificación en dos pasos. Introduce el código de tu app de autenticación.",
+        "mfaInvalid": "El código de verificación no es válido. Inténtalo de nuevo.",
+        "passwordRequired": "Introduce tu contraseña para confirmar.",
+        "invalidCredentials": "Contraseña incorrecta.",
+        "blocked": "Eres propietario de espacios de trabajo compartidos que aún tienen otros miembros. Transfiere su propiedad o elimínalos primero:",
+        "userNotFound": "No se encontró tu cuenta. Puede que ya se haya eliminado.",
+        "failed": "No se pudo eliminar tu cuenta. Inténtalo de nuevo."
       }
     }
-  },
-  "board": {
-    "autoplay": "Autoplay",
-    "addRunner": "Añadir runner",
-    "noAgentsAvailable": "No hay agentes disponibles",
-    "selectWorkspace": "Selecciona un workspace",
-    "selectWorkspaceHint": "Usa el selector de arriba para elegir uno",
-    "loadingProjects": "Cargando proyectos...",
-    "noProjects": "No hay proyectos",
-    "noProjectsHint": "Crea un proyecto para empezar a organizar tareas",
-    "createProject": "Crear proyecto",
-    "projectNamePlaceholder": "Nombre del proyecto...",
-    "selectProject": "Seleccionar proyecto",
-    "noProjectsInWorkspace": "No hay proyectos en este workspace",
-    "taskCount": "{{count}} tarea",
-    "taskCount_other": "{{count}} tareas",
-    "tags": "Tags",
-    "search": "Buscar",
-    "searchPlaceholder": "Buscar...",
-    "searchTags": "Buscar tags...",
-    "noMatchingTags": "No hay tags que coincidan",
-    "blockedTaskCount": "{{count}} tarea bloqueada",
-    "blockedTaskCount_other": "{{count}} tareas bloqueadas",
-    "taskTitlePlaceholder": "Título de la tarea...",
-    "createTask": "Crear",
-    "hiddenTasksByFilters": "{{count}} tarea oculta por filtros",
-    "hiddenTasksByFilters_other": "{{count}} tareas ocultas por filtros",
-    "detail": "Detalle",
-    "running": "Ejecutando",
-    "stopPending": "Detención pendiente...",
-    "requestStop": "Solicitar detención",
-    "archived": "Archivada",
-    "status": "Estado",
-    "column": "Columna",
-    "priority": "Prioridad",
-    "agent": "Agente",
-    "assignAgent": "Asignar agente",
-    "unassign": "Desasignar",
-    "start": "Iniciar",
-    "progressNotes": "Notas de progreso",
-    "activity": "Actividad",
-    "you": "Tú",
-    "noConversationLinked": "No hay conversación vinculada a esta tarea",
-    "info": "Info",
-    "conversation": "Conversación",
-    "projectCreated": "Proyecto creado",
-    "taskDeleted": "Tarea eliminada",
-    "taskStarted": "Tarea iniciada",
-    "stopRequested": "Detención solicitada",
-    "showMore": "Ver más",
-    "showLess": "Ver menos"
   },
   "agent": {
     "createNewAgent": "Crear nuevo agente",
@@ -1195,6 +1534,41 @@
     "roleRequired": "El rol es obligatorio",
     "introductionRequired": "La introducción es obligatoria",
     "failedToCreateAgent": "Error al crear el agente",
+    "chooseRole": "Elige un rol para tu agente",
+    "orCreateCustom": "O crea un agente personalizado...",
+    "roles": {
+      "personal-assistant": "Asistente Personal",
+      "personal-assistantDesc": "Ayuda general, tareas, organización",
+      "product-manager": "Gerente de Producto",
+      "product-managerDesc": "Roadmaps, features, historias de usuario",
+      "fullstack-developer": "Desarrollador Fullstack",
+      "fullstack-developerDesc": "Frontend, backend, APIs, bases de datos",
+      "devops-engineer": "Ingeniero DevOps",
+      "devops-engineerDesc": "CI/CD, infraestructura, despliegues",
+      "qa-tester": "Tester QA",
+      "qa-testerDesc": "Pruebas, automatización, calidad",
+      "automation-specialist": "Especialista en Automatización",
+      "automation-specialistDesc": "Workflows, integraciones, scripts",
+      "data-analyst": "Analista de Datos",
+      "data-analystDesc": "Métricas, dashboards, insights",
+      "ux-designer": "Diseñador UX",
+      "ux-designerDesc": "Interfaces, wireframes, usabilidad",
+      "technical-writer": "Escritor Técnico",
+      "technical-writerDesc": "Documentación, APIs, guías",
+      "security-analyst": "Analista de Seguridad",
+      "security-analystDesc": "Auditorías, vulnerabilidades, cumplimiento",
+      "marketing-specialist": "Especialista en Marketing",
+      "marketing-specialistDesc": "Campañas, copywriting, SEO",
+      "customer-support": "Soporte al Cliente",
+      "customer-supportDesc": "Help desk, FAQs, resolución de problemas"
+    },
+    "create": {
+      "namePlaceholder": "p. ej., Alice",
+      "fullNamePlaceholder": "p. ej., Alice Evergreen",
+      "rolePlaceholder": "p. ej., Asistente Personal",
+      "introPlaceholder": "Una breve introducción que el agente usará...",
+      "responseStylePlaceholder": "p. ej., amable, formal, conciso"
+    },
     "loadingAgent": "Cargando agente...",
     "configureSettingsBanner": "Configura los ajustes de este agente, gestiona conversaciones y asigna herramientas.",
     "tabConversations": "Conversaciones",
@@ -1246,6 +1620,7 @@
     "noSkillsHint": "Aún no hay skills configurados en este workspace.",
     "llmModel": "Modelo LLM",
     "modelSelectHint": "Selecciona qué modelo debe usar este agente, o déjalo en Predeterminado del sistema para usar automáticamente tu proveedor y modelo por defecto.",
+    "zdrFilterActive": "Zero Data Retention está activado en este workspace — solo se muestran modelos ZDR (locales o de proveedores sin retención).",
     "noProvidersConfigured": "No hay proveedores configurados",
     "noProvidersHint": "Necesitas configurar al menos un proveedor de LLM para usar este agente.",
     "noProvidersAction": "Ve a Mis Proveedores en la barra lateral para añadir un proveedor (Anthropic, OpenAI, etc.).",
@@ -1266,41 +1641,150 @@
     "failedUpdateAgent": "Error al actualizar agente: {{error}}",
     "failedDeleteAgent": "Error al eliminar agente: {{error}}",
     "unknownError": "Error desconocido",
-    "myProviders": "Mis Proveedores",
-    "chooseRole": "Elige un rol para tu agente",
-    "orCreateCustom": "O crea un agente personalizado...",
-    "roles": {
-      "personal-assistant": "Asistente Personal",
-      "personal-assistantDesc": "Ayuda general, tareas, organización",
-      "product-manager": "Gerente de Producto",
-      "product-managerDesc": "Roadmaps, features, historias de usuario",
-      "fullstack-developer": "Desarrollador Fullstack",
-      "fullstack-developerDesc": "Frontend, backend, APIs, bases de datos",
-      "devops-engineer": "Ingeniero DevOps",
-      "devops-engineerDesc": "CI/CD, infraestructura, despliegues",
-      "qa-tester": "Tester QA",
-      "qa-testerDesc": "Pruebas, automatización, calidad",
-      "automation-specialist": "Especialista en Automatización",
-      "automation-specialistDesc": "Workflows, integraciones, scripts",
-      "data-analyst": "Analista de Datos",
-      "data-analystDesc": "Métricas, dashboards, insights",
-      "ux-designer": "Diseñador UX",
-      "ux-designerDesc": "Interfaces, wireframes, usabilidad",
-      "technical-writer": "Escritor Técnico",
-      "technical-writerDesc": "Documentación, APIs, guías",
-      "security-analyst": "Analista de Seguridad",
-      "security-analystDesc": "Auditorías, vulnerabilidades, cumplimiento",
-      "marketing-specialist": "Especialista en Marketing",
-      "marketing-specialistDesc": "Campañas, copywriting, SEO",
-      "customer-support": "Soporte al Cliente",
-      "customer-supportDesc": "Help desk, FAQs, resolución de problemas"
+    "myProviders": "Mis Proveedores"
+  },
+  "board": {
+    "autoplay": "Autoplay",
+    "backlogAutoplayWarning": "Autoplay no recoge tareas en Backlog",
+    "backlogAutoplayHint": "Mueve a Tareas para que autoplay las recoja",
+    "addRunner": "Añadir runner",
+    "noAgentsAvailable": "No hay agentes disponibles",
+    "selectWorkspace": "Selecciona un workspace",
+    "selectWorkspaceHint": "Usa el selector de arriba para elegir uno",
+    "loadingProjects": "Cargando proyectos...",
+    "noProjects": "No hay proyectos",
+    "noProjectsHint": "Crea un proyecto para empezar a organizar tareas",
+    "createProject": "Crear proyecto",
+    "projectNamePlaceholder": "Nombre del proyecto...",
+    "selectProject": "Seleccionar proyecto",
+    "noProjectsInWorkspace": "No hay proyectos en este workspace",
+    "taskCount": "{{count}} tarea",
+    "taskCount_other": "{{count}} tareas",
+    "tags": "Tags",
+    "search": "Buscar",
+    "searchPlaceholder": "Buscar...",
+    "searchTags": "Buscar tags...",
+    "noMatchingTags": "No hay tags que coincidan",
+    "blockedTaskCount": "{{count}} tarea bloqueada",
+    "blockedTaskCount_other": "{{count}} tareas bloqueadas",
+    "taskTitlePlaceholder": "Título de la tarea...",
+    "createTask": "Crear",
+    "hiddenTasksByFilters": "{{count}} tarea oculta por filtros",
+    "hiddenTasksByFilters_other": "{{count}} tareas ocultas por filtros",
+    "detail": "Detalle",
+    "running": "Ejecutando",
+    "stopPending": "Detención pendiente...",
+    "requestStop": "Solicitar detención",
+    "archived": "Archivada",
+    "status": "Estado",
+    "column": "Columna",
+    "priority": "Prioridad",
+    "agent": "Agente",
+    "assignAgent": "Asignar agente",
+    "unassign": "Desasignar",
+    "start": "Iniciar",
+    "progressNotes": "Notas de progreso",
+    "activity": "Actividad",
+    "you": "Tú",
+    "noConversationLinked": "No hay conversación vinculada a esta tarea",
+    "info": "Info",
+    "conversation": "Conversación",
+    "projectCreated": "Proyecto creado",
+    "taskDeleted": "Tarea eliminada",
+    "taskStarted": "Tarea iniciada",
+    "stopRequested": "Detención solicitada",
+    "showMore": "Ver más",
+    "showLess": "Ver menos",
+    "statusView": "Estado",
+    "kanbanView": "Kanban",
+    "missionView": "Misión",
+    "settingsView": "Ajustes",
+    "mcMetrics": "Métricas y Distribución",
+    "mcActivity": "Actividad",
+    "mcBurnup": "Progreso",
+    "mcBurnupEmpty": "Sin datos aún",
+    "mcBurnupTotal": "Total",
+    "mcBurnupDone": "Completado",
+    "mcBurnupDays": "días",
+    "mcTeam": "Equipo",
+    "settingsTitle": "Ajustes del Proyecto",
+    "settingsName": "Nombre",
+    "settingsNamePlaceholder": "Nombre del proyecto",
+    "settingsDescription": "Descripción",
+    "settingsDescriptionPlaceholder": "Descripción breve",
+    "settingsContext": "Contexto",
+    "settingsContextPlaceholder": "Notas de arquitectura, estándares de código, etc.",
+    "settingsContextHint": "Este contexto se inyecta en los prompts de los agentes que trabajan en este proyecto.",
+    "settingsColumns": "Columnas del Tablero",
+    "settingsSave": "Guardar",
+    "settingsSaving": "Guardando...",
+    "settingsSaved": "Ajustes guardados",
+    "settingsSaveError": "Error al guardar",
+    "statusHealthy": "Saludable",
+    "statusWarning": "Atención",
+    "statusCritical": "Crítico",
+    "statusProgress": "Progreso",
+    "statusTasksDone": "tareas completadas",
+    "statusInProgress": "en progreso",
+    "statusInReview": "en revisión",
+    "statusSummary": "Resumen",
+    "statusTotal": "Total",
+    "statusRunning": "En ejecución",
+    "statusBlocked": "Bloqueadas",
+    "statusDone": "Completadas",
+    "statusDistribution": "Distribución",
+    "statusBurnChart": "Gráfico de progreso",
+    "burnUpTitle": "Burn Up — últimos 7 días",
+    "burnDownTitle": "Burn Down — últimos 7 días",
+    "burnUp": "Up",
+    "burnDown": "Down",
+    "burnScope": "Alcance",
+    "burnCompleted": "Completado",
+    "burnRemaining": "Restante",
+    "burnBlocked": "Bloqueado",
+    "burnNoData": "Sin datos aún",
+    "burnToday": "hoy",
+    "burnProjection": "Proyección",
+    "burnEstCompletion": "Fin est.",
+    "burnNoProjection": "Datos insuficientes para proyección",
+    "burnTasksDay": "tareas/día",
+    "statusAgents": "Agentes activos",
+    "statusActive": "Activo",
+    "statusPaused": "Pausado",
+    "statusSlots": "slots",
+    "statusActivity": "Actividad reciente",
+    "statusBy": "por",
+    "statusCreated": "Creado",
+    "statusNoTasks": "Sin tareas",
+    "statusNoTasksHint": "Crea tareas en el tablero Kanban para ver las estadísticas aquí",
+    "activity_task_created": "Tarea creada",
+    "activity_task_moved": "Tarea movida",
+    "activity_task_status_changed": "Estado cambiado",
+    "activity_task_started": "Tarea iniciada",
+    "activity_task_completed": "Tarea completada",
+    "activity_task_blocked": "Tarea bloqueada",
+    "activity_task_stopped": "Tarea detenida",
+    "activity_progress_note": "Nota de progreso",
+    "activity_task_assigned": "Tarea asignada",
+    "activity_task_updated": "Tarea actualizada",
+    "activity_task_deleted": "Tarea eliminada",
+    "activity_board_task_created": "Tarea creada",
+    "activity_board_task_updated": "Tarea actualizada",
+    "activity_board_task_moved": "Tarea movida",
+    "activity_board_task_status_changed": "Estado cambiado",
+    "activity_board_task_assigned": "Tarea asignada",
+    "activity_board_task_progress_note": "Nota de progreso",
+    "activity_board_task_deleted": "Tarea eliminada",
+    "activity_board_agent_play_changed": "Autoplay cambiado",
+    "activity_board_agent_slots_changed": "Slots cambiados",
+    "activity_board_dependency_added": "Dependencia añadida",
+    "activity_board_dependency_removed": "Dependencia eliminada",
+    "taskDetail": {
+      "tabInput": "Entrada"
     },
-    "create": {
-      "namePlaceholder": "p. ej., Alice",
-      "fullNamePlaceholder": "p. ej., Alice Evergreen",
-      "rolePlaceholder": "p. ej., Asistente Personal",
-      "introPlaceholder": "Una breve introducción que el agente usará...",
-      "responseStylePlaceholder": "p. ej., amable, formal, conciso"
+    "input": {
+      "typed": "Artefacto de entrada · {{id}}",
+      "untyped": "Datos de entrada (sin tipo)"
     }
   },
   "apps": {
@@ -1311,6 +1795,7 @@
     "categorySystem": "Sistema",
     "categoryProductivity": "Productividad",
     "categoryGoogleSuite": "Google Suite",
+    "categoryMicrosoftSuite": "Suite de Microsoft",
     "categoryCommunication": "Comunicación",
     "categoryIntegration": "Integración",
     "categoryAi": "Inteligencia Artificial",
@@ -1319,12 +1804,20 @@
     "categoryMedia": "Media",
     "categoryOther": "Otros",
     "categoryGoogle": "Google Suite",
+    "categoryMicrosoft": "Microsoft",
     "loadingApp": "Cargando app...",
     "context": "Contexto",
     "noContextConfigured": "No hay contexto configurado. Toca el icono de lápiz para añadir contexto.",
     "editContext": "Editar Contexto",
     "contextPlaceholder": "Añadir contexto sobre esta app...",
     "dangerZone": "Zona de peligro",
+    "scopeChanged": "Ámbito actualizado",
+    "scopeChangedPersonal": "Esta app ahora es personal — solo la ves y la usas tú, en tus conversaciones personales.",
+    "scopeChangedShared": "Esta app ahora es compartida — la ven todos los miembros y los agentes la usan en cualquier conversación.",
+    "scopeChangeError": "Error al cambiar el ámbito",
+    "collisionTitle": "Renombra antes de compartir",
+    "collisionHint": "Otra app de este workspace ya usa este nombre. Elige uno nuevo; se compartirá con ese nombre.",
+    "collisionRenameAndShare": "Renombrar y compartir",
     "uninstallApp": "Desinstalar app",
     "uninstallWarning": "Esta acción eliminará la app y todas sus configuraciones. No se puede deshacer.",
     "uninstallConfirmMessage": "¿Estás seguro de que quieres desinstalar \"{{name}}\"? Esta acción no se puede deshacer.",
@@ -1379,80 +1872,16 @@
     "app": "App",
     "authentication": "Autenticación",
     "permissions": "Permisos",
-    "connection": "Conexión",
-    "configuration": "Configuración",
-    "instructions": "Instrucciones",
-    "addInstructions": "Añadir instrucciones",
-    "editInstructions": "Editar"
-  },
-  "usage": {
-    "loadingData": "Cargando datos de uso...",
-    "title": "Uso y Costes",
-    "refresh": "Actualizar",
-    "periodLastHour": "Última Hora",
-    "periodLast24h": "Últimas 24h",
-    "periodLastWeek": "Última Semana",
-    "periodLastMonth": "Último Mes",
-    "totalCost": "Coste Total",
-    "inputOutputCost": "Entrada: {{input}} | Salida: {{output}}",
-    "totalTokens": "Tokens Totales",
-    "promptCompletionTokens": "Prompt: {{prompt}} | Completado: {{completion}}",
-    "generations": "Generaciones",
-    "cacheHits": "Cache hits: {{count}}",
-    "topUsersByCost": "Top Usuarios por Coste",
-    "topWorkspacesByCost": "Top Espacios por Coste",
-    "topAgentsByCost": "Top Agentes por Coste",
-    "topModelsByCost": "Top Modelos por Coste",
-    "mostExpensiveConversations": "Conversaciones Más Caras",
-    "noDataAvailable": "No hay datos disponibles",
-    "generationsCount": "{{count}} gen",
-    "messagesCount": "{{count}} msgs",
-    "usageTimeline": "Línea de Tiempo de Uso"
-  },
-  "featureFlags": {
-    "searchPlaceholder": "Buscar flags...",
-    "loadingFlags": "Cargando flags...",
-    "loading": "Cargando...",
-    "noteOptional": "Nota (opcional)",
-    "valuePlaceholder": "valor1, valor2, valor3",
-    "overrideReasonPlaceholder": "¿Por qué este override?",
-    "title": "Feature Flags",
-    "error": "Error",
-    "adminRequired": "Se requieren privilegios de administrador",
-    "adminPrivilegesRequired": "Se requieren privilegios de administrador",
-    "connectionLost": "Conexión perdida",
-    "failedToLoadFlags": "Error al cargar feature flags",
-    "failedToLoadDetail": "Error al cargar detalles del flag",
-    "failedToUpdateDefault": "Error al actualizar valor por defecto",
-    "failedToResetDefault": "Error al restablecer valor por defecto",
-    "failedToCreateOverride": "Error al crear override",
-    "failedToDeleteOverride": "Error al eliminar override",
-    "failedToUpdateOverride": "Error al actualizar override",
-    "saved": "Guardado",
-    "defaultValueUpdated": "Valor por defecto actualizado para {{flagKey}}",
-    "reset": "Restablecido",
-    "resetToDefault": "{{flagKey}} restablecido al valor por defecto",
-    "resetToRegistryDefault": "Restablecer al valor del registro",
-    "created": "Creado",
-    "overrideAdded": "Override añadido",
-    "deleted": "Eliminado",
-    "overrideRemoved": "Override eliminado",
-    "overrideUpdated": "Override actualizado",
-    "flagDetail": "Detalle del flag",
-    "globalDefault": "Valor global por defecto",
-    "overrides": "Overrides",
-    "manageOverrides": "Gestionar overrides",
-    "noOverrides": "No hay overrides configurados",
-    "addOverride": "Añadir override",
-    "addOverrideButton": "Añadir override",
-    "addFlagsHint": "Añade feature flags para controlar el despliegue de funcionalidades",
-    "noFlagsRegistered": "No hay feature flags registrados",
-    "noFlagsMatch": "Ningún flag coincide con tu búsqueda",
-    "noteLabel": "Nota",
-    "valueLabel": "Valor",
-    "workspaceId": "ID de Workspace",
-    "userId": "ID de Usuario",
-    "companyId": "ID de Empresa"
+    "scope": "Ámbito de la app",
+    "scopeHint": "Una app personal solo la ves tú y solo funciona en tus conversaciones personales. Una app compartida la ven todos los miembros y funciona en todas las conversaciones, con las credenciales con las que se instaló.",
+    "scopeShared": "Compartida",
+    "scopeSharedDesc": "Visible para todo el workspace · funciona en todas las conversaciones",
+    "scopePersonal": "Personal",
+    "scopePersonalDesc": "Solo tú · solo en tus conversaciones personales",
+    "scopeChanging": "Cambiando ámbito…",
+    "moreAppsTitle": "¿Buscas más apps?",
+    "moreAppsHint": "Gmail, Notion, HubSpot, Linear y más — conéctalas en segundos.",
+    "moreAppsCta": "Ver catálogo"
   },
   "skills": {
     "title": "Skills",
@@ -1481,8 +1910,31 @@
     "namePlaceholder": "Nombre del skill",
     "descriptionPlaceholder": "Descripción breve (opcional)",
     "contentPlaceholder": "Instrucciones en Markdown...",
+    "labelLoadMode": "MODO DE CARGA",
+    "loadMode": "Modo de carga",
+    "loadModeAlways": "Siempre cargado",
+    "loadModeOnDemand": "Bajo demanda",
     "noSkills": "No hay skills en este workspace",
     "noSkillsHint": "Crea un skill para añadir instrucciones reutilizables a tus agentes"
+  },
+  "academy": {
+    "title": "Academy",
+    "subtitle": "Aprende a usar Teros con videotutoriales, organizados por fases.",
+    "searchPlaceholder": "Buscar tutoriales…",
+    "allPhases": "Todas",
+    "noResults": "Ningún tutorial coincide con tu búsqueda.",
+    "back": "Volver al catálogo",
+    "previous": "Anterior",
+    "next": "Siguiente",
+    "objectiveLabel": "Objetivo",
+    "stepsLabel": "Pasos",
+    "transcriptLabel": "Transcripción",
+    "contentLanguage": "Idioma del contenido",
+    "resultsLabel": "resultados",
+    "gridView": "Cuadrícula",
+    "listView": "Lista",
+    "videoLabel": "Vídeo",
+    "phaseShort": "Fase"
   },
   "onboarding": {
     "loadingTeros": "Cargando Teros…",
@@ -1610,7 +2062,7 @@
     "failedToGrantAccess": "No se pudo conceder acceso",
     "allSetTitle": "¡Todo listo, {{firstName}}!",
     "hereIsWhatWeSetUp": "Esto es lo que configuramos juntos:",
-    "startChatting": "Empezar a chatear →",
+    "startChatting": "Empezar a chatear",
     "addMoreAnytime": "Siempre puedes añadir más proveedores y apps desde la configuración del workspace.",
     "providerConnected": "Proveedor conectado",
     "youIntroducedYourself": "Te presentaste",
@@ -1671,7 +2123,24 @@
     "customizeYourAgent": "Personalizar tu agente",
     "configureAppCredentials": "Configurar credenciales de apps",
     "grantAgentAccessToApps": "Dar acceso al agente a apps",
-    "sendYourFirstMessage": "Enviar tu primer mensaje"
+    "sendYourFirstMessage": "Enviar tu primer mensaje",
+    "stepModel": "Modelo",
+    "quoteModel": "\"Conéctame a un modelo para poder pensar\"",
+    "setupModelLabel": "Conectar un modelo",
+    "setupModelSub": "Obligatorio: una API key o un Ollama local",
+    "setupAboutLabel": "Háblame de ti",
+    "setupAboutSub": "Para ayudarte desde el primer día",
+    "modelConnected": "Conectada a {{provider}}",
+    "addMoreAnytimeCloud": "Puedes conectar apps e invitar a gente desde el workspace cuando quieras.",
+    "modelStep": {
+      "title": "Conecta un modelo",
+      "description": "Este Teros funciona en tu infraestructura, así que necesito un modelo con el que pensar. Pega una API key de tu proveedor o apúntame a un Ollama local.",
+      "checking": "Comprobando…",
+      "probing": "Pidiendo a {{agentName}} que salude…",
+      "noAnswer": "El modelo no ha respondido. Revisa la clave e inténtalo de nuevo.",
+      "readyNoReply": "Ya estoy conectada y lista.",
+      "connectedVia": "{{agentName}} · vía {{provider}}"
+    }
   },
   "catalog": {
     "title": "Catálogo",
@@ -1700,6 +2169,7 @@
     "categorySystem": "Sistema",
     "categoryProductivity": "Productividad",
     "categoryGoogleSuite": "Google Suite",
+    "categoryMicrosoftSuite": "Suite de Microsoft",
     "categoryCommunication": "Comunicación",
     "categoryIntegration": "Integración",
     "categoryAi": "Inteligencia Artificial",
@@ -1725,11 +2195,50 @@
     "authNone": "Ninguna",
     "webLabel": "Web",
     "sectionActions": "Acciones",
-    "sectionChangelog": "Changelog",
+    "sectionChangelog": "Historial de cambios",
     "showLess": "Mostrar menos",
     "showAllActions": "Mostrar las {{count}} acciones",
     "groupOther": "Otros",
-    "instancesInstalled": "Instancias instaladas"
+    "instancesInstalled": "Instancias instaladas",
+    "breadcrumb": "Catálogo",
+    "notFound": "Agent App no encontrada",
+    "sectionPreview": "Vista previa",
+    "previewComingSoon": "Vista previa próximamente",
+    "sectionPermissions": "Permisos",
+    "sectionAbout": "Acerca de",
+    "toolsCount": "{{count}} herramienta que expone esta Agent App a los agentes",
+    "toolsCount_other": "{{count}} herramientas que expone esta Agent App a los agentes",
+    "sectionEvents": "Eventos",
+    "eventsSubtitle": "Suscribe agentes a triggers en tiempo real",
+    "noEvents": "Aún no hay eventos definidos",
+    "eventsDescription": "Los eventos permiten que los agentes reaccionen a cosas que ocurren en {{name}}.",
+    "dependenciesTitle": "Dependencias no instaladas",
+    "dependenciesBody": "{{name}} necesita las siguientes apps instaladas en este workspace para funcionar correctamente:",
+    "installDependency": "Instalar {{name}}"
+  },
+  "usage": {
+    "loadingData": "Cargando datos de uso...",
+    "title": "Uso y Costes",
+    "refresh": "Actualizar",
+    "periodLastHour": "Última Hora",
+    "periodLast24h": "Últimas 24h",
+    "periodLastWeek": "Última Semana",
+    "periodLastMonth": "Último Mes",
+    "totalCost": "Coste Total",
+    "inputOutputCost": "Entrada: {{input}} | Salida: {{output}}",
+    "totalTokens": "Tokens Totales",
+    "promptCompletionTokens": "Prompt: {{prompt}} | Completado: {{completion}}",
+    "generations": "Generaciones",
+    "cacheHits": "Cache hits: {{count}}",
+    "topUsersByCost": "Top Usuarios por Coste",
+    "topWorkspacesByCost": "Top Espacios por Coste",
+    "topAgentsByCost": "Top Agentes por Coste",
+    "topModelsByCost": "Top Modelos por Coste",
+    "mostExpensiveConversations": "Conversaciones Más Caras",
+    "noDataAvailable": "No hay datos disponibles",
+    "generationsCount": "{{count}} gen",
+    "messagesCount": "{{count}} msgs",
+    "usageTimeline": "Línea de Tiempo de Uso"
   },
   "browserbase": {
     "reloadLiveView": "Recargar Vista en Vivo",
@@ -1752,9 +2261,205 @@
     "contextTitle": "Contexto"
   },
   "terminal": {
+    "chat": {
+      "needsYou": "{{name}} te necesita",
+      "needsYouHandsWheel": "{{name}} te necesita · {{agent}} te deja el volante",
+      "wantsToRun": "Quiere ejecutar",
+      "openFloating": "Abrir flotando",
+      "always": "Siempre",
+      "noEllipsis": "No…",
+      "sent": "Has respondido {{key}}",
+      "answered": "Respondido",
+      "ended": "La sesión ha terminado",
+      "goToTerminal": "Ir a la terminal"
+    },
+    "float": {
+      "untitled": "Terminal",
+      "take": "Tomar",
+      "takeWheel": "Tomar el volante",
+      "keyboardHere": "teclado aquí",
+      "dock": "Devolver a la ventana Terminal (sigue en marcha)",
+      "minimize": "Minimizar a burbuja",
+      "needsYou": "te necesita",
+      "dropBack": "Suelta para dejarlo en la tripulación",
+      "dropToFloat": "Suelta para que flote aquí",
+      "more": "Más",
+      "dockItem": "Devolver a la ventana Terminal",
+      "dockHint": "sigue en marcha",
+      "close": "Cerrar terminal",
+      "closeHint": "lo termina",
+      "closeConfirm": "Pulsa otra vez para cerrarlo",
+      "toWindow": "Al Terminal"
+    },
     "title": "Terminal",
-    "noBashApp": "App Bash no disponible",
-    "installBashHint": "Instala la app Bash desde el catálogo para usar el terminal"
+    "noBashApp": "El terminal necesita la app Bash",
+    "installBashHint": "Las sesiones de terminal corren en la app Bash de este workspace (su propia máquina Linux, con home y archivos persistentes). Instálala y se abre un terminal al momento.",
+    "clear": "Limpiar",
+    "newShell": "Nueva shell",
+    "newClaude": "Claude Code",
+    "sessions": "Sesiones",
+    "sessionsTitle": "Sesiones del workspace ({{count}})",
+    "noSessions": "Aún no hay sesiones.",
+    "split": "Dividir en dos",
+    "optionMeta": "Tecla Option como Meta (Alt)",
+    "closeTab": "Cerrar pestaña (la sesión sigue en marcha)",
+    "opening": "Abriendo…",
+    "kill": "Terminar sesión",
+    "confirmKill": "Pulsa otra vez para terminar la sesión",
+    "killFailed": "No se pudo terminar la sesión",
+    "pinned": "fijada",
+    "ephemeral": "efímera",
+    "pinnedHint": "Fijada: se conserva hasta que la cierres",
+    "ephemeralHint": "Efímera: se cierra tras 30 min inactiva",
+    "watching": "{{count}} mirando",
+    "watchers": "{{names}} mirando",
+    "byAgent": "de un agente",
+    "live": "En directo",
+    "ended": "Sesión terminada",
+    "denied": "Sin acceso",
+    "reconnecting": "Reconectando…",
+    "connecting": "Conectando…",
+    "agentTyping": "Un agente de Teros está escribiendo…",
+    "personTyping": "{{name}} está escribiendo…",
+    "createFailed": "No se pudo abrir un terminal",
+    "installBash": "Instalar Bash y abrir un terminal",
+    "installFailed": "No se pudo instalar Bash",
+    "bashInstalled": "Bash instalado — abriendo un terminal",
+    "readRoleTitle": "Los terminales requieren permiso de escritura",
+    "readRoleText": "Un terminal es una shell en la máquina de este workspace y su pantalla puede mostrar secretos. Pide permiso de escritura a un admin.",
+    "attentionBlocked": "{{name}} te necesita",
+    "attentionDone": "{{name}} ha terminado",
+    "open": "Abrir",
+    "tabsCount": "{{count}} sesiones",
+    "state": {
+      "blocked": "Te necesita",
+      "done": "Hecho",
+      "working": "Trabajando",
+      "idle": "Inactivo"
+    },
+    "legacy": "no persistente: termina si el servidor se reinicia",
+    "auth": {
+      "title": "¿Cómo inicia sesión {{name}}?",
+      "titleLogin": "{{name}} necesita iniciar sesión",
+      "privacy": "Estas credenciales son tuyas: Teros las guarda cifradas y solo las pone en tus propias sesiones. No se escribe nada en el disco del workspace.",
+      "signOut": "Cerrar sesión",
+      "teros": "Usar Teros",
+      "terosText": "Va por tu proveedor de Teros {{label}}. Nada que configurar.",
+      "terosCta": "Usar Teros",
+      "recommended": "sin configurar",
+      "login": "Entrar con Claude",
+      "loginText": "Suscripción Pro o Max. La página de acceso se abre en otra pestaña; pega aquí el código que te da.",
+      "openAgain": "Abrir otra vez la página de acceso ↗",
+      "codePlaceholder": "Pega el código de la página",
+      "finish": "Terminar",
+      "loginCta": "Entrar con Claude",
+      "key": "Usar una API key",
+      "keyTextClaude": "Una API key de Anthropic (sk-ant-…), facturada a tu cuenta de Anthropic.",
+      "keyText": "Una API key de OpenAI para {{name}}.",
+      "save": "Guardar",
+      "share": "Compartir con los agentes de este workspace (desactivado: solo tus sesiones la usan)",
+      "saved": "Las nuevas sesiones de {{name}} usarán: {{label}}",
+      "none": "sin sesión",
+      "change": "cambiar",
+      "loginRetry": "Volver a iniciar sesión",
+      "backendOutdated": "El backend de este servidor es más antiguo que la app y aún no puede hacer esto. Reinicia o vuelve a desplegar el backend y prueba otra vez.",
+      "loginStarting": "Iniciando el acceso de Claude Code…",
+      "loginInstalling": "Instalando Claude Code en este workspace (solo la primera vez, alrededor de un minuto)…",
+      "openPage": "Abrir la página de acceso de Claude ↗",
+      "codeHint": "Inicia sesión allí, copia el código que muestra la página y pégalo aquí. Sirve una vez y caduca en pocos minutos.",
+      "loginExchanging": "Comprobando el código con Claude…",
+      "rejected": "{{name}} ha pedido iniciar sesión aunque recibió tu acceso guardado ({{label}}): puede haber caducado o haberse revocado. Vuelve a iniciar sesión o elige otra opción.",
+      "staleSession": "Esta sesión empezó con un acceso anterior ({{old}}). El actual es {{label}}: abre una sesión nueva para usarlo.",
+      "replaceSession": "Abrir una sesión nueva como {{label}}",
+      "restartOffer_one": "{{count}} sesión de Claude Code abierta sigue con tu acceso anterior",
+      "restartOffer_other": "{{count}} sesiones de Claude Code abiertas siguen con tu acceso anterior",
+      "restartAction": "Reiniciar como {{label}}"
+    },
+    "crew": {
+      "agentWaits": "{{name}} espera",
+      "allFloating": "Tus terminales están flotando. Suelta uno en la tripulación para traerlo aquí.",
+      "ask": "Pedir",
+      "askWheel": "Pedir el volante",
+      "asleep": "dormida",
+      "atOnce": "a la vez",
+      "claim": "Pedírselo",
+      "clashHint": "las teclas de los dos llegan a la misma línea",
+      "close": "Cerrar terminal",
+      "closeAgentDrives": "{{name}} está al volante y se queda sin este terminal.",
+      "closePersonDrives": "{{name}} está al volante.",
+      "closeProgram": "{{command}} sigue en marcha dentro.",
+      "closeShort": "Cerrar",
+      "closeTitle": "¿Cerrar {{name}}?",
+      "closeWorking": "{{agent}} está a mitad de un turno: se para aquí.",
+      "closed": "{{name}} cerrado",
+      "copilotWaits": "{{name}} espera de copiloto",
+      "crew": "Tripulación",
+      "dockOne": "Traer {{name}}",
+      "drives": "conduce",
+      "dropBack": "Suelta para devolver",
+      "dropHere": "Suelta aquí",
+      "emptyText": "Abre una shell o un Claude Code. Cuando un agente abra uno, aparecerá aquí con su cara y verás quién está al volante.",
+      "emptyTitle": "Aún no hay terminales",
+      "float": "Flotar",
+      "floating": "Flotando",
+      "frozen": "congelada",
+      "giveBackFailed": "No se pudo devolver el volante",
+      "giveBackShort": "Devolver",
+      "giveBackTo": "Devolver a {{name}}",
+      "giveBackToAgent": "Devolver al agente",
+      "gripHint": "Arrastra para cambiar de lado",
+      "keep": "Dejarlo",
+      "letGo": "Soltar el volante",
+      "more": "Más",
+      "new": "Nuevo terminal",
+      "newClaudeHint": "con tu cuenta",
+      "newShellHint": "bash en este workspace",
+      "noNote": "Sin nota",
+      "nobody": "Nadie al volante",
+      "notYet": "Este servidor aún no conoce el volante.",
+      "notePlaceholder": "Una nota para {{name}} (opcional)",
+      "onLeft": "A la izquierda",
+      "onRight": "A la derecha",
+      "pair": "{{a}} y {{b}}",
+      "sideSavedLeft": "Guardado: la tripulación irá a la izquierda",
+      "sideSavedRight": "Guardado: la tripulación irá a la derecha",
+      "since": "desde {{time}}",
+      "switchSide": "Pasar la tripulación al otro lado",
+      "take": "Tomar",
+      "takeFailed": "No se pudo tomar el volante",
+      "takeWheel": "Tomar el volante",
+      "terminal": "Terminal",
+      "theAgent": "El agente",
+      "theAgentLower": "el agente",
+      "toLeft": "Pasar a la izquierda",
+      "toRight": "Pasar a la derecha",
+      "undo": "Deshacer",
+      "watching": "Mirando",
+      "watchingMany": "{{a}}, {{b}} y {{count}} más miran",
+      "watchingOne": "{{a}} mira",
+      "watchingTwo": "{{a}} y {{b}} miran",
+      "yield": "Cederle",
+      "you": "Tú",
+      "youDrive": "conduces",
+      "youLower": "tú",
+      "yourTurn": "Te toca"
+    },
+    "pane": {
+      "starting": "Arrancando…",
+      "retry": "Reintentar",
+      "restart": "Reiniciar",
+      "denied": "No tienes acceso a esta sesión",
+      "jump": "Ir al final",
+      "readOnly": "{{name}} lleva el volante — solo lectura",
+      "takeWheel": "Tomar el volante"
+    },
+    "bar": {
+      "signIn": "Cuenta de {{name}}: {{label}}"
+    },
+    "notices": {
+      "title": "Terminales",
+      "lead": "Claude Code espera tu respuesta. Un clic en una opción la teclea por ti."
+    }
   },
   "providers": {
     "myProviders": "Mis proveedores",
@@ -1776,6 +2481,104 @@
       "error": "Error",
       "disabled": "Deshabilitado"
     }
+  },
+  "featureFlags": {
+    "searchPlaceholder": "Buscar flags...",
+    "loadingFlags": "Cargando flags...",
+    "loading": "Cargando...",
+    "noteOptional": "Nota (opcional)",
+    "valuePlaceholder": "valor1, valor2, valor3",
+    "overrideReasonPlaceholder": "¿Por qué este override?",
+    "title": "Feature Flags",
+    "error": "Error",
+    "adminRequired": "Se requieren privilegios de administrador",
+    "adminPrivilegesRequired": "Se requieren privilegios de administrador",
+    "connectionLost": "Conexión perdida",
+    "failedToLoadFlags": "Error al cargar feature flags",
+    "failedToLoadDetail": "Error al cargar detalles del flag",
+    "failedToUpdateDefault": "Error al actualizar valor por defecto",
+    "failedToResetDefault": "Error al restablecer valor por defecto",
+    "failedToCreateOverride": "Error al crear override",
+    "failedToDeleteOverride": "Error al eliminar override",
+    "failedToUpdateOverride": "Error al actualizar override",
+    "saved": "Guardado",
+    "defaultValueUpdated": "Valor por defecto actualizado para {{flagKey}}",
+    "reset": "Restablecido",
+    "resetToDefault": "{{flagKey}} restablecido al valor por defecto",
+    "resetToRegistryDefault": "Restablecer al valor del registro",
+    "created": "Creado",
+    "overrideAdded": "Override añadido",
+    "deleted": "Eliminado",
+    "overrideRemoved": "Override eliminado",
+    "overrideUpdated": "Override actualizado",
+    "flagDetail": "Detalle del flag",
+    "globalDefault": "Valor global por defecto",
+    "overrides": "Overrides",
+    "manageOverrides": "Gestionar overrides",
+    "noOverrides": "No hay overrides configurados",
+    "addOverride": "Añadir override",
+    "addOverrideButton": "Añadir override",
+    "addFlagsHint": "Añade feature flags para controlar el despliegue de funcionalidades",
+    "noFlagsRegistered": "No hay feature flags registrados",
+    "noFlagsMatch": "Ningún flag coincide con tu búsqueda",
+    "noteLabel": "Nota",
+    "valueLabel": "Valor",
+    "workspaceId": "ID de Workspace",
+    "userId": "ID de Usuario",
+    "companyId": "ID de Empresa"
+  },
+  "feedbackAdmin": {
+    "eyebrow": "Triaje",
+    "subtitle": "Una bandeja única para todos los bugs y sugerencias",
+    "search": "Buscar título, reportador, ID…",
+    "loadingDetail": "Cargando reporte…",
+    "adminRequired": "Se requieren privilegios de administrador.",
+    "loadFailed": "No se pudo cargar el feedback.",
+    "error": "Error",
+    "emptyTitle": "Nada por aquí",
+    "emptyText": "Ningún reporte coincide con esta vista.",
+    "view_all": "Todos",
+    "view_tracking": "En seguimiento",
+    "view_future": "Futuro",
+    "view_dismissed": "Descartados",
+    "view_completed": "Completados",
+    "typeAll": "Todos",
+    "typeBug": "Bug",
+    "typeSuggestion": "Sugerencia",
+    "backToList": "Volver a la lista",
+    "sectionReport": "Reporte",
+    "sectionDescription": "Descripción",
+    "sectionPriority": "Prioridad",
+    "sectionActions": "Acciones",
+    "sectionUpdates": "Actualizaciones",
+    "sectionAddUpdate": "Añadir actualización",
+    "noUpdates": "Aún no hay actualizaciones.",
+    "dismiss_wont_fix": "No lo haremos",
+    "dismiss_invalid": "Inválido",
+    "source_tool": "Herramienta",
+    "source_conversation": "Conversación",
+    "source_email": "Email",
+    "source_manual": "Manual",
+    "actReopen": "Reabrir",
+    "actReview": "Revisar",
+    "actStart": "Empezar",
+    "actPostpone": "Aplazar → Futuro",
+    "actDismiss": "Descartar",
+    "actComplete": "Completar",
+    "changeTo": "Cambiar estado",
+    "notePlaceholder": "Nota opcional para el reportador (visible en su línea de tiempo)",
+    "notifyReporter": "Avisar por email al reportador de que está listo",
+    "updatePlaceholder": "Escribe una actualización que verá el reportador…",
+    "addUpdate": "Añadir actualización",
+    "cancel": "Cancelar",
+    "confirm": "Confirmar",
+    "statusUpdated": "Estado actualizado",
+    "reporterEmailed": "Se ha enviado un email al reportador.",
+    "prioritySet": "Prioridad establecida",
+    "updateAdded": "Actualización añadida",
+    "updateFailed": "Error al actualizar",
+    "reporterNotified": "Reportador avisado",
+    "reporterNotifyError": "Falló el email al reportador"
   },
   "workspace": {
     "searchIconPlaceholder": "Buscar icono...",
@@ -1831,6 +2634,41 @@
     "tabContext": "Contexto",
     "noMembers": "No hay miembros en este workspace",
     "membersTitle": "Miembros",
+    "members": {
+      "addMember": "Añadir miembro",
+      "loading": "Cargando miembros…",
+      "statusPending": "Pendiente",
+      "pendingHint": "Invitado por {{invitedBy}} — se activará al aceptar la invitación",
+      "resend": "Reenviar invitación",
+      "revoke": "Revocar invitación",
+      "emailLabel": "Email",
+      "emailPlaceholder": "persona@equipo.com",
+      "emailHelp": "Recibirá una invitación por email y será miembro al aceptarla — tenga o no cuenta en Teros.",
+      "roleLabel": "Rol",
+      "roleHelp": "Admin gestiona miembros · Escritura crea y edita · Lectura solo ve.",
+      "sendInvite": "Enviar invitación",
+      "invitedTitle": "Miembros",
+      "addedActive": "{{email}} ya es miembro activo de este workspace.",
+      "invitedPending": "Invitación enviada a {{email}}. Será miembro cuando la acepte.",
+      "invitedNoEmail": "Invitación creada para {{email}}, pero el email no pudo enviarse. Puedes reenviarla desde la lista.",
+      "resent": "Invitación reenviada a {{email}}.",
+      "revokedTitle": "Invitación revocada",
+      "revoked": "La invitación de {{email}} se ha eliminado. Ya no aparecerá al registrarse.",
+      "addError": "No se pudo añadir el miembro",
+      "resendError": "No se pudo reenviar la invitación",
+      "revokeError": "No se pudo revocar la invitación",
+      "remove": "Expulsar del workspace",
+      "removedTitle": "Miembro expulsado",
+      "removed": "{{name}} ya no es miembro de este workspace.",
+      "removeError": "No se pudo expulsar al miembro",
+      "roleUpdatedTitle": "Rol actualizado",
+      "roleUpdated": "{{name}} ahora es {{role}}.",
+      "roleUpdateError": "No se pudo cambiar el rol",
+      "leave": "Salir del workspace",
+      "leftTitle": "Has salido del workspace",
+      "left": "Ya no eres miembro de {{name}}.",
+      "leaveError": "No se pudo salir del workspace"
+    },
     "workspaceContext": "Contexto del workspace",
     "workspaceContextDescription": "El contexto se incluye en los prompts de los agentes en este workspace. Úsalo para proporcionar información específica del proyecto, estándares de código o cualquier otra información relevante que los agentes deban conocer.",
     "icon": "Icono",
@@ -1920,6 +2758,8 @@
       "testedAt": "Probado {{date}}",
       "toolTestedAt": "Probado {{date}}",
       "categories": {
+        "google": "Google Suite",
+        "microsoft": "Suite de Microsoft",
         "productivity": "Productividad",
         "development": "Desarrollo",
         "ai": "Inteligencia Artificial",
@@ -1971,7 +2811,13 @@
     },
     "terosCore": {
       "providersConfig": "Configuración de proveedores",
-      "providersUpdated": "Proveedores actualizados"
+      "providersUpdated": "Proveedores actualizados",
+      "modelPinned": "Modelo fijado",
+      "modelReset": "Modelo restablecido",
+      "systemDefault": "Predeterminado del sistema",
+      "viaProvider": "vía {{provider}}",
+      "switchedFrom": "antes: {{provider}}",
+      "providerAutoAdded": "{{provider}} añadido a los proveedores del agente"
     },
     "figma": {
       "unnamedFile": "(archivo sin nombre)",
@@ -1997,6 +2843,1098 @@
     "context7": {
       "noMatchingLibraries": "No se encontraron bibliotecas coincidentes en Context7.",
       "noSnippets": "No se devolvieron fragmentos de documentación para esta consulta."
+    },
+    "tools": {
+      "terosCore": {
+        "listAgents": {
+          "pending": "Listar agentes",
+          "running": "Listando agentes",
+          "completed": "Agentes listados",
+          "failed": "No se pudieron listar los agentes"
+        },
+        "listWorkspaceAgents": {
+          "pending": "Listar agentes de {{workspace}}",
+          "running": "Listando agentes de {{workspace}}",
+          "completed": "Agentes de {{workspace}} listados",
+          "failed": "No se pudieron listar los agentes de {{workspace}}",
+          "pendingGeneric": "Listar agentes del espacio",
+          "runningGeneric": "Listando agentes del espacio",
+          "completedGeneric": "Agentes del espacio listados",
+          "failedGeneric": "No se pudieron listar los agentes del espacio"
+        },
+        "getAgent": {
+          "pending": "Consultar a {{agent}}",
+          "running": "Consultando a {{agent}}",
+          "completed": "{{agent}} consultado",
+          "failed": "No se pudo consultar a {{agent}}",
+          "pendingGeneric": "Consultar un agente",
+          "runningGeneric": "Consultando un agente",
+          "completedGeneric": "Agente consultado",
+          "failedGeneric": "No se pudo consultar el agente"
+        },
+        "createAgent": {
+          "pending": "Crear el agente {{agent}}",
+          "running": "Creando el agente {{agent}}",
+          "completed": "Agente {{agent}} creado",
+          "failed": "No se pudo crear el agente {{agent}}",
+          "pendingGeneric": "Crear un agente",
+          "runningGeneric": "Creando un agente",
+          "completedGeneric": "Agente creado",
+          "failedGeneric": "No se pudo crear el agente"
+        },
+        "updateAgent": {
+          "pending": "Actualizar a {{agent}}",
+          "running": "Actualizando a {{agent}}",
+          "completed": "{{agent}} actualizado",
+          "failed": "No se pudo actualizar a {{agent}}",
+          "pendingGeneric": "Actualizar un agente",
+          "runningGeneric": "Actualizando un agente",
+          "completedGeneric": "Agente actualizado",
+          "failedGeneric": "No se pudo actualizar el agente"
+        },
+        "deleteAgent": {
+          "pending": "Eliminar a {{agent}}",
+          "running": "Eliminando a {{agent}}",
+          "completed": "{{agent}} eliminado",
+          "failed": "No se pudo eliminar a {{agent}}",
+          "pendingGeneric": "Eliminar un agente",
+          "runningGeneric": "Eliminando un agente",
+          "completedGeneric": "Agente eliminado",
+          "failedGeneric": "No se pudo eliminar el agente"
+        },
+        "listAgentApps": {
+          "pending": "Listar las apps de {{agent}}",
+          "running": "Listando las apps de {{agent}}",
+          "completed": "Apps de {{agent}} listadas",
+          "failed": "No se pudieron listar las apps de {{agent}}",
+          "pendingGeneric": "Listar las apps de un agente",
+          "runningGeneric": "Listando las apps de un agente",
+          "completedGeneric": "Apps del agente listadas",
+          "failedGeneric": "No se pudieron listar las apps del agente"
+        },
+        "getAgentProviders": {
+          "pending": "Consultar los proveedores de modelos de {{agent}}",
+          "running": "Consultando los proveedores de modelos de {{agent}}",
+          "completed": "Proveedores de modelos de {{agent}} consultados",
+          "failed": "No se pudieron consultar los proveedores de {{agent}}",
+          "pendingGeneric": "Consultar los proveedores de un agente",
+          "runningGeneric": "Consultando los proveedores de un agente",
+          "completedGeneric": "Proveedores del agente consultados",
+          "failedGeneric": "No se pudieron consultar los proveedores del agente"
+        },
+        "setAgentProviders": {
+          "pending": "Configurar los proveedores de modelos de {{agent}}",
+          "running": "Configurando los proveedores de modelos de {{agent}}",
+          "completed": "Proveedores de modelos de {{agent}} configurados",
+          "failed": "No se pudieron configurar los proveedores de {{agent}}",
+          "pendingGeneric": "Configurar los proveedores de un agente",
+          "runningGeneric": "Configurando los proveedores de un agente",
+          "completedGeneric": "Proveedores del agente configurados",
+          "failedGeneric": "No se pudieron configurar los proveedores del agente"
+        },
+        "setAgentPreferredProvider": {
+          "pending": "Cambiar el proveedor preferido de {{agent}}",
+          "running": "Cambiando el proveedor preferido de {{agent}}",
+          "completed": "Proveedor preferido de {{agent}} cambiado",
+          "failed": "No se pudo cambiar el proveedor preferido de {{agent}}",
+          "pendingGeneric": "Cambiar el proveedor preferido de un agente",
+          "runningGeneric": "Cambiando el proveedor preferido de un agente",
+          "completedGeneric": "Proveedor preferido del agente cambiado",
+          "failedGeneric": "No se pudo cambiar el proveedor preferido del agente"
+        },
+        "setAgentModel": {
+          "pending": "Fijar el modelo de {{agent}}",
+          "running": "Fijando el modelo de {{agent}}",
+          "completed": "Modelo de {{agent}} fijado",
+          "failed": "No se pudo fijar el modelo de {{agent}}",
+          "pendingGeneric": "Fijar el modelo de un agente",
+          "runningGeneric": "Fijando el modelo de un agente",
+          "completedGeneric": "Modelo del agente fijado",
+          "failedGeneric": "No se pudo fijar el modelo del agente"
+        },
+        "resetAgentModel": {
+          "pending": "Restablecer el modelo de {{agent}} al predeterminado del sistema",
+          "running": "Restableciendo el modelo de {{agent}} al predeterminado del sistema",
+          "completed": "Modelo de {{agent}} restablecido al predeterminado del sistema",
+          "failed": "No se pudo restablecer el modelo de {{agent}}",
+          "pendingGeneric": "Restablecer el modelo de un agente al predeterminado del sistema",
+          "runningGeneric": "Restableciendo el modelo de un agente al predeterminado del sistema",
+          "completedGeneric": "Modelo del agente restablecido al predeterminado del sistema",
+          "failedGeneric": "No se pudo restablecer el modelo del agente"
+        },
+        "setDefaultProvider": {
+          "pending": "Cambiar el proveedor predeterminado del sistema",
+          "running": "Cambiando el proveedor predeterminado del sistema",
+          "completed": "Proveedor predeterminado del sistema cambiado",
+          "failed": "No se pudo cambiar el proveedor predeterminado del sistema",
+          "pendingGeneric": "Cambiar el proveedor predeterminado del sistema",
+          "runningGeneric": "Cambiando el proveedor predeterminado del sistema",
+          "completedGeneric": "Proveedor predeterminado del sistema cambiado",
+          "failedGeneric": "No se pudo cambiar el proveedor predeterminado del sistema"
+        },
+        "listWorkspaces": {
+          "pending": "Listar espacios de trabajo",
+          "running": "Listando espacios de trabajo",
+          "completed": "Espacios de trabajo listados",
+          "failed": "No se pudieron listar los espacios de trabajo"
+        },
+        "getWorkspace": {
+          "pending": "Consultar el espacio {{workspace}}",
+          "running": "Consultando el espacio {{workspace}}",
+          "completed": "Espacio {{workspace}} consultado",
+          "failed": "No se pudo consultar el espacio {{workspace}}",
+          "pendingGeneric": "Consultar un espacio de trabajo",
+          "runningGeneric": "Consultando un espacio de trabajo",
+          "completedGeneric": "Espacio de trabajo consultado",
+          "failedGeneric": "No se pudo consultar el espacio de trabajo"
+        },
+        "createWorkspace": {
+          "pending": "Crear el espacio {{workspace}}",
+          "running": "Creando el espacio {{workspace}}",
+          "completed": "Espacio {{workspace}} creado",
+          "failed": "No se pudo crear el espacio {{workspace}}",
+          "pendingGeneric": "Crear un espacio de trabajo",
+          "runningGeneric": "Creando un espacio de trabajo",
+          "completedGeneric": "Espacio de trabajo creado",
+          "failedGeneric": "No se pudo crear el espacio de trabajo"
+        },
+        "updateWorkspace": {
+          "pending": "Actualizar el espacio {{workspace}}",
+          "running": "Actualizando el espacio {{workspace}}",
+          "completed": "Espacio {{workspace}} actualizado",
+          "failed": "No se pudo actualizar el espacio {{workspace}}",
+          "pendingGeneric": "Actualizar un espacio de trabajo",
+          "runningGeneric": "Actualizando un espacio de trabajo",
+          "completedGeneric": "Espacio de trabajo actualizado",
+          "failedGeneric": "No se pudo actualizar el espacio de trabajo"
+        },
+        "archiveWorkspace": {
+          "pending": "Archivar el espacio {{workspace}}",
+          "running": "Archivando el espacio {{workspace}}",
+          "completed": "Espacio {{workspace}} archivado",
+          "failed": "No se pudo archivar el espacio {{workspace}}",
+          "pendingGeneric": "Archivar un espacio de trabajo",
+          "runningGeneric": "Archivando un espacio de trabajo",
+          "completedGeneric": "Espacio de trabajo archivado",
+          "failedGeneric": "No se pudo archivar el espacio de trabajo"
+        },
+        "addWorkspaceMember": {
+          "pending": "Invitar a {{email}} a {{workspace}}",
+          "running": "Invitando a {{email}} a {{workspace}}",
+          "completed": "{{email}} invitado a {{workspace}}",
+          "failed": "No se pudo invitar a {{email}} a {{workspace}}",
+          "pendingGeneric": "Invitar a alguien a un espacio",
+          "runningGeneric": "Invitando a alguien a un espacio",
+          "completedGeneric": "Invitación enviada",
+          "failedGeneric": "No se pudo enviar la invitación"
+        },
+        "removeWorkspaceMember": {
+          "pending": "Quitar a un miembro de {{workspace}}",
+          "running": "Quitando a un miembro de {{workspace}}",
+          "completed": "Miembro quitado de {{workspace}}",
+          "failed": "No se pudo quitar al miembro de {{workspace}}",
+          "pendingGeneric": "Quitar a un miembro del espacio",
+          "runningGeneric": "Quitando a un miembro del espacio",
+          "completedGeneric": "Miembro quitado del espacio",
+          "failedGeneric": "No se pudo quitar al miembro del espacio"
+        },
+        "updateWorkspaceMemberRole": {
+          "pending": "Cambiar el rol de un miembro en {{workspace}}",
+          "running": "Cambiando el rol de un miembro en {{workspace}}",
+          "completed": "Rol cambiado en {{workspace}}",
+          "failed": "No se pudo cambiar el rol en {{workspace}}",
+          "pendingGeneric": "Cambiar el rol de un miembro",
+          "runningGeneric": "Cambiando el rol de un miembro",
+          "completedGeneric": "Rol del miembro cambiado",
+          "failedGeneric": "No se pudo cambiar el rol del miembro"
+        },
+        "listWorkspaceApps": {
+          "pending": "Listar las apps de {{workspace}}",
+          "running": "Listando las apps de {{workspace}}",
+          "completed": "Apps de {{workspace}} listadas",
+          "failed": "No se pudieron listar las apps de {{workspace}}",
+          "pendingGeneric": "Listar las apps del espacio",
+          "runningGeneric": "Listando las apps del espacio",
+          "completedGeneric": "Apps del espacio listadas",
+          "failedGeneric": "No se pudieron listar las apps del espacio"
+        },
+        "getApp": {
+          "pending": "Consultar {{app}}",
+          "running": "Consultando {{app}}",
+          "completed": "{{app}} consultada",
+          "failed": "No se pudo consultar {{app}}",
+          "pendingGeneric": "Consultar una app",
+          "runningGeneric": "Consultando una app",
+          "completedGeneric": "App consultada",
+          "failedGeneric": "No se pudo consultar la app"
+        },
+        "installApp": {
+          "pending": "Instalar {{app}}",
+          "running": "Instalando {{app}}",
+          "completed": "{{app}} instalada",
+          "failed": "No se pudo instalar {{app}}",
+          "pendingGeneric": "Instalar una app",
+          "runningGeneric": "Instalando una app",
+          "completedGeneric": "App instalada",
+          "failedGeneric": "No se pudo instalar la app"
+        },
+        "uninstallApp": {
+          "pending": "Desinstalar {{app}}",
+          "running": "Desinstalando {{app}}",
+          "completed": "{{app}} desinstalada",
+          "failed": "No se pudo desinstalar {{app}}",
+          "pendingGeneric": "Desinstalar una app",
+          "runningGeneric": "Desinstalando una app",
+          "completedGeneric": "App desinstalada",
+          "failedGeneric": "No se pudo desinstalar la app"
+        },
+        "renameApp": {
+          "pending": "Renombrar la app a {{name}}",
+          "running": "Renombrando la app a {{name}}",
+          "completed": "App renombrada a {{name}}",
+          "failed": "No se pudo renombrar la app a {{name}}",
+          "pendingGeneric": "Renombrar una app",
+          "runningGeneric": "Renombrando una app",
+          "completedGeneric": "App renombrada",
+          "failedGeneric": "No se pudo renombrar la app"
+        },
+        "checkAppAuth": {
+          "pending": "Comprobar la conexión de {{app}}",
+          "running": "Comprobando la conexión de {{app}}",
+          "completed": "Conexión de {{app}} comprobada",
+          "failed": "No se pudo comprobar la conexión de {{app}}",
+          "pendingGeneric": "Comprobar la conexión de una app",
+          "runningGeneric": "Comprobando la conexión de una app",
+          "completedGeneric": "Conexión de la app comprobada",
+          "failedGeneric": "No se pudo comprobar la conexión de la app"
+        },
+        "setAppSecret": {
+          "pending": "Guardar el secreto {{key}} de {{app}}",
+          "running": "Guardando el secreto {{key}} de {{app}}",
+          "completed": "Secreto {{key}} de {{app}} guardado",
+          "failed": "No se pudo guardar el secreto {{key}} de {{app}}",
+          "pendingGeneric": "Guardar un secreto de app",
+          "runningGeneric": "Guardando un secreto de app",
+          "completedGeneric": "Secreto de app guardado",
+          "failedGeneric": "No se pudo guardar el secreto de la app"
+        },
+        "getAppSecret": {
+          "pending": "Comprobar el secreto {{key}} de {{app}}",
+          "running": "Comprobando el secreto {{key}} de {{app}}",
+          "completed": "Secreto {{key}} de {{app}} comprobado",
+          "failed": "No se pudo comprobar el secreto {{key}} de {{app}}",
+          "pendingGeneric": "Comprobar un secreto de app",
+          "runningGeneric": "Comprobando un secreto de app",
+          "completedGeneric": "Secreto de app comprobado",
+          "failedGeneric": "No se pudo comprobar el secreto de la app"
+        },
+        "copyAppAuth": {
+          "pending": "Copiar las credenciales de {{source}} a {{target}}",
+          "running": "Copiando las credenciales de {{source}} a {{target}}",
+          "completed": "Credenciales de {{source}} copiadas a {{target}}",
+          "failed": "No se pudieron copiar las credenciales de {{source}} a {{target}}",
+          "pendingGeneric": "Copiar credenciales de app",
+          "runningGeneric": "Copiando credenciales de app",
+          "completedGeneric": "Credenciales de app copiadas",
+          "failedGeneric": "No se pudieron copiar las credenciales de la app"
+        },
+        "showAppAuth": {
+          "pending": "Mostrar la conexión de {{app}}",
+          "running": "Mostrando la conexión de {{app}}",
+          "completed": "Conexión de {{app}} mostrada",
+          "failed": "No se pudo mostrar la conexión de {{app}}",
+          "pendingGeneric": "Mostrar la conexión de una app",
+          "runningGeneric": "Mostrando la conexión de una app",
+          "completedGeneric": "Conexión de la app mostrada",
+          "failedGeneric": "No se pudo mostrar la conexión de la app"
+        },
+        "listAppAccess": {
+          "pending": "Ver quién puede usar {{app}}",
+          "running": "Viendo quién puede usar {{app}}",
+          "completed": "Accesos a {{app}} consultados",
+          "failed": "No se pudo ver quién puede usar {{app}}",
+          "pendingGeneric": "Ver quién puede usar una app",
+          "runningGeneric": "Viendo quién puede usar una app",
+          "completedGeneric": "Accesos a la app consultados",
+          "failedGeneric": "No se pudo ver quién puede usar la app"
+        },
+        "grantAppAccess": {
+          "pending": "Dar a {{agent}} acceso a {{app}}",
+          "running": "Dando a {{agent}} acceso a {{app}}",
+          "completed": "{{agent}} ya tiene acceso a {{app}}",
+          "failed": "No se pudo dar a {{agent}} acceso a {{app}}",
+          "pendingGeneric": "Dar acceso a una app a un agente",
+          "runningGeneric": "Dando acceso a una app a un agente",
+          "completedGeneric": "Acceso a la app concedido",
+          "failedGeneric": "No se pudo conceder el acceso a la app"
+        },
+        "revokeAppAccess": {
+          "pending": "Quitar a {{agent}} el acceso a {{app}}",
+          "running": "Quitando a {{agent}} el acceso a {{app}}",
+          "completed": "{{agent}} ya no tiene acceso a {{app}}",
+          "failed": "No se pudo quitar a {{agent}} el acceso a {{app}}",
+          "pendingGeneric": "Quitar a un agente el acceso a una app",
+          "runningGeneric": "Quitando a un agente el acceso a una app",
+          "completedGeneric": "Acceso a la app retirado",
+          "failedGeneric": "No se pudo retirar el acceso a la app"
+        },
+        "getAppPermissions": {
+          "pending": "Consultar los permisos de {{app}}",
+          "running": "Consultando los permisos de {{app}}",
+          "completed": "Permisos de {{app}} consultados",
+          "failed": "No se pudieron consultar los permisos de {{app}}",
+          "pendingGeneric": "Consultar los permisos de una app",
+          "runningGeneric": "Consultando los permisos de una app",
+          "completedGeneric": "Permisos de la app consultados",
+          "failedGeneric": "No se pudieron consultar los permisos de la app"
+        },
+        "setAppPermissions": {
+          "pending": "Cambiar los permisos de {{app}}",
+          "running": "Cambiando los permisos de {{app}}",
+          "completed": "Permisos de {{app}} actualizados",
+          "failed": "No se pudieron cambiar los permisos de {{app}}",
+          "pendingGeneric": "Cambiar los permisos de una app",
+          "runningGeneric": "Cambiando los permisos de una app",
+          "completedGeneric": "Permisos de la app actualizados",
+          "failedGeneric": "No se pudieron cambiar los permisos de la app"
+        },
+        "listCatalog": {
+          "pending": "Explorar el catálogo de apps",
+          "running": "Explorando el catálogo de apps",
+          "completed": "Catálogo de apps explorado",
+          "failed": "No se pudo explorar el catálogo de apps"
+        },
+        "listProviders": {
+          "pending": "Listar proveedores de modelos",
+          "running": "Listando proveedores de modelos",
+          "completed": "Proveedores de modelos listados",
+          "failed": "No se pudieron listar los proveedores de modelos"
+        },
+        "skillList": {
+          "pending": "Listar skills",
+          "running": "Listando skills",
+          "completed": "Skills listadas",
+          "failed": "No se pudieron listar las skills"
+        },
+        "skillCreate": {
+          "pending": "Crear la skill {{skill}}",
+          "running": "Creando la skill {{skill}}",
+          "completed": "Skill {{skill}} creada",
+          "failed": "No se pudo crear la skill {{skill}}",
+          "pendingGeneric": "Crear una skill",
+          "runningGeneric": "Creando una skill",
+          "completedGeneric": "Skill creada",
+          "failedGeneric": "No se pudo crear la skill"
+        },
+        "skillUpdate": {
+          "pending": "Actualizar la skill {{skill}}",
+          "running": "Actualizando la skill {{skill}}",
+          "completed": "Skill {{skill}} actualizada",
+          "failed": "No se pudo actualizar la skill {{skill}}",
+          "pendingGeneric": "Actualizar una skill",
+          "runningGeneric": "Actualizando una skill",
+          "completedGeneric": "Skill actualizada",
+          "failedGeneric": "No se pudo actualizar la skill"
+        },
+        "skillDelete": {
+          "pending": "Eliminar la skill {{skill}}",
+          "running": "Eliminando la skill {{skill}}",
+          "completed": "Skill {{skill}} eliminada",
+          "failed": "No se pudo eliminar la skill {{skill}}",
+          "pendingGeneric": "Eliminar una skill",
+          "runningGeneric": "Eliminando una skill",
+          "completedGeneric": "Skill eliminada",
+          "failedGeneric": "No se pudo eliminar la skill"
+        },
+        "skillGrantAccess": {
+          "pending": "Dar a {{agent}} la skill {{skill}}",
+          "running": "Dando a {{agent}} la skill {{skill}}",
+          "completed": "{{agent}} ya tiene la skill {{skill}}",
+          "failed": "No se pudo dar a {{agent}} la skill {{skill}}",
+          "pendingGeneric": "Dar una skill a un agente",
+          "runningGeneric": "Dando una skill a un agente",
+          "completedGeneric": "Skill concedida",
+          "failedGeneric": "No se pudo conceder la skill"
+        },
+        "skillRevokeAccess": {
+          "pending": "Quitar a {{agent}} la skill {{skill}}",
+          "running": "Quitando a {{agent}} la skill {{skill}}",
+          "completed": "{{agent}} ya no tiene la skill {{skill}}",
+          "failed": "No se pudo quitar a {{agent}} la skill {{skill}}",
+          "pendingGeneric": "Quitar una skill a un agente",
+          "runningGeneric": "Quitando una skill a un agente",
+          "completedGeneric": "Skill retirada",
+          "failedGeneric": "No se pudo retirar la skill"
+        },
+        "skillEnable": {
+          "pending": "Activar {{skill}} para {{agent}}",
+          "running": "Activando {{skill}} para {{agent}}",
+          "completed": "{{skill}} activada para {{agent}}",
+          "failed": "No se pudo activar {{skill}} para {{agent}}",
+          "pendingGeneric": "Activar una skill",
+          "runningGeneric": "Activando una skill",
+          "completedGeneric": "Skill activada",
+          "failedGeneric": "No se pudo activar la skill"
+        },
+        "skillDisable": {
+          "pending": "Desactivar {{skill}} para {{agent}}",
+          "running": "Desactivando {{skill}} para {{agent}}",
+          "completed": "{{skill}} desactivada para {{agent}}",
+          "failed": "No se pudo desactivar {{skill}} para {{agent}}",
+          "pendingGeneric": "Desactivar una skill",
+          "runningGeneric": "Desactivando una skill",
+          "completedGeneric": "Skill desactivada",
+          "failedGeneric": "No se pudo desactivar la skill"
+        },
+        "skillGetAgentSkills": {
+          "pending": "Listar las skills de {{agent}}",
+          "running": "Listando las skills de {{agent}}",
+          "completed": "Skills de {{agent}} listadas",
+          "failed": "No se pudieron listar las skills de {{agent}}",
+          "pendingGeneric": "Listar las skills de un agente",
+          "runningGeneric": "Listando las skills de un agente",
+          "completedGeneric": "Skills del agente listadas",
+          "failedGeneric": "No se pudieron listar las skills del agente"
+        },
+        "fallback": {
+          "pending": "Ejecutar herramienta",
+          "running": "Ejecutando herramienta",
+          "completed": "Herramienta ejecutada",
+          "failed": "No se pudo ejecutar la herramienta"
+        }
+      },
+      "board": {
+        "completeMyTask": {
+          "pending": "Completar la tarea {{task}}",
+          "running": "Completando la tarea {{task}}",
+          "completed": "Tarea {{task}} completada",
+          "failed": "No se pudo completar la tarea {{task}}",
+          "pendingGeneric": "Completar mi tarea",
+          "runningGeneric": "Completando mi tarea",
+          "completedGeneric": "Tarea completada",
+          "failedGeneric": "No se pudo completar la tarea"
+        },
+        "blockMyTask": {
+          "pending": "Marcar {{task}} como bloqueada",
+          "running": "Marcando {{task}} como bloqueada",
+          "completed": "{{task}} marcada como bloqueada",
+          "failed": "No se pudo marcar {{task}} como bloqueada",
+          "pendingGeneric": "Marcar mi tarea como bloqueada",
+          "runningGeneric": "Marcando mi tarea como bloqueada",
+          "completedGeneric": "Tarea marcada como bloqueada",
+          "failedGeneric": "No se pudo marcar la tarea como bloqueada"
+        },
+        "cancelMyTask": {
+          "pending": "Cancelar la tarea {{task}}",
+          "running": "Cancelando la tarea {{task}}",
+          "completed": "Tarea {{task}} cancelada",
+          "failed": "No se pudo cancelar la tarea {{task}}",
+          "pendingGeneric": "Cancelar mi tarea",
+          "runningGeneric": "Cancelando mi tarea",
+          "completedGeneric": "Tarea cancelada",
+          "failedGeneric": "No se pudo cancelar la tarea"
+        },
+        "listTasks": {
+          "pending": "Listar las tareas de {{project}}",
+          "running": "Listando las tareas de {{project}}",
+          "completed": "Tareas de {{project}} listadas",
+          "failed": "No se pudieron listar las tareas de {{project}}",
+          "pendingGeneric": "Listar tareas",
+          "runningGeneric": "Listando tareas",
+          "completedGeneric": "Tareas listadas",
+          "failedGeneric": "No se pudieron listar las tareas"
+        },
+        "getMyTasks": {
+          "pending": "Listar mis tareas",
+          "running": "Listando mis tareas",
+          "completed": "Mis tareas listadas",
+          "failed": "No se pudieron listar mis tareas"
+        },
+        "listProjects": {
+          "pending": "Listar proyectos",
+          "running": "Listando proyectos",
+          "completed": "Proyectos listados",
+          "failed": "No se pudieron listar los proyectos"
+        },
+        "listBoardAgents": {
+          "pending": "Listar los agentes del tablero",
+          "running": "Listando los agentes del tablero",
+          "completed": "Agentes del tablero listados",
+          "failed": "No se pudieron listar los agentes del tablero"
+        },
+        "listBoardSubscriptions": {
+          "pending": "Listar suscripciones a tableros",
+          "running": "Listando suscripciones a tableros",
+          "completed": "Suscripciones a tableros listadas",
+          "failed": "No se pudieron listar las suscripciones"
+        },
+        "getTaskDependencies": {
+          "pending": "Ver de qué depende {{task}}",
+          "running": "Viendo de qué depende {{task}}",
+          "completed": "Dependencias de {{task}} consultadas",
+          "failed": "No se pudo ver de qué depende {{task}}",
+          "pendingGeneric": "Ver dependencias de la tarea",
+          "runningGeneric": "Viendo dependencias de la tarea",
+          "completedGeneric": "Dependencias consultadas",
+          "failedGeneric": "No se pudieron consultar las dependencias"
+        },
+        "getTask": {
+          "pending": "Abrir la tarea {{task}}",
+          "running": "Abriendo la tarea {{task}}",
+          "completed": "Tarea {{task}} abierta",
+          "failed": "No se pudo abrir la tarea {{task}}",
+          "pendingGeneric": "Abrir una tarea",
+          "runningGeneric": "Abriendo una tarea",
+          "completedGeneric": "Tarea abierta",
+          "failedGeneric": "No se pudo abrir la tarea"
+        },
+        "getMyTask": {
+          "pending": "Ver mi tarea actual",
+          "running": "Viendo mi tarea actual",
+          "completed": "Tarea actual: {{task}}",
+          "failed": "No se pudo ver mi tarea actual",
+          "pendingGeneric": "Ver mi tarea actual",
+          "runningGeneric": "Viendo mi tarea actual",
+          "completedGeneric": "Sin tarea activa",
+          "failedGeneric": "No se pudo ver mi tarea actual"
+        },
+        "getProject": {
+          "pending": "Abrir el proyecto {{project}}",
+          "running": "Abriendo el proyecto {{project}}",
+          "completed": "Proyecto {{project}} abierto",
+          "failed": "No se pudo abrir el proyecto {{project}}",
+          "pendingGeneric": "Abrir un proyecto",
+          "runningGeneric": "Abriendo un proyecto",
+          "completedGeneric": "Proyecto abierto",
+          "failedGeneric": "No se pudo abrir el proyecto"
+        },
+        "getBoardStatus": {
+          "pending": "Ver el estado de {{board}}",
+          "running": "Viendo el estado de {{board}}",
+          "completed": "Estado de {{board}} consultado",
+          "failed": "No se pudo ver el estado de {{board}}",
+          "pendingGeneric": "Ver el estado del tablero",
+          "runningGeneric": "Viendo el estado del tablero",
+          "completedGeneric": "Estado del tablero consultado",
+          "failedGeneric": "No se pudo ver el estado del tablero"
+        },
+        "createProject": {
+          "pending": "Crear el proyecto {{project}}",
+          "running": "Creando el proyecto {{project}}",
+          "completed": "Proyecto {{project}} creado",
+          "failed": "No se pudo crear el proyecto {{project}}",
+          "pendingGeneric": "Crear un proyecto",
+          "runningGeneric": "Creando un proyecto",
+          "completedGeneric": "Proyecto creado",
+          "failedGeneric": "No se pudo crear el proyecto"
+        },
+        "createTask": {
+          "pending": "Crear la tarea {{task}}",
+          "running": "Creando la tarea {{task}}",
+          "completed": "Tarea {{task}} creada",
+          "failed": "No se pudo crear la tarea {{task}}",
+          "pendingGeneric": "Crear una tarea",
+          "runningGeneric": "Creando una tarea",
+          "completedGeneric": "Tarea creada",
+          "failedGeneric": "No se pudo crear la tarea"
+        },
+        "batchCreateTasks": {
+          "pending": "Crear tareas ({{count}})",
+          "running": "Creando tareas ({{count}})",
+          "completed": "Tareas creadas ({{count}})",
+          "failed": "No se pudieron crear las tareas ({{count}})",
+          "pendingGeneric": "Crear tareas",
+          "runningGeneric": "Creando tareas",
+          "completedGeneric": "Tareas creadas",
+          "failedGeneric": "No se pudieron crear las tareas"
+        },
+        "updateTask": {
+          "pending": "Actualizar la tarea {{task}}",
+          "running": "Actualizando la tarea {{task}}",
+          "completed": "Tarea {{task}} actualizada",
+          "failed": "No se pudo actualizar la tarea {{task}}",
+          "pendingGeneric": "Actualizar una tarea",
+          "runningGeneric": "Actualizando una tarea",
+          "completedGeneric": "Tarea actualizada",
+          "failedGeneric": "No se pudo actualizar la tarea"
+        },
+        "updateProject": {
+          "pending": "Actualizar el proyecto {{project}}",
+          "running": "Actualizando el proyecto {{project}}",
+          "completed": "Proyecto {{project}} actualizado",
+          "failed": "No se pudo actualizar el proyecto {{project}}",
+          "pendingGeneric": "Actualizar un proyecto",
+          "runningGeneric": "Actualizando un proyecto",
+          "completedGeneric": "Proyecto actualizado",
+          "failedGeneric": "No se pudo actualizar el proyecto"
+        },
+        "assignTask": {
+          "pending": "Asignar {{task}} a {{agent}}",
+          "running": "Asignando {{task}} a {{agent}}",
+          "completed": "{{task}} asignada a {{agent}}",
+          "failed": "No se pudo asignar {{task}} a {{agent}}",
+          "pendingGeneric": "Asignar una tarea",
+          "runningGeneric": "Asignando una tarea",
+          "completedGeneric": "Tarea asignada",
+          "failedGeneric": "No se pudo asignar la tarea"
+        },
+        "unassignTask": {
+          "pending": "Desasignar {{task}}",
+          "running": "Desasignando {{task}}",
+          "completed": "{{task}} desasignada",
+          "failed": "No se pudo desasignar {{task}}",
+          "pendingGeneric": "Desasignar una tarea",
+          "runningGeneric": "Desasignando una tarea",
+          "completedGeneric": "Tarea desasignada",
+          "failedGeneric": "No se pudo desasignar la tarea"
+        },
+        "moveTask": {
+          "pending": "Mover {{task}} a {{column}}",
+          "running": "Moviendo {{task}} a {{column}}",
+          "completed": "{{task}} movida a {{column}}",
+          "failed": "No se pudo mover {{task}} a {{column}}",
+          "pendingGeneric": "Mover una tarea",
+          "runningGeneric": "Moviendo una tarea",
+          "completedGeneric": "Tarea movida",
+          "failedGeneric": "No se pudo mover la tarea"
+        },
+        "archiveTask": {
+          "pending": "Archivar la tarea {{task}}",
+          "running": "Archivando la tarea {{task}}",
+          "completed": "Tarea {{task}} archivada",
+          "failed": "No se pudo archivar la tarea {{task}}",
+          "pendingGeneric": "Archivar una tarea",
+          "runningGeneric": "Archivando una tarea",
+          "completedGeneric": "Tarea archivada",
+          "failedGeneric": "No se pudo archivar la tarea"
+        },
+        "restoreTask": {
+          "pending": "Restaurar la tarea {{task}}",
+          "running": "Restaurando la tarea {{task}}",
+          "completed": "Tarea {{task}} restaurada",
+          "failed": "No se pudo restaurar la tarea {{task}}",
+          "pendingGeneric": "Restaurar una tarea",
+          "runningGeneric": "Restaurando una tarea",
+          "completedGeneric": "Tarea restaurada",
+          "failedGeneric": "No se pudo restaurar la tarea"
+        },
+        "startTask": {
+          "pending": "Empezar la tarea {{task}}",
+          "running": "Empezando la tarea {{task}}",
+          "completed": "Tarea {{task}} empezada",
+          "failed": "No se pudo empezar la tarea {{task}}",
+          "pendingGeneric": "Empezar una tarea",
+          "runningGeneric": "Empezando una tarea",
+          "completedGeneric": "Tarea empezada",
+          "failedGeneric": "No se pudo empezar la tarea"
+        },
+        "stopTask": {
+          "pending": "Pedir que se pare una tarea",
+          "running": "Pidiendo que se pare una tarea",
+          "completed": "Parada de tarea solicitada",
+          "failed": "No se pudo pedir que se pare la tarea"
+        },
+        "deleteTask": {
+          "pending": "Eliminar una tarea",
+          "running": "Eliminando una tarea",
+          "completed": "Tarea eliminada",
+          "failed": "No se pudo eliminar la tarea"
+        },
+        "linkConversation": {
+          "pending": "Vincular una conversación a {{task}}",
+          "running": "Vinculando una conversación a {{task}}",
+          "completed": "Conversación vinculada a {{task}}",
+          "failed": "No se pudo vincular la conversación a {{task}}",
+          "pendingGeneric": "Vincular una conversación a una tarea",
+          "runningGeneric": "Vinculando una conversación a una tarea",
+          "completedGeneric": "Conversación vinculada",
+          "failedGeneric": "No se pudo vincular la conversación"
+        },
+        "addProgressNote": {
+          "pending": "Añadir una nota a {{task}}",
+          "running": "Añadiendo una nota a {{task}}",
+          "completed": "Nota añadida a {{task}}",
+          "failed": "No se pudo añadir la nota a {{task}}",
+          "pendingGeneric": "Añadir una nota de progreso",
+          "runningGeneric": "Añadiendo una nota de progreso",
+          "completedGeneric": "Nota de progreso añadida",
+          "failedGeneric": "No se pudo añadir la nota"
+        },
+        "addTaskDependency": {
+          "pending": "Añadir una dependencia a {{task}}",
+          "running": "Añadiendo una dependencia a {{task}}",
+          "completed": "Dependencia añadida a {{task}}",
+          "failed": "No se pudo añadir la dependencia a {{task}}",
+          "pendingGeneric": "Añadir una dependencia",
+          "runningGeneric": "Añadiendo una dependencia",
+          "completedGeneric": "Dependencia añadida",
+          "failedGeneric": "No se pudo añadir la dependencia"
+        },
+        "removeTaskDependency": {
+          "pending": "Quitar una dependencia de {{task}}",
+          "running": "Quitando una dependencia de {{task}}",
+          "completed": "Dependencia quitada de {{task}}",
+          "failed": "No se pudo quitar la dependencia de {{task}}",
+          "pendingGeneric": "Quitar una dependencia",
+          "runningGeneric": "Quitando una dependencia",
+          "completedGeneric": "Dependencia quitada",
+          "failedGeneric": "No se pudo quitar la dependencia"
+        },
+        "setAgentSlots": {
+          "pending": "Poner los slots de {{agent}} en {{slots}}",
+          "running": "Poniendo los slots de {{agent}} en {{slots}}",
+          "completed": "Slots de {{agent}} en {{slots}}",
+          "failed": "No se pudieron poner los slots de {{agent}} en {{slots}}",
+          "pendingGeneric": "Cambiar los slots de un agente",
+          "runningGeneric": "Cambiando los slots de un agente",
+          "completedGeneric": "Slots del agente cambiados",
+          "failedGeneric": "No se pudieron cambiar los slots"
+        },
+        "enableAgentPlay": {
+          "pending": "Activar el autoplay de {{agent}}",
+          "running": "Activando el autoplay de {{agent}}",
+          "completed": "Autoplay de {{agent}} activado",
+          "failed": "No se pudo activar el autoplay de {{agent}}",
+          "pendingGeneric": "Activar el autoplay",
+          "runningGeneric": "Activando el autoplay",
+          "completedGeneric": "Autoplay activado",
+          "failedGeneric": "No se pudo activar el autoplay"
+        },
+        "disableAgentPlay": {
+          "pending": "Desactivar el autoplay de {{agent}}",
+          "running": "Desactivando el autoplay de {{agent}}",
+          "completed": "Autoplay de {{agent}} desactivado",
+          "failed": "No se pudo desactivar el autoplay de {{agent}}",
+          "pendingGeneric": "Desactivar el autoplay",
+          "runningGeneric": "Desactivando el autoplay",
+          "completedGeneric": "Autoplay desactivado",
+          "failedGeneric": "No se pudo desactivar el autoplay"
+        },
+        "subscribeToBoard": {
+          "pending": "Seguir {{board}}",
+          "running": "Empezando a seguir {{board}}",
+          "completed": "Siguiendo {{board}}",
+          "failed": "No se pudo seguir {{board}}",
+          "pendingGeneric": "Seguir un tablero",
+          "runningGeneric": "Empezando a seguir un tablero",
+          "completedGeneric": "Siguiendo un tablero",
+          "failedGeneric": "No se pudo seguir el tablero"
+        },
+        "unsubscribeFromBoard": {
+          "pending": "Dejar de seguir un tablero",
+          "running": "Dejando de seguir un tablero",
+          "completed": "Ya no sigues el tablero",
+          "failed": "No se pudo dejar de seguir el tablero"
+        },
+        "archiveProject": {
+          "pending": "Archivar el proyecto {{project}}",
+          "running": "Archivando el proyecto {{project}}",
+          "completed": "Proyecto {{project}} archivado",
+          "failed": "No se pudo archivar el proyecto {{project}}",
+          "pendingGeneric": "Archivar un proyecto",
+          "runningGeneric": "Archivando un proyecto",
+          "completedGeneric": "Proyecto archivado",
+          "failedGeneric": "No se pudo archivar el proyecto"
+        },
+        "deleteProject": {
+          "pending": "Eliminar un proyecto",
+          "running": "Eliminando un proyecto",
+          "completed": "Proyecto eliminado",
+          "failed": "No se pudo eliminar el proyecto"
+        },
+        "updateBoardConfig": {
+          "pending": "Cambiar la configuración del tablero",
+          "running": "Cambiando la configuración del tablero",
+          "completed": "Configuración del tablero cambiada",
+          "failed": "No se pudo cambiar la configuración del tablero"
+        },
+        "subscribeToEvents": {
+          "pending": "Suscribirse a eventos de {{topic}}",
+          "running": "Suscribiéndose a eventos de {{topic}}",
+          "completed": "Suscrito a eventos de {{topic}}",
+          "failed": "No se pudo suscribir a eventos de {{topic}}",
+          "pendingGeneric": "Suscribirse a eventos",
+          "runningGeneric": "Suscribiéndose a eventos",
+          "completedGeneric": "Suscrito a eventos",
+          "failedGeneric": "No se pudo suscribir a eventos"
+        },
+        "unsubscribeFromEvents": {
+          "pending": "Cancelar suscripción a eventos",
+          "running": "Cancelando suscripción a eventos",
+          "completed": "Suscripción a eventos cancelada",
+          "failed": "No se pudo cancelar la suscripción a eventos"
+        },
+        "listEventSubscriptions": {
+          "pending": "Listar suscripciones a eventos",
+          "running": "Listando suscripciones a eventos",
+          "completed": "Suscripciones a eventos listadas",
+          "failed": "No se pudieron listar las suscripciones a eventos"
+        },
+        "healthCheck": {
+          "pending": "Comprobar la conexión del tablero",
+          "running": "Comprobando la conexión del tablero",
+          "completed": "Conexión del tablero comprobada",
+          "failed": "No se pudo comprobar la conexión del tablero"
+        },
+        "fallback": {
+          "pending": "Ejecutar herramienta del tablero",
+          "running": "Ejecutando herramienta del tablero",
+          "completed": "Herramienta del tablero ejecutada",
+          "failed": "No se pudo ejecutar la herramienta del tablero"
+        }
+      },
+      "automate": {
+        "healthCheck": {
+          "pending": "Comprobar Automate",
+          "running": "Comprobando Automate",
+          "completed": "Automate comprobado",
+          "failed": "No se pudo comprobar Automate"
+        },
+        "listAutomations": {
+          "pending": "Listar automatizaciones",
+          "running": "Listando automatizaciones",
+          "completed": "{{count}} automatizaciones listadas",
+          "failed": "No se pudieron listar las automatizaciones",
+          "pendingGeneric": "Listar automatizaciones",
+          "runningGeneric": "Listando automatizaciones",
+          "completedGeneric": "Automatizaciones listadas",
+          "failedGeneric": "No se pudieron listar las automatizaciones"
+        },
+        "getAutomation": {
+          "pending": "Abrir «{{name}}»",
+          "running": "Abriendo «{{name}}»",
+          "completed": "«{{name}}» abierta",
+          "failed": "No se pudo abrir «{{name}}»",
+          "pendingGeneric": "Abrir una automatización",
+          "runningGeneric": "Abriendo una automatización",
+          "completedGeneric": "Automatización abierta",
+          "failedGeneric": "No se pudo abrir la automatización"
+        },
+        "listExecutions": {
+          "pending": "Consultar el historial",
+          "running": "Consultando el historial",
+          "completed": "{{count}} ejecuciones consultadas",
+          "failed": "No se pudo consultar el historial",
+          "pendingGeneric": "Consultar el historial",
+          "runningGeneric": "Consultando el historial",
+          "completedGeneric": "Historial consultado",
+          "failedGeneric": "No se pudo consultar el historial"
+        },
+        "listWebhookCalls": {
+          "pending": "Consultar las llamadas del webhook",
+          "running": "Consultando las llamadas del webhook",
+          "completed": "{{count}} llamadas consultadas",
+          "failed": "No se pudieron consultar las llamadas",
+          "pendingGeneric": "Consultar las llamadas del webhook",
+          "runningGeneric": "Consultando las llamadas del webhook",
+          "completedGeneric": "Llamadas consultadas",
+          "failedGeneric": "No se pudieron consultar las llamadas"
+        },
+        "listUpcoming": {
+          "pending": "Ver qué viene",
+          "running": "Viendo qué viene",
+          "completed": "{{count}} ejecuciones próximas",
+          "failed": "No se pudo ver qué viene",
+          "pendingGeneric": "Ver qué viene",
+          "runningGeneric": "Viendo qué viene",
+          "completedGeneric": "Próximas ejecuciones consultadas",
+          "failedGeneric": "No se pudo ver qué viene"
+        },
+        "listEventTopics": {
+          "pending": "Listar eventos disponibles",
+          "running": "Listando eventos disponibles",
+          "completed": "{{count}} eventos listados",
+          "failed": "No se pudieron listar los eventos",
+          "pendingGeneric": "Listar eventos disponibles",
+          "runningGeneric": "Listando eventos disponibles",
+          "completedGeneric": "Eventos listados",
+          "failedGeneric": "No se pudieron listar los eventos"
+        },
+        "parseTimeExpression": {
+          "pending": "Interpretar «{{expression}}» como hora",
+          "running": "Interpretando «{{expression}}» como hora",
+          "completed": "«{{expression}}» interpretada como hora",
+          "failed": "No se pudo interpretar «{{expression}}»",
+          "pendingGeneric": "Interpretar una expresión de tiempo",
+          "runningGeneric": "Interpretando una expresión de tiempo",
+          "completedGeneric": "Expresión de tiempo interpretada",
+          "failedGeneric": "No se pudo interpretar la expresión"
+        },
+        "createAutomation": {
+          "pending": "Crear la automatización «{{name}}»",
+          "running": "Creando la automatización «{{name}}»",
+          "completed": "Automatización «{{name}}» creada",
+          "failed": "No se pudo crear «{{name}}»",
+          "pendingGeneric": "Crear una automatización",
+          "runningGeneric": "Creando una automatización",
+          "completedGeneric": "Automatización creada",
+          "failedGeneric": "No se pudo crear la automatización"
+        },
+        "scheduleReminder": {
+          "pending": "Recordar «{{name}}»",
+          "running": "Programando el recordatorio «{{name}}»",
+          "completed": "Recordatorio «{{name}}» programado",
+          "failed": "No se pudo programar «{{name}}»",
+          "pendingGeneric": "Programar un recordatorio",
+          "runningGeneric": "Programando un recordatorio",
+          "completedGeneric": "Recordatorio programado",
+          "failedGeneric": "No se pudo programar el recordatorio"
+        },
+        "createRecurringTask": {
+          "pending": "Programar «{{name}}»",
+          "running": "Programando «{{name}}»",
+          "completed": "«{{name}}» programada",
+          "failed": "No se pudo programar «{{name}}»",
+          "pendingGeneric": "Programar una tarea recurrente",
+          "runningGeneric": "Programando una tarea recurrente",
+          "completedGeneric": "Tarea recurrente programada",
+          "failedGeneric": "No se pudo programar la tarea recurrente"
+        },
+        "createWebhook": {
+          "pending": "Crear el webhook «{{name}}»",
+          "running": "Creando el webhook «{{name}}»",
+          "completed": "Webhook «{{name}}» creado",
+          "failed": "No se pudo crear el webhook «{{name}}»",
+          "pendingGeneric": "Crear un webhook",
+          "runningGeneric": "Creando un webhook",
+          "completedGeneric": "Webhook creado",
+          "failedGeneric": "No se pudo crear el webhook"
+        },
+        "updateAutomation": {
+          "pending": "Actualizar «{{name}}»",
+          "running": "Actualizando «{{name}}»",
+          "completed": "«{{name}}» actualizada",
+          "failed": "No se pudo actualizar «{{name}}»",
+          "pendingGeneric": "Actualizar una automatización",
+          "runningGeneric": "Actualizando una automatización",
+          "completedGeneric": "Automatización actualizada",
+          "failedGeneric": "No se pudo actualizar la automatización"
+        },
+        "enableAutomation": {
+          "pending": "Activar «{{name}}»",
+          "running": "Activando «{{name}}»",
+          "completed": "«{{name}}» activada",
+          "failed": "No se pudo activar «{{name}}»",
+          "pendingGeneric": "Activar una automatización",
+          "runningGeneric": "Activando una automatización",
+          "completedGeneric": "Automatización activada",
+          "failedGeneric": "No se pudo activar la automatización"
+        },
+        "disableAutomation": {
+          "pending": "Desactivar «{{name}}»",
+          "running": "Desactivando «{{name}}»",
+          "completed": "«{{name}}» desactivada",
+          "failed": "No se pudo desactivar «{{name}}»",
+          "pendingGeneric": "Desactivar una automatización",
+          "runningGeneric": "Desactivando una automatización",
+          "completedGeneric": "Automatización desactivada",
+          "failedGeneric": "No se pudo desactivar la automatización"
+        },
+        "snoozeReminder": {
+          "pending": "Posponer «{{name}}»",
+          "running": "Posponiendo «{{name}}»",
+          "completed": "«{{name}}» pospuesto",
+          "failed": "No se pudo posponer «{{name}}»",
+          "pendingGeneric": "Posponer un recordatorio",
+          "runningGeneric": "Posponiendo un recordatorio",
+          "completedGeneric": "Recordatorio pospuesto",
+          "failedGeneric": "No se pudo posponer el recordatorio"
+        },
+        "regenerateWebhookUrl": {
+          "pending": "Regenerar la URL del webhook",
+          "running": "Regenerando la URL del webhook",
+          "completed": "URL del webhook regenerada",
+          "failed": "No se pudo regenerar la URL"
+        },
+        "testWebhook": {
+          "pending": "Enviar una prueba al webhook",
+          "running": "Enviando una prueba al webhook",
+          "completed": "Prueba enviada al webhook",
+          "failed": "No se pudo enviar la prueba"
+        },
+        "deleteAutomation": {
+          "pending": "Borrar la automatización",
+          "running": "Borrando la automatización",
+          "completed": "Automatización borrada",
+          "failed": "No se pudo borrar la automatización"
+        },
+        "cancelReminder": {
+          "pending": "Cancelar el recordatorio",
+          "running": "Cancelando el recordatorio",
+          "completed": "Recordatorio cancelado",
+          "failed": "No se pudo cancelar el recordatorio"
+        },
+        "bulkCancel": {
+          "pending": "Borrar varias automatizaciones",
+          "running": "Borrando varias automatizaciones",
+          "completed": "{{count}} automatizaciones borradas",
+          "failed": "No se pudieron borrar las automatizaciones",
+          "pendingGeneric": "Borrar varias automatizaciones",
+          "runningGeneric": "Borrando varias automatizaciones",
+          "completedGeneric": "Automatizaciones borradas",
+          "failedGeneric": "No se pudieron borrar las automatizaciones"
+        },
+        "fallback": {
+          "pending": "Usar Automate",
+          "running": "Usando Automate",
+          "completed": "Automate usado",
+          "failed": "No se pudo usar Automate"
+        },
+        "getQuota": {
+          "pending": "Consultar el presupuesto diario de Automate",
+          "running": "Consultando el presupuesto diario de Automate",
+          "completed": "Presupuesto diario consultado: {{used}} de {{limit}} ejecuciones",
+          "failed": "No se pudo consultar el presupuesto diario de Automate",
+          "pendingGeneric": "Consultar el presupuesto diario de Automate",
+          "runningGeneric": "Consultando el presupuesto diario de Automate",
+          "completedGeneric": "Presupuesto diario de Automate consultado",
+          "failedGeneric": "No se pudo consultar el presupuesto diario de Automate"
+        }
+      }
+    },
+    "permission": {
+      "awaiting": "Esperando tu aprobación",
+      "deny": "Denegar",
+      "allow": "Permitir",
+      "denyAlways": "Denegar siempre",
+      "allowAlways": "Permitir siempre",
+      "cancel": "Cancelar",
+      "confirm": "Confirmar",
+      "confirmTitle": "Confirmar decisión",
+      "confirmDenyAlways": "¿Bloquear esta herramienta para siempre? No se te volverá a preguntar.",
+      "confirmAllowAlways": "¿Permitir esta herramienta para siempre? No se te volverá a preguntar.",
+      "confirmDenyAll": "¿Denegar todas las acciones pendientes? Se rechazarán todas las herramientas de este lote.",
+      "confirmAllowAll": "¿Permitir todas las acciones pendientes? Se aprobarán todas las herramientas reversibles de este lote.",
+      "irreversible": "irreversible",
+      "irreversibleAriaLabel": "Esta acción no se puede deshacer",
+      "risk": "riesgo",
+      "riskAriaLabel": "Riesgo elevado: esta acción afecta a la seguridad o tiene un alcance amplio"
+    },
+    "permissionGroup": {
+      "allowAll": "Permitir todas",
+      "denyAll": "Denegar todas",
+      "awaiting_one": "{{count}} acción necesita tu aprobación",
+      "awaiting_other": "{{count}} acciones necesitan tu aprobación",
+      "destructiveNote_one": "{{count}} destructiva — decide una a una",
+      "destructiveNote_other": "{{count}} destructivas — decide una a una",
+      "allDestructiveNote": "Acciones destructivas — decide una a una"
+    },
+    "permissionDetail": {
+      "showAllParams_one": "Mostrar {{count}} parámetro",
+      "showAllParams_other": "Mostrar los {{count}} parámetros",
+      "hideParams": "Mostrar menos parámetros",
+      "undeclared": "fuera del esquema",
+      "hiddenUndeclared": "{{count}} fuera del esquema",
+      "showMore": "ver más",
+      "showLess": "ver menos",
+      "readsOnly": "Solo lectura",
+      "irreversible": "Irreversible",
+      "network": "Red",
+      "noParams": "Esta herramienta se llamará sin parámetros.",
+      "moreItems": "+{{count}} más sin mostrar",
+      "nestingLimit_one": "{{count}} campo anidado — demasiado profundo para mostrarlo",
+      "nestingLimit_other": "{{count}} campos anidados — demasiado profundos para mostrarlos",
+      "detailsUnavailable": "No se pudieron cargar los detalles de esta herramienta. Los parámetros se muestran tal cual se envían."
     }
   },
   "badges": {
@@ -2255,5 +4193,1321 @@
       "dismiss": "Entendido",
       "progress": "{{current}} de {{total}}"
     }
+  },
+  "todo": {
+    "title": "Tareas",
+    "notInstalled": "La app Tareas no está instalada",
+    "notInstalledHint": "Instala «Tareas» desde el catálogo en este espacio para empezar.",
+    "noWorkspace": "Elige un espacio de trabajo para ver sus tareas.",
+    "loadError": "No se pudo cargar Tareas.",
+    "retry": "Reintentar",
+    "loading": "Cargando…",
+    "view": {
+      "label": "Vista",
+      "tree": "Árbol",
+      "day": "Por día"
+    },
+    "summary": "{{tasks}} tareas · {{open}} abiertas",
+    "search": {
+      "placeholder": "Buscar en el árbol",
+      "clear": "Borrar búsqueda"
+    },
+    "newTask": "Nueva tarea",
+    "filter": {
+      "label": "Filtrar",
+      "all": "Todo",
+      "working": "En marcha",
+      "review": "Revisión",
+      "blocked": "Bloqueadas",
+      "mine": "Mías"
+    },
+    "hint": {
+      "drag": "arrastra",
+      "edge": "borde",
+      "reorders": "ordena",
+      "centre": "centro",
+      "nests": "anida",
+      "arrows": "flechas"
+    },
+    "kin": {
+      "blocked_one": "{{count}} bloqueada",
+      "blocked_other": "{{count}} bloqueadas",
+      "review_one": "{{count}} en revisión",
+      "review_other": "{{count}} en revisión"
+    },
+    "state": {
+      "planning": "Planificación",
+      "pending": "Pendiente",
+      "working": "En marcha",
+      "blocked": "Bloqueada",
+      "review": "En revisión",
+      "done": "Hecha",
+      "cancelled": "Cancelada"
+    },
+    "legend": {
+      "planning_one": "{{count}} en planificación",
+      "planning_other": "{{count}} en planificación",
+      "pending_one": "{{count}} pendiente",
+      "pending_other": "{{count}} pendientes",
+      "working_one": "{{count}} en marcha",
+      "working_other": "{{count}} en marcha",
+      "blocked_one": "{{count}} bloqueada",
+      "blocked_other": "{{count}} bloqueadas",
+      "review_one": "{{count}} en revisión",
+      "review_other": "{{count}} en revisión",
+      "done_one": "{{count}} hecha",
+      "done_other": "{{count}} hechas",
+      "cancelled_one": "{{count}} cancelada",
+      "cancelled_other": "{{count}} canceladas"
+    },
+    "transitionHint": {
+      "planning_pending": "definida",
+      "pending_working": "empezar",
+      "pending_done": "completar",
+      "working_review": "entregar",
+      "working_blocked": "bloquear",
+      "working_pending": "aparcar",
+      "working_done": "completar",
+      "blocked_working": "desbloquear",
+      "blocked_planning": "redefinir",
+      "review_done": "aceptar",
+      "review_working": "devolver",
+      "done_working": "reabrir",
+      "planning_cancelled": "descartar",
+      "pending_cancelled": "descartar",
+      "working_cancelled": "descartar",
+      "blocked_cancelled": "descartar",
+      "review_cancelled": "descartar",
+      "cancelled_pending": "reabrir"
+    },
+    "verb": {
+      "planning_pending": "Marcar como pendiente",
+      "pending_working": "Empezar",
+      "pending_planning": "Volver a planificación",
+      "pending_done": "Completar",
+      "working_review": "Enviar a revisión",
+      "working_blocked": "Bloquear",
+      "working_pending": "Aparcar",
+      "working_done": "Completar",
+      "blocked_working": "Desbloquear",
+      "blocked_planning": "Volver a planificación",
+      "review_done": "Aceptar",
+      "review_working": "Devolver",
+      "done_working": "Reabrir",
+      "planning_cancelled": "Cancelar tarea",
+      "pending_cancelled": "Cancelar tarea",
+      "working_cancelled": "Cancelar tarea",
+      "blocked_cancelled": "Cancelar tarea",
+      "review_cancelled": "Cancelar tarea",
+      "cancelled_pending": "Reabrir"
+    },
+    "row": {
+      "focus": "Modo foco: {{title}}",
+      "exitFocus": "Salir del foco: {{title}}",
+      "add": "Añadir dentro de {{title}}",
+      "drag": "Arrastra para mover",
+      "dragOrder": "Arrastra para ordenar",
+      "expand": "Desplegar",
+      "collapse": "Plegar",
+      "group": "grupo",
+      "archive": "Archivar {{title}}",
+      "unarchive": "Desarchivar {{title}}",
+      "archivedBadge": "Archivada"
+    },
+    "focus": {
+      "exit": "Salir del foco",
+      "suffix": "foco",
+      "root": "Raíz"
+    },
+    "add": {
+      "placeholder": "Nueva tarea…",
+      "child": "Nueva tarea hija…",
+      "inGroup": "Nueva tarea en {{title}}…",
+      "newGroup": "Nuevo grupo",
+      "menuTask": "Nueva tarea",
+      "menuGroup": "Nuevo grupo"
+    },
+    "empty": {
+      "treeTitle": "Tu árbol está vacío",
+      "treeBody": "Empieza por un grupo (Casa, Trabajo) o por una tarea suelta. Luego arrastra para ordenar y anidar.",
+      "task": "Tarea",
+      "group": "Grupo",
+      "noMatchTitle": "Nada por aquí",
+      "noMatchBody": "Ninguna tarea coincide con el filtro.",
+      "detailTitle": "Elige una tarea",
+      "detailBody": "Lo que selecciones en Tareas se abre aquí. Doble clic en una fila la fija en su propia pestaña.",
+      "missingTitle": "Esta tarea ya no existe",
+      "missingBody": "Se eliminó o está en otro espacio de trabajo."
+    },
+    "drop": {
+      "before": "antes de {{title}}",
+      "after": "después de {{title}}",
+      "inside": "dentro de {{title}}",
+      "groupInTask": "un grupo no va dentro de una tarea",
+      "invalid": "no se puede soltar aquí",
+      "endOf": "al final de {{day}}"
+    },
+    "day": {
+      "today": "Hoy",
+      "tomorrow": "Mañana",
+      "yesterday": "Ayer",
+      "prev": "Día anterior",
+      "next": "Día siguiente",
+      "fromEarlier": "De días anteriores",
+      "moveAllToday": "Pasar todo a hoy",
+      "plan": "Plan",
+      "dragToOrder": "arrastra para ordenar",
+      "nothingPlanned": "Nada planificado para {{day}}.",
+      "nothingPlannedHint": "Arrastra aquí desde «Sin planificar» o usa el chip Día en el detalle.",
+      "unplanned": "Sin planificar",
+      "unplannedSummary": "{{count}} abiertas",
+      "allPlanned": "Todo lo abierto tiene día.",
+      "completed": "Completadas",
+      "completedSummary": "{{count}} hechas",
+      "doneSink": "Completadas abajo",
+      "viewMenu": "Opciones de la vista",
+      "allDone": "Todo lo planificado está completado.",
+      "here": "Aquí",
+      "removeFromDay": "Quitar del día",
+      "planOn": "Planificar para {{day}}",
+      "overdue": "atrasada",
+      "noDay": "Sin día",
+      "planFor": "Planificar para",
+      "current": "actual",
+      "otherDate": "Otra fecha",
+      "time": "Hora",
+      "clearTime": "Sin hora"
+    },
+    "chip": {
+      "state": "Estado",
+      "progress": "Progreso",
+      "day": "Día",
+      "fromChildren": "de hijas",
+      "group": "Grupo",
+      "tasks": "tareas",
+      "open": "abiertas",
+      "assignee": "Asignado",
+      "reviewer": "Revisor"
+    },
+    "stateMenu": {
+      "now": "Ahora",
+      "block": "Bloquear",
+      "blockQuestion": "¿Qué falta para seguir?",
+      "blockPlaceholder": "Falta el CIF del cliente…",
+      "back": "Atrás"
+    },
+    "progressMenu": {
+      "reported": "reportado",
+      "fromChildren": "Calcular de las hijas",
+      "label": "Progreso"
+    },
+    "blocked": {
+      "header": "Bloqueada · espera tu respuesta",
+      "noReason": "Sin motivo",
+      "replyPlaceholder": "Tu respuesta",
+      "reply": "Responder y seguir",
+      "footer": "Al responder vuelve a En marcha"
+    },
+    "sendBack": {
+      "region": "Devolver",
+      "header": "Revisión · devolver",
+      "title": "¿Por qué la devuelves?",
+      "placeholder": "Qué falta o qué está mal, para que el agente lo arregle",
+      "submit": "Devolver con nota",
+      "cancel": "Cancelar",
+      "footer": "Vuelve a En marcha con tu nota"
+    },
+    "voice": {
+      "record": "Grabar nota de voz",
+      "stopSend": "Parar y enviar",
+      "transcribing": "Transcribiendo…",
+      "unsupported": "La voz no está disponible aquí",
+      "failed": "No se pudo transcribir la nota"
+    },
+    "complete": {
+      "openChildren_one": "Queda {{count}} hija abierta: {{list}}. ¿La cierro también?",
+      "openChildren_other": "Quedan {{count}} hijas abiertas: {{list}}. ¿Las cierro también?",
+      "all": "Completar todo",
+      "onlyThis": "Solo esta",
+      "cancel": "Cancelar"
+    },
+    "tabs": {
+      "summary": "Resumen",
+      "output": "Salida",
+      "log": "Registro"
+    },
+    "section": {
+      "description": "Descripción",
+      "instructions": "Instrucciones",
+      "doneWhen": "Hecho cuando",
+      "input": "Entrada",
+      "children": "Tareas hijas",
+      "content": "Contenido",
+      "context": "Contexto",
+      "groupState": "Estado del grupo",
+      "log": "Registro"
+    },
+    "edit": "Editar",
+    "write": "Escribir",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "noInstructions": "Sin instrucciones. Una tarea en Planificación pasa a Pendiente cuando sabe qué hacer y cuándo está hecha.",
+    "descriptionPlaceholder": "Añade una descripción…",
+    "instructionsPlaceholder": "- [ ] Primer paso\n\n## Hecho cuando\n- [ ] …",
+    "readyForReview": "Todo lo de «Hecho cuando» está marcado.",
+    "childTask": "Tarea hija",
+    "task": "Tarea",
+    "group": "Grupo",
+    "io": {
+      "markdown": "markdown",
+      "form_one": "form · {{count}} campo",
+      "form_other": "form · {{count}} campos",
+      "file": "archivo · {{ext}}",
+      "none": "sin salida",
+      "draft": "borrador",
+      "deliveredAt": "entregada {{when}}",
+      "noOutput": "Todavía no hay salida. Se entrega al terminar: un documento en markdown, un formulario o un archivo.",
+      "upload": "Subir archivo",
+      "writeMarkdown": "Escribir markdown",
+      "replace": "Sustituir",
+      "remove": "Quitar",
+      "tooLarge": "El archivo pasa de 10 MB.",
+      "download": "Descargar",
+      "open": "Abrir",
+      "uploading": "Subiendo…",
+      "markdownPlaceholder": "# Resultado\n\nLo que se hizo…",
+      "noInput": "Sin entrada. Añade los datos de los que parte la tarea.",
+      "pages": "{{type}} · {{size}}",
+      "savedAt": "en curso · guardado {{when}}",
+      "outputMarkdown": "Salida · markdown",
+      "inputMarkdown": "Entrada · markdown",
+      "noOutputShort": "Todavía no hay salida",
+      "noInputShort": "Sin entrada"
+    },
+    "log": {
+      "addPlaceholder": "Añadir una nota al registro",
+      "add": "Añadir",
+      "replied": "Respondiste: «{{text}}»",
+      "progress": "Progreso {{value}} %",
+      "progressCleared": "Progreso calculado de las hijas",
+      "plannedFor": "Planificada para {{day}}",
+      "plannedTime": "Hora planificada {{time}}",
+      "plannedTimeCleared": "Hora planificada quitada",
+      "removedFromDay": "Quitada del día",
+      "outputDelivered": "Salida entregada · {{what}}",
+      "outputCleared": "Salida quitada",
+      "inputSet": "Entrada definida · {{what}}",
+      "inputCleared": "Entrada quitada",
+      "completed": "Marcada como hecha",
+      "uncompleted": "Marcada como no hecha",
+      "toGroup": "Convertida en grupo",
+      "toTask": "Convertida en tarea",
+      "blockedReason": "Bloqueada: {{reason}}",
+      "empty": "Aún no hay entradas.",
+      "assignedTo": "Asignada a {{name}}",
+      "unassigned": "Sin asignar"
+    },
+    "more": {
+      "label": "Más acciones",
+      "addChild": "Añadir tarea hija",
+      "addTask": "Añadir tarea",
+      "addGroup": "Añadir grupo",
+      "toGroup": "Convertir en grupo",
+      "toTask": "Convertir en tarea",
+      "hasOutput": "tiene salida",
+      "hasGroups": "contiene grupos",
+      "delete": "Eliminar",
+      "focus": "Modo foco",
+      "exitFocus": "Salir del foco",
+      "writeDescription": "Escribir descripción",
+      "archive": "Archivar",
+      "unarchive": "Desarchivar"
+    },
+    "delete": {
+      "title": "¿Eliminar «{{title}}»?",
+      "withChildren_one": "Se va también su {{count}} tarea hija. No se puede deshacer.",
+      "withChildren_other": "Se van también sus {{count}} tareas hijas. No se puede deshacer.",
+      "noChildren": "No se puede deshacer.",
+      "confirm": "Eliminar"
+    },
+    "titleField": {
+      "edit": "Clic para editar",
+      "label": "Título"
+    },
+    "error": "No se pudo guardar: {{message}}",
+    "a11y": {
+      "tree": "Tareas",
+      "treeNav": "Árbol de tareas",
+      "dayPlan": "Plan del día",
+      "blockedRegion": "Bloqueo",
+      "crumb": "Ubicación",
+      "chips": "Detalles de la tarea",
+      "actions": "Acciones de la tarea"
+    },
+    "assign": {
+      "none": "Sin asignar",
+      "title": "Asignar a",
+      "search": "Buscar agentes y personas",
+      "me": "Asignarme a mí",
+      "agents": "Agentes",
+      "people": "Personas",
+      "agent": "agente",
+      "person": "persona",
+      "you": "tú",
+      "remove": "Quitar asignación",
+      "noMatch": "Nadie coincide."
+    },
+    "dep": {
+      "waitsOn": "Espera a:",
+      "blockedBy": "Bloqueada por",
+      "blocks": "Bloquea a",
+      "add": "Añadir dependencia",
+      "search": "Buscar tareas del workspace",
+      "tasks": "Tareas",
+      "noMatch": "Ninguna tarea coincide.",
+      "remove": "Quitar dependencia",
+      "none": "No depende de nada.",
+      "reorderWarning": "La has puesto antes de \"{{blocker}}\", de la que depende — el autoplay la respetará igual."
+    },
+    "review": {
+      "none": "Validación manual",
+      "title": "Revisor",
+      "search": "Buscar agentes y personas",
+      "me": "Ser yo el revisor",
+      "agents": "Agentes",
+      "people": "Personas",
+      "agent": "agente",
+      "person": "persona",
+      "you": "tú",
+      "remove": "Quitar revisor",
+      "noMatch": "Nadie coincide."
+    },
+    "autoplay": {
+      "chip": "Autoplay · {{count}}",
+      "title": "Autoplay",
+      "subtitle": "Runners · slots · Play",
+      "working": "Trabajando",
+      "waiting": "Esperando tareas",
+      "paused": "En pausa",
+      "inProgress": "{{active}}/{{slots}} en marcha",
+      "fewer": "Menos slots para {{name}}",
+      "more": "Más slots para {{name}}",
+      "play": "Activar {{name}}",
+      "pause": "Pausar {{name}}",
+      "remove": "Quitar {{name}}",
+      "add": "Añadir runner",
+      "noAgents": "Todos los agentes ya son runners",
+      "empty": "Aún no hay runners. Añade un agente, dale slots y pulsa play.",
+      "footer": "Teros despierta a cada runner cuando una de sus tareas está pendiente y planificada para hoy o antes, respetando los slots. Los agentes pasan las tareas a Revisión; tú las pasas a Hecha. Límite de {{cap}} despertares automáticos por tarea.",
+      "footerScope": "Con \"También coge\" activo, coge además tareas sin asignar planificadas para hoy o antes en esa rama y se las asigna.",
+      "scope": {
+        "label": "También coge:",
+        "nothing": "Nada",
+        "nothingItem": "Nada · solo lo asignado a {{name}}",
+        "today": "Planificado para hoy",
+        "anyItem": "Tareas sin asignar, en cualquier rama",
+        "onlyIn": "Planificado para hoy, solo en",
+        "any": "Hoy · cualquier rama",
+        "in": "Hoy · {{path}}",
+        "missing": "Rama borrada",
+        "choose": "Qué más coge {{name}}"
+      },
+      "close": "Cerrar",
+      "config": "Configuración de autoplay",
+      "pausedGlobal": "En pausa · global",
+      "enable": "Activar {{name}} (incluirlo en el play global)",
+      "disable": "Desactivar {{name}} (excluirlo del play global)",
+      "global": {
+        "play": "Reproducir el autoplay del workspace",
+        "pause": "Pausar el autoplay del workspace",
+        "playing": "En marcha · {{count}} activados",
+        "paused": "Pausado",
+        "stop": "Parar ahora: pausa el autoplay e interrumpe los {{count}} turnos en marcha",
+        "hint": "El play global arranca solo a los runners activados; los desactivados quedan fuera."
+      }
+    },
+    "conversation": {
+      "open": "Conversación",
+      "chip": "Conversación",
+      "start": "Empezar"
+    },
+    "runner": {
+      "open": "Terminal",
+      "wake": "Terminal (dormido — clic para despertarlo)",
+      "recreate": "Terminal (perdido — clic para reabrirlo con contexto)",
+      "openFailed": "No se pudo abrir el terminal: {message}"
+    },
+    "expected": {
+      "title": "Salida esperada",
+      "label": "Formato esperado",
+      "markdown": "Markdown",
+      "form": "Formulario",
+      "file": "Archivo",
+      "descriptionLabel": "Descripción de la salida esperada",
+      "descriptionPlaceholder": "Factura en PDF con NIF, base, IVA y total",
+      "fileType": "Tipo de archivo",
+      "other": "Otro",
+      "fields": "Campos",
+      "fieldName": "Nombre del campo",
+      "fieldType": "Tipo de campo",
+      "required": "Obligatorio",
+      "addField": "Añadir campo",
+      "removeField": "Quitar el campo {{name}}",
+      "clear": "Borrar",
+      "summary": "Esperado: {{what}}",
+      "types": {
+        "text": "Texto",
+        "textarea": "Texto largo",
+        "number": "Número",
+        "checkbox": "Casilla",
+        "date": "Fecha",
+        "time": "Hora",
+        "datetime": "Fecha y hora",
+        "select": "Lista",
+        "radio": "Opción"
+      },
+      "fillIn": "Rellenar",
+      "what": {
+        "markdown": "markdown",
+        "form": "formulario",
+        "file": "archivo"
+      },
+      "fieldCount_one": "{{count}} campo",
+      "fieldCount_other": "{{count}} campos"
+    },
+    "settings": {
+      "label": "Ajustes del árbol",
+      "title": "Vista",
+      "hideFinished": "Ocultar terminadas",
+      "showArchived": "Mostrar archivadas",
+      "archiveFinished": "Archivar terminadas",
+      "autoArchive": "Auto-archivar terminadas",
+      "autoOff": "No",
+      "autoDays_one": "Tras {{count}} día",
+      "autoDays_other": "Tras {{count}} días"
+    },
+    "finished": {
+      "title": "Terminadas ({{count}})",
+      "section": "Mostrar u ocultar las tareas terminadas"
+    },
+    "archive": {
+      "done_one": "Tarea archivada",
+      "done_other": "{{count}} tareas archivadas",
+      "confirmTitle": "Archivar tareas terminadas",
+      "confirmBody_one": "{{count}} tarea terminada pasará al archivo. Puedes recuperarla cuando quieras (Mostrar archivadas).",
+      "confirmBody_other": "{{count}} tareas terminadas pasarán al archivo. Puedes recuperarlas cuando quieras (Mostrar archivadas).",
+      "confirmGo": "Archivar",
+      "confirmChildren_one": "Todavía tiene {{count}} tarea hija sin archivar: su rama saldrá del árbol y de la vista por día. Puedes recuperarla cuando quieras (Mostrar archivadas).",
+      "confirmChildren_other": "Todavía tiene {{count}} tareas hijas sin archivar: su rama saldrá del árbol y de la vista por día. Puedes recuperarla cuando quieras (Mostrar archivadas).",
+      "nodeConfirmTitle": "¿Archivar «{{title}}»?"
+    }
+  },
+  "home": {
+    "title": "Inicio",
+    "greetingMorning": "Buenos días",
+    "greetingAfternoon": "Buenas tardes",
+    "greetingNight": "Buenas noches",
+    "pillApprovals": "esperan tu permiso",
+    "pillReview": "para revisar",
+    "pillWorking": "agentes trabajando",
+    "askPlaceholder": "Pídele algo a {{name}}…",
+    "askPlaceholderNoAgent": "Crea un agente para empezar",
+    "ask": "Empezar chat",
+    "sugInbox": "Resume mi bandeja de entrada",
+    "sugWeek": "Prepara mi semana",
+    "sugBlocked": "¿Qué está bloqueado?",
+    "waiting": "Te esperan",
+    "waitingLead": "acciones pendientes de tu permiso",
+    "waitingEmpty": "Nada pendiente. Tus agentes van solos.",
+    "anAgent": "Un agente",
+    "wants": "quiere",
+    "openInChat": "Ver en el chat",
+    "moreApprovals": "+{{n}} más",
+    "team": "Tu equipo ahora",
+    "active": "activos",
+    "noAgents": "Aún no tienes agentes.",
+    "workingOn": "Trabajando en «{{title}}»",
+    "idle": "Sin tareas asignadas",
+    "projects": "Proyectos",
+    "noProjects": "Sin proyectos todavía.",
+    "pulse": "Pulso",
+    "kpiChatsToday": "chats hoy",
+    "kpiOpenTasks": "tareas abiertas",
+    "kpiWorking": "agentes activos",
+    "kpiApprovals": "aprobaciones",
+    "waitingLeadAny_one": "cosa espera tu respuesta",
+    "waitingLeadAny_other": "cosas esperan tu respuesta"
+  },
+  "automate": {
+    "title": "Automate",
+    "launcherSub": "Horarios, webhooks y eventos que crean trabajo",
+    "eyebrow": "Automate",
+    "headline": "Lo que corre solo.",
+    "headlineAccent": "solo.",
+    "lead": "{{count}} automatizaciones · {{active}} activas",
+    "leadEmpty": "Une un disparador —un horario, un webhook o un evento— con lo que debe pasar: una tarea, un mensaje a un canal o un flow.",
+    "new": "Nueva automatización",
+    "search": "Buscar automatizaciones…",
+    "loading": "Cargando automatizaciones…",
+    "noWorkspace": "Ningún workspace seleccionado",
+    "enable": "Activar",
+    "disable": "Desactivar",
+    "delete": "Eliminar",
+    "never": "nunca",
+    "status": {
+      "enabled": "Activa",
+      "disabled": "Desactivada"
+    },
+    "type": {
+      "scheduler": "Horario",
+      "webhook": "Webhook",
+      "event": "Evento",
+      "once": "Recordatorio"
+    },
+    "section": {
+      "scheduler": "Programadas",
+      "webhook": "Webhooks",
+      "event": "Eventos",
+      "once": "Recordatorios"
+    },
+    "action": {
+      "createTask": "Crear tarea",
+      "channelEvent": "Avisar en un canal",
+      "startFlow": "Lanzar flow"
+    },
+    "filters": {
+      "active": "Activas",
+      "disabled": "Desactivadas",
+      "clear": "Limpiar",
+      "results": "Resultados"
+    },
+    "card": {
+      "perDay": "{{avg}}/día",
+      "noRuns": "sin ejecuciones",
+      "last": "última {{time}}",
+      "openChannel": "Abrir canal"
+    },
+    "time": {
+      "justNow": "ahora mismo",
+      "minutesAgo": "hace {{count}} min",
+      "hoursAgo": "hace {{count}} h",
+      "daysAgo": "hace {{count}} d"
+    },
+    "empty": {
+      "title": "Aún no hay automatizaciones",
+      "text": "Empieza con un horario, un webhook o un evento. La primera se hace en un minuto.",
+      "filteredTitle": "Ninguna automatización coincide",
+      "filteredText": "Prueba otra búsqueda o limpia los filtros."
+    },
+    "errors": {
+      "load": "No se pudieron cargar las automatizaciones",
+      "toggle": "No se pudo actualizar el estado",
+      "delete": "No se pudo eliminar la automatización",
+      "save": "No se pudo guardar la automatización",
+      "regenerate": "No se pudo regenerar la URL",
+      "resources": "No se pudieron cargar proyectos, agentes y canales"
+    },
+    "deleteDialog": {
+      "title": "Eliminar automatización",
+      "body": "¿Eliminar \"{{name}}\"? Deja de dispararse al instante. Las tareas, mensajes y ejecuciones que ya produjo se conservan."
+    },
+    "detail": {
+      "back": "Automatizaciones",
+      "newTitle": "Nueva automatización",
+      "newLead": "Elige cuándo se dispara y qué hace. Ambas cosas se pueden cambiar después.",
+      "create": "Crear",
+      "save": "Guardar"
+    },
+    "form": {
+      "name": "Nombre",
+      "namePlaceholder": "p. ej. Issues de GitHub → tareas",
+      "nameRequired": "Ponle un nombre",
+      "enabled": "Activada",
+      "enabledHint": "Las automatizaciones desactivadas conservan su configuración pero nunca se disparan.",
+      "triggerSection": "¿Cuándo se dispara?",
+      "actionSection": "¿Qué pasa?",
+      "cron": "Expresión cron",
+      "cronHint": "5 campos: minuto · hora · día · mes · día de la semana. \"0 9 * * 1-5\" es laborables a las 09:00.",
+      "cronRequired": "Hace falta una expresión cron",
+      "timezone": "Zona horaria",
+      "timezoneHint": "Nombre IANA como Europe/Madrid. Vacío significa UTC.",
+      "eventPattern": "Patrón de evento",
+      "patternHint": "Topic a escuchar. * coincide con cualquier cosa.",
+      "patternRequired": "Hace falta un patrón de evento",
+      "filters": "Filtros",
+      "filtersHint": "Array JSON opcional. Los objetos se combinan con OR; los campos de un objeto con AND.",
+      "filtersInvalid": "Los filtros deben ser un array JSON de objetos",
+      "webhookHintCreate": "Al guardar se genera una URL única. Se muestra una sola vez: cópiala entonces.",
+      "webhookHintEdit": "Los sistemas externos hacen POST de JSON a la URL. Regenérala abajo para rotar el secreto.",
+      "project": "Proyecto",
+      "selectProject": "Elige un proyecto",
+      "projectRequired": "Elige un proyecto",
+      "agent": "Agente",
+      "selectAgent": "Elige un agente",
+      "agentRequired": "Elige un agente",
+      "column": "Columna",
+      "selectColumn": "Columna por defecto",
+      "channel": "Canal",
+      "selectChannel": "Elige un canal",
+      "channelRequired": "Elige un canal",
+      "flow": "Flow",
+      "selectFlow": "Elige un flow",
+      "flowRequired": "Elige un flow",
+      "flowProject": "Proyecto",
+      "titleTemplate": "Plantilla del título",
+      "templateHint": "Los marcadores {{payload.xxx}} se rellenan con el payload del disparador; {{now.date}} y {{now.time}} estampan la fecha/hora de ejecución; {{a || b || \"texto\"}} toma el primer valor no vacío. Obligatorio: un título vacío hace fallar la ejecución.",
+      "messageTemplate": "Mensaje",
+      "messagePlaceholder": "Buenos días: revisa el tablero y cuenta qué está bloqueado.",
+      "messageHint": "Lo que recibe el agente en el canal. Admite {{payload.xxx}}, {{topic}}, {{now.*}} (fecha/hora de ejecución) y alternativas {{a || b || \"texto\"}}. Obligatorio.",
+      "inputMapping": "Mapeo de entradas",
+      "inputMappingHint": "Objeto JSON opcional: entrada del flow → ruta con puntos dentro del payload.",
+      "inputMappingInvalid": "El mapeo de entradas debe ser un objeto JSON",
+      "onceAt": "Cuándo",
+      "onceAtHint": "Fecha y hora ISO 8601, p. ej. 2026-10-15T09:00. Se dispara una vez y la automatización se desactiva sola.",
+      "onceAtRequired": "Indica fecha y hora (ISO 8601)",
+      "onceAtPast": "Esa hora ya ha pasado",
+      "eventTopic": "Evento",
+      "selectTopic": "Elige un evento o escribe un patrón abajo",
+      "patternFields": "Campos del payload por los que puedes filtrar: {{fields}}",
+      "instructionsTemplate": "Plantilla de instrucciones",
+      "instructionsPlaceholder": "Cualifica el lead {{payload.fromName || payload.fromId}} y responde en el mismo chat.",
+      "instructionsHint": "Lo que tiene que hacer el agente. El payload completo llega además a la tarea como artefacto de entrada.",
+      "descriptionTemplate": "Plantilla de descripción",
+      "descriptionPlaceholder": "Telegram: mensaje de {{payload.fromName}} en {{payload.chatTitle}}",
+      "descriptionHint": "Resumen opcional de una línea para la tarjeta. Vacío = sin descripción.",
+      "titleTemplateRequired": "Hace falta una plantilla de título",
+      "instructionsTemplateRequired": "Hace falta una plantilla de instrucciones",
+      "messageRequired": "Hace falta un mensaje",
+      "templateInvalid": "Sintaxis de plantilla no admitida: {{error}}",
+      "cronQuotaWarning": "Este horario se dispara unas {{runs}} veces al día, pero tu plan permite {{limit}} ejecuciones de Automate al día entre todas las automatizaciones. Las que superen el límite se saltan. Espácialo o sube de plan.",
+      "channelHint": "El mensaje entra en esta conversación y despierta a su agente."
+    },
+    "webhook": {
+      "section": "Webhook",
+      "urlTitle": "URL secreta",
+      "urlHint": "Oculta tras la creación. Regenerarla invalida la anterior al instante.",
+      "regenerate": "Regenerar URL",
+      "calls": "Llamadas recientes",
+      "noCalls": "Aún no hay llamadas. Envía una prueba o apunta un sistema externo a la URL.",
+      "discriminator": "discriminador {{value}}",
+      "noDiscriminator": "sin discriminador",
+      "created": "creada",
+      "updated": "actualizada"
+    },
+    "test": {
+      "label": "Payload de prueba",
+      "send": "Enviar prueba",
+      "invalid": "El payload debe ser un objeto JSON",
+      "created": "Disparada: {{target}}",
+      "updated": "Añadida a la tarea {{target}}",
+      "failed": "La prueba falló"
+    },
+    "url": {
+      "title": "URL del webhook",
+      "warning": "Esta URL se muestra una sola vez. Cópiala ahora: regenerarla más tarde la sustituye.",
+      "copyFailed": "Portapapeles no disponible: selecciona la URL y cópiala a mano.",
+      "done": "Listo"
+    },
+    "runs": {
+      "section": "Ejecuciones recientes",
+      "none": "Aún no hay ejecuciones.",
+      "ok": "ok",
+      "failed": "fallida",
+      "skipped": "saltada",
+      "skippedQuota": "Saltada: el presupuesto diario de Automate de tu plan estaba agotado",
+      "skippedBilling": "Saltada: las horas de agente o un pago lo bloquearon"
+    },
+    "quota": {
+      "usage": "{{used}} de {{limit}} ejecuciones hoy · plan {{plan}} · se reinicia a las {{time}}",
+      "exhausted": "Las {{limit}} ejecuciones de hoy de tu plan {{plan}} están agotadas · se reanudan a las {{time}}",
+      "busiest": "“{{name}}” se ha ejecutado {{count}} veces hoy",
+      "review": "Revisar",
+      "upgrade": "Subir de plan"
+    }
+  },
+  "permissions": {
+    "waitTitleAny": "Te esperan.",
+    "waitTitle": "Esperan tu permiso.",
+    "openChat": "Abrir el chat"
+  },
+  "markdownViewer": {
+    "share": {
+      "button": "Compartir",
+      "published": "Publicado",
+      "linkCopied": "Enlace copiado",
+      "linkLabel": "Enlace público",
+      "copy": "Copiar",
+      "copyByHand": "Cópialo a mano",
+      "open": "Abrir",
+      "revoke": "Revocar",
+      "share": "Compartir…"
+    },
+    "view": {
+      "formatted": "Ver formateado",
+      "source": "Ver fuente"
+    }
+  },
+  "pendingApprovals": {
+    "headline": "Esperan tu permiso.",
+    "headlineAccent": "permiso.",
+    "lead": "Las herramientas sensibles piden permiso (Ask) por defecto. Nada caduca: siguen aquí hasta que decidas.",
+    "loading": "Cargando permisos…",
+    "emptyTitle": "Sin permisos pendientes",
+    "emptyText": "Cuando un agente necesite un permiso, aparecerá aquí para que lo apruebes.",
+    "summary": "{{tools}} herramientas en {{convs}} conversaciones",
+    "hint": "Cada permiso se decide por separado",
+    "toolCount_one": "{{count}} herramienta",
+    "toolCount_other": "{{count}} herramientas",
+    "openChat": "Abrir chat"
+  },
+  "authPanel": {
+    "title": "Autenticación",
+    "oauthTitle": "Conexión OAuth",
+    "credentials": "Credenciales",
+    "refresh": "Refrescar",
+    "connect": "Conectar con {{provider}}",
+    "reconnect": "Reconectar {{provider}}",
+    "connectNote": "Conecta tu cuenta de {{provider}} para que el agente pueda usar este servicio.",
+    "expiredNote": "Tu sesión ha caducado. Reconecta tu cuenta para continuar.",
+    "expiredAccount": "Sesión caducada — reconecta tu cuenta",
+    "errorValidating": "Error al validar credenciales.",
+    "status": {
+      "connected": "conectado",
+      "disconnected": "desconectado",
+      "expired": "expirado",
+      "error": "error"
+    },
+    "badge": {
+      "adminRequired": "admin requerido",
+      "connect": "conectar",
+      "configure": "configurar"
+    },
+    "github": {
+      "legacy": "Tu conexión OAuth está deprecada. Instala la Teros App una sola vez para seguir usando esta integración; tus repos siguen siendo los mismos.",
+      "connectNote": "Conecta tu cuenta de GitHub. Después instala la Teros GitHub App en tu cuenta o en las organizaciones cuyos repos usarán los agentes. Los commits, PRs y comentarios aparecen firmados con tu identidad.",
+      "notInstalled": "Conectado, pero la Teros GitHub App aún no está instalada en ninguna cuenta u organización, así que los agentes no llegan a ningún repo. Instálala donde estén tus repos.",
+      "installationsTitle": "Instalada en",
+      "organization": "organización",
+      "suspended": "suspendida",
+      "manage": "Gestionar en GitHub",
+      "manageA11y": "Gestionar {{account}} en GitHub",
+      "pendingPermissions": "GitHub espera que un propietario de {{account}} acepte un permiso nuevo: {{permissions}}. Hasta entonces los agentes no pueden cambiar esos archivos.",
+      "permission": {
+        "workflows": "Workflows (archivos de GitHub Actions)"
+      },
+      "review": "Revisar en GitHub",
+      "reviewA11y": "Revisar los permisos nuevos de {{account}} en GitHub",
+      "installHint": "¿No ves un repo? La Teros GitHub App tiene que estar instalada en la cuenta u organización dueña, con ese repo seleccionado.",
+      "install": "Instalar en GitHub",
+      "addAccount": "Añadir cuenta o elegir repos",
+      "installA11y": "Instalar la Teros GitHub App",
+      "cloneVisibility": "Los clones de los agentes se guardan en los archivos de este workspace, donde otros agentes del workspace con Terminal o Bash pueden leerlos. Se eliminan cuando dejan de usarse; el trabajo que aún no estaba en GitHub se sube antes a una rama teros/saved/… del mismo repo.",
+      "savedTitle": "Trabajo guardado de clones eliminados",
+      "savedMeta": "{{repo}} · guardado {{date}} UTC",
+      "savedOpen": "Abrir",
+      "savedOpenA11y": "Abrir {{branch}} en GitHub"
+    },
+    "disconnectConfirm": {
+      "title": "¿Desconectar {{provider}}?",
+      "message": "Esto quita tu conexión de {{provider}} para todos los agentes que usan esta app en este workspace. Dejarán de trabajar con {{provider}} hasta que vuelvas a conectar."
+    }
+  },
+  "githubCards": {
+    "verbs": {
+      "-health-check": {
+        "running": "Comprobando",
+        "completed": "Comprobado",
+        "failed": "Error al comprobar"
+      },
+      "list-repos": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "get-repo": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "create-repo": {
+        "running": "Creando",
+        "completed": "Creado",
+        "failed": "Error al crear"
+      },
+      "search-repos": {
+        "running": "Buscando",
+        "completed": "Buscados",
+        "failed": "Error al buscar"
+      },
+      "list-issues": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "get-issue": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "create-issue": {
+        "running": "Creando",
+        "completed": "Creado",
+        "failed": "Error al crear"
+      },
+      "update-issue": {
+        "running": "Actualizando",
+        "completed": "Actualizado",
+        "failed": "Error al actualizar"
+      },
+      "add-issue-comment": {
+        "running": "Añadiendo comentario",
+        "completed": "Comentario añadido",
+        "failed": "Error al añadir comentario"
+      },
+      "add-labels-to-issue": {
+        "running": "Añadiendo etiquetas",
+        "completed": "Etiquetas añadidas",
+        "failed": "Error al añadir etiquetas"
+      },
+      "search-issues": {
+        "running": "Buscando",
+        "completed": "Buscados",
+        "failed": "Error al buscar"
+      },
+      "list-pulls": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "get-pull": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "create-pull": {
+        "running": "Creando",
+        "completed": "Creado",
+        "failed": "Error al crear"
+      },
+      "merge-pull": {
+        "running": "Mergueando",
+        "completed": "Mergueado",
+        "failed": "Error al merguear"
+      },
+      "list-pr-files": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "list-pr-commits": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "list-pr-review-comments": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "request-reviewers": {
+        "running": "Solicitando revisión",
+        "completed": "Revisión solicitada",
+        "failed": "Error al solicitar revisión"
+      },
+      "create-pr-review": {
+        "running": "Enviando review",
+        "completed": "Review enviada",
+        "failed": "Error al enviar review"
+      },
+      "list-branches": {
+        "running": "Cargando",
+        "completed": "Consultadas",
+        "failed": "Error al cargar"
+      },
+      "get-branch": {
+        "running": "Cargando",
+        "completed": "Consultada",
+        "failed": "Error al cargar"
+      },
+      "create-branch": {
+        "running": "Creando",
+        "completed": "Creada",
+        "failed": "Error al crear"
+      },
+      "list-commits": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "get-commit": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "compare-commits": {
+        "running": "Comparando",
+        "completed": "Comparados",
+        "failed": "Error al comparar"
+      },
+      "list-workflows": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "list-workflow-runs": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "get-workflow-run": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "list-workflow-run-jobs": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "trigger-workflow": {
+        "running": "Disparando",
+        "completed": "Disparado",
+        "failed": "Error al disparar"
+      },
+      "rerun-workflow-run": {
+        "running": "Re-ejecutando",
+        "completed": "Re-ejecutado",
+        "failed": "Error al re-ejecutar"
+      },
+      "cancel-workflow-run": {
+        "running": "Cancelando",
+        "completed": "Cancelado",
+        "failed": "Error al cancelar"
+      },
+      "list-releases": {
+        "running": "Cargando",
+        "completed": "Consultados",
+        "failed": "Error al cargar"
+      },
+      "create-release": {
+        "running": "Creando",
+        "completed": "Creado",
+        "failed": "Error al crear"
+      },
+      "get-file-content": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "create-or-update-file": {
+        "running": "Escribiendo",
+        "completed": "Escrito",
+        "failed": "Error al escribir"
+      },
+      "search-code": {
+        "running": "Buscando",
+        "completed": "Buscado",
+        "failed": "Error al buscar"
+      },
+      "get-user": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "get-installation-context": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "clone-repo": {
+        "running": "Clonando",
+        "completed": "Clonado",
+        "failed": "Error al clonar"
+      },
+      "get-rate-limit": {
+        "running": "Consultando",
+        "completed": "Consultado",
+        "failed": "Error al consultar"
+      },
+      "dispatch-event": {
+        "running": "Despachando",
+        "completed": "Despachado",
+        "failed": "Error al despachar"
+      },
+      "create-check-run": {
+        "running": "Creando check",
+        "completed": "Check creado",
+        "failed": "Error al crear check"
+      },
+      "update-check-run": {
+        "running": "Actualizando check",
+        "completed": "Check actualizado",
+        "failed": "Error al actualizar check"
+      },
+      "git-status": {
+        "running": "Consultando",
+        "completed": "Consultado",
+        "failed": "Error al consultar"
+      },
+      "git-add": {
+        "running": "Añadiendo",
+        "completed": "Añadido",
+        "failed": "Error al añadir"
+      },
+      "git-commit": {
+        "running": "Commiteando",
+        "completed": "Commiteado",
+        "failed": "Error al commitear"
+      },
+      "git-push": {
+        "running": "Pusheando",
+        "completed": "Pusheado",
+        "failed": "Error al pushear"
+      },
+      "git-checkout": {
+        "running": "Cambiando",
+        "completed": "Cambiado",
+        "failed": "Error al cambiar"
+      },
+      "git-rm": {
+        "running": "Eliminando",
+        "completed": "Eliminado",
+        "failed": "Error al eliminar"
+      },
+      "git-mv": {
+        "running": "Moviendo",
+        "completed": "Movido",
+        "failed": "Error al mover"
+      },
+      "git-read-file": {
+        "running": "Leyendo",
+        "completed": "Leído",
+        "failed": "Error al leer"
+      },
+      "git-write-file": {
+        "running": "Escribiendo",
+        "completed": "Escrito",
+        "failed": "Error al escribir"
+      },
+      "git-list-files": {
+        "running": "Listando",
+        "completed": "Listados",
+        "failed": "Error al listar"
+      },
+      "git-pull": {
+        "running": "Pulleando",
+        "completed": "Pulleado",
+        "failed": "Error al pullear"
+      },
+      "git-diff": {
+        "running": "Comparando",
+        "completed": "Comparado",
+        "failed": "Error al comparar"
+      },
+      "git-log": {
+        "running": "Cargando",
+        "completed": "Consultado",
+        "failed": "Error al cargar"
+      },
+      "git-batch-commit": {
+        "running": "Commiteando",
+        "completed": "Commiteado",
+        "failed": "Error al commitear"
+      },
+      "git-stash": {
+        "running": "Stasheando",
+        "completed": "Stasheado",
+        "failed": "Error al stashear"
+      },
+      "git-merge": {
+        "running": "Mergueando",
+        "completed": "Mergueado",
+        "failed": "Error al merguear"
+      },
+      "git-rebase": {
+        "running": "Rebaseando",
+        "completed": "Rebaseado",
+        "failed": "Error al rebasar"
+      },
+      "git-reset": {
+        "running": "Reseteando",
+        "completed": "Reseteado",
+        "failed": "Error al resetear"
+      },
+      "git-cherry-pick": {
+        "running": "Cherry-pickeando",
+        "completed": "Cherry-pickeado",
+        "failed": "Error al cherry-pickear"
+      },
+      "git-config": {
+        "running": "Configurando",
+        "completed": "Configurado",
+        "failed": "Error al configurar"
+      },
+      "git-tag": {
+        "running": "Etiquetando",
+        "completed": "Etiquetado",
+        "failed": "Error al etiquetar"
+      },
+      "git-remote": {
+        "running": "Configurando remote",
+        "completed": "Remote configurado",
+        "failed": "Error al configurar remote"
+      },
+      "git-blame": {
+        "running": "Analizando",
+        "completed": "Analizado",
+        "failed": "Error al analizar"
+      },
+      "git-bisect": {
+        "running": "Biseccionando",
+        "completed": "Biseccionado",
+        "failed": "Error al biseccionar"
+      },
+      "git-fetch": {
+        "running": "Fetcheando",
+        "completed": "Fetcheado",
+        "failed": "Error al fetchear"
+      },
+      "_default": {
+        "running": "Cargando",
+        "completed": "Completado",
+        "failed": "Error"
+      }
+    },
+    "nouns": {
+      "branches": "ramas",
+      "gitOperation": "operación git",
+      "files": "archivos",
+      "prFiles": "archivos de PR",
+      "installationContext": "contexto de instalación",
+      "file": "archivo",
+      "code": "código",
+      "repositories": "repositorios",
+      "repository": "repositorio",
+      "user": "usuario de GitHub"
+    },
+    "details": {
+      "files": "{{count}} archivos",
+      "matches": "{{count}} coincidencias",
+      "found": "{{count}} encontrados",
+      "reused": "reutilizado, sin descargar nada",
+      "binary": "Archivo binario de {{size}} bytes; no se muestra su contenido.",
+      "truncated": "Se muestra la primera parte del archivo.",
+      "lines": "{{count}} líneas"
+    }
+  },
+  "caps": {
+    "sectionTitle": "Capacidades del sistema",
+    "powerHint": "Desactivadas por defecto — actívalas explícitamente. Dan al agente acceso profundo.",
+    "ambientToggle": "{{count}} capacidades ambientales · siempre activas",
+    "alwaysOn": "siempre activa",
+    "defaultOn": "activa por defecto",
+    "defaultOff": "inactiva por defecto",
+    "terminalHint": "bash + sesiones",
+    "memory": {
+      "name": "Memoria",
+      "desc": "Memoria a largo plazo con búsqueda vectorial — el agente recuerda entre conversaciones."
+    },
+    "tasks": {
+      "name": "Tareas",
+      "desc": "Lista jerárquica de tareas que el agente planifica, sigue y completa."
+    },
+    "boards": {
+      "name": "Boards",
+      "desc": "Proyectos kanban con tareas, dependencias y agentes runners."
+    },
+    "automate": {
+      "name": "Automate",
+      "desc": "Recordatorios, horarios, webhooks y disparadores de eventos."
+    },
+    "workflows": {
+      "name": "Workflows",
+      "desc": "Flujos visuales de pasos conectados que el agente ejecuta."
+    },
+    "terminal": {
+      "name": "Terminal",
+      "desc": "Ejecutar comandos shell y manejar sesiones de terminal visibles."
+    },
+    "filesystem": {
+      "name": "Filesystem",
+      "desc": "Leer y escribir ficheros en el volumen del workspace."
+    },
+    "browser": {
+      "name": "Browser",
+      "desc": "Automatización con navegador real — navegar, clicar, capturar, extraer."
+    },
+    "ui": {
+      "name": "Control de UI",
+      "desc": "Ver y conducir la pantalla del usuario — ventanas, foco, escritorios."
+    },
+    "messaging": {
+      "name": "Mensajería",
+      "desc": "Cómo te envía el agente imágenes, audio, ficheros y widgets."
+    },
+    "conversations": {
+      "name": "Conversaciones",
+      "desc": "Búsqueda en conversaciones y mensajes pasados."
+    },
+    "guide": {
+      "name": "Guía",
+      "desc": "Autoconocimiento de la plataforma — el agente consulta cómo funciona Teros."
+    },
+    "file-processor": {
+      "name": "Procesador de ficheros",
+      "desc": "OCR, transcripción y conversión de ficheros."
+    },
+    "datetime": {
+      "name": "DateTime",
+      "desc": "Reloj, calendario y utilidades de zonas horarias."
+    },
+    "feedback": {
+      "name": "Feedback",
+      "desc": "Reportar bugs y sugerencias al equipo de Teros."
+    }
+  },
+  "terosProvider": {
+    "title": "Proveedor Teros",
+    "sub": "Qué upstream y qué modelo sirven cada talla, por configuración y sin flags",
+    "upstreams": "Upstreams",
+    "keyPresent": "key presente",
+    "keyMissing": "sin key",
+    "zdr": "sin retención",
+    "notZdr": "sin ZDR, nunca se enruta",
+    "sizeL": "Model L",
+    "sizeM": "Model M",
+    "sizeS": "Model S",
+    "sizeLSub": "por defecto · el modelo de trabajo",
+    "sizeMSub": "rápido con razonamiento",
+    "sizeSSub": "tareas cortas, resúmenes, voz",
+    "laneInteractive": "Interactivo",
+    "laneInteractiveSub": "alguien espera — mensajes del usuario, voz",
+    "laneBackground": "Segundo plano",
+    "laneBackgroundSub": "nadie mirando — automatizaciones, tareas programadas, tareas internas",
+    "upstream": "Upstream",
+    "model": "Modelo",
+    "effort": "Razonamiento",
+    "vision": "visión",
+    "noVision": "sin visión",
+    "failover": "Failover",
+    "failoverSub": "Ante un error transitorio antes de producir salida, reintenta una vez en este upstream (on error) o ejecuta todo allí (cutover)",
+    "off": "Apagado",
+    "onError": "Ante error",
+    "cutover": "Cutover",
+    "test": "Probar",
+    "testing": "Probando…",
+    "testOk": "{{model}} respondió en {{ms}} ms",
+    "testImageOk": "ve la imagen",
+    "testImageNo": "no describió la imagen",
+    "testImageRerouted": "las imágenes van a {{model}}",
+    "testCatalogueStale": "el catálogo dice sin visión, avisa",
+    "testFailed": "Falló: {{error}}",
+    "save": "Guardar",
+    "saved": "Guardado",
+    "dirty": "Cambios sin guardar",
+    "default": "Por defecto",
+    "assigned": "asignable por usuario desde Billing",
+    "noConfigs": "No hay configuraciones del proveedor Teros",
+    "loadError": "No se pudo cargar la configuración del proveedor Teros"
   }
 }

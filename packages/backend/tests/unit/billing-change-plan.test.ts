@@ -163,7 +163,11 @@ describe("billing.change-plan — paid upgrade gate (TER-619)", () => {
 
     expect(err.code).toBe("CARD_DECLINED")
     expect(await activePlanId(db)).toBe("plan_starter")
-    expect(await invoiceCount(db)).toBe(0) // charge-before-grant: a failed charge persists nothing
+    // charge-before-grant: nothing paid; BIL-5 keeps a 'held' trace of the
+    // Stripe invoice the attempt produced, so reconciliation and a retry see it
+    expect(await db.collection("billing_invoices").countDocuments({ status: "paid" })).toBe(0)
+    const held = await db.collection("billing_invoices").findOne({ status: "held" })
+    expect(held?.externalReference).toBeString()
   })
 
   test("Growth→Pro with NO card is refused, stays on Growth", async () => {
@@ -229,6 +233,27 @@ describe("billing.change-plan — paid upgrade gate (TER-619)", () => {
   })
 })
 
+describe("billing.change-plan — failed charge leaves a reusable trace (BIL-5)", () => {
+  test("a declined attempt keeps its Stripe invoice; the retry with the same reqId reuses and pays it", async () => {
+    const { db, stripe, handler } = mkEnv()
+    stripe.chargeBehavior = () => {
+      throw stripeError({ type: "StripeCardError", code: "card_declined", message: "Your card was declined." })
+    }
+    await handler(ctx("u1"), { planId: "plan_growth", reqId: "r1" }).catch(() => {})
+    const held = await db.collection("billing_invoices").findOne({ status: "held" })
+    const createdBefore = stripe.calls.filter((c) => c.method === "createInvoice").length
+
+    stripe.chargeBehavior = () => {} // card fixed: payInvoice succeeds again
+    const res = await handler(ctx("u1"), { planId: "plan_growth", reqId: "r1" })
+
+    expect(res.kind).toBe("upgraded")
+    expect(stripe.calls.filter((c) => c.method === "createInvoice").length).toBe(createdBefore) // reused
+    const row = await db.collection("billing_invoices").findOne({ _id: held!._id })
+    expect(row?.status).toBe("paid")
+    expect(row?.externalReference).toBe(held!.externalReference)
+  })
+})
+
 describe("billing.change-plan — non-charging paths are untouched", () => {
   test("downgrade (Growth→Starter) is deferred: no charge, stays on Growth with a scheduled change", async () => {
     const { db, stripe, handler } = mkEnv({ sub: { planId: "plan_growth" } })
@@ -252,6 +277,50 @@ describe("billing.change-plan — non-charging paths are untouched", () => {
     expect(await activePlanId(db)).toBe("plan_growth")
     expect(payCalls(stripe)).toBe(0) // proration diff is 0 → no gate, no charge
     expect(await invoiceCount(db)).toBe(0)
+  })
+
+  test("BIL-1: picking the current plan with a pending downgrade cancels it — no new sub, hours kept", async () => {
+    const { db, stripe, handler } = mkEnv({
+      sub: {
+        planId: "plan_growth",
+        agentHoursUsed: 37,
+        scheduledPlanChange: { planId: "plan_starter", scheduledAt: D("2025-01-01") },
+      },
+    })
+
+    const res = await handler(ctx("u1"), { planId: "plan_growth" })
+
+    expect(res.kind).toBe("downgrade_cancelled")
+    expect(payCalls(stripe)).toBe(0)
+    const subs = await db.collection("billing_subscriptions").find({}).toArray()
+    expect(subs).toHaveLength(1) // edited in place, no fresh subscription
+    expect(subs[0]!.status).toBe("active")
+    expect(subs[0]!.agentHoursUsed).toBe(37) // the free-hours reset is gone
+    expect(subs[0]!.scheduledPlanChange).toBeUndefined()
+  })
+
+  test("BIL-1: a lateral change carries the period's hours, cursor and start", async () => {
+    const { db, handler } = mkEnv({
+      sub: { planId: "plan_lateral", agentHoursUsed: 25, lastBilledHourBucket: D("2025-06-01T10:00:00Z") },
+    })
+
+    await handler(ctx("u1"), { planId: "plan_growth" })
+
+    const active = await getActiveSubscription(db as unknown as Db, "u1")
+    expect(active!.planId).toBe("plan_growth")
+    expect(active!.agentHoursUsed).toBe(25)
+    expect(active!.lastBilledHourBucket).toEqual(D("2025-06-01T10:00:00Z"))
+    expect(active!.currentPeriodStart).toEqual(D("2020-01-01"))
+  })
+
+  test("a real upgrade still grants fresh hours", async () => {
+    const { db, handler } = mkEnv({ sub: { agentHoursUsed: 9 }, stripeDisabled: true })
+
+    await handler(ctx("u1"), { planId: "plan_growth" })
+
+    const active = await getActiveSubscription(db as unknown as Db, "u1")
+    expect(active!.planId).toBe("plan_growth")
+    expect(active!.agentHoursUsed).toBe(0)
   })
 
   test("Stripe disabled (manual-billing server): upgrade applies for free, gate cannot enforce", async () => {

@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const mergePull: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -20,6 +20,7 @@ export const mergePull: ToolConfig = {
     const { owner, repo, pull_number, commit_title, commit_message, merge_method } = args as {
       owner: string; repo: string; pull_number: number; commit_title?: string; commit_message?: string; merge_method?: string;
     };
+    assertOwnerRepo(owner, repo);
     return await githubRequest(context, `/repos/${owner}/${repo}/pulls/${pull_number}/merge`, {
       method: 'PUT',
       body: { commit_title, commit_message, merge_method: merge_method ?? 'merge' },

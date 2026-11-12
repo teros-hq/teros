@@ -86,29 +86,29 @@ const ALL_AGENTS = [AGENT_SUPER_MINE, AGENT_WS_SCOPED, AGENT_SUPER_WSOWNER, AGEN
 // ===========================================================================
 
 describe('usableAgentFilter (A2 shared predicate)', () => {
-  it('emits workspace clause + caller/owner superagent clause', () => {
+  it('emits workspace clause + caller-only superagent clause (owner superagents excluded)', () => {
     expect(usableAgentFilter(USER, WS, WS_OTHER_OWNER)).toEqual({
       $or: [
         { workspaceId: WS },
-        { ownerId: { $in: [USER, WS_OTHER_OWNER] }, workspaceId: { $in: [null, undefined] } },
+        { ownerId: USER, workspaceId: { $in: [null, undefined] } },
       ],
     })
   })
 
-  it('dedups the owner id when caller === workspace owner', () => {
+  it('same shape when caller === workspace owner', () => {
     expect(usableAgentFilter(USER, WS, USER)).toEqual({
       $or: [
         { workspaceId: WS },
-        { ownerId: { $in: [USER] }, workspaceId: { $in: [null, undefined] } },
+        { ownerId: USER, workspaceId: { $in: [null, undefined] } },
       ],
     })
   })
 
-  it('omits a null/undefined workspace owner from the $in', () => {
+  it('same shape with a null/undefined workspace owner', () => {
     expect(usableAgentFilter(USER, WS, null)).toEqual({
       $or: [
         { workspaceId: WS },
-        { ownerId: { $in: [USER] }, workspaceId: { $in: [null, undefined] } },
+        { ownerId: USER, workspaceId: { $in: [null, undefined] } },
       ],
     })
   })
@@ -121,6 +121,7 @@ describe('usableAgentFilter (A2 shared predicate)', () => {
 function wsService(canAccess: boolean): any {
   return { canAccess: mock(async () => canAccess) }
 }
+
 
 describe('assertCanCreateChannel (A2)', () => {
   it('rejects a non-member of the workspace', async () => {
@@ -151,12 +152,12 @@ describe('assertCanCreateChannel (A2)', () => {
     ).resolves.toBeUndefined()
   })
 
-  it("allows a member using the workspace owner's superagent", async () => {
+  it("DENIES a member using the workspace owner's personal superagent (owner superagents are private)", async () => {
     // WS is owned by WS_OTHER_OWNER here; USER is a member (canAccess true).
     const db = fakeDb({ agents: ALL_AGENTS, workspaces: [{ workspaceId: WS, ownerId: WS_OTHER_OWNER }] })
     await expect(
       assertCanCreateChannel(db, wsService(true), USER, WS, AGENT_SUPER_WSOWNER.agentId),
-    ).resolves.toBeUndefined()
+    ).rejects.toMatchObject({ code: 'ACCESS_DENIED' })
   })
 
   it("DENIES a member stamping their OWN workspace + a victim's private agent (load-bearing)", async () => {

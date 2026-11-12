@@ -249,13 +249,13 @@
     },
     "create-association": {
       "name": "create-association",
-      "description": "Crea una asociación entre dos objetos CRM de HubSpot (p. ej., contacto-empresa, oferta-contacto). Usa la API v4 de asociaciones. Parámetros: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "description": "Crea una asociación entre dos objetos CRM de HubSpot (p. ej., contacto-empresa, deal-contacto, tarea-deal). Usa la API v4 de asociaciones con el typeId HUBSPOT_DEFINED verificado para el par. Parámetros: fromObjectType, fromObjectId, toObjectType, toObjectId, associationTypeId?",
       "params": {
-        "fromObjectType": "Tipo de objeto de origen: contacts, companies, deals, tickets.",
+        "fromObjectType": "Tipo de objeto origen: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "fromObjectId": "ID de HubSpot del objeto de origen.",
-        "toObjectType": "Tipo de objeto de destino: contacts, companies, deals, tickets.",
+        "toObjectType": "Tipo de objeto destino: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "toObjectId": "ID de HubSpot del objeto de destino.",
-        "associationType": "ID o etiqueta del tipo de asociación (p. ej., \"contact_to_company\", \"deal_to_contact\"). Opcional — HubSpot usará el valor por defecto si se omite."
+        "associationTypeId": "ID de tipo de asociación opcional (p. ej. 216 para tarea-deal). Si se omite, se usa el typeId HUBSPOT_DEFINED verificado por defecto para el par."
       }
     },
     "delete-association": {
@@ -271,11 +271,11 @@
     },
     "list-associations": {
       "name": "list-associations",
-      "description": "Lista todas las asociaciones de un objeto de HubSpot. Parámetros: objectType, objectId, toObjectType, limit?",
+      "description": "Lista los registros asociados de un tipo dado para un objeto de HubSpot (p. ej., las tareas de un deal, las empresas de un contacto). Usa GET /crm/v4/objects/{objectType}/{objectId}/associations/{toObjectType}. Parámetros: objectType, objectId, toObjectType, limit?",
       "params": {
-        "objectType": "Tipo de objeto.",
+        "objectType": "Tipo de objeto del registro consultado.",
         "objectId": "ID del objeto en HubSpot.",
-        "toObjectType": "Tipo de objeto asociado a recuperar.",
+        "toObjectType": "Tipo de objeto asociado a recuperar (p. ej., tasks para un deal).",
         "limit": "Resultados máximos. Por defecto 100."
       }
     },
@@ -297,14 +297,14 @@
     },
     "create-engagement": {
       "name": "create-engagement",
-      "description": "Crea una interacción en HubSpot (llamada, correo, reunión, nota, tarea). Usa la API v3 de interacciones. Parámetros: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "description": "Crea una interacción en HubSpot (llamada, correo, reunión, nota, tarea). Usa la API v3 de interacciones. Parámetros: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?. startTime es opcional — si se omite, se usa la hora actual como timestamp de la interacción.",
       "params": {
         "type": "Tipo de interacción.",
         "subject": "Asunto o título de la interacción.",
         "body": "Cuerpo/contenido de la interacción.",
         "status": "Estado (p. ej., \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
-        "direction": "Dirección: INBOUND o OUTBOUND (para llamadas/correos).",
-        "startTime": "Hora de inicio en formato ISO (para reuniones/llamadas).",
+        "direction": "Dirección. Para llamadas: INBOUND o OUTBOUND. Para correos: EMAIL (saliente), INCOMING_EMAIL, FORWARDED_EMAIL o DRAFT_EMAIL (los valores legacy INBOUND/OUTBOUND se mapean automáticamente).",
+        "startTime": "Timestamp / fecha de vencimiento de la interacción, string ISO. Opcional — por defecto ahora. HubSpot exige hs_timestamp en todos los tipos de interacción.",
         "duration": "Duración en milisegundos (para llamadas).",
         "associatedObjectType": "Tipo de objeto asociado: contacts, companies, deals, tickets.",
         "associatedObjectId": "ID de HubSpot del objeto asociado.",
@@ -322,12 +322,14 @@
     },
     "list-engagements": {
       "name": "list-engagements",
-      "description": "Lista interacciones de HubSpot (llamadas, correos, reuniones, notas, tareas). Parámetros: type (call|email|meeting|note|task), limit?, after?",
+      "description": "Lista interacciones de HubSpot (llamadas, correos, reuniones, notas, tareas). Parámetros: type (call|email|meeting|note|task), limit?, after?, ownerId?, status?, properties?. ownerId filtra por propietario de HubSpot (hubspot_owner_id) — úsalo para \"mis tareas/interacciones\"; los IDs de propietario vienen de /crm/v3/owners. status filtra por la propiedad de estado del tipo (hs_task_status, hs_call_status, hs_email_status, hs_meeting_status; no soportado para notas). Cuando se pasa ownerId o status se usa el endpoint de búsqueda (POST /crm/v3/objects/{type}/search) porque el listado simple no soporta filtrado en servidor.",
       "params": {
         "type": "Tipo de interacción.",
         "limit": "Resultados por página. Mín 1, máx 100, por defecto 50.",
-        "after": "Cursor de paginación.",
-        "properties": "Propiedades adicionales a incluir."
+        "after": "Cursor de paginación (de una página anterior).",
+        "properties": "Propiedades adicionales a incluir.",
+        "ownerId": "Filtrar por ID de propietario de HubSpot (hubspot_owner_id), p. ej. para \"mis tareas\". Los IDs vienen de /crm/v3/owners.",
+        "status": "Filtrar por estado, p. ej. NOT_STARTED | IN_PROGRESS | WAITING | COMPLETED para tareas. Se mapea a la propiedad de estado del tipo; no soportado para notas."
       }
     },
     "delete-engagement": {

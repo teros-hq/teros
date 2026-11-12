@@ -21,7 +21,17 @@ import backfillMigration from "../../src/migrations/20260630_001_backfill_defaul
 import { ProviderService } from "../../src/services/provider-service"
 import { InMemoryDb } from "./_stripe-test-helpers"
 
-const TEROS_BASE_MODEL = "teros-kimi-k2.6"
+// Active catalogue model used to assert the snapshot is populated: since TPROV
+// the only active teros models are the sizes (legacy ids are deprecated).
+const TEROS_BASE_MODEL = "teros-l"
+
+// Decision D1 (Pablo, 2026-10-17): the shared Teros provider defaults to the
+// full GLM 5.3 — never a reserved model (`teros-glm-5p3-fast`, exclusive to
+// Alice) and never whatever `models[0]` happens to be (the original bug: array
+// order silently made the reserved fast model the default for unpinned agents).
+// TPROV-REQ-1: size L is the default.
+const TEROS_DEFAULT_MODEL = "teros-l"
+const TEROS_RESERVED_MODEL = "teros-glm-5p3-fast"
 
 describe("ProviderService.ensureDefaultTerosProvider", () => {
   it("provisions a credential-free Teros default with catalogue models", async () => {
@@ -42,8 +52,11 @@ describe("ProviderService.ensureDefaultTerosProvider", () => {
     expect(provider.models.length).toBeGreaterThan(0)
     const modelIds = provider.models.map((m) => m.modelId)
     expect(modelIds).toContain(TEROS_BASE_MODEL)
-    // defaultModelId is the first catalogue model (what Step 2 falls back to).
-    expect(provider.defaultModelId).toBe(provider.models[0]?.modelId)
+    // defaultModelId is the explicit D1 default (teros-glm-5p3), independent of
+    // catalogue ordering, and never a reserved model.
+    expect(provider.defaultModelId).toBe(TEROS_DEFAULT_MODEL)
+    expect(provider.defaultModelId).not.toBe(TEROS_RESERVED_MODEL)
+    expect(modelIds).toContain(TEROS_DEFAULT_MODEL)
 
     // Persisted, queryable as the user's default.
     const stored = await db

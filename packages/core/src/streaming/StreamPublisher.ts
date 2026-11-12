@@ -38,6 +38,8 @@ export interface LLMUsageData {
   cacheWriteTokens?: number;
   /** Reasoning tokens reported by the provider usage (Together; absent on Fireworks). TER-615. */
   reasoningTokens?: number;
+  /** True when tokens were estimated locally (provider returned no usage). */
+  usageEstimated?: boolean;
 }
 
 /**
@@ -389,6 +391,7 @@ export class StreamPublisher {
     error?: string,
     duration?: number,
     attachments?: Array<{ url: string; mime: string; filename?: string }>,
+    toolName?: string,
   ): void {
     if (!this.config.enabled) {
       return;
@@ -404,6 +407,7 @@ export class StreamPublisher {
         sessionId,
         timestamp: Date.now(),
         toolId,
+        toolName,
         status,
         output,
         error,

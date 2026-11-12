@@ -11,6 +11,45 @@ export const MODELS_OPENAI: ModelDefinition[] = [
 
   // --- GPT-5 Series (Flagship) ---
   {
+    modelId: "gpt-5.6-sol",
+    provider: "openai",
+    name: "GPT-5.6 Sol",
+    description:
+      "OpenAI's latest flagship model. Superior coding, reasoning, and agentic capabilities. 1.05M context.",
+    modelString: "gpt-5.6-sol",
+    capabilities: {
+      streaming: true,
+      tools: true,
+      vision: true,
+      thinking: true,
+    },
+    context: {
+      maxTokens: 1050000,
+      maxOutputTokens: 128000,
+    },
+    defaults: {
+      temperature: 0.7,
+      maxTokens: 8192,
+    },
+    reservations: {
+      systemPrompt: 6000,
+      memory: 12000,
+      output: 8192,
+    },
+    compaction: {
+      // 850k leaves 200k headroom > maxOutputTokens (128000): a turn at the
+      // trigger plus a full-length output stays under the 1.05M context cap.
+      triggerAt: 850000,
+      targetSize: 600000,
+      protectRecent: 25000,
+    },
+    cost: {
+      input: 5,
+      output: 30,
+    },
+    status: "active",
+  },
+  {
     modelId: "gpt-5.5",
     provider: "openai",
     name: "GPT-5.5",

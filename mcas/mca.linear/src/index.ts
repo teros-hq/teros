@@ -25,6 +25,7 @@ import {
   createProject,
   deleteIssue,
   deleteLabel,
+  deleteProject,
   getIssue,
   listIssues,
   listLabels,
@@ -53,6 +54,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Linear API key and connectivity.',
   parameters: {
     type: 'object',
@@ -124,6 +126,7 @@ server.tool('linear-add-comment', addComment);
 
 server.tool('linear-list-projects', listProjects);
 server.tool('linear-create-project', createProject);
+server.tool('linear-delete-project', deleteProject);
 server.tool('linear-add-issues-to-project', addIssuesToProject);
 server.tool('linear-remove-issues-from-project', removeIssuesFromProject);
 

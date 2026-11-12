@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import { TASK_LIST_PROJECTION } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { AutoplayService } from '../../../services/autoplay-service'
 
@@ -41,8 +42,14 @@ export function createGetBoardHandler(
       throw new HandlerError('NOT_FOUND', 'Board not found')
     }
 
-    // Get tasks grouped by column
-    const tasks = await boardService.listTasks(board.boardId)
+    // Get tasks grouped by column.
+    // TASK_LIST_PROJECTION strips per-task fields that only the task detail
+    // needs (activity, progressNotes, instructions, input/output, workflow
+    // data). Large boards otherwise ship ~14 MB+ payloads that exceed the
+    // client's 10s WS timeout. The detail panel hydrates via board.get-task.
+    const tasks = await boardService.listTasks(board.boardId, {
+      projection: TASK_LIST_PROJECTION,
+    })
 
     // Resolve agent names/avatars
     const agentIds = boardService.collectAgentIds(tasks)

@@ -64,6 +64,9 @@ export const PROVIDERS = {
   fireworks: { id: 'fireworks', label: 'Fireworks', color: '#C4546A', cacheSupport: 'auto' },
   together: { id: 'together', label: 'Together', color: '#C4923B', cacheSupport: 'auto' },
   cloudflare: { id: 'cloudflare', label: 'Cloudflare', color: '#C4713B', cacheSupport: 'auto' },
+  // Helmcode — flat-rate subscription per API key (not per-token). Runs via
+  // OpenAICompatibleLLMAdapter so cacheSupport 'auto' like fireworks/together/cloudflare.
+  helmcode: { id: 'helmcode', label: 'Helmcode', color: '#4934E1', cacheSupport: 'auto', billing: 'subscription' },
   zhipu: { id: 'zhipu', label: 'Zhipu', color: '#7A54A6', cacheSupport: 'off' },
   'zhipu-coding': { id: 'zhipu-coding', label: 'Zhipu Coding', color: '#7A54A6', cacheSupport: 'off', billing: 'subscription' },
   minimax: { id: 'minimax', label: 'MiniMax', color: '#C4546A', cacheSupport: 'off' },

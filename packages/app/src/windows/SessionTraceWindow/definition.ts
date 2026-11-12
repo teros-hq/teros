@@ -11,18 +11,23 @@
 
 import { ListTree } from "@tamagui/lucide-icons"
 import type { WindowTypeDefinition } from "../../services/windowRegistry"
-import { SessionTraceWindowContent, type SessionTraceWindowProps } from "./SessionTraceWindowContent"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+import type { SessionTraceWindowProps } from "./SessionTraceWindowContent"
+const SessionTraceWindowContent = lazyWithRetry(() =>
+  import("./SessionTraceWindowContent").then((m) => ({ default: m.SessionTraceWindowContent })),
+)
 
 export const sessionTraceWindowDefinition: WindowTypeDefinition<SessionTraceWindowProps> = {
   type: "session-trace",
+  audience: "admin",
   displayName: "Session Trace",
   icon: ListTree,
-  color: "#06B6D4",
+  phIcon: "tree-structure",
+  color: "#6F27FF",
   // Drill-only: reached from Agent Activity / the Monitoring hub's Recent Traces,
   // never opened context-free from the launcher (the paste-an-id empty state was
   // a dead entry point). The in-window id input stays for power users.
   isLauncher: false,
-  adminOnly: true,
   component: SessionTraceWindowContent,
 
   defaultSize: { width: 1000, height: 800 },

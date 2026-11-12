@@ -178,6 +178,17 @@
     "list-rules": {
       "name": "list-rules",
       "description": "List all inbox rules (mail filters) for the account."
+    },
+    "set-signature": {
+      "name": "set-signature",
+      "description": "Save the email signature (HTML) for the connected Outlook account. Microsoft Graph does not expose the mailbox signature, so this is the canonical way to configure it. The signature is stored per-account and automatically appended to outgoing emails (create-draft, update-draft, send-message, reply-message, forward-message comment) — never invented or reconstructed from other emails. If the user wants a signature but none is configured, ask them for it (HTML preferred) and save it with this tool.",
+      "params": {
+        "signatureHtml": "The signature as HTML (e.g. with logo <img>, styled name, role, company). Images must use absolute https URLs."
+      }
+    },
+    "get-signature": {
+      "name": "get-signature",
+      "description": "Get the configured email signature (HTML) for the connected Outlook account, if any. Use before composing emails to check whether a signature is configured."
     }
   },
   "name": "Outlook",

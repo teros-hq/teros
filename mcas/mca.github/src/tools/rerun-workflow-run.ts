@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const rerunWorkflowRun: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -31,6 +31,7 @@ export const rerunWorkflowRun: ToolConfig = {
       mode?: 'failed' | 'all';
       enable_debug_logging?: boolean;
     };
+    assertOwnerRepo(owner, repo);
     const endpoint =
       mode === 'all'
         ? `/repos/${owner}/${repo}/actions/runs/${run_id}/rerun`

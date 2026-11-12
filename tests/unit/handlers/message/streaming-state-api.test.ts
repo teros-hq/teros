@@ -24,9 +24,6 @@ const PUBLIC_EXPORTS = [
   'createStreamingState',
   'notifyObserverPermission',
   'persistToolStatus',
-  // Field-level persist for the desynced-map case (writes only the status
-  // transition so it can't clobber toolName/mcaId/input persisted at start).
-  'persistToolStatusFields',
 ];
 
 // Pinned method surface of the object createStreamingHelpers returns.

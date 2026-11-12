@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ALL_DRIVES, ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { ALL_DRIVES, initializeGoogleClients, withAuthRetry } from '../lib';
 import { isTextualMimeType } from './_mime';
 
 async function streamToString(stream: AsyncIterable<Buffer>): Promise<string> {
@@ -30,7 +30,6 @@ export const getFileContent: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { fileId, mimeType: exportMimeType } = args as {
       fileId: string;

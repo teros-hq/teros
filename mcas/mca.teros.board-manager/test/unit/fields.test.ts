@@ -69,6 +69,33 @@ describe('TASK_WITH_PROGRESS_FIELDS', () => {
   });
 });
 
+describe('TASK_FIELDS — workflow extension fields (§WF2)', () => {
+  // These fields are present when a task is created by the workflow engine.
+  // The WsBoardBridge.getTask() in mca.teros.workflows reads output.data
+  // from the get_task response — if these are missing from the whitelist, they
+  // get stripped by pickFields() and the engine never sees the output data.
+  const WORKFLOW_FIELDS = [
+    'workflowInputGate',
+    'workflowOutputGate',
+    'input',
+    'output',
+    'workflowExecutionId',
+    'workflowNodeId',
+  ] as const;
+
+  it('includes all 6 workflow extension fields in TASK_FIELDS', () => {
+    for (const field of WORKFLOW_FIELDS) {
+      expect(TASK_FIELDS).toContain(field);
+    }
+  });
+
+  it('includes all 6 workflow extension fields in TASK_WITH_PROGRESS_FIELDS', () => {
+    for (const field of WORKFLOW_FIELDS) {
+      expect(TASK_WITH_PROGRESS_FIELDS).toContain(field);
+    }
+  });
+});
+
 describe('PROJECT_FIELDS', () => {
   it('includes identifiers and name', () => {
     expect(PROJECT_FIELDS).toContain('projectId');

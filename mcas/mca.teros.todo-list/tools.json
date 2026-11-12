@@ -1,0 +1,1560 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.todo-list",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies MongoDB connectivity.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "version": "2.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "add-node",
+      "description": "Add a new node to the tree. If parentId is omitted or null, adds as a root-level node. If parentId is provided, it must be an existing node ID — a wrong or truncated parentId returns \"Parent node not found\" and no node is created. kind \"task\" (default) is completable and has a state (default \"planning\" — an idea not yet ready; pass \"pending\" when the task is ready to start); kind \"group\" is a non-completable container (Home, Work…) with no state. A task cannot contain groups (GROUP_IN_TASK). Returns: { node: { nodeId, parentId, text, description, instructions, kind, state, blockedReason, reportedProgress, completed, collapsed, position, createdAt, updatedAt }, parentText: string | null } — node.nodeId is the complete ID of the created node.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "string",
+            "description": "Parent node ID to nest under — must exist (error if not found). Omit or null for a root-level node."
+          },
+          "text": {
+            "type": "string",
+            "description": "The node title. Max 2000 chars."
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description under the title. Max 2000 chars."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "Detailed markdown instructions for what to do with this task. Max 10000 chars."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "group"
+            ],
+            "description": "task (default, completable) or group (container without state). A group cannot go inside a task."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "pending",
+              "working",
+              "review",
+              "done"
+            ],
+            "description": "Initial state of a task (default planning — an idea not yet ready; pass pending when the task is ready to start). Not for groups. To block a task use set-state with a reason."
+          },
+          "expectedOutput": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Output the task must deliver: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file only: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form only: 1–40 fields [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null clears it. set-output rejects an output that does not match it (OUTPUT_MISMATCH). Not for groups.",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "form",
+                  "file"
+                ],
+                "description": "Format of the output."
+              },
+              "description": {
+                "type": "string",
+                "description": "What the output must contain. Max 500 chars."
+              },
+              "fileType": {
+                "type": "string",
+                "enum": [
+                  "pdf",
+                  "docx",
+                  "xlsx",
+                  "csv",
+                  "png",
+                  "jpg",
+                  "json",
+                  "md",
+                  "txt",
+                  "html",
+                  "other"
+                ],
+                "description": "format=file only: the exact file type (other = any file)."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "format=form only: the fields the output form must have (1–40). A form output must carry every required field and no field outside this list."
+              }
+            },
+            "required": [
+              "format"
+            ]
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "2.1.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-node",
+      "description": "Get full detail of a single node, including instructions and the complete log. Use this when you need the full content of a task (get-tree only returns lightweight fields). Returns: { node: { nodeId, parentId, text, description, instructions, kind, state, blockedReason, allowedTransitions, progress, reportedProgress, input, output, hasInput, hasOutput, expectedOutput, completed, collapsed, position, log: [{ timestamp, text, actor }], createdAt, updatedAt } }. actor is who wrote the log entry ({ kind: user|agent|system, id? }), missing on older entries. progress is the effective % (reported, else 100 for review/done, else derived from the children); input/output are { format: markdown|form|file, ... } or null (a file carries objectId, url, name, mime, size); expectedOutput is the output the task must deliver ({ format, description?, fileType?, fields? }) or null.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to retrieve."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get-tree",
+      "description": "Get the tree of nodes for the current user as a nested hierarchy (Workflowy-style). Archived nodes are hidden by default (pass includeArchived: true to see them, subtrees under archived ancestors included). Returns: { tree: [{ nodeId, parentId, text, description, kind, state, blockedReason, completed, collapsed, position, progress, reportedProgress, hasInput, hasOutput, archived, archivedAt, completedAt, childCount, completedChildren, children?: [...] }] } — kind is task|group (groups have state null), progress is the effective % (reported, else 100 for review/done, else derived from the children), completedAt is when the task reached done/cancelled (null while open). Pass nodeId to get only the subtree rooted at that node. Pass depth=0 to get only root-level nodes without children (lazy loading — each node still reports childCount/completedChildren so the UI can show expand arrows). depth=-1 (default) returns the full nested tree. depth=N returns N levels of children. Tree nodes do NOT include instructions or log — use get-node for full detail.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Optional: get only the subtree rooted at this node."
+          },
+          "depth": {
+            "type": "number",
+            "description": "Tree depth to return. -1 = full tree (default), 0 = root level only (no children), N = N levels of children. Use 0 for lazy loading to keep responses small.",
+            "default": -1
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived nodes and their subtrees (default false — they are hidden)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.3.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "update-node",
+      "description": "Update the text, description, instructions and/or expected output definition of a node. Omitted fields are unchanged. Returns: { node: { nodeId, text, description, instructions, expectedOutput, updatedAt } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to update."
+          },
+          "text": {
+            "type": "string",
+            "description": "New node title. Max 2000 chars."
+          },
+          "description": {
+            "type": "string",
+            "description": "New short description. Max 2000 chars. Pass empty string to clear."
+          },
+          "instructions": {
+            "type": "string",
+            "description": "New detailed markdown instructions. Max 10000 chars. Pass empty string to clear."
+          },
+          "expectedOutput": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Output the task must deliver: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file only: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form only: 1–40 fields [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null clears it. set-output rejects an output that does not match it (OUTPUT_MISMATCH). Not for groups.",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "form",
+                  "file"
+                ],
+                "description": "Format of the output."
+              },
+              "description": {
+                "type": "string",
+                "description": "What the output must contain. Max 500 chars."
+              },
+              "fileType": {
+                "type": "string",
+                "enum": [
+                  "pdf",
+                  "docx",
+                  "xlsx",
+                  "csv",
+                  "png",
+                  "jpg",
+                  "json",
+                  "md",
+                  "txt",
+                  "html",
+                  "other"
+                ],
+                "description": "format=file only: the exact file type (other = any file)."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "format=form only: the fields the output form must have (1–40). A form output must carry every required field and no field outside this list."
+              }
+            },
+            "required": [
+              "format"
+            ]
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "2.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "toggle-complete",
+      "description": "Toggle the completed state of a task: a task that is not done becomes done (100%), a done task goes back to pending. Cascades to all descendants — marking a parent complete also marks all children complete, and vice versa. Adds a log entry automatically. Groups cannot be completed (NOT_A_TASK). For any other state change use set-state. Returns: { node: { nodeId, state, reportedProgress, completed, updatedAt } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to toggle completion on."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "toggle-collapse",
+      "description": "Toggle the collapsed/expanded state of a node (hide/show children in Workflowy). Returns: { node: { nodeId, collapsed, updatedAt } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to toggle collapse on."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "move-node",
+      "description": "Move a node to a different parent and/or position within the tree. newParentId must be an existing node ID — a wrong or truncated ID returns \"Parent node not found\" and nothing is moved. Omit newParentId to keep the current parent and only reorder among siblings; set it explicitly to null to move to root level. newPosition is the 0-based index among siblings. Detects circular moves (cannot move a node into itself or its own subtree). Returns: { node: { nodeId, parentId, position, updatedAt } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to move."
+          },
+          "newParentId": {
+            "type": "string",
+            "description": "New parent node ID — must exist (error if not found). Omit to keep the current parent (reorder only). Set explicitly to null to move to root (top-level)."
+          },
+          "newPosition": {
+            "type": "number",
+            "description": "0-based position among the new siblings (default 0)."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "delete-node",
+      "description": "Delete a node and ALL its descendants (entire subtree). Irreversible. Returns: { deleted: true, node: { text, description, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to delete. All children will be removed recursively."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "destructiveHint": true
+      }
+    },
+    {
+      "name": "search-nodes",
+      "description": "Search nodes by text across all of the user's nodes. Case-insensitive. Archived nodes are hidden by default (pass includeArchived: true to find archived work too). Returns: { results: [{ nodeId, text, description, completed, path, updatedAt }] } where path is a breadcrumb like \"Parent / Child / Match\". Max 50 results.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search text (case-insensitive). Min 1 char, max 500."
+          },
+          "includeArchived": {
+            "type": "boolean",
+            "description": "Include archived nodes in the results (default false — they are hidden)."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "set-archived",
+      "description": "Archive or unarchive one node to keep the tree clean: archived nodes disappear from get-tree, get-day and search-nodes (pass includeArchived: true to see them) and are recoverable (archived: false). Does NOT cascade: only this node is archived, and a node with non-archived children fails with HAS_ACTIVE_CHILDREN — archive children first (bottom-up). Unarchiving does not touch the descendants; a node under an archived parent stays hidden until the ancestors are unarchived too. Groups can be archived. Adds a log entry \"archived\"/\"unarchived\". Idempotent. Returns: { node: { nodeId, archived, archivedAt, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to archive (or unarchive)."
+          },
+          "archived": {
+            "type": "boolean",
+            "description": "true = archive (hide from the default views), false = unarchive (bring back)."
+          }
+        },
+        "required": [
+          "nodeId",
+          "archived"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "archive-finished",
+      "description": "Bulk-archive finished work to keep the tree clean: every task in state done (and cancelled unless includeCancelled: false) that is not archived yet. olderThanDays (optional) only archives tasks FINISHED at least that many days ago — use it for the auto-archive habit (\"archive finished tasks older than 7 days\"); without it, every finished task is archived. Tasks with non-archived children are skipped, not failed. Returns: { archived, skipped } counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeCancelled": {
+            "type": "boolean",
+            "description": "Also archive cancelled tasks (default true)."
+          },
+          "olderThanDays": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 3650,
+            "description": "Only archive tasks finished at least this many days ago (by completedAt). Omit to archive every finished task."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "add-log-entry",
+      "description": "Add a chronological log entry to a node. Used to track progress, notes, and history over time. Returns: { node: { nodeId, log: [{ timestamp, text }], updatedAt } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to add the log entry to."
+          },
+          "text": {
+            "type": "string",
+            "description": "The log entry text. Max 2000 chars."
+          }
+        },
+        "required": [
+          "nodeId",
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-state",
+      "description": "Move a task to another state: planning (idea, not defined yet) · pending (defined, ready to start) · working (started) · blocked (cannot continue — reason required) · review (work finished, awaiting a check) · done · cancelled (this task is no longer happening — from any open state). Allowed moves: planning→pending|cancelled; pending→working|done|planning|cancelled; working→review|blocked|pending|done|cancelled; blocked→working|planning|cancelled; review→done|working|cancelled; done→working (reopen — give a reason); cancelled→pending (reopen). Anything else fails with INVALID_TRANSITION. Entering review or done sets progress to 100; leaving them for an open state clears a 100 (any other value is kept). Cancelling removes the task from the day plan and clears its progress; a cancelled task is ignored by autoplay and does not count for its parent's derived progress. Groups have no state (NOT_A_TASK). Adds a log entry \"from → to\". Returns: { node: { nodeId, parentId, text, kind, state, blockedReason, reportedProgress, completed, hasInput, hasOutput, updatedAt, ... }, transition: { from, to } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "planning",
+              "pending",
+              "working",
+              "blocked",
+              "review",
+              "done",
+              "cancelled"
+            ],
+            "description": "Target state."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why. Required for blocked (what is missing / who it waits for — shown to the user). Recommended when reopening a done task. Max 2000 chars."
+          },
+          "reply": {
+            "type": "string",
+            "description": "Only for blocked → working (the answer to the blocked question, logged as \"Reply: <text>\") or review → working (why the task is sent back, logged as \"Sent back: <text>\"). When the task has a conversation it is posted there (a send-back as \"Sent back from review: <text>\") and its agent continues. Max 2000 chars."
+          }
+        },
+        "required": [
+          "nodeId",
+          "state"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-kind",
+      "description": "Convert a node between task and group, keeping its children. A group is a non-completable container (no state, progress or output); a task can be completed and contains only tasks. To group: fails with GROUP_IN_TASK if its parent is a task and HAS_OUTPUT if it has an output. To task: fails with GROUP_IN_TASK if it contains groups; it starts pending. Adds a log entry. Returns: { node: { nodeId, parentId, text, kind, state, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID to convert."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "task",
+              "group"
+            ],
+            "description": "Target kind."
+          }
+        },
+        "required": [
+          "nodeId",
+          "kind"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "set-progress",
+      "description": "Report how far a task is, as an integer percentage 0–100, or null to clear it (the progress is then 100 for a task in review/done, else derived from its children). Editable in every state, review and done included; groups have no progress (NOT_A_TASK). Adds a log entry. Returns: { node: { nodeId, reportedProgress, state, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "progress": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100,
+            "description": "Percentage 0–100, or null to clear."
+          }
+        },
+        "required": [
+          "nodeId",
+          "progress"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "set-input",
+      "description": "Set the input of a node — the data the task starts from — or clear it with null. Markdown and forms are stored on the node; a file arrives either as base64 data or as a path inside the workspace volume (the backend reads and uploads it) and is stored as { format: \"file\", objectId, url, name, mime, size }. Groups may hold input. Replacing an existing input that would actually change requires overwrite: true (OUTPUT_EXISTS otherwise); re-delivering the same thing is a no-op. Adds a log entry. Returns: { node: { nodeId, hasInput, input, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID."
+          },
+          "input": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "One of: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: value } } · { format: \"file\", path: \"/workspace/...\" (absolute path inside the workspace volume — the backend reads and uploads the file; name/mime optional, inferred from the filename) } · { format: \"file\", name, mime, data: base64 (max 10 MB, no data: prefix) — for in-memory files }. null clears it. Prefer path for any file that already exists in the workspace volume.",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "form",
+                  "file"
+                ]
+              },
+              "markdown": {
+                "type": "string",
+                "description": "format=markdown: the content. Max 50000 chars."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "format=form: the form fields (max 50)."
+              },
+              "values": {
+                "type": "object",
+                "description": "format=form: values keyed by field id."
+              },
+              "name": {
+                "type": "string",
+                "description": "format=file: file name. Optional with path (inferred from the filename); required with data."
+              },
+              "mime": {
+                "type": "string",
+                "description": "format=file: MIME type. Optional with path (inferred from the extension); required with data."
+              },
+              "data": {
+                "type": "string",
+                "description": "format=file: base64 content (max 10 MB decoded). In-memory files only — use path when the file exists in the workspace volume."
+              },
+              "path": {
+                "type": "string",
+                "description": "format=file: absolute path inside the workspace volume, e.g. \"/workspace/report.html\". The backend reads the file and uploads it — never generate base64 for a file that already exists on the volume."
+              }
+            }
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Set true to replace an existing input. Required when the node already has an input and the new one would change it."
+          }
+        },
+        "required": [
+          "nodeId",
+          "input"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-output",
+      "description": "Deliver the output of a task — its result (a summary in markdown, a filled form, or a file such as an invoice) — or clear it with null. A file arrives either as base64 data or as a path inside the workspace volume (the backend reads and uploads it) and is stored as { format: \"file\", objectId, url, name, mime, size }. Groups have no output (NOT_A_TASK). Adds a log entry \"Output delivered · <format>\". When the task has an expectedOutput (see get-node), the output must match it — same format, the expected file type, every required form field and no field outside the definition — or it fails with OUTPUT_MISMATCH. Replacing an existing output that would actually change requires overwrite: true (OUTPUT_EXISTS otherwise); re-delivering the same thing is a no-op. Delivering does not change the state: use set-state (e.g. working → review) as well. Returns: { node: { nodeId, hasOutput, output, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "output": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "One of: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: value } } · { format: \"file\", path: \"/workspace/...\" (absolute path inside the workspace volume — the backend reads and uploads the file; name/mime optional, inferred from the filename) } · { format: \"file\", name, mime, data: base64 (max 10 MB, no data: prefix) — for in-memory files }. null clears it. Prefer path for any file that already exists in the workspace volume.",
+            "properties": {
+              "format": {
+                "type": "string",
+                "enum": [
+                  "markdown",
+                  "form",
+                  "file"
+                ]
+              },
+              "markdown": {
+                "type": "string",
+                "description": "format=markdown: the content. Max 50000 chars."
+              },
+              "fields": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "format=form: the form fields (max 50)."
+              },
+              "values": {
+                "type": "object",
+                "description": "format=form: values keyed by field id."
+              },
+              "name": {
+                "type": "string",
+                "description": "format=file: file name. Optional with path (inferred from the filename); required with data."
+              },
+              "mime": {
+                "type": "string",
+                "description": "format=file: MIME type. Optional with path (inferred from the extension); required with data."
+              },
+              "data": {
+                "type": "string",
+                "description": "format=file: base64 content (max 10 MB decoded). In-memory files only — use path when the file exists in the workspace volume."
+              },
+              "path": {
+                "type": "string",
+                "description": "format=file: absolute path inside the workspace volume, e.g. \"/workspace/report.html\". The backend reads the file and uploads it — never generate base64 for a file that already exists on the volume."
+              }
+            }
+          },
+          "overwrite": {
+            "type": "boolean",
+            "description": "Set true to replace an existing output. Required when the task already has an output and the new one would change it (e.g. a different file or different markdown)."
+          }
+        },
+        "required": [
+          "nodeId",
+          "output"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "toggle-instruction-item",
+      "description": "Tick or untick one checklist item of a node's instructions — the index-th (0-based) markdown checkbox line (\"- [ ] step\" / \"- [x] step\"), counting top to bottom and ignoring code blocks. Fails with ITEM_NOT_FOUND past the last item. Returns: { node: { nodeId, parentId, instructions, updatedAt }, item: { index, checked, text } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Node ID."
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "0-based index of the checkbox among all checkboxes of the instructions."
+          }
+        },
+        "required": [
+          "nodeId",
+          "index"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "plan-node",
+      "description": "Plan a task for a calendar day (\"Por día\"), reorder it within its day, set its time, or take it off its day. day is \"YYYY-MM-DD\" in the user's calendar, or null to remove it from its day (also clears the time). index places it in the day's plan (0 = first; omitted = end of the day, or its current slot when the day does not change); the day is renumbered 0..N-1. time \"HH:MM\" sets the planned time, null clears it, omitted keeps it. Groups are never planned (NOT_A_TASK). Logs \"Planned for <day>\", \"Planned time …\" or \"Removed from the day\". Returns: { node: { nodeId, plannedFor, dayOrder, plannedTime, state, ... }, day, previousDay }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "day": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Day \"YYYY-MM-DD\", or null to remove the task from its day."
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Position in the day's plan (0-based). Optional."
+          },
+          "time": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Planned time \"HH:MM\" (24 h), or null to clear it. Optional."
+          }
+        },
+        "required": [
+          "nodeId",
+          "day"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get-day",
+      "description": "Get one day of the plan: the tasks planned for day in plan order, the overdue tasks (open tasks planned before today, oldest first) and the unplanned open tasks (no day, tree order). Pass today as the user's current calendar day \"YYYY-MM-DD\" (defaults to the UTC date). Returns: { day, today, tasks: [...], overdue: [...], unplanned: [...] } where each task is { nodeId, parentId, text, state, blockedReason, progress, reportedProgress, plannedFor, dayOrder, plannedTime, hasOutput, path: [ancestor titles, root first] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "description": "Day \"YYYY-MM-DD\"."
+          },
+          "today": {
+            "type": "string",
+            "description": "The user's current day \"YYYY-MM-DD\" (decides what is overdue). Optional."
+          }
+        },
+        "required": [
+          "day"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "assign-node",
+      "description": "Assign a task to an agent or a person of the workspace (\"who does what\"), or unassign it with null. assignee is { kind: \"agent\" | \"user\", id } — an agentId usable in this workspace or the userId of a workspace member (owner included); anything else fails with INVALID_ASSIGNEE. Groups cannot be assigned (NOT_A_TASK). Stores assignedAt and logs \"Assigned to <name>\" / \"Unassigned\". Assigning does not start the task. Returns: { node: { nodeId, assignee, assignedAt, state, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "assignee": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Who does it, or null to unassign.",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "user"
+                ],
+                "description": "An agent or a human member."
+              },
+              "id": {
+                "type": "string",
+                "description": "agentId or userId."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "nodeId",
+          "assignee"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "set-reviewer",
+      "description": "Set the reviewer of a task — who reviews it when it enters review — or clear it with null (back to manual validation — nobody evaluates, the default). reviewer is { kind: \"agent\" | \"user\", id } — an agentId usable in this workspace or the userId of a workspace member; anything else fails with INVALID_ASSIGNEE. Groups cannot be reviewed (NOT_A_TASK). Empty by default: a task without a reviewer behaves exactly as before. When a task WITH a reviewer enters review, the reviewer is notified automatically and the task shows in their view — no subscription needed. Logs \"Reviewer set to <name>\" / \"Reviewer removed\". Returns: { node: { nodeId, reviewer, reviewedAt, state, ... } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "reviewer": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Who reviews it, or null to clear (manual validation — nobody evaluates).",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "agent",
+                  "user"
+                ],
+                "description": "An agent or a human member."
+              },
+              "id": {
+                "type": "string",
+                "description": "agentId or userId."
+              }
+            },
+            "required": [
+              "kind",
+              "id"
+            ]
+          }
+        },
+        "required": [
+          "nodeId",
+          "reviewer"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "add-dependency",
+      "description": "Make a task wait on another task of the same workspace (any group - never cross-workspace): while the blocker is unresolved the task is NOT started by the autoplay, and the day/tree rows show it with the waiting semaforo. A dependency releases when the blocker reaches done or cancelled - review does NOT release (board parity). Groups can neither wait nor block (NOT_A_TASK); a blocker from another workspace is not found; self, direct and transitive cycles fail with CIRCULAR_DEPENDENCY. Adding an existing dependency is a no-op (added: false). Logs \"Depends on <title>\". Returns: { node: { nodeId, dependencies, ... }, dependency: { nodeId, text, state }, added: boolean }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID - the task that waits."
+          },
+          "blockerNodeId": {
+            "type": "string",
+            "description": "Task node ID - the task it waits on (the blocker)."
+          }
+        },
+        "required": [
+          "nodeId",
+          "blockerNodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "remove-dependency",
+      "description": "Remove a dependency: the task stops waiting on the blocker and becomes autoplay-eligible again at once (the scheduling triggers run). Removing one that is not there is a no-op (removed: false). Groups have no dependencies (NOT_A_TASK). Logs \"Dependency removed: <title>\". Returns: { node: { nodeId, dependencies, ... }, dependency: { nodeId, text, state } | null, removed: boolean }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID - the task that waits."
+          },
+          "blockerNodeId": {
+            "type": "string",
+            "description": "Task node ID - the blocker it stops waiting on."
+          }
+        },
+        "required": [
+          "nodeId",
+          "blockerNodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable",
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "get-autoplay",
+      "description": "List the Tasks autoplay runners of this workspace and its global state: the agents that pick up their own tasks (pending and planned for today or earlier) with a number of parallel slots. activeSlots is how many of the agent's tasks are running now; globalPlaying is the workspace's autoplay play/pause (TODOAP-REQ-30); runningCount is how many todo tasks of the workspace have a live turn — the STOP control's visibility (TODOAP-REQ-31). Returns: { globalPlaying: boolean, runningCount: number, runners: [{ agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing }] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.2.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-agent-slots",
+      "description": "Set how many tasks an agent of this workspace runs in parallel (makes it a runner if it is not one). 0 slots also pauses it. The agent must belong to the workspace (INVALID_ASSIGNEE). Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID."
+          },
+          "slots": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Parallel executions (0 = listed but cannot run)."
+          }
+        },
+        "required": [
+          "agentId",
+          "slots"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-agent-play",
+      "description": "Turn autoplay on or off for an agent (makes it a runner if it is not one). With play on, Teros starts the agent's pending tasks planned for today or earlier, honouring its slots. Enabling with 0 slots fails with INVALID_STATE. Pausing never interrupts a running turn. Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "true = play, false = pause."
+          }
+        },
+        "required": [
+          "agentId",
+          "enabled"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-global-play",
+      "description": "Set the workspace's global autoplay play/pause — the Tasks panel's Play/Pause control. Playing starts ONLY the enabled runners (playEnabled true with slots); a disabled runner is excluded from the global control. Pausing stops every scheduler path but never interrupts running turns. Read members cannot change it (FORBIDDEN). Returns: { globalPlaying: boolean }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "playing": {
+            "type": "boolean",
+            "description": "true = the workspace's autoplay plays, false = paused."
+          }
+        },
+        "required": [
+          "playing"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "stop-autoplay",
+      "description": "The workspace's global STOP: pause the autoplay AND abort every in-flight turn of the workspace's todo tasks — the equivalent of going to each task's conversation and pressing stop. The tasks stay working with no live turn; nothing restarts until the global play. Read members cannot stop (FORBIDDEN). Returns: { globalPlaying: false, aborted: number of turns aborted }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "set-agent-scope",
+      "description": "Set an agent runner's scope (makes it a runner if it is not one). With pickUnassigned true, the agent also picks up tasks with no assignee that are pending and planned for today or earlier, inside the scope group (any depth; the whole tree when scopeNodeId is null), after its own tasks; each one is assigned to the agent before it starts. Tasks assigned to the agent are picked wherever they are. scopeNodeId must be a group of this workspace (INVALID_INPUT). Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID."
+          },
+          "scopeNodeId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Group node ID that bounds the unassigned pickup, or null for the whole tree."
+          },
+          "pickUnassigned": {
+            "type": "boolean",
+            "description": "true = also pick up unassigned planned tasks inside the scope."
+          }
+        },
+        "required": [
+          "agentId",
+          "scopeNodeId",
+          "pickUnassigned"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "remove-agent",
+      "description": "Remove an agent from the autoplay runners. Its running turns are not interrupted and its tasks keep their conversations. Read members cannot change runners (FORBIDDEN). Returns: { removed: true, agentId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Agent ID."
+          }
+        },
+        "required": [
+          "agentId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "start-node",
+      "description": "Start a task now: for a task assigned to an agent that is pending (or working without a conversation), whatever its planned day and the runner's play/slots. Moves it to working, opens (or reuses) its conversation with the agent and sends the agent the task. Not assigned to an agent: NOT_AGENT_TASK; any other state: INVALID_STATE. Returns: { node: { nodeId, state, channelId, running, ... }, channelId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "open-runner-terminal",
+      "description": "Open the task's work context (CCR-REQ-8): reveal the runner's terminal in the Terminal window, or recreate it with `claude --resume <sessionId>` when the session is gone — Claude Code recovers its full memory of the task. Idempotent: an alive terminal is only revealed. No runner record: NOT_RUNNER_TASK (409); runner not wired: UNAVAILABLE (503). Returns: { terminalId, resumed, node }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          }
+        },
+        "required": [
+          "nodeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "subscribe-to-todo",
+      "description": "DEPRECATED (v1.4.4): use the reserved tool `todo_list__subscribe` instead — one event per subscription with declarative filters (e.g. event \"task_completed\", filter { nodeId }); the subscription lives in the backend and survives respawns. This tool still works (kept for existing conversations) but will be removed. Subscribe this conversation to the to-do events of the workspace (task started, completed, blocked, assigned, planned, output delivered, progress, autoplay changes). Events that pass the filter are delivered here as they happen and wake the agent. Key use: filter.nodeIds + eventTypes [\"task_completed\"] = \"avísame cuando ESTA tarea termine\". The same events exist as todo.* topics for Automate. Upsert: subscribing again REPLACES the previous filter. Returns: { subscription: { subscriptionId, workspaceId, channelId, agentId, filter, createdAt, updatedAt }, created, message }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Conversation that receives the events. Defaults to the calling agent's conversation — omit it when subscribing from the conversation that wants the events."
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter to narrow delivered events. Multiple fields are AND-ed; multiple values within a field are OR-ed. Empty = all events of the workspace.",
+            "properties": {
+              "nodeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events for these specific tasks (node IDs) — \"avísame cuando ESTA tarea acabe\"."
+              },
+              "assigneeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events where the task is assigned to one of these agents/users (ids)."
+              },
+              "states": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "planning",
+                    "pending",
+                    "working",
+                    "blocked",
+                    "review",
+                    "done",
+                    "cancelled"
+                  ]
+                },
+                "description": "Only events where the task's NEW state is one of these (planning, pending, working, blocked, review, done, cancelled)."
+              },
+              "groupNodeIds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Only events for tasks inside these groups' subtrees (group node IDs)."
+              },
+              "eventTypes": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "task_created",
+                    "task_started",
+                    "task_completed",
+                    "task_blocked",
+                    "task_state_changed",
+                    "task_assigned",
+                    "task_unassigned",
+                    "task_planned",
+                    "task_output_delivered",
+                    "task_progress",
+                    "task_updated",
+                    "task_moved",
+                    "task_deleted",
+                    "agent_play_changed",
+                    "agent_slots_changed"
+                  ]
+                },
+                "description": "Only these event types. Valid: task_created, task_started, task_completed, task_blocked, task_state_changed, task_assigned, task_unassigned, task_planned, task_output_delivered, task_progress, task_updated, task_moved, task_deleted, agent_play_changed, agent_slots_changed."
+              },
+              "wakeUpOn": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "task_created",
+                    "task_started",
+                    "task_completed",
+                    "task_blocked",
+                    "task_state_changed",
+                    "task_assigned",
+                    "task_unassigned",
+                    "task_planned",
+                    "task_output_delivered",
+                    "task_progress",
+                    "task_updated",
+                    "task_moved",
+                    "task_deleted",
+                    "agent_play_changed",
+                    "agent_slots_changed"
+                  ]
+                },
+                "description": "Event types that wake the agent (trigger a response turn). Default: ALL event types wake the agent (only a wakeUpOn list narrows it). An agent is never woken by an event it caused itself (self-wake guard)."
+              }
+            }
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "unsubscribe-from-todo",
+      "description": "Cancel this conversation's subscription to the workspace's to-do events. Idempotent — a subscription that does not exist returns { unsubscribed: true } unchanged. Returns: { unsubscribed: true, channelId, deleted }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Conversation whose subscription to cancel. Defaults to the calling agent's conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "list-todo-subscriptions",
+      "description": "List this conversation's to-do event subscriptions in the workspace: { subscriptions: [{ subscriptionId, workspaceId, channelId, agentId, filter, createdAt, updatedAt }] }. Defaults to the calling agent's conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Conversation whose subscriptions to list. Defaults to the calling agent's conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "experimental"
+      }
+    },
+    {
+      "name": "share-io",
+      "description": "Create a public link to a task's output or input (or return the one you already created for it). Anyone with the link sees the task's CURRENT io without signing in: markdown as a web page titled with the task text, a file as the file itself. A form io or a task without that io fails with INVALID_STATE. Read members cannot share (FORBIDDEN). Returns: { shareId, publicUrl }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "io": {
+            "type": "string",
+            "enum": [
+              "output",
+              "input"
+            ],
+            "description": "Which io of the task: output or input."
+          }
+        },
+        "required": [
+          "nodeId",
+          "io"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-io-share",
+      "description": "Get the public link you created for a task's output or input, if any. Read members cannot use it (FORBIDDEN). Returns: { shareId, publicUrl } or null.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "description": "Task node ID."
+          },
+          "io": {
+            "type": "string",
+            "enum": [
+              "output",
+              "input"
+            ],
+            "description": "Which io of the task: output or input."
+          }
+        },
+        "required": [
+          "nodeId",
+          "io"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "unshare-io",
+      "description": "Revoke a public link to a task's output or input; the link answers 404 from then on. Only the user who created it can revoke it (FORBIDDEN). Returns: { ok: true }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "shareId": {
+            "type": "string",
+            "description": "Share ID returned by share-io."
+          }
+        },
+        "required": [
+          "shareId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "-subscribe",
+      "description": "Subscribe this conversation to one of this app's events (task_created, task_started, task_completed, task_blocked, task_state_changed, task_assigned, task_unassigned, task_planned, task_output_delivered, task_progress, task_updated, task_moved, task_deleted, agent_play_changed, agent_slots_changed, dependency_added, dependency_removed). Matching events are delivered here as they happen and wake the agent (self-wake guard: an agent is never woken by an event it caused itself). The subscription lives in the backend — it survives restarts of this app. Subscribing again to the same event REPLACES the previous filter. Returns: { subscription: { subscriptionId, topic, event, channelId, mode, filter, wakeUpOn, createdAt }, message }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "enum": [
+              "task_created",
+              "task_started",
+              "task_completed",
+              "task_blocked",
+              "task_state_changed",
+              "task_assigned",
+              "task_unassigned",
+              "task_planned",
+              "task_output_delivered",
+              "task_progress",
+              "task_updated",
+              "task_moved",
+              "task_deleted",
+              "agent_play_changed",
+              "agent_slots_changed",
+              "dependency_added",
+              "dependency_removed"
+            ],
+            "description": "Local event name (the app namespace is implicit). Valid: task_created — A task (or group) was created in the to-do list.; task_started — A task entered the working state (autoplay start, start-node, or manual set-state).; task_completed — A task reached done or review (work finished). Carries the output reference when one was delivered.; task_blocked — A task was blocked, with its reason.; task_state_changed — A task moved between states (generic transition not covered by started/completed/blocked).; task_assigned — A task was assigned to an agent or workspace member.; task_unassigned — A task lost its assignee.; task_planned — A task was planned for a day (or taken off its day), optionally with a time.; task_output_delivered — A task delivered its output (markdown, form or file).; task_progress — A task reported progress (percentage) or a log note was added.; task_updated — A task's text, description, instructions or expected output changed.; task_moved — A task was moved to another parent or position in the tree.; task_deleted — A task (and its subtree) was deleted.; agent_play_changed — An autoplay runner's play was toggled.; agent_slots_changed — An autoplay runner's parallel slots changed.; dependency_added — A task now waits on another task (add-dependency) - the day/tree rows show the waiting semaforo until the blocker reaches done or cancelled.; dependency_removed — A task stopped waiting on another task (remove-dependency) - it becomes autoplay-eligible again at once."
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter. Fields AND-ed, values within a field OR-ed. Only the fields declared for the event are valid — see the event list."
+          },
+          "wakeUpOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "task_created",
+                "task_started",
+                "task_completed",
+                "task_blocked",
+                "task_state_changed",
+                "task_assigned",
+                "task_unassigned",
+                "task_planned",
+                "task_output_delivered",
+                "task_progress",
+                "task_updated",
+                "task_moved",
+                "task_deleted",
+                "agent_play_changed",
+                "agent_slots_changed",
+                "dependency_added",
+                "dependency_removed"
+              ]
+            },
+            "description": "Event names that wake the agent (response turn). Default: the subscribed event always wakes. Rarely needed with a single-event subscription."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Conversation that receives the events. Defaults to the calling conversation — omit it."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "notify",
+              "wake"
+            ],
+            "description": "notify = silent delivery, wake = trigger an agent response turn. Default: wake."
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-unsubscribe",
+      "description": "Cancel this conversation's subscription(s) to this app's events. By subscriptionId, by event name, or — with neither — ALL of this conversation's subscriptions to this app. Idempotent. Returns: { unsubscribed, deleted?, channelId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "description": "Specific subscription to cancel (from -list-subscriptions)."
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "task_created",
+              "task_started",
+              "task_completed",
+              "task_blocked",
+              "task_state_changed",
+              "task_assigned",
+              "task_unassigned",
+              "task_planned",
+              "task_output_delivered",
+              "task_progress",
+              "task_updated",
+              "task_moved",
+              "task_deleted",
+              "agent_play_changed",
+              "agent_slots_changed",
+              "dependency_added",
+              "dependency_removed"
+            ],
+            "description": "Cancel the subscription to this event."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-list-subscriptions",
+      "description": "List this conversation's subscriptions to this app's events, plus the app's event catalog (events, payload fields and valid filter fields) to subscribe to. Returns: { subscriptions: [...], events: [...] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
+      }
+    }
+  ]
+}

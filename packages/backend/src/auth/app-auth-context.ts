@@ -57,9 +57,10 @@ export class AppAuthContext {
    * Update credentials (merge with existing)
    */
   async update(partial: any): Promise<void> {
-    const current = (await this.get()) || {};
-    const updated = { ...current, ...partial };
-    return this.set(updated);
+    // Race-safe merge (MOD-6): conditioned on the stored rev, retried
+    const existing = await this.manager.getCredentialDoc(this.userId, this.appId);
+    const mcaId = existing?.mcaId ?? (await this.manager.getMcaIdFromApp(this.appId));
+    return this.manager.merge(this.userId, this.appId, mcaId, partial);
   }
 
   /**

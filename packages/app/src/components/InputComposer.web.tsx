@@ -1,37 +1,40 @@
-import {
-  AlertCircle,
-  FileText,
-  Loader,
-  Mic,
-  Paperclip,
-  Pause,
-  PenLine,
-  Play,
-  Send,
-  Upload,
-  X,
-} from "@tamagui/lucide-icons"
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import RecordRTC, { StereoAudioRecorder } from "recordrtc"
-import { Button, Image, Input, Text, View, XStack, YStack } from "tamagui"
+import { Pressable, ScrollView, TextInput, View as RNView } from "react-native"
+import { Image, Text, View, XStack, YStack } from "tamagui"
 import { useColors } from "./mca/primitives/useColors"
-import { colors as semanticColors, controlsBar, indicators, surface } from "./mca/primitives/colors"
+import { colors as semanticColors, surface } from "./mca/primitives/colors"
+import { FONT_SANS } from "./mca/primitives/fonts"
 import { type UploadedFile, useFileUpload } from "../hooks/useFileUpload"
 import { StopButton } from "./chat/StopButton"
 import { STORAGE_KEYS, storage } from "../services/storage"
 import { useAudioStore, getPendingAudio } from "../store/audioStore"
+import { useRecordingSessionStore, getRecordingEngine, startEngineTimer, stopEngineTimer, cleanupEngine, destroyRecordingSession } from "../store/recordingSessionStore"
 import { useTilingStore } from "../store/tilingStore"
 import { TerosLoading } from "./TerosLoading"
 import { useToast } from "./Toast"
+import { getTerosClient } from "../services/terosClientSingleton"
+import type { AgentAppData } from "../services/AgentApi"
+import { ChipBtn, IconBtn, Ph, T } from "./ui/ds"
+import { Halo } from "./ui/ds/Halo"
+import { THREAD_MAX_WIDTH, useChatPane } from "./chat/bubbles"
 import {
   assembleBlob,
+  blobToBase64,
   calculateMetering,
   expandSamples,
   formatDuration,
   normalizeMetering,
+  shouldBlockUnload,
 } from "./InputComposer.audio"
 import { createFileDropHandlers } from "./InputComposer.dnd"
+import { createPasteHandler } from "./InputComposer.paste"
+import { useAtMention, type MentionResource } from "../hooks/useAtMention"
+import { MentionDropdown } from "./mention/MentionDropdown"
+import { MentionChip } from "./mention/MentionChip"
+import { fx } from "../styles/fx"
+import { backendUrl } from "../config/runtime"
 
 type WebRecordingState = "idle" | "recording" | "paused"
 
@@ -55,30 +58,232 @@ interface InputComposerProps {
     text: string,
     audio?: AudioRecording,
     files?: UploadedFile[],
+    skillIds?: string[],
   ) => Promise<{ success: boolean }>
   onTranscribe?: (audio: AudioRecording) => Promise<string>
   disabled?: boolean
   placeholder?: string
   channelId?: string // For saving/restoring drafts
+  /** Pre-filled text on mount (the Home ask box hands its question over). */
+  initialText?: string
   /** Tiling window ID — used to check if this composer is in the active window for Alt+X */
   windowId?: string
   isGenerating?: boolean
   onStop?: (kind: "soft" | "hard" | "queue_only") => void | Promise<void>
   hasIrreversibleToolInFlight?: boolean
   irreversibleToolName?: string
+  /** Agent ID for the current chat — used to filter on-demand skills in the @mention dropdown */
+  agentId?: string
+  /** Agent display name — the "{name} can use" line under the pill. */
+  agentName?: string
+  /** Workspace — scopes the agent's app list under the pill. */
+  workspaceId?: string
+  /**
+   * ≥1 message in the conversation → the tools row (".compose-meta" apps) is
+   * replaced by the contextual suggested-prompt chips (TER composer prompts).
+   */
+  hasMessages?: boolean
+  /** Contextual follow-up prompts (backend-generated after each agent turn). */
+  suggestedPrompts?: string[]
+  /** Bottom safe-area inset (native parity; web pads the composer with it). */
+  bottomInset?: number
 }
 
 // Re-export UploadedFile type for consumers
 export type { UploadedFile }
 
-const TEXTAREA_MIN_HEIGHT = 40 // pixels
-const TEXTAREA_MAX_HEIGHT = 150 // pixels
+const TEXTAREA_MIN_HEIGHT = 24 // pixels — `.compose textarea { height: 24px }`
+const TEXTAREA_MAX_HEIGHT = 160 // pixels — `.compose textarea { max-height: 160px }`
+const COMPOSE_CONTROL = 40 // the round plus/mic controls inside the pill
+const COMPOSE_PILL_RADIUS = (COMPOSE_CONTROL + 8) / 2 // 4px padding above and below
+
+// `.compose textarea::placeholder` is smaller than the text (13px vs 16px) —
+// RN-web has no placeholder font-size prop, so one global rule does it.
+const COMPOSE_CSS_ID = "teros-compose-css"
+function installComposeCss(text3: string) {
+  if (typeof document === "undefined") return
+  let el = document.getElementById(COMPOSE_CSS_ID) as HTMLStyleElement | null
+  if (!el) {
+    el = document.createElement("style")
+    el.id = COMPOSE_CSS_ID
+    document.head.appendChild(el)
+  }
+  el.textContent = `
+    [data-compose="field"] input::placeholder, [data-compose="field"] textarea::placeholder { font-size: 13px; color: ${text3}; opacity: 1; }
+    [data-compose="field"] input, [data-compose="field"] textarea { caret-color: #6F27FF; }
+    @keyframes teros-mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+    [data-compose="meta"]::-webkit-scrollbar { display: none; }
+  `
+}
+
+// ── The agent's apps for the "{name} can use" row (`.compose-meta`) ──────────
+// Cached per (agent, workspace) for a minute — the composer remounts often.
+const APPS_TTL_MS = 60 * 1000
+const appsCache = new Map<string, { apps: AgentAppData[]; expires: number }>()
+const appsInFlight = new Map<string, Promise<AgentAppData[]>>()
+function fetchAgentApps(agentId: string, workspaceId?: string): Promise<AgentAppData[]> {
+  const key = `${agentId}|${workspaceId ?? ""}`
+  const cached = appsCache.get(key)
+  if (cached && cached.expires > Date.now()) return Promise.resolve(cached.apps)
+  const inFlight = appsInFlight.get(key)
+  if (inFlight) return inFlight
+  const req = (async () => {
+    try {
+      const [apps, systemIds] = await Promise.all([
+        getTerosClient().getAgentApps(agentId, workspaceId),
+        fetchSystemMcaIds(),
+      ])
+      // System / preinstalled MCAs (scheduler, memory, guide…) are plumbing,
+      // not something the user "gave" the agent — keep the row to real apps.
+      // `app.list-catalog` omits HIDDEN system MCAs, so the first-party
+      // `mca.teros.*` prefix is the fallback for those.
+      const usable = (apps ?? []).filter(
+        (a) =>
+          a.hasAccess !== false && !systemIds.has(a.mcaId) && !a.mcaId?.startsWith("mca.teros."),
+      )
+      appsCache.set(key, { apps: usable, expires: Date.now() + APPS_TTL_MS })
+      return usable
+    } catch {
+      return []
+    } finally {
+      appsInFlight.delete(key)
+    }
+  })()
+  appsInFlight.set(key, req)
+  return req
+}
+/** mcaIds the catalog marks as system (`availability.system` or the
+ *  `system` category). Cached once per session — the catalog barely changes. */
+let systemMcaIdsPromise: Promise<Set<string>> | null = null
+function fetchSystemMcaIds(): Promise<Set<string>> {
+  if (systemMcaIdsPromise) return systemMcaIdsPromise
+  systemMcaIdsPromise = (async () => {
+    try {
+      const { catalog } = await getTerosClient().app.listCatalog()
+      return new Set(
+        (catalog ?? [])
+          .filter((m: any) => m?.availability?.system || m?.category === "system")
+          .map((m: any) => m.mcaId as string),
+      )
+    } catch {
+      systemMcaIdsPromise = null
+      return new Set<string>()
+    }
+  })()
+  return systemMcaIdsPromise
+}
+
+function appIconUrl(app: AgentAppData): string | undefined {
+  if (app.icon) return app.icon
+  if (!app.mcaId) return undefined
+  const base = backendUrl()
+  return `${base}/static/mcas/${app.mcaId}/icon.svg`
+}
 
 // Waveform constants
 const MIN_BAR_HEIGHT = 4
 const MAX_BAR_HEIGHT = 28
 const BAR_WIDTH = 3
 const BAR_GAP = 2
+
+// ── File type helpers for attachment preview ────────────────────────────────
+type FileKind = "image" | "pdf" | "txt" | "md" | "csv" | "xlsx" | "pptx" | "docx" | "default"
+
+const FILE_KIND_CONFIG: Record<
+  FileKind,
+  {
+    icon: string
+    color: string
+    bg: string
+    label: string
+    ext: string
+  }
+> = {
+  image: {
+    icon: "image",
+    color: semanticColors.purple300,
+    bg: semanticColors.purpleGlow,
+    label: "Image",
+    ext: "IMG",
+  },
+  pdf: {
+    icon: "file-pdf",
+    color: semanticColors.red,
+    bg: "rgba(239,68,68,0.12)",
+    label: "PDF Document",
+    ext: "PDF",
+  },
+  txt: {
+    icon: "file-text",
+    color: "#60A5FA",
+    bg: "rgba(96,165,250,0.10)",
+    label: "Text File",
+    ext: "TXT",
+  },
+  md: {
+    icon: "file-code",
+    color: "#C084FC",
+    bg: "rgba(192,132,252,0.10)",
+    label: "Markdown",
+    ext: "MD",
+  },
+  csv: {
+    icon: "file-csv",
+    color: "#4ADE80",
+    bg: "rgba(74,222,128,0.10)",
+    label: "CSV Data",
+    ext: "CSV",
+  },
+  xlsx: {
+    icon: "file-xls",
+    color: "#4ADE80",
+    bg: "rgba(74,222,128,0.10)",
+    label: "Spreadsheet",
+    ext: "XLSX",
+  },
+  pptx: {
+    icon: "file-ppt",
+    color: "#FB923C",
+    bg: "rgba(251,146,60,0.10)",
+    label: "Presentation",
+    ext: "PPTX",
+  },
+  docx: {
+    icon: "file-doc",
+    color: "#93C5FD",
+    bg: "rgba(147,197,253,0.10)",
+    label: "Word Document",
+    ext: "DOCX",
+  },
+  default: {
+    icon: "file",
+    color: semanticColors.purple300,
+    bg: semanticColors.purpleGlow,
+    label: "File",
+    ext: "",
+  },
+}
+
+function getFileKind(file: File): FileKind {
+  const name = file.name.toLowerCase()
+  const type = file.type
+  if (type.startsWith("image/")) return "image"
+  if (name.endsWith(".pdf") || type === "application/pdf") return "pdf"
+  if (name.endsWith(".md") || name.endsWith(".markdown")) return "md"
+  if (name.endsWith(".csv") || type === "text/csv") return "csv"
+  if (name.endsWith(".xlsx") || name.endsWith(".xls") || type.includes("spreadsheet")) return "xlsx"
+  if (name.endsWith(".pptx") || name.endsWith(".ppt") || type.includes("presentation"))
+    return "pptx"
+  if (
+    name.endsWith(".docx") ||
+    name.endsWith(".doc") ||
+    type.includes("wordprocessing") ||
+    type.includes("msword")
+  )
+    return "docx"
+  if (name.endsWith(".txt") || type === "text/plain") return "txt"
+  return "default"
+}
 
 /**
  * Rotating wrapper for small in-button spinners. TerosLoading's dot pulse is
@@ -114,6 +319,7 @@ function stopNativeRecorder(recorder: MediaRecorder, chunks: Blob[]): Promise<Bl
 }
 
 export function InputComposer({
+  initialText,
   onSend,
   onTranscribe,
   disabled = false,
@@ -124,14 +330,159 @@ export function InputComposer({
   onStop,
   hasIrreversibleToolInFlight = false,
   irreversibleToolName,
+  agentId,
+  agentName,
+  workspaceId,
+  hasMessages = false,
+  suggestedPrompts,
+  bottomInset = 0,
 }: InputComposerProps) {
   const { t } = useTranslation()
   const c = useColors()
+  const pane = useChatPane()
+  const openWindow = useTilingStore((s) => s.openWindow)
   const toast = useToast()
   const resolvedPlaceholder = placeholder ?? t("conversation.typeMessage")
-  const [text, setText] = useState("")
+  // Contextual suggestion chips (only rendered when hasMessages) — normalized
+  // once so the render block below deals with a plain string[].
+  const suggestions = hasMessages ? (suggestedPrompts ?? []) : []
+  const [text, setText] = useState(initialText ?? "")
   const [isTranscribing, setIsTranscribing] = useState(false)
-  const [useMultilineLayout, setUseMultilineLayout] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
+
+  useEffect(() => {
+    installComposeCss(c.text3)
+  }, [c.text3])
+
+  // `.compose-meta` — the apps this agent can use (chips under the pill).
+  const [agentApps, setAgentApps] = useState<AgentAppData[]>([])
+  useEffect(() => {
+    if (!agentId) {
+      setAgentApps([])
+      return
+    }
+    let cancelled = false
+    fetchAgentApps(agentId, workspaceId).then((apps) => {
+      if (!cancelled) setAgentApps(apps)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [agentId, workspaceId])
+
+  // ── @mention / skill dropdown ──────────────────────────────────────────────
+  // Filter: only show skills with loadMode === 'on-demand' in the dropdown.
+  // If agentId is available we could additionally filter by agent-assigned skills,
+  // but the backend already silently discards non-assigned ones. For now we
+  // show all on-demand skills from the workspace.
+  const mention = useAtMention({
+    resourceFilter: (r) => {
+      // Only allow skills in the dropdown; everything else is hidden for the
+      // skill-injection flow (TER-618). If we ever want full @mentions, remove
+      // this filter.
+      if (r.type !== "skill") return false
+      return r.loadMode === "on-demand"
+    },
+  })
+
+  // When a skill is selected, replace the trigger text with a zero-width space
+  // (invisible separator) so the chip can be rendered inline and the user can
+  // keep typing. The chip stores the skillId for extraction at send time.
+  // Not wrapped in useCallback because MentionDropdown has no memoization that
+  // would benefit from a stable reference; the mention object changes every render.
+  const handleSelectMention = (resource: MentionResource) => {
+    mention.onSelectResource(resource)
+    // Replace the "@query" text with an invisible separator so the chip renders
+    // inline and the cursor is positioned after it.
+    const pos = mention.triggerPos
+    if (pos >= 0) {
+      const before = text.slice(0, pos)
+      const after = text.slice(pos + 1 + mention.query.length) // +1 for the '@'
+      const newText = before + "\u200B" + after
+      setText(newText)
+    }
+  }
+
+  // Extract skillIds from mention chips for the send payload
+  const skillIdsFromChips = useMemo(() => {
+    return mention.chips.filter((c) => c.resource.type === "skill").map((c) => c.resource.id)
+  }, [mention.chips])
+
+  // Stable ref to mention.clearChips so handleSend doesn't need `mention` in deps
+  const clearChipsRef = useRef(mention.clearChips)
+  useEffect(() => {
+    clearChipsRef.current = mention.clearChips
+  }, [mention.clearChips])
+
+  // Stable ref to mention.onInputChange so handleTextChange doesn't need `mention` in deps
+  const onInputChangeRef = useRef(mention.onInputChange)
+  useEffect(() => {
+    onInputChangeRef.current = mention.onInputChange
+  }, [mention.onInputChange])
+
+  // Stable ref to mention.onKeyDown so the keydown listener doesn't need `mention` in deps
+  const onKeyDownRef = useRef(mention.onKeyDown)
+  useEffect(() => {
+    onKeyDownRef.current = mention.onKeyDown
+  }, [mention.onKeyDown])
+
+  // Helper to get the native DOM element from Tamagui ref
+  const getNativeInput = useCallback(
+    (tamaguiRef: any): HTMLInputElement | HTMLTextAreaElement | null => {
+      if (!tamaguiRef) return null
+      if (tamaguiRef instanceof HTMLInputElement || tamaguiRef instanceof HTMLTextAreaElement) {
+        return tamaguiRef
+      }
+      if (tamaguiRef.tagName === "INPUT" || tamaguiRef.tagName === "TEXTAREA") {
+        return tamaguiRef
+      }
+      const native = tamaguiRef.querySelector?.("input, textarea")
+      if (native) return native
+      if (tamaguiRef.native) return tamaguiRef.native
+      return tamaguiRef
+    },
+    [],
+  )
+
+  // Unified text-change handler: updates state AND feeds the mention detector.
+  // We read selectionStart from the active native input so the trigger position
+  // is accurate even when the user types in the middle of the text.
+  const handleTextChange = useCallback(
+    (newText: string) => {
+      setText(newText)
+      // Defer cursor read to next tick so the DOM has updated selection
+      requestAnimationFrame(() => {
+        const native = getNativeInput(inputRef.current)
+        const cursorPos = native?.selectionStart ?? newText.length
+        onInputChangeRef.current(newText, cursorPos)
+      })
+    },
+    [getNativeInput],
+  )
+
+  // Suggested-prompt chip tap: append the prompt to whatever is already in the
+  // composer (space-separated when non-empty), then focus the field with the
+  // caret at the end. NEVER auto-sends — the text stays editable.
+  // Guard read from a ref (assigned below, after recordingState is declared)
+  // so the callback stays stable across renders.
+  const suggestionsDisabledRef = useRef(false)
+  const insertSuggestedPrompt = useCallback(
+    (prompt: string) => {
+      if (suggestionsDisabledRef.current) return
+      const current = textRef.current
+      const next = current.trim() ? `${current.trimEnd()} ${prompt}` : prompt
+      handleTextChange(next)
+      requestAnimationFrame(() => {
+        const native = getNativeInput(inputRef.current)
+        if (native) {
+          native.focus()
+          const end = next.length
+          if (native.setSelectionRange) native.setSelectionRange(end, end)
+        }
+      })
+    },
+    [handleTextChange, getNativeInput],
+  )
 
   // File upload hook
   const fileUpload = useFileUpload()
@@ -210,8 +561,10 @@ export function InputComposer({
     }
   }, [channelId])
 
-  const [textareaHeight, setTextareaHeight] = useState(TEXTAREA_MIN_HEIGHT)
   const [recordingState, setRecordingState] = useState<WebRecordingState>("idle")
+  // Suggested-prompt guard: chips are inert while disabled or mid-recording.
+  // Assigned here (after recordingState exists) and re-synced every render.
+  suggestionsDisabledRef.current = disabled || recordingState !== "idle"
   // Transitional UI states: mic pressed but getUserMedia/recorder not ready
   // yet, and X pressed but teardown not finished yet. Both show a spinner on
   // the corresponding button so the tap gives immediate feedback.
@@ -252,12 +605,78 @@ export function InputComposer({
   const lastMeteringRef = useRef<number | null>(null)
   const meteringCountRef = useRef<number>(0)
 
+  // ── Recording session store sync (Fast Refresh survival) ──────────────
+  // The recording engine (MediaRecorder, stream, chunks) lives in a module-level
+  // singleton (recordingSessionStore) that survives Fast Refresh remounts.
+  // These effects keep the store in sync with the component and re-hydrate
+  // the component from the store when it mounts with an active session.
+
+  // Sync local recording state → module store (so the workspace layout can
+  // read it for the navigation guard, and the next mount can re-hydrate).
+  useEffect(() => {
+    const store = useRecordingSessionStore.getState()
+    store.setRecordingState(recordingState)
+    if (channelId) store.setChannelId(channelId)
+    store.setEngineActive(recorderRef.current !== null)
+  }, [recordingState, channelId])
+
+  // Sync duration to store (the engine timer also updates it, but this covers
+  // the case where the component timer is the one running).
+  useEffect(() => {
+    useRecordingSessionStore.getState().setDuration(recordingDuration)
+  }, [recordingDuration])
+
+  // Re-hydrate from the recording session store on mount (Fast Refresh survival).
+  // If the engine has an active recording (state persisted across the remount),
+  // restore the component's local state to match.
+  const rehydratedRef = useRef(false)
+  useEffect(() => {
+    if (rehydratedRef.current) return
+    rehydratedRef.current = true
+
+    const sessionState = useRecordingSessionStore.getState()
+    const engine = getRecordingEngine()
+
+    // Only re-hydrate if the session belongs to this channel
+    if (sessionState.channelId !== channelId) return
+    if (sessionState.recordingState === 'idle') return
+
+    // Engine has live resources → recording survived a remount
+    if (engine.recorder && sessionState.recordingState === 'recording') {
+      // Restore refs to point at the surviving engine resources
+      recorderRef.current = engine.recorder
+      chunksRef.current = engine.chunks
+      streamRef.current = engine.stream
+      audioContextRef.current = engine.audioContext
+      recordingDurationRef.current = engine.durationSeconds
+
+      // Restore UI state
+      setRecordingState('recording')
+      setRecordingDuration(engine.durationSeconds)
+      if (engine.analyserNode) setAnalyser(engine.analyserNode)
+      if (engine.samples.length > 0) setSamples(engine.samples)
+
+      // Restart the UI timer (the engine timer is still running, but the
+      // component needs its own interval to update local state)
+      startTimer()
+    } else if (engine.pausedBlob && sessionState.recordingState === 'paused') {
+      // Paused recording survived — restore the paused preview
+      const url = engine.pausedUrl || URL.createObjectURL(engine.pausedBlob)
+      setAudioRecording({ blob: engine.pausedBlob, duration: engine.durationSeconds, url })
+      setRecordingState('paused')
+      setRecordingDuration(engine.durationSeconds)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelId])
+
   // Input refs - declared here (before any useEffect that uses them) to avoid TDZ issues
-  const singleLineInputRef = useRef<any>(null)
-  const multiLineInputRef = useRef<any>(null)
+  // ONE field, always a <textarea>: it starts as a single 24px line and grows
+  // with its content up to TEXTAREA_MAX_HEIGHT. (It used to be an <input> that
+  // swapped to a <textarea> on overflow — the swap dropped focus, which on
+  // phones closed and reopened the keyboard, and the new element never kept
+  // the measured height.)
+  const inputRef = useRef<any>(null)
   const textRef = useRef(text)
-  const pendingCursorRef = useRef<number | null>(null)
-  const useMultilineLayoutRef = useRef(useMultilineLayout)
   const containerRef = useRef<any>(null)
 
   // Determine if this composer is in the currently active tiling window.
@@ -293,10 +712,6 @@ export function InputComposer({
     textRef.current = text
   }, [text])
 
-  useEffect(() => {
-    useMultilineLayoutRef.current = useMultilineLayout
-  }, [useMultilineLayout])
-
   // Calculate number of bars based on container width
   const numBars = Math.max(10, Math.floor(waveformWidth / (BAR_WIDTH + BAR_GAP)))
 
@@ -306,6 +721,23 @@ export function InputComposer({
   const isPaused = recordingState === "paused"
   const isRecordingOrPaused = recordingState !== "idle"
   const hasAudioRecording = audioRecording !== null
+
+  // Guard: bloquear el unload de la página mientras haya audio en riesgo
+  // (grabando, pausado con blob en mano, o envío en vuelo). Cubre el live
+  // reload de Metro en dev y el cierre/refresh accidental en prod. El caso
+  // remount por rotación móvil NO dispara beforeunload — ese lo cubre la
+  // persistencia del blob en audioStore (ver handleSend).
+  useEffect(() => {
+    if (!shouldBlockUnload(recordingState, isSending || fileUpload.isUploading)) return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      e.returnValue = "" // Required for Chrome
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload)
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload)
+  }, [recordingState, isSending, fileUpload.isUploading])
 
   // --- Drag-and-drop de archivos sobre el composer (web only) ---
   // Reutiliza el pipeline de attachments existente: soltar archivos equivale a
@@ -341,6 +773,35 @@ export function InputComposer({
     }
   }, [])
 
+  // --- Paste de imágenes desde el clipboard (web only) ---
+  // Capturas de pantalla, imágenes copiadas del navegador, etc. Se extraen
+  // como File[] y se entregan al mismo pipeline que el file picker y el
+  // drag-and-drop: fileUpload.addFiles(). Si el clipboard tiene texto, el
+  // paste sigue su curso normal (no se intercepta).
+  //
+  // Escuchamos en document (capture) porque el evento paste solo se dispara
+  // en el elemento con foco; si el usuario hace click en el composer pero el
+  // textarea no tiene foco, el paste no burbujea hasta nuestro contenedor.
+  // Filtramos: solo actuamos si el composer contiene el elemento activo.
+  useEffect(() => {
+    const el = containerRef.current as HTMLElement | null
+    if (!el) return
+
+    const handlePaste = createPasteHandler({
+      isPasteDisabled: () => {
+        if (dropDisabledRef.current) return true
+        // Solo interceptar si el foco está dentro del composer.
+        return !el.contains(document.activeElement)
+      },
+      onFiles: (files) => fileUploadRef.current.addFiles(files),
+    })
+
+    document.addEventListener("paste", handlePaste, true)
+    return () => {
+      document.removeEventListener("paste", handlePaste, true)
+    }
+  }, [])
+
   // Measure waveform container width
   useEffect(() => {
     const container = waveformContainerRef.current
@@ -368,45 +829,6 @@ export function InputComposer({
   useEffect(() => {
     recordingDurationRef.current = recordingDuration
   }, [recordingDuration])
-
-  // Helper to get the native DOM element from Tamagui ref
-  const getNativeInput = useCallback(
-    (tamaguiRef: any): HTMLInputElement | HTMLTextAreaElement | null => {
-      if (!tamaguiRef) return null
-      if (tamaguiRef instanceof HTMLInputElement || tamaguiRef instanceof HTMLTextAreaElement) {
-        return tamaguiRef
-      }
-      if (tamaguiRef.tagName === "INPUT" || tamaguiRef.tagName === "TEXTAREA") {
-        return tamaguiRef
-      }
-      const native = tamaguiRef.querySelector?.("input, textarea")
-      if (native) return native
-      if (tamaguiRef.native) return tamaguiRef.native
-      return tamaguiRef
-    },
-    [],
-  )
-
-  // Switch to multiline layout when input overflows, go back to inline only when empty.
-  // Once in multiline, stay there — don't re-evaluate overflow on every render to
-  // avoid oscillation caused by ChatView re-renders (e.g. feature-flag store hydration).
-  useEffect(() => {
-    if (text.length === 0 && useMultilineLayout) {
-      setUseMultilineLayout(false)
-      return
-    }
-
-    // Already multiline — stay there until text is cleared.
-    if (useMultilineLayout) return
-
-    // Use the native DOM <input> element (not the Tamagui wrapper) so that
-    // scrollWidth/clientWidth reflect actual text metrics. The wrapper may have
-    // flex layout quirks that make scrollWidth > clientWidth even when empty.
-    const nativeInput = getNativeInput(singleLineInputRef.current)
-    if (nativeInput && nativeInput.scrollWidth > nativeInput.clientWidth + 2) {
-      setUseMultilineLayout(true)
-    }
-  }, [text, useMultilineLayout, getNativeInput])
 
   // Calculate metering from analyser during recording
   useEffect(() => {
@@ -628,6 +1050,8 @@ export function InputComposer({
           analyserNode.smoothingTimeConstant = 0.7
           source.connect(analyserNode)
           setAnalyser(analyserNode)
+          // Sync to engine singleton for Fast Refresh survival
+          getRecordingEngine().analyserNode = analyserNode
           console.log("[Recording] Audio analyser set up")
         }
       } catch (e) {
@@ -668,6 +1092,20 @@ export function InputComposer({
       setRecordingDuration(0)
       setSamples([])
       startTimer()
+
+      // Sync engine resources to the module-level singleton so they survive
+      // Fast Refresh remounts (the component's refs die, the singleton's don't).
+      const engine = getRecordingEngine()
+      engine.recorder = recorderRef.current
+      engine.chunks = chunksRef.current
+      engine.stream = streamRef.current
+      engine.audioContext = audioContextRef.current
+      engine.analyserNode = null // set below if analyser was created
+      engine.durationSeconds = 0
+      engine.samples = []
+      engine.pausedBlob = null
+      engine.pausedUrl = null
+      startEngineTimer()
     } catch (error: any) {
       console.error("[Recording] Failed to start recording:", error)
 
@@ -716,6 +1154,24 @@ export function InputComposer({
           const url = URL.createObjectURL(blob)
           setAudioRecording({ blob, duration: recordingDurationRef.current, url })
           console.log("[Recording] Recording stopped, blob size:", blob.size)
+
+          // Sync paused blob to engine singleton (Fast Refresh survival)
+          const engine = getRecordingEngine()
+          engine.pausedBlob = blob
+          engine.pausedUrl = url
+
+          if (channelId) {
+            blobToBase64(blob)
+              .then((base64Data) => {
+                useAudioStore.getState().savePendingAudio(channelId, {
+                  base64Data,
+                  mimeType: blob.type || "audio/webm",
+                  duration: recordingDurationRef.current,
+                  timestamp: Date.now(),
+                })
+              })
+              .catch((e) => console.warn("[InputComposer] Failed to persist audio:", e))
+          }
         }
       }
       recorder.addEventListener("stop", handleStop)
@@ -729,17 +1185,16 @@ export function InputComposer({
           setAudioRecording({ blob, duration: recordingDurationRef.current, url })
           console.log("[Recording] Recording stopped, blob size:", blob.size)
 
+          // Sync paused blob to engine singleton (Fast Refresh survival)
+          const engine = getRecordingEngine()
+          engine.pausedBlob = blob
+          engine.pausedUrl = url
+
           if (channelId) {
-            blob
-              .arrayBuffer()
-              .then((buf) => {
-                const bytes = new Uint8Array(buf)
-                let binary = ""
-                for (let i = 0; i < bytes.byteLength; i++) {
-                  binary += String.fromCharCode(bytes[i])
-                }
+            blobToBase64(blob)
+              .then((base64Data) => {
                 useAudioStore.getState().savePendingAudio(channelId, {
-                  base64Data: btoa(binary),
+                  base64Data,
                   mimeType: blob.type || "audio/webm",
                   duration: recordingDurationRef.current,
                   timestamp: Date.now(),
@@ -758,6 +1213,11 @@ export function InputComposer({
       audioContextRef.current.close()
       audioContextRef.current = null
     }
+
+    // Sync paused state to the engine singleton (Fast Refresh survival)
+    const engine = getRecordingEngine()
+    engine.durationSeconds = recordingDurationRef.current
+    stopEngineTimer()
   }, [stopTimer])
 
   // Discard recording
@@ -798,6 +1258,9 @@ export function InputComposer({
       setSamples([])
       stopTimer()
       if (channelId) useAudioStore.getState().clearPendingAudio(channelId)
+      // Clean the module-level engine singleton (Fast Refresh survival)
+      cleanupEngine()
+      useRecordingSessionStore.getState().reset()
       setIsDiscarding(false)
     })
   }, [audioRecording?.url, stopTimer, channelId])
@@ -1001,9 +1464,34 @@ export function InputComposer({
       audioPlayerRef.current = null
     }
 
-    const result = await onSend(text.trim(), recordingToSend, uploadedFiles)
+    // Persist the in-flight audio BEFORE the upload: if the page reloads (Metro
+    // live reload) or the tree remounts (mobile rotation flips TilingLayout
+    // desktop<->mobile) mid-send, the blob survives in audioStore and the
+    // composer restores it as 'paused' on next mount — the send is never lost.
+    // Cleared on success below (clearPendingAudio) and on discardRecording.
+    // Awaited (not fire-and-forget) so the save can't land AFTER the
+    // clearPendingAudio of a fast successful send and resurrect a sent audio.
+    if (channelId && recordingToSend?.blob) {
+      const blob = recordingToSend.blob
+      try {
+        const base64Data = await blobToBase64(blob)
+        useAudioStore.getState().savePendingAudio(channelId, {
+          base64Data,
+          mimeType: blob.type || "audio/webm",
+          duration: recordingToSend.duration,
+          timestamp: Date.now(),
+        })
+      } catch (e) {
+        // Persistence is best-effort — a failure here must not block the send.
+        console.warn("[InputComposer] Failed to persist in-flight audio:", e)
+      }
+    }
+
+    const result = await onSend(text.trim(), recordingToSend, uploadedFiles, skillIdsFromChips)
 
     if (result.success) {
+      // Clear mention chips after successful send
+      clearChipsRef.current()
       if (recordingToSend?.url) {
         setTimeout(() => URL.revokeObjectURL(recordingToSend!.url!), 1000)
       }
@@ -1017,6 +1505,10 @@ export function InputComposer({
       setPlaybackProgress(0)
       setSamples([])
       fileUpload.clear()
+
+      // Clean the module-level engine singleton (Fast Refresh survival)
+      cleanupEngine()
+      useRecordingSessionStore.getState().reset()
 
       if (channelId) {
         useAudioStore.getState().clearPendingAudio(channelId)
@@ -1048,14 +1540,14 @@ export function InputComposer({
     channelId,
     toast,
     t,
+    skillIdsFromChips,
   ])
 
   // Attach native keydown listener
   useEffect(() => {
     const handleNativeKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      const singleInput = getNativeInput(singleLineInputRef.current)
-      const multiInput = getNativeInput(multiLineInputRef.current)
+      const fieldInput = getNativeInput(inputRef.current)
 
       // Alt+X: shortcut to toggle voice recording (only fires in the active tiling window)
       if (e.altKey && e.code === "KeyX") {
@@ -1072,7 +1564,14 @@ export function InputComposer({
         return
       }
 
-      if (target !== singleInput && target !== multiInput) {
+      if (target !== fieldInput) {
+        return
+      }
+
+      // Mention dropdown keyboard navigation (must be before Enter handling)
+      if (onKeyDownRef.current(e.key)) {
+        e.preventDefault()
+        e.stopPropagation()
         return
       }
 
@@ -1088,21 +1587,13 @@ export function InputComposer({
             textRef.current.substring(0, start) + "\n" + textRef.current.substring(end)
           const newCursorPos = start + 1
 
-          if (!useMultilineLayoutRef.current) {
-            pendingCursorRef.current = newCursorPos
-            setUseMultilineLayout(true)
-          }
-
           setText(newText)
-
-          if (useMultilineLayoutRef.current) {
-            requestAnimationFrame(() => {
-              const currentInput = getNativeInput(multiLineInputRef.current)
-              if (currentInput) {
-                currentInput.setSelectionRange(newCursorPos, newCursorPos)
-              }
-            })
-          }
+          requestAnimationFrame(() => {
+            const currentInput = getNativeInput(inputRef.current)
+            if (currentInput) {
+              currentInput.setSelectionRange(newCursorPos, newCursorPos)
+            }
+          })
           return
         }
 
@@ -1183,46 +1674,38 @@ export function InputComposer({
     const { message, details } = getErrorMessage(recordingError)
 
     return (
-      <XStack
-        paddingHorizontal="$3"
-        paddingVertical="$2"
-        alignItems="flex-start"
-        justifyContent="space-between"
-        backgroundColor={controlsBar.deny.bg}
-        borderBottomWidth={1}
-        borderBottomColor={controlsBar.deny.border}
+      <RNView
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          gap: 10,
+          paddingVertical: 8,
+          paddingLeft: 12,
+          paddingRight: 6,
+          marginBottom: 8,
+          borderRadius: 12,
+          backgroundColor: c.tint.r.bg,
+          borderWidth: 1,
+          borderColor: c.tint.r.bd,
+        }}
       >
-        <YStack flex={1} gap="$1">
-          <XStack alignItems="center" gap="$2">
-            <AlertCircle size={16} color={semanticColors.red} />
-            <Text fontSize="$2" color={semanticColors.red} flex={1}>
-              {message}
-            </Text>
-          </XStack>
+        <RNView style={{ paddingTop: 2 }}>
+          <Ph name="warning-circle" size={15} color={c.tint.r.tx} />
+        </RNView>
+        <RNView style={{ flex: 1, gap: 2 }}>
+          <T step="sm" color={c.tint.r.tx}>
+            {message}
+          </T>
           {details && (
-            <Text
-              fontSize="$1"
-              color={semanticColors.red}
-              opacity={0.7}
-              paddingLeft="$5"
-              userSelect="text"
-              cursor="text"
-              style={{ userSelect: "text", WebkitUserSelect: "text" } as any}
-            >
+            <T step="12" color={c.tint.r.tx} selectable style={{ opacity: 0.8 }}>
               {details}
-            </Text>
+            </T>
           )}
-        </YStack>
-        <Button
-          size="$2"
-          circular
-          chromeless
-          onPress={dismissError}
-          icon={<X size={14} color={semanticColors.red} />}
-        />
-      </XStack>
+        </RNView>
+        <IconBtn icon="x" plain sm color={c.tint.r.tx} onPress={dismissError} />
+      </RNView>
     )
-  }, [recordingError, dismissError])
+  }, [recordingError, dismissError, c])
 
   // Waveform — memoized to prevent it from being a new component type on every render.
   // Defining a component inline (const Foo = () => ...) causes React to unmount+remount
@@ -1263,13 +1746,13 @@ export function InputComposer({
 
           let backgroundColor: string
           if (isEmptySlot) {
-            backgroundColor = c.border
+            backgroundColor = c.borderStrong
           } else if (isRecording) {
             backgroundColor = semanticColors.red
           } else if (progressBarIndex >= 0 && index <= progressBarIndex) {
-            backgroundColor = semanticColors.indigo
+            backgroundColor = c.accent
           } else {
-            backgroundColor = semanticColors.indigoGlow
+            backgroundColor = c.tile
           }
 
           return (
@@ -1288,55 +1771,43 @@ export function InputComposer({
       </div>
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isRecording, isPaused, isPlaying, samples, numBars, playbackProgress, handleWaveformClick])
+  }, [isRecording, isPaused, isPlaying, samples, numBars, playbackProgress, handleWaveformClick, c])
 
   // Can send logic
   const canSend = (hasText || hasAudioRecording || isRecording || hasFileAttachment) && !disabled
 
-  // Auto-resize textarea
+  // Auto-grow: the textarea's height is owned by the DOM, not by React — it is
+  // measured from scrollHeight after every text change (and on resize) and
+  // written inline, so no re-render can reset it. At the cap it scrolls.
+  const fitField = useCallback(() => {
+    const el = getNativeInput(inputRef.current) as HTMLTextAreaElement | null
+    if (!el) return
+    el.style.height = "0px"
+    const h = Math.min(Math.max(el.scrollHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT)
+    el.style.height = `${h}px`
+    el.style.overflowY = h >= TEXTAREA_MAX_HEIGHT ? "auto" : "hidden"
+  }, [getNativeInput])
+  useLayoutEffect(() => {
+    fitField()
+  }, [text, fitField])
   useEffect(() => {
-    if (!useMultilineLayout) {
-      setTextareaHeight(TEXTAREA_MIN_HEIGHT)
-      return
-    }
+    const el = getNativeInput(inputRef.current)
+    if (!el || typeof ResizeObserver === "undefined") return
+    const ro = new ResizeObserver(() => fitField())
+    ro.observe(el.parentElement ?? el)
+    return () => ro.disconnect()
+  }, [fitField, getNativeInput])
 
-    const inputWrapper = multiLineInputRef.current
-    if (!inputWrapper) return
-
-    const textarea =
-      inputWrapper.tagName === "TEXTAREA"
-        ? inputWrapper
-        : inputWrapper.querySelector?.("textarea") || inputWrapper
-
-    if (!textarea || !textarea.scrollHeight) return
-
-    textarea.style.height = "auto"
-    const scrollHeight = textarea.scrollHeight
-    const newHeight = Math.min(Math.max(scrollHeight, TEXTAREA_MIN_HEIGHT), TEXTAREA_MAX_HEIGHT)
-    textarea.style.height = `${newHeight}px`
-    setTextareaHeight(newHeight)
-  }, [text, useMultilineLayout])
-
-  // Transfer focus when layout changes
+  // Focus the field on mount — pointer devices only: on a phone a programmatic
+  // focus pops the keyboard the moment the chat opens.
   useEffect(() => {
-    const raf = requestAnimationFrame(() => {
-      const timer = setTimeout(() => {
-        const refEl = useMultilineLayout ? multiLineInputRef.current : singleLineInputRef.current
-        const inputEl = getNativeInput(refEl)
-
-        if (inputEl) {
-          inputEl.focus()
-          const cursorPos = pendingCursorRef.current ?? textRef.current.length
-          pendingCursorRef.current = null
-          if (inputEl.setSelectionRange) {
-            inputEl.setSelectionRange(cursorPos, cursorPos)
-          }
-        }
-      }, 0)
-      return () => clearTimeout(timer)
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [useMultilineLayout, getNativeInput])
+    if (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches) return
+    const inputEl = getNativeInput(inputRef.current)
+    if (!inputEl) return
+    inputEl.focus()
+    const end = textRef.current.length
+    if (inputEl.setSelectionRange) inputEl.setSelectionRange(end, end)
+  }, [getNativeInput])
 
   // Focus input when clicking container
   const handleContainerPress = useCallback(
@@ -1355,600 +1826,743 @@ export function InputComposer({
         return
       }
 
-      const refEl = useMultilineLayout ? multiLineInputRef.current : singleLineInputRef.current
-      const inputEl = getNativeInput(refEl)
+      const inputEl = getNativeInput(inputRef.current)
       if (inputEl) {
         inputEl.focus()
       }
     },
-    [useMultilineLayout, getNativeInput, isRecordingOrPaused],
+    [getNativeInput, isRecordingOrPaused],
   )
 
-  // Render different layouts based on state
-  const renderContent = () => {
-    // Recording or Paused: Show waveform layout
-    if (isRecordingOrPaused) {
-      return (
-        <XStack testID="composer-recording" padding={4} alignItems="center" gap="$2">
-          {/* Left group: Discard + Pause/Play */}
-          <Button
-            width={52}
-            height={52}
-            padding={0}
-            borderRadius={12}
-            backgroundColor={c.bgInner}
-            borderWidth={1}
-            borderColor={c.border}
-            onPress={discardRecording}
-            disabled={isDiscarding}
-            onMouseEnter={() => setIsDiscardHovered(true)}
-            onMouseLeave={() => setIsDiscardHovered(false)}
-            hoverStyle={{
-              backgroundColor: c.bgCardHover,
-              borderColor: c.borderStrong,
-            }}
-            pressStyle={{
-              backgroundColor: c.bgInner,
-              borderColor: c.borderStrong,
-              scale: 0.95,
-            }}
-            icon={
-              isDiscarding ? (
-                <SpinningLoader size={18} color={c.text2} />
-              ) : (
-                <X size={18} color={isDiscardHovered ? c.text2 : c.text3} />
-              )
-            }
+  // ── Pieces of the pill (`.compose`) ─────────────────────────────────────
+  const isDark = c.bgPage === surface.dark.bgPage
+
+  // `.compose .plus` — the 38px round control that opens the attachments.
+  const plusButton = (
+    <Pressable
+      testID="composer-attach"
+      accessibilityRole="button"
+      onPress={fileUpload.pickFile}
+      disabled={disabled || fileUpload.isUploading}
+      onHoverIn={() => setIsAttachHovered(true)}
+      onHoverOut={() => setIsAttachHovered(false)}
+      {...({ title: t("conversation.attachFile", { defaultValue: "Attach files" }) } as object)}
+      style={({ pressed }) => [
+        {
+          width: pane.compact ? 40 : 38,
+          height: pane.compact ? 40 : 38,
+          borderRadius: 100,
+          backgroundColor: hasFileAttachment ? c.navActive : c.bgControl,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          opacity: disabled ? 0.5 : 1,
+          transform: [
+            { rotate: hasFileAttachment ? "45deg" : "0deg" },
+            { scale: pressed ? 0.94 : 1 },
+          ],
+        },
+        {
+          cursor: disabled ? "default" : "pointer",
+          transition: "transform 0.4s cubic-bezier(.16,1,.3,1), background 0.25s",
+        } as any,
+      ]}
+    >
+      {fileUpload.isUploading ? (
+        <SpinningLoader size={16} color={c.text} />
+      ) : (
+        <Ph
+          name="plus"
+          size={18}
+          color={hasFileAttachment ? c.accent : isDark ? c.text : semanticColors.main800}
+        />
+      )}
+    </Pressable>
+  )
+
+  // `.compose .mic` — quiet glyph inside the pill; red + pulsing while recording.
+  const micButton = (
+    <Pressable
+      testID="composer-mic"
+      accessibilityRole="button"
+      onPress={startRecording}
+      disabled={disabled || isStartingRecording}
+      onHoverIn={() => setIsMicHovered(true)}
+      onHoverOut={() => setIsMicHovered(false)}
+      {...({
+        title: t("conversation.recordVoice", { defaultValue: "Record a voice note (Alt+X)" }),
+      } as object)}
+      style={({ pressed }) => [
+        {
+          width: pane.compact ? 40 : 36,
+          height: pane.compact ? 40 : 36,
+          borderRadius: 100,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          opacity: disabled ? 0.5 : 1,
+          transform: pressed ? [{ scale: 0.94 }] : undefined,
+        },
+        { cursor: disabled ? "default" : "pointer", transition: "color 0.2s" } as any,
+      ]}
+    >
+      {isStartingRecording ? (
+        <SpinningLoader size={18} color={semanticColors.red} />
+      ) : (
+        <Ph name="microphone" size={18} color={isMicHovered ? c.text : c.text3} />
+      )}
+    </Pressable>
+  )
+
+  // `.send` — the 48px mint disc (Mint/200 + Mint/400 glyph); disabled = Main/200
+  // with a Main/500 glyph and an inset hairline. Visible in every state.
+  const sendEnabled = canSend && !isSending
+  const disabledBg = isDark ? c.wash2 : semanticColors.main200
+  const disabledFg = isDark ? c.text3 : semanticColors.main500
+  const disabledRing = isDark ? c.borderStrong : semanticColors.main300
+  const sendButton = (
+    <Pressable
+      testID="composer-send"
+      {...fx("send")}
+      accessibilityRole="button"
+      aria-label={isSending ? "Sending message" : "Send message"}
+      onPress={handleSend}
+      disabled={!sendEnabled}
+      style={({ pressed }) => [
+        {
+          width: 48,
+          height: 48,
+          borderRadius: 100,
+          backgroundColor: sendEnabled || isSending ? semanticColors.mint200 : disabledBg,
+          alignItems: "center",
+          justifyContent: "center",
+          flexShrink: 0,
+          marginLeft: 6,
+          transform: pressed && sendEnabled ? [{ scale: 0.94 }] : undefined,
+        },
+        {
+          cursor: sendEnabled ? "pointer" : "default",
+          // No drop shadow: the live disc blooms under the pointer (Halo).
+          boxShadow:
+            sendEnabled || isSending
+              ? "inset 0 -2px rgba(0,62,49,0.12)"
+              : `inset 0 0 0 1px ${disabledRing}`,
+          transition:
+            "background 0.25s cubic-bezier(.16,1,.3,1), color 0.25s, box-shadow 0.25s, transform 0.3s cubic-bezier(.16,1,.3,1)",
+        } as any,
+      ]}
+    >
+      <Halo color={semanticColors.mint200} size="xl" disabled={!sendEnabled} />
+      <RNView style={{ zIndex: 1 }}>
+        {isSending ? (
+          <SpinningLoader size={18} color={semanticColors.mint400} />
+        ) : (
+          <Ph
+            name="arrow-up"
+            size={20}
+            weight="bold"
+            color={sendEnabled ? semanticColors.mint400 : disabledFg}
           />
+        )}
+      </RNView>
+    </Pressable>
+  )
 
-          {isRecording ? (
-            <Button
-              width={52}
-              height={52}
-              padding={0}
-              borderRadius={12}
-              backgroundColor={indicators.irreversible.bg}
-              borderWidth={1}
-              borderColor={indicators.irreversible.border}
-              onPress={stopRecording}
-              onMouseEnter={() => setIsRecPauseHovered(true)}
-              onMouseLeave={() => setIsRecPauseHovered(false)}
-              hoverStyle={{
-                backgroundColor: controlsBar.deny.border,
-                borderColor: controlsBar.deny.border,
-              }}
-              pressStyle={{
-                backgroundColor: controlsBar.deny.bg,
-                borderColor: controlsBar.deny.border,
-                scale: 0.95,
-              }}
-              icon={<Pause size={20} color={isRecPauseHovered ? semanticColors.red : semanticColors.red} />}
-            />
-          ) : (
-            <Button
-              width={52}
-              height={52}
-              padding={0}
-              borderRadius={12}
-              backgroundColor={semanticColors.indigoGlow}
-              borderWidth={1}
-              borderColor={c.badges.info.border}
-              onPress={togglePlayback}
-              onMouseEnter={() => setIsPlaybackHovered(true)}
-              onMouseLeave={() => setIsPlaybackHovered(false)}
-              hoverStyle={{
-                backgroundColor: c.badges.info.bg,
-                borderColor: c.badges.info.border,
-              }}
-              pressStyle={{
-                backgroundColor: c.badges.info.bg,
-                borderColor: c.badges.info.border,
-                scale: 0.95,
-              }}
-              icon={
-                isPlaying ? (
-                  <Pause size={20} color={isPlaybackHovered ? semanticColors.indigoLight : semanticColors.indigo} />
-                ) : (
-                  <Play size={20} color={isPlaybackHovered ? semanticColors.indigoLight : semanticColors.indigo} />
-                )
-              }
-            />
-          )}
-
-          {/* Waveform + Duration */}
-          <XStack flex={1} alignItems="center" gap="$2" minWidth={0}>
-            {waveform}
-            <Text
-              fontSize={13}
-              fontWeight="500"
-              color={isRecording ? semanticColors.red : semanticColors.indigo}
-              minWidth={36}
-              textAlign="right"
-              fontVariant={["tabular-nums"]}
-            >
-              {formatDuration(audioRecording?.duration || recordingDuration)}
-            </Text>
-          </XStack>
-
-          {/* Right group: Transcribe (optional) + Send */}
-          {onTranscribe && (
-            <Button
-              width={52}
-              height={52}
-              padding={0}
-              borderRadius={12}
-              backgroundColor={c.bgInner}
-              borderWidth={1}
-              borderColor={c.border}
-              onPress={handleTranscribe}
-              disabled={isTranscribing}
-              onMouseEnter={() => setIsTranscribeHovered(true)}
-              onMouseLeave={() => setIsTranscribeHovered(false)}
-              hoverStyle={{
-                backgroundColor: c.bgCard,
-                borderColor: c.borderStrong,
-              }}
-              pressStyle={{
-                backgroundColor: c.bgCard,
-                borderColor: c.borderStrong,
-                scale: 0.95,
-              }}
-              disabledStyle={{
-                opacity: 0.5,
-              }}
-              icon={
-                isTranscribing ? (
-                  <Loader size={18} color={c.text2} />
-                ) : (
-                  <PenLine size={18} color={isTranscribeHovered ? c.text2 : c.text3} />
-                )
-              }
-            />
-          )}
-
-          <Button
-            width={52}
-            height={52}
-            padding={0}
-            borderRadius={12}
-            backgroundColor={semanticColors.indigo}
-            borderWidth={1}
-            borderColor={c.badges.info.border}
-            onPress={handleSend}
-            disabled={isSending}
-            hoverStyle={{
-              backgroundColor: semanticColors.indigoLight,
-              borderColor: c.badges.info.border,
-            }}
-            pressStyle={{
-              backgroundColor: semanticColors.indigoDark,
-              borderColor: c.badges.info.border,
-              scale: 0.95,
-            }}
-            icon={
-              isSending ? (
-                <SpinningLoader size={20} color={surface.dark.text} />
-              ) : (
-                <Send size={20} color={surface.dark.text} />
-              )
-            }
-          />
-        </XStack>
-      )
-    }
-
-    const stopButton =
-      isGenerating && onStop ? (
+  // `.send.stop` — while the agent generates, the ink pill sits next to send
+  // (send stays live: a message sent now is queued).
+  const stopButton =
+    isGenerating && onStop ? (
+      <RNView style={{ marginLeft: 6 }}>
         <StopButton
           onSoftStop={() => onStop("soft")}
           onHardStop={() => onStop("hard")}
           hasIrreversibleToolInFlight={hasIrreversibleToolInFlight}
           irreversibleToolName={irreversibleToolName}
         />
-      ) : null
-    const sendButton = (
-      <Button
-        testID="composer-send"
-        width={52}
-        height={52}
-        padding={0}
-        borderRadius={12}
-        backgroundColor={semanticColors.indigo}
-        borderWidth={1}
-        borderColor={c.badges.info.border}
-        onPress={handleSend}
-        disabled={!canSend || isSending}
-        hoverStyle={{
-          backgroundColor: semanticColors.indigoLight,
-          borderColor: c.badges.info.border,
-        }}
-        pressStyle={{
-          backgroundColor: semanticColors.indigoDark,
-          borderColor: c.badges.info.border,
-          scale: 0.95,
-        }}
-        disabledStyle={{
-          backgroundColor: c.badges.info.bg,
-          borderColor: c.border,
-        }}
-        icon={
-          isSending ? (
-            <SpinningLoader size={20} color={surface.dark.text} />
-          ) : (
-            <Send size={20} color={surface.dark.text} />
-          )
-        }
-      />
-    )
-    const micButton = (
-      <Button
-        testID="composer-mic"
-        width={52}
-        height={52}
-        padding={0}
-        borderRadius={12}
-        backgroundColor={c.bgInner}
-        borderWidth={1}
-        borderColor={c.border}
-        onPress={startRecording}
-        disabled={disabled || isStartingRecording}
-        onMouseEnter={() => setIsMicHovered(true)}
-        onMouseLeave={() => setIsMicHovered(false)}
-        hoverStyle={{
-          backgroundColor: controlsBar.deny.bg,
-          borderColor: controlsBar.deny.bg,
-        }}
-        pressStyle={{
-          backgroundColor: controlsBar.deny.bg,
-          borderColor: controlsBar.deny.border,
-          scale: 0.95,
-        }}
-        icon={
-          isStartingRecording ? (
-            <SpinningLoader size={20} color={semanticColors.red} />
-          ) : (
-            <Mic size={20} color={isMicHovered ? semanticColors.red : c.text3} />
-          )
-        }
-      />
-    )
+      </RNView>
+    ) : null
 
-    const hasInputContent = hasText || hasFileAttachment
-    // Stop lives in the left section alongside Attach; the right slot is
-    // dedicated to the primary action (send/mic). Recording flows replace
-    // the whole composer, so stopButton naturally hides during audio capture.
-    const rightButton = hasInputContent ? sendButton : micButton
-
-    if (useMultilineLayout) {
+  // Render the inside of the pill based on state
+  const renderPillContent = () => {
+    // Recording or Paused: waveform layout (`.recorder`)
+    if (isRecordingOrPaused) {
       return (
-        <>
-          <YStack paddingHorizontal={4} paddingTop={4}>
-            <Input
-              testID="composer-input"
-              ref={multiLineInputRef}
-              backgroundColor="transparent"
-              borderWidth={0}
-              outlineWidth={0}
-              focusStyle={{ borderWidth: 0, outlineWidth: 0 }}
-              paddingHorizontal="$2"
-              paddingVertical="$1"
-              fontSize="$4"
-              fontFamily="$body"
-              color={c.text}
-              placeholderTextColor={c.text3}
-              placeholder={resolvedPlaceholder}
-              value={text}
-              onChangeText={setText}
-              multiline
-              disabled={disabled}
-              autoComplete="new-password"
-              autoCorrect={false}
-              spellCheck={false}
-              enterKeyHint="send"
-              height={textareaHeight}
-              maxHeight={TEXTAREA_MAX_HEIGHT}
-              overflow="hidden"
-              style={
-                {
-                  overflowY: textareaHeight >= TEXTAREA_MAX_HEIGHT ? "auto" : "hidden",
-                  overflowX: "hidden",
-                } as any
-              }
+        <XStack
+          testID="composer-recording"
+          flex={1}
+          minWidth={0}
+          alignItems="center"
+          gap={6}
+          paddingLeft={2}
+        >
+          {/* Left group: Discard + Pause/Play */}
+          <IconBtn
+            icon="x"
+            plain
+            onPress={discardRecording}
+            disabled={isDiscarding}
+            title={t("recording.discard", { defaultValue: "Discard" })}
+          />
+
+          {isRecording ? (
+            <IconBtn
+              icon="pause"
+              weight="fill"
+              color={semanticColors.red}
+              onPress={stopRecording}
+              style={{ backgroundColor: c.tint.r.bg, borderColor: "transparent" }}
+              title={t("recording.pause", { defaultValue: "Pause" })}
             />
-          </YStack>
-          <XStack padding={4} alignItems="center" justifyContent="space-between">
-            <XStack alignItems="center" gap="$2">
-              <Button
-                testID="composer-attach"
-                width={52}
-                height={52}
-                padding={0}
-                borderRadius={12}
-                backgroundColor={
-                  hasFileAttachment ? semanticColors.indigoGlow : c.bgInner
-                }
-                borderWidth={1}
-                borderColor={hasFileAttachment ? c.badges.info.border : c.border}
-                onPress={fileUpload.pickFile}
-                disabled={disabled || fileUpload.isUploading}
-                onMouseEnter={() => setIsAttachHovered(true)}
-                onMouseLeave={() => setIsAttachHovered(false)}
-                hoverStyle={
-                  hasFileAttachment
-                    ? {
-                        backgroundColor: c.badges.info.bg,
-                        borderColor: c.badges.info.border,
-                      }
-                    : {
-                        backgroundColor: c.bgCardHover,
-                        borderColor: c.borderStrong,
-                      }
-                }
-                pressStyle={
-                  hasFileAttachment
-                    ? {
-                        backgroundColor: c.badges.info.bg,
-                        borderColor: c.badges.info.border,
-                        scale: 0.95,
-                      }
-                    : {
-                        backgroundColor: c.bgInner,
-                        borderColor: c.borderStrong,
-                        scale: 0.95,
-                      }
-                }
-                icon={
-                  <Paperclip
-                    size={20}
-                    color={
-                      hasFileAttachment
-                        ? isAttachHovered
-                          ? semanticColors.indigoLight
-                          : semanticColors.indigo
-                        : isAttachHovered
-                          ? c.text2
-                          : c.text3
-                    }
-                  />
-                }
-              />
-              {stopButton}
-            </XStack>
-            {rightButton}
+          ) : (
+            <IconBtn
+              icon={isPlaying ? "pause" : "play"}
+              weight="fill"
+              color={c.accent}
+              onPress={togglePlayback}
+              style={{ backgroundColor: c.navActive, borderColor: "transparent" }}
+              title={t("recording.play", { defaultValue: "Play" })}
+            />
+          )}
+
+          {/* Waveform + Duration */}
+          <XStack flex={1} alignItems="center" gap={10} minWidth={0}>
+            {waveform}
+            <T
+              step="code13"
+              color={isRecording ? semanticColors.red : c.accent}
+              style={{ minWidth: 36, textAlign: "right", fontVariant: ["tabular-nums"] }}
+            >
+              {formatDuration(audioRecording?.duration || recordingDuration)}
+            </T>
           </XStack>
-        </>
+
+          {/* Transcribe (optional) — the send lives outside the pill */}
+          {onTranscribe && (
+            <IconBtn
+              icon="pencil-simple-line"
+              plain
+              onPress={handleTranscribe}
+              disabled={isTranscribing}
+              title={t("recording.transcribe", { defaultValue: "Transcribe to text" })}
+            />
+          )}
+        </XStack>
       )
     }
 
-    // Single line layout
     return (
-      <XStack padding={4} alignItems="center" gap="$2">
-        <Button
-          testID="composer-attach"
-          width={52}
-          height={52}
-          padding={0}
-          borderRadius={12}
-          backgroundColor={hasFileAttachment ? semanticColors.indigoGlow : c.bgInner}
-          borderWidth={1}
-          borderColor={hasFileAttachment ? c.badges.info.border : c.border}
-          onPress={fileUpload.pickFile}
-          disabled={disabled || fileUpload.isUploading}
-          onMouseEnter={() => setIsAttachHovered(true)}
-          onMouseLeave={() => setIsAttachHovered(false)}
-          hoverStyle={
-            hasFileAttachment
-              ? {
-                  backgroundColor: c.badges.info.bg,
-                  borderColor: c.badges.info.border,
-                }
-              : {
-                  backgroundColor: c.bgCardHover,
-                  borderColor: c.borderStrong,
-                }
-          }
-          pressStyle={
-            hasFileAttachment
-              ? {
-                  backgroundColor: c.badges.info.bg,
-                  borderColor: c.badges.info.border,
-                  scale: 0.95,
-                }
-              : {
-                  backgroundColor: c.bgInner,
-                  borderColor: c.borderStrong,
-                  scale: 0.95,
-                }
-          }
-          icon={
-            <Paperclip
-              size={20}
-              color={
-                hasFileAttachment
-                  ? isAttachHovered
-                    ? semanticColors.indigoLight
-                    : semanticColors.indigo
-                  : isAttachHovered
-                    ? c.text2
-                    : c.text3
-              }
-            />
-          }
-        />
-        {stopButton}
-        <Input
-          testID="composer-input"
-          ref={singleLineInputRef}
-          flex={1}
-          backgroundColor="transparent"
-          borderWidth={0}
-          outlineWidth={0}
-          focusStyle={{ borderWidth: 0, outlineWidth: 0 }}
-          paddingHorizontal="$2"
-          paddingVertical="$1"
-          fontSize="$4"
-          fontFamily="$body"
-          color={c.text}
-          placeholderTextColor={c.text3}
-          placeholder={resolvedPlaceholder}
-          value={text}
-          onChangeText={setText}
-          disabled={disabled}
-          autoComplete="new-password"
-          autoCorrect={false}
-          spellCheck={false}
-          enterKeyHint="send"
-        />
-        {rightButton}
-      </XStack>
+      <>
+        {plusButton}
+        <RNView
+          // As tall as the round controls at rest so one line reads centred;
+          // taller than that, the field grows and the controls stay at the foot.
+          style={{ flex: 1, minWidth: 0, minHeight: COMPOSE_CONTROL, justifyContent: "center" }}
+          {...({ dataSet: { compose: "field" } } as object)}
+        >
+          <TextInput
+            testID="composer-input"
+            ref={inputRef}
+            multiline
+            numberOfLines={1}
+            value={text}
+            onChangeText={handleTextChange}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            editable={!disabled}
+            placeholder={resolvedPlaceholder}
+            placeholderTextColor={c.text3}
+            autoComplete="off"
+            autoCorrect={false}
+            spellCheck={false}
+            enterKeyHint="send"
+            style={
+              {
+                // Height is written by fitField (DOM-owned) — never set it here.
+                width: "100%",
+                minHeight: TEXTAREA_MIN_HEIGHT,
+                maxHeight: TEXTAREA_MAX_HEIGHT,
+                paddingHorizontal: 6,
+                paddingVertical: 0,
+                margin: 0,
+                borderWidth: 0,
+                backgroundColor: "transparent",
+                color: c.text,
+                fontFamily: FONT_SANS,
+                fontSize: 16,
+                lineHeight: 24,
+                fontWeight: "400",
+                letterSpacing: 0,
+                outlineStyle: "none",
+                resize: "none",
+                overflowX: "hidden",
+                overflowY: "hidden",
+              } as any
+            }
+          />
+        </RNView>
+        {micButton}
+      </>
     )
   }
+
+  const manageLabel = t("composer.manageApps", { defaultValue: "Manage" })
+  const canUseLabel = t("composer.canUse", {
+    defaultValue: "{{name}} can use",
+    name: agentName ?? t("conversation.agent"),
+  })
+  // `.compose-meta`: the label + app chips scroll sideways in one row; the
+  // Manage chip is pinned at the far right and never scrolls away.
+  const metaLead = agentId ? (
+    <>
+      <T step="codenote" tone="text3" style={{ flexShrink: 0 }}>
+        {canUseLabel}
+      </T>
+      {agentApps.map((app) => {
+        const icon = appIconUrl(app)
+        return (
+          <ChipBtn
+            key={app.appId}
+            onPress={() => openWindow("app", { appId: app.appId, workspaceId }, false)}
+            style={{ flexShrink: 0 }}
+          >
+            {icon ? (
+              <img
+                src={icon}
+                alt=""
+                width={13}
+                height={13}
+                style={{ width: 13, height: 13, borderRadius: 3, display: "block" }}
+              />
+            ) : (
+              <Ph name="squares-four" size={13} color={c.text3} />
+            )}
+            <T step="12" tone="text2" numberOfLines={1}>
+              {app.name}
+            </T>
+          </ChipBtn>
+        )
+      })}
+    </>
+  ) : null
+  const manageChip = agentId ? (
+    <ChipBtn
+      icon="sliders-horizontal"
+      onPress={() =>
+        openWindow(
+          "agent",
+          { agentId: agentId.startsWith("agent_") ? agentId : `agent_${agentId}`, workspaceId },
+          true,
+        )
+      }
+      style={{ flexShrink: 0 }}
+    >
+      {manageLabel}
+    </ChipBtn>
+  ) : null
+
+  const padX = pane.narrow ? 10 : pane.compact ? 14 : 28
 
   return (
     <YStack
       ref={containerRef}
-      marginHorizontal={4}
-      marginTop={4}
-      // No bottom margin and no bottom rounding: the composer rests on the
-      // safe-zone band (#0a0a0a, where the gradient ends) and reads as a
-      // sheet that continues to the physical bottom edge of the screen.
-      borderTopLeftRadius={16}
-      borderTopRightRadius={16}
-      // overflow hidden: the error banner and the attachment preview paint
-      // edge-to-edge backgrounds that would poke out of the rounded corners.
-      overflow="hidden"
-      backgroundColor={c.bgCard}
-      // Subtle top-to-bottom gradient, lighter at the top and fading into
-      // #0a0a0a (the canvas / bottom safe-zone color) so the composer blends
-      // into the gesture-bar band. Web only; the backgroundColor above stays
-      // as a fallback.
-      style={{
-        background: `linear-gradient(to bottom, ${c.bgCard}, ${c.bgPage})`,
-      }}
+      testID="composer-root"
+      // data-channel-id: lets the browser smoke pick THIS chat's composer when
+      // several chat windows are open (preview tabs pin on write, so a second
+      // openChat lands in a fresh tab next to the pinned one).
+      {...({ dataSet: { channelId } } as object)}
+      // `.composer` — rides the sheet; no card, no gradient.
+      paddingTop={pane.compact ? 8 : 12}
+      paddingHorizontal={padX}
+      paddingBottom={Math.max(pane.compact ? 14 : 22, bottomInset)}
       onPress={handleContainerPress}
       cursor={isRecordingOrPaused ? "default" : "text"}
+      position="relative"
     >
-      {errorBanner}
+      {/* `.composer-in` — 760px, centred */}
+      <YStack width="100%" maxWidth={THREAD_MAX_WIDTH} alignSelf="center" position="relative">
+        {errorBanner}
 
-      {/* File attachment preview — also shown when there's only a validation error
-          (all files rejected), otherwise the error would be swallowed silently. */}
-      {(hasFileAttachment || fileUpload.error) && (
-        <YStack
-          padding="$3"
-          gap="$2"
-          backgroundColor={semanticColors.indigoGlow}
-          borderBottomWidth={1}
-          borderBottomColor={c.border}
-        >
-          {fileUpload.selectedFiles.map((file, idx) => {
-            const previewUrl = fileUpload.previewUrls[idx]
-            const isImage = file.type.startsWith("image/")
-            return (
-              <XStack
-                key={`${file.name}-${idx}`}
-                testID="composer-attach-chip"
-                alignItems="center"
-                gap="$2"
-                flex={1}
-                padding="$2"
-                backgroundColor={c.bgInner}
-                borderRadius={6}
-              >
-                {isImage && previewUrl ? (
-                  <Image
-                    source={{ uri: previewUrl }}
-                    width={40}
-                    height={40}
-                    borderRadius={4}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <YStack
-                    width={40}
-                    height={40}
-                    borderRadius={4}
-                    backgroundColor={semanticColors.indigoGlow}
-                    alignItems="center"
-                    justifyContent="center"
+        {/* File attachment preview — a card above the pill. Dual layout:
+          ≤5 files: full rows with icon + name + type label
+          >5 files: wrapping thumbnail grid with capped height + scroll
+          Also shown when there's only a validation error (all files rejected). */}
+        {(hasFileAttachment || fileUpload.error) && (
+          <YStack
+            padding={12}
+            marginBottom={10}
+            borderRadius={16}
+            backgroundColor={c.bgStep}
+            // @ts-ignore web-only lift
+            style={{ boxShadow: c.liftSm }}
+          >
+            {fileUpload.selectedFiles.length > 0 && (
+              <YStack gap={8}>
+                {/* Discreet header row: file count + clear-all text link */}
+                <XStack alignItems="center" justifyContent="space-between" paddingHorizontal={2}>
+                  <T step="codenote" tone="text3">
+                    {fileUpload.selectedFiles.length}{" "}
+                    {fileUpload.selectedFiles.length === 1 ? "file" : "files"}
+                  </T>
+                  <Pressable
+                    onPress={fileUpload.isUploading ? undefined : fileUpload.clear}
+                    disabled={fileUpload.isUploading}
                   >
-                    <FileText size={20} color={semanticColors.indigo} />
+                    <T
+                      step="12"
+                      tone="text3"
+                      style={{
+                        opacity: fileUpload.isUploading ? 0.4 : 0.8,
+                        textDecorationLine: "underline",
+                      }}
+                    >
+                      Clear all
+                    </T>
+                  </Pressable>
+                </XStack>
+
+                {fileUpload.selectedFiles.length <= 5 ? (
+                  /* ── Layout 1: ≤5 files — full rows with icon + name + type ── */
+                  <YStack gap={6}>
+                    {fileUpload.selectedFiles.map((file, idx) => {
+                      const previewUrl = fileUpload.previewUrls[idx]
+                      const kind = getFileKind(file)
+                      const cfg = FILE_KIND_CONFIG[kind]
+                      const isImage = kind === "image"
+                      return (
+                        <XStack
+                          key={`${file.name}-${idx}`}
+                          testID="composer-attach-chip"
+                          alignItems="center"
+                          gap={10}
+                          padding={8}
+                          backgroundColor={c.nest}
+                          borderRadius={12}
+                        >
+                          {/* Icon / thumbnail */}
+                          <YStack
+                            width={36}
+                            height={36}
+                            borderRadius={8}
+                            overflow="hidden"
+                            flexShrink={0}
+                            alignItems="center"
+                            justifyContent="center"
+                            backgroundColor={isImage ? c.nest : cfg.bg}
+                          >
+                            {isImage && previewUrl ? (
+                              <img
+                                src={previewUrl}
+                                alt={file.name}
+                                style={{
+                                  width: 36,
+                                  height: 36,
+                                  objectFit: "cover",
+                                  display: "block",
+                                  borderRadius: 8,
+                                }}
+                              />
+                            ) : (
+                              <Ph name={cfg.icon} size={20} color={cfg.color} />
+                            )}
+                          </YStack>
+
+                          {/* Name + type */}
+                          <YStack flex={1} minWidth={0} gap={1}>
+                            <T step="sm" ellipsis>
+                              {file.name}
+                            </T>
+                            <T step="codenote" color={cfg.color}>
+                              {cfg.label}
+                            </T>
+                          </YStack>
+
+                          {/* Remove button */}
+                          <IconBtn
+                            icon="x"
+                            plain
+                            sm
+                            testID="composer-attach-remove"
+                            onPress={() => fileUpload.removeFile(idx)}
+                            disabled={fileUpload.isUploading}
+                          />
+                        </XStack>
+                      )
+                    })}
                   </YStack>
+                ) : (
+                  /* ── Layout 2: >5 files — wrapping thumbnail grid ── */
+                  <XStack
+                    flexWrap="wrap"
+                    gap={8}
+                    style={{
+                      maxHeight: 230,
+                      overflowY: "auto",
+                      scrollbarWidth: "thin",
+                      WebkitOverflowScrolling: "touch",
+                    }}
+                  >
+                    {fileUpload.selectedFiles.map((file, idx) => {
+                      const previewUrl = fileUpload.previewUrls[idx]
+                      const kind = getFileKind(file)
+                      const cfg = FILE_KIND_CONFIG[kind]
+                      const isImage = kind === "image"
+                      return (
+                        <YStack
+                          key={`${file.name}-${idx}`}
+                          testID="composer-attach-chip"
+                          width={64}
+                          flexShrink={0}
+                          gap={3}
+                        >
+                          <YStack
+                            width={64}
+                            height={64}
+                            borderRadius={10}
+                            overflow="hidden"
+                            backgroundColor={isImage ? c.nest : cfg.bg}
+                            position="relative"
+                            alignItems="center"
+                            justifyContent="center"
+                          >
+                            {isImage && previewUrl ? (
+                              <img
+                                src={previewUrl}
+                                alt={file.name}
+                                style={{
+                                  width: 64,
+                                  height: 64,
+                                  objectFit: "cover",
+                                  display: "block",
+                                }}
+                              />
+                            ) : (
+                              <Ph name={cfg.icon} size={26} color={cfg.color} />
+                            )}
+
+                            {/* Extension badge — bottom-left corner, helps identify file type when name is truncated */}
+                            {!isImage && cfg.ext && (
+                              <View
+                                position="absolute"
+                                bottom={3}
+                                left={3}
+                                zIndex={1}
+                                paddingLeft={4}
+                                paddingRight={4}
+                                style={{
+                                  height: 14,
+                                  borderRadius: 4,
+                                  backgroundColor: c.inkPill,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  display: "flex",
+                                }}
+                              >
+                                <T
+                                  step="codenote"
+                                  color={c.inkPillText}
+                                  style={{ fontSize: 8, lineHeight: 9 }}
+                                >
+                                  {cfg.ext}
+                                </T>
+                              </View>
+                            )}
+
+                            {/* Remove button — overlaid in top-right corner */}
+                            <YStack position="absolute" top={3} right={3} zIndex={1}>
+                              <Pressable
+                                testID="composer-attach-remove"
+                                onPress={() => fileUpload.removeFile(idx)}
+                                disabled={fileUpload.isUploading}
+                                style={{
+                                  width: 18,
+                                  height: 18,
+                                  borderRadius: 9,
+                                  backgroundColor: c.inkPill,
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                <Ph name="x" size={10} color={c.inkPillText} />
+                              </Pressable>
+                            </YStack>
+
+                            {/* Upload progress overlay */}
+                            {fileUpload.isUploading && (
+                              <YStack
+                                position="absolute"
+                                bottom={0}
+                                left={0}
+                                right={0}
+                                height={3}
+                                backgroundColor={c.wash2}
+                              >
+                                <YStack
+                                  height="100%"
+                                  width={`${fileUpload.progress}%`}
+                                  backgroundColor={c.accent}
+                                />
+                              </YStack>
+                            )}
+                          </YStack>
+
+                          {/* Truncated file name */}
+                          <T
+                            step="codenote"
+                            tone="text3"
+                            center
+                            ellipsis
+                            style={{ width: 64, fontSize: 9 }}
+                          >
+                            {file.name}
+                          </T>
+                        </YStack>
+                      )
+                    })}
+                  </XStack>
                 )}
+              </YStack>
+            )}
+            {fileUpload.error && (
+              <T step="12" color={c.tint.r.tx} style={{ padding: 6 }}>
+                {fileUpload.error}
+              </T>
+            )}
+          </YStack>
+        )}
 
-                <YStack flex={1}>
-                  <Text fontSize="$3" color={c.text} numberOfLines={1}>
-                    {file.name}
-                  </Text>
-                  <Text fontSize="$2" color={c.text3}>
-                    {fileUpload.isUploading
-                      ? `Uploading... ${fileUpload.progress}%`
-                      : `${(file.size / 1024).toFixed(1)} KB`}
-                  </Text>
-                </YStack>
+        {/* Mention chips row — rendered inline above the pill when skills are selected (`.attach-row`) */}
+        {mention.chips.length > 0 && (
+          <XStack paddingLeft={12} paddingBottom={10} gap={8} flexWrap="wrap">
+            {mention.chips.map((chip) => (
+              <MentionChip key={chip.id} chip={chip} onRemove={mention.onRemoveChip} />
+            ))}
+          </XStack>
+        )}
 
-                <Button
-                  testID="composer-attach-remove"
-                  size="$2"
-                  circular
-                  chromeless
-                  onPress={() => fileUpload.removeFile(idx)}
-                  disabled={fileUpload.isUploading}
-                  icon={<X size={14} color={c.text3} />}
-                />
-              </XStack>
-            )
-          })}
-          {fileUpload.error && (
-            <Text fontSize="$2" color={semanticColors.red} padding="$2">
-              {fileUpload.error}
-            </Text>
-          )}
-          {fileUpload.selectedFiles.length > 0 && (
-            <Button
-              size="$2"
-              chromeless
-              onPress={fileUpload.clear}
-              disabled={fileUpload.isUploading}
-              icon={<X size={14} color={c.text3} />}
-            >
-              Clear all
-            </Button>
-          )}
-        </YStack>
-      )}
+        {/* Mention dropdown — positioned above the input via absolute positioning */}
+        {mention.isOpen && (
+          <MentionDropdown
+            groups={mention.groups}
+            selectedIndex={mention.selectedIndex}
+            onSelect={handleSelectMention}
+            onClose={mention.closeDropdown}
+            isLoading={mention.isFetchingResources}
+          />
+        )}
 
-      {renderContent()}
+        {/* `.compose` — the pill + send. Controls sit at the BOTTOM so the
+            field grows upward over them; the radius is fixed at half the
+            one-line height (a true pill at rest, straight sides once grown). */}
+        <XStack alignItems="flex-end">
+          <XStack
+            testID="composer-pill"
+            flex={1}
+            minWidth={0}
+            alignItems="flex-end"
+            gap={8}
+            paddingTop={4}
+            paddingBottom={4}
+            paddingLeft={4}
+            paddingRight={8}
+            borderRadius={COMPOSE_PILL_RADIUS}
+            backgroundColor={c.bgHeader}
+            borderWidth={1}
+            borderColor={
+              isFocused && !isRecordingOrPaused ? "rgba(111,39,255,0.30)" : "transparent"
+            }
+            // @ts-ignore web-only focus ring
+            style={{
+              boxShadow:
+                isFocused && !isRecordingOrPaused
+                  ? "0 0 0 3px rgba(111,39,255,0.07), 0 10px 30px -18px rgba(111,39,255,0.4)"
+                  : "none",
+              transition: "border-color 0.25s, box-shadow 0.25s",
+            }}
+          >
+            {renderPillContent()}
+          </XStack>
+          {stopButton}
+          {sendButton}
+        </XStack>
+
+        {/* `.compose-meta` — "{agent} can use" + app chips (scroll) + Manage (pinned right).
+            In conversations with ≥1 message the row is REPLACED by the
+            contextual suggested-prompt chips (backend-generated after each
+            agent turn; tap → text lands in the composer, editable, no send).
+            No suggestions yet (or generation failed) → nothing renders. */}
+        {(hasMessages ? suggestions.length > 0 : metaLead != null) && (
+          <XStack
+            alignItems="center"
+            gap={8}
+            marginTop={pane.compact ? 8 : 10}
+            // Tools row keeps its historical inset; the suggestion chips align
+            // flush with the pill's left edge (no extra margin, Pablo 2026-10-29).
+            paddingLeft={hasMessages ? 0 : pane.compact ? 0 : 12}
+            overflow="hidden"
+          >
+            {/* Clip box: whatever the chips do while scrolling (overscroll,
+                momentum) stays inside this row and never paints over the
+                composer's edge or shadow. */}
+            <View style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={{ flex: 1, minWidth: 0 }}
+                contentContainerStyle={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 8,
+                  paddingRight: 12,
+                }}
+                {...({ dataSet: { compose: "meta" } } as object)}
+              >
+                {hasMessages
+                  ? suggestions.map((prompt) => (
+                      <ChipBtn
+                        key={prompt}
+                        testID="composer-suggested-prompt"
+                        onPress={() => insertSuggestedPrompt(prompt)}
+                        style={{ flexShrink: 0 }}
+                      >
+                        {prompt}
+                      </ChipBtn>
+                    ))
+                  : metaLead}
+              </ScrollView>
+            </View>
+            {!hasMessages && manageChip}
+          </XStack>
+        )}
+      </YStack>
 
       {/* Overlay de drag-and-drop: se muestra al arrastrar archivos externos
           sobre el composer. pointerEvents="none" para no robar el 'drop' al
-          contenedor (los listeners viven en el YStack padre). Reutiliza la
-          paleta cyan del preview de attachments. */}
+          contenedor (los listeners viven en el YStack padre). */}
       {isDraggingFiles && (
         <YStack
           testID="composer-drop-overlay"
           position="absolute"
-          top={0}
-          left={0}
-          right={0}
-          bottom={0}
+          top={4}
+          left={padX - 8}
+          right={padX - 8}
+          bottom={8}
           zIndex={10}
           pointerEvents="none"
           alignItems="center"
           justifyContent="center"
-          gap="$2"
-          borderTopLeftRadius={16}
-          borderTopRightRadius={16}
+          gap={8}
+          borderRadius={24}
           borderWidth={2}
           borderStyle="dashed"
-          borderColor={c.badges.info.border}
-          backgroundColor={c.badges.info.bg}
+          borderColor={c.borderAccent}
+          backgroundColor={c.navActive}
           animation="quick"
           enterStyle={{ opacity: 0 }}
         >
-          <Upload size={28} color={semanticColors.indigo} />
-          <Text fontSize="$4" fontWeight="600" color={semanticColors.indigo}>
+          <Ph name="upload-simple" size={26} color={c.accent} />
+          <T step="sm" tone="accent">
             {t("conversation.dropFilesHere")}
-          </Text>
+          </T>
         </YStack>
       )}
     </YStack>

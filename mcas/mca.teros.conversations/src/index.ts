@@ -27,6 +27,7 @@ import {
   getChannelSummary,
   importAttachment,
   listChannels,
+  redactByValue,
   renameChannel,
   searchMessages,
   sendMessage,
@@ -54,6 +55,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies WebSocket connectivity to backend.',
   parameters: {
     type: 'object',
@@ -86,6 +88,9 @@ server.tool('delegate-task', delegateTask);
 server.tool('send-message', sendMessage);
 server.tool('rename-channel', renameChannel);
 server.tool('import-attachment', importAttachment);
+// Agent secret tools (docs/specs/20261031_agent-secret-tools.md) — standalone
+// value-based redaction primitive, self-redacting, alwaysAsk.
+server.tool('redact-by-value', redactByValue);
 
 // =============================================================================
 // START SERVER

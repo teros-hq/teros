@@ -1,19 +1,22 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo } from '../lib';
+import { PAGE_PARAMS, PAGED_RESULT_NOTE, type PageArgs, fieldPayload, curateWorkflow, pagedRequest } from '../lib/curate';
 
 export const listWorkflows: ToolConfig = {
   annotations: { readOnlyHint: true },
-  description: 'List workflows in a repository',
+  description: `List GitHub Actions workflows of a repository. ${PAGED_RESULT_NOTE}`,
   parameters: {
     type: 'object',
     properties: {
       owner: { type: 'string', description: 'Repository owner' },
       repo: { type: 'string', description: 'Repository name' },
+      ...PAGE_PARAMS,
     },
     required: ['owner', 'repo'],
   },
   handler: async (args, context) => {
-    const { owner, repo } = args as { owner: string; repo: string };
-    return await githubRequest(context, `/repos/${owner}/${repo}/actions/workflows`);
+    const a = args as PageArgs & { owner: string; repo: string };
+    assertOwnerRepo(a.owner, a.repo);
+    return pagedRequest(context, `/repos/${a.owner}/${a.repo}/actions/workflows`, a, {}, fieldPayload('workflows'), curateWorkflow);
   },
 };

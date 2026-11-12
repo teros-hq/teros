@@ -4,7 +4,7 @@
  * Client for communicating with MCAs running as HTTP services.
  * Used by McaManager to call containerized MCAs.
  *
- *
+ * @see docs/RFC-001-mca-protocol.md
  */
 
 import type {
@@ -15,7 +15,7 @@ import type {
   McaToolResultResponse,
   McaToolsListResponse,
 } from '@teros/shared';
-import { generateMessageId, MCA_PROTOCOL_VERSION } from '@teros/shared';
+import { generateMessageId, MCA_PROTOCOL_VERSION, signRequest } from '@teros/shared';
 import { HttpClient, HttpClientError } from '../lib/HttpClient';
 
 // ============================================================================
@@ -29,6 +29,14 @@ export interface McaHttpClientConfig {
   timeout?: number;
   /** Retry attempts for transient failures (default: 3) */
   maxRetries?: number;
+  /**
+   * Per-container HMAC secret used to sign backend→MCA requests
+   * (incident-2026-08-14, Layer B). This is the same callback token
+   * injected into the container via MCA_CALLBACK_TOKEN. When provided,
+   * every callTool request is signed with HMAC-SHA256 over
+   * (userId, workspaceId, appId, toolCallId).
+   */
+  signingSecret?: string;
 }
 
 export interface ToolCallOptions {
@@ -43,7 +51,7 @@ export interface ToolCallOptions {
 // ============================================================================
 
 export class McaHttpClient {
-  private config: Required<McaHttpClientConfig>;
+  private config: Required<Omit<McaHttpClientConfig, 'signingSecret'>> & Pick<McaHttpClientConfig, 'signingSecret'>;
   private http: HttpClient;
 
   constructor(config: McaHttpClientConfig) {
@@ -51,6 +59,7 @@ export class McaHttpClient {
       baseUrl: config.baseUrl.replace(/\/$/, ''), // Remove trailing slash
       timeout: config.timeout ?? 120000,
       maxRetries: config.maxRetries ?? 3,
+      signingSecret: config.signingSecret,
     };
     this.http = new HttpClient({
       baseUrl: this.config.baseUrl,
@@ -74,6 +83,43 @@ export class McaHttpClient {
     const requestId = generateMessageId();
     const timeout = options?.timeout ?? this.config.timeout;
 
+    // Sign the request if a signing secret is configured (Layer B).
+    // The toolCallId binds this signature to this specific call — it
+    // prevents replay of a signed request against a different tool call.
+    // If no secret is configured (legacy/rollout), the request is sent
+    // unsigned and the MCA container will accept or reject based on its
+    // own MCA_REQUIRE_SIGNATURE setting.
+    let signedContext = context;
+    if (this.config.signingSecret && context.userId && context.appId) {
+      const toolCallId = context.requestId || requestId;
+      try {
+        const signature = signRequest(
+          {
+            userId: context.userId,
+            workspaceId: context.workspaceId || '',
+            appId: context.appId,
+            toolCallId,
+          },
+          this.config.signingSecret,
+        );
+        signedContext = { ...context, toolCallId, signature };
+      } catch (signError) {
+        // signRequest throws if any payload field is empty (fail-closed).
+        // Log prominently — this means the request will be sent unsigned
+        // and the MCA container will reject it if signature enforcement
+        // is enabled (MCA_REQUIRE_SIGNATURE !== 'false').
+        console.error(
+          `[McaHttpClient] signRequest failed — request will be unsigned and likely rejected: ${(signError as Error).message} (tool=${tool}, appId=${context.appId}, userId=${context.userId}, workspaceId=${context.workspaceId ?? 'undefined'})`,
+        );
+      }
+    } else if (this.config.signingSecret) {
+      // Signing secret is configured but userId or appId is missing —
+      // log prominently so the issue is visible in backend logs.
+      console.warn(
+        `[McaHttpClient] Cannot sign request — missing userId or appId (tool=${tool}, userId=${context.userId ?? 'undefined'}, appId=${context.appId ?? 'undefined'})`,
+      );
+    }
+
     const request: McaToolCallRequest = {
       id: requestId,
       type: 'tool_call',
@@ -81,7 +127,7 @@ export class McaHttpClient {
       version: MCA_PROTOCOL_VERSION,
       tool,
       arguments: args,
-      context,
+      context: signedContext,
     };
 
     const response = await this.post<McaToolResultResponse>(

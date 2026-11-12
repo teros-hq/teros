@@ -152,9 +152,7 @@ export interface AcContactTag {
 // ============================================================================
 
 /**
- * Imperative verb phrases (verb-first) so `ToolCallCard` can compose the §2.3
- * tense automatically (`Will list… / Listing… / Listed / Failed to list /
- * Wants to list`). Nominal labels ("Contacts") would break `inferTenseForms`.
+ * Static tool labels shown in the ToolCallCard header.
  */
 export const TOOL_LABELS: Record<string, string> = {
   '-health-check': 'Check health',
@@ -409,11 +407,8 @@ export function ActiveCampaignToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      // Canonical v2/v2.1 header: pass `verb` so the card composes tense from
-      // status. A renderer that already has contextual text passes `description`
-      // (it wins); otherwise `verb` drives `Will… / Listing… / Listed`.
-      description={description}
-      verb={getToolLabel(toolName)}
+      // Description estática: la del caller o el label de la tool. Sin tense.
+      description={description ?? getToolLabel(toolName)}
       duration={duration}
       iconUri={iconUri}
       badge={badge ?? statusBadge(status)}

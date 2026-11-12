@@ -4,13 +4,13 @@ import { resolveUrl } from '../lib';
 export const sendAudio: ToolConfig = {
   annotations: { readOnlyHint: true },
   description:
-    'Send an audio file to the user. The audio will be playable in the chat. Supports public URLs or local file paths.',
+    'DEPRECATED - prefer the universal send-file tool (works for audio and every other file type). Send an audio file to the user; playable in the chat. Supports public URLs or local file paths.',
   parameters: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'Public URL of the audio file (use this OR filePath)',
+        description: 'Public URL of the audio, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)',
       },
       filePath: {
         type: 'string',

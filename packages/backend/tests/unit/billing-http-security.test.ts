@@ -20,6 +20,7 @@ import { describe, expect, it } from "bun:test"
 import {
   extractClientIp,
   isIpAllowed,
+  isMetricsRequestAllowed,
   resolveAllowedOrigin,
   resolveTrustProxyDefault,
   timingSafeStringEqual,
@@ -177,5 +178,27 @@ describe("resolveTrustProxyDefault (SEC-6/M1)", () => {
     expect(resolveTrustProxyDefault("1")).toBe(false)
     expect(resolveTrustProxyDefault("TRUE")).toBe(false)
     expect(resolveTrustProxyDefault("")).toBe(false)
+  })
+})
+
+describe("isMetricsRequestAllowed (/metrics gate)", () => {
+  const base = { allowlist: ["127.0.0.1", "10.0.0.0/8"], authorization: undefined, token: null }
+  it("production without TRUST_PROXY: the socket IP is the proxy's, so the IP path is closed", () => {
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "127.0.0.1", trustProxy: false, production: true })).toBe(false)
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "10.0.0.5", trustProxy: false, production: true })).toBe(false)
+  })
+  it("production with TRUST_PROXY: the forwarded IP decides", () => {
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "10.0.0.5", trustProxy: true, production: true })).toBe(true)
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "203.0.113.7", trustProxy: true, production: true })).toBe(false)
+  })
+  it("dev keeps the plain allowlist", () => {
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "127.0.0.1", trustProxy: false, production: false })).toBe(true)
+    expect(isMetricsRequestAllowed({ ...base, clientIp: "203.0.113.7", trustProxy: false, production: false })).toBe(false)
+  })
+  it("a bearer token opens it from anywhere; a wrong one does not", () => {
+    const tok = { ...base, token: "s3cret", clientIp: "203.0.113.7", trustProxy: false, production: true }
+    expect(isMetricsRequestAllowed({ ...tok, authorization: "Bearer s3cret" })).toBe(true)
+    expect(isMetricsRequestAllowed({ ...tok, authorization: "Bearer nope" })).toBe(false)
+    expect(isMetricsRequestAllowed({ ...tok, authorization: undefined })).toBe(false)
   })
 })

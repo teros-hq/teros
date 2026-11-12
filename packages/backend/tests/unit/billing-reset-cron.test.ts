@@ -11,6 +11,7 @@
  * the "no duplicate" assertion go to 2 → red.
  */
 
+import { DEFAULT_PLAN_ID } from '../../src/models/billing'
 import { describe, expect, it } from 'bun:test'
 import { MongoServerError } from 'mongodb'
 import { BillingResetCron } from '../../src/services/billing-reset-cron'
@@ -320,7 +321,7 @@ describe('BillingResetCron — invoice idempotency', () => {
     // A new active Starter sub was created.
     const starter = subs.find((s) => s.status === 'active')
     expect(starter).toBeDefined()
-    expect(starter!.planId).toBe('plan_starter')
+    expect(starter!.planId).toBe(DEFAULT_PLAN_ID)
     expect(starter!._id).not.toBe(sub._id)
     // Anchored to day+1 of the reset moment.
     expect(starter!.currentPeriodStart.getTime() - starter!.startDate!.getTime()).toBe(86_400_000)

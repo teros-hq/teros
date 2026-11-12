@@ -10,12 +10,18 @@ import type { ToolCall } from '../chat/bubbles/types'
 import { FormWidget } from './FormWidget'
 
 /**
- * Inline user forms — the widget is
- * the only interactive surface of the request-user-input tool. Assert the
- * whole loop at render level: spec (tool input) → fields, submit → validated
- * payload through client.respondToForm, dismiss path, the read-only summary
- * from the tool output, the single-question variant and the wizard flow
- * (auto-advance on choice selection + final review step).
+ * Inline user forms — the widget is the only interactive surface of the
+ * request-user-input tool. Assert the whole loop at render level: spec (tool
+ * input) → fields, submit → validated payload through client.respondToForm,
+ * dismiss path, the read-only summary from the tool output, the
+ * single-question variant and the wizard flow (auto-advance on choice
+ * selection + final review step).
+ *
+ * v2 contract (docs/specs/20261024_non-blocking-user-interactions.md — "forms
+ * stay v2", Pablo 2026-10-25): the tool call COMPLETES immediately with a
+ * {status:'form_displayed', formRequestId} marker in its output; the live
+ * form renders from that marker while the user's answer arrives later as a
+ * channel message. Live-form fixtures below build that marker shape.
  */
 
 const h = vi.hoisted(() => ({
@@ -56,13 +62,21 @@ const SPEC = {
   ],
 }
 
+/** v2 live-form marker: the tool completes immediately with this output —
+ * the form is displayed and waiting for the user's answer. */
+const DISPLAYED_MARKER = JSON.stringify({
+  status: 'form_displayed',
+  formRequestId: 'form_1',
+  instruction: 'The form is now displayed to the user. End your turn now.',
+})
+
 function makeTool(overrides: Partial<ToolCall> = {}): ToolCall {
   return {
     toolCallId: 'tc_form',
     toolName: 'request-user-input',
     input: SPEC,
-    status: 'pending_user_input',
-    formRequestId: 'form_1',
+    status: 'completed',
+    output: DISPLAYED_MARKER,
     ...overrides,
   }
 }
@@ -149,8 +163,6 @@ describe('FormWidget (render)', () => {
 
   it('renders the read-only summary from the tool output once completed', () => {
     const tool = makeTool({
-      status: 'completed',
-      formRequestId: undefined,
       output: JSON.stringify({
         submitted: true,
         values: { name: 'Ada', meal: 'veg', confirmed: true },
@@ -169,8 +181,6 @@ describe('FormWidget (render)', () => {
 
   it('renders a muted note when the form was dismissed', () => {
     const tool = makeTool({
-      status: 'completed',
-      formRequestId: undefined,
       output: JSON.stringify({ submitted: false, dismissed: true }),
     })
     const { getByText } = renderWidget(tool)
@@ -179,8 +189,6 @@ describe('FormWidget (render)', () => {
 
   it('renders nothing for the headless bypass result', () => {
     const tool = makeTool({
-      status: 'completed',
-      formRequestId: undefined,
       output: JSON.stringify({ available: false, reason: 'headless' }),
     })
     const { container } = renderWidget(tool)

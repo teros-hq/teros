@@ -1,20 +1,11 @@
 /**
- * Bash Renderer Core — shared implementation for `mca.teros.bash` and
- * `mca.teros.admin.bash`.
+ * Bash Renderer Core — implementation for `mca.teros.bash`.
  *
- * Both MCAs render exactly the same UI (compact terminal-style header
- * + expanded body with CommandRow + OutputBlock). The ONLY differences
- * are:
- *   • the default `mcaId` used to route through the per-call
- *     heuristics registry (`isToolCallIrreversible`,
- *     `isToolCallElevatedRisk`),
- *   • cosmetic differences in their wrapper files (display name,
- *     `withPermissionSupport(...)` invocation).
- *
- * Rather than duplicate ~550 LOC across `BashRenderer.tsx` and
- * `AdminBashRenderer.tsx`, this factory keeps the body in one place.
- * The two wrapper files become ~10-line shims that call
- * `createBashRendererBase(...)`.
+ * Compact terminal-style header + expanded body with CommandRow +
+ * OutputBlock, built as a factory so variants stay ~10-line shims that
+ * call `createBashRendererBase(...)`.
+ * (Historically there was an `AdminBashRenderer.tsx` for the retired
+ * mca.teros.admin.bash — removed 2026-10-19, replaced by Teros Remote.)
  */
 
 import { getShortToolName, ToolCallCard, useColors } from '../primitives';
@@ -117,7 +108,7 @@ function CommandRow({ command, cwd }: CommandRowProps) {
       <Text flex={1} color={colors.command} fontSize={10} fontFamily="$mono" numberOfLines={3}>
         {command}
       </Text>
-      {cwd && (
+      {!!cwd && (
         <Text color={colors.cwd} fontSize={9} fontFamily="$mono">
           {cwd.replace(/^\/home\/[^/]+/, '~')}
         </Text>
@@ -135,9 +126,12 @@ interface OutputBlockProps {
 function OutputBlock({ stdout, stderr, error }: OutputBlockProps) {
   const c = useColors();
   const colors = useBashColors();
-  const hasStdout = stdout && stdout.trim().length > 0;
-  const hasStderr = stderr && stderr.trim().length > 0;
-  const hasError = error && error.trim().length > 0;
+  // NOTE: `!!` coercion is load-bearing here — `stdout && ...` evaluates to ""
+  // (not false) when the stream is an empty string, and React Native web then
+  // renders that "" as a text node child of <YStack> ("Unexpected text node").
+  const hasStdout = !!stdout && stdout.trim().length > 0;
+  const hasStderr = !!stderr && stderr.trim().length > 0;
+  const hasError = !!error && error.trim().length > 0;
 
   if (!hasStdout && !hasStderr && !hasError) {
     return (
@@ -245,7 +239,12 @@ export function createBashRendererBase(defaultMcaId: string) {
       status === 'pending_permission'
         ? getBashPermissionDescription({ command, description: input?.description, cwd: input?.cwd })
         : null;
-    const description = permissionDescription ?? input?.description ?? 'Execute command';
+    // Static description: the model's own description when present, else a
+    // truncated form of the actual command — never the generic 'Execute command'.
+    const commandSummary = command
+      ? `Execute: ${command.length > 80 ? `${command.slice(0, 79)}…` : command}`
+      : 'Run command';
+    const description = permissionDescription ?? input?.description ?? commandSummary;
     const cwd = input?.cwd;
 
     const parsedOutput = output ? parseOutput(output) : null;

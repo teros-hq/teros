@@ -6,6 +6,9 @@
 export { TerosClient } from './client'
 export { TerosClientFactory } from './factory'
 
+// Domain APIs
+export { AutomateApi } from './AutomateApi'
+
 // Transport layer
 export { WsTransport } from './transport/ws-transport'
 export { MockTransport } from './transport/mock-transport'

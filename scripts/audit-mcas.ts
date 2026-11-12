@@ -111,10 +111,9 @@ class MockBackend {
   }
 
   private handleHttp(req: IncomingMessage, res: ServerResponse): void {
-    // CORS preflight
+    // CORS preflight — audit mock server is server-to-server, no ACAO needed.
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-App-Id, X-Mca-Id',
       });
@@ -127,7 +126,6 @@ class MockBackend {
     req.on('end', () => {
       const url = req.url || '';
       res.setHeader('Content-Type', 'application/json');
-      res.setHeader('Access-Control-Allow-Origin', '*');
 
       // Secret endpoints — return empty so MCA knows no creds configured
       if (url.endsWith('/secrets/system')) {

@@ -60,8 +60,18 @@ export interface ContainerStartOptions {
   /** Memory limit in MiB (Docker --memory). Falls back to the backend-wide default. */
   memoryMb?: number;
   /**
-   * Docker-only: Docker network to connect the container to.
+   * Docker-only: Docker networks to connect the container to.
+   * Multiple networks are supported for workspace isolation + internal/egress
+   * access (incident-2026-08-14, Capa A). The first network is the primary
+   * (--network flag on `docker run`); subsequent networks are attached after
+   * start via `docker network connect`.
    * K8s backend ignores this — pods are in the cluster network by default.
+   */
+  dockerNetworks?: string[];
+
+  /**
+   * @deprecated Use `dockerNetworks` (array) instead. Kept for backward
+   * compatibility — if present, treated as a single-element dockerNetworks.
    */
   dockerNetwork?: string;
 }

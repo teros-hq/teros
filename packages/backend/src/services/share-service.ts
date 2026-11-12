@@ -3,13 +3,15 @@
  *
  * Manages public share links for workspace files.
  * Collection: shared_files
- * { shareId, ownerId, filePath, workspaceId, fileType, createdAt }
+ * { shareId, ownerId, filePath, workspaceId, fileType, createdAt }   (volume file)
+ * { shareId, ownerId, workspaceId, source: { kind: 'todo-io', … }, createdAt }   (To Do io, TODOOV)
  *
  * shareIds use 128 bits of entropy (32 hex chars) — the standard for public
  * tokens — making brute-force enumeration of share URLs practically infeasible.
  */
 
 import { randomBytes } from 'crypto';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import type { Collection, Db } from 'mongodb';
 import { config } from '../config';
 
@@ -17,21 +19,15 @@ import { config } from '../config';
 // TYPES
 // ============================================================================
 
-export interface SharedFile {
+interface ShareRecordBase {
   /** 32 hex chars (128 bits of entropy), e.g. "a3f9c2d1e4b87f0c6d2e1a9b4c5f3e8d" */
   shareId: string;
 
   /** userId of the creator */
   ownerId: string;
 
-  /** Absolute path within the volume, e.g. '/workspace/report.html' */
-  filePath: string;
-
-  /** Workspace ID — used to resolve the correct volume */
+  /** Workspace ID — used to resolve the correct volume (or the node of a todo-io share) */
   workspaceId: string;
-
-  /** File type determines how the viewer renders the content */
-  fileType: 'html' | 'markdown';
 
   /** Creation timestamp */
   createdAt: Date;
@@ -40,9 +36,55 @@ export interface SharedFile {
   expiresAt?: Date;
 }
 
+/**
+ * What a To Do io share points at: a task's current output or input, read at
+ * request time (never a snapshot).
+ * @spec TODOOV-REQ-4
+ */
+export interface TodoIoShareSource {
+  kind: 'todo-io';
+  workspaceId: string;
+  nodeId: string;
+  io: 'output' | 'input';
+}
+
+/**
+ * A share of a To Do task's io. No file path: the content lives on the node.
+ * @spec TODOOV-REQ-4
+ */
+export interface TodoIoShare extends ShareRecordBase {
+  source: TodoIoShareSource;
+}
+
+/** A share of a volume file. */
+export interface FileShare extends ShareRecordBase {
+  source?: undefined;
+
+  /** Absolute path within the volume, e.g. '/workspace/report.html' */
+  filePath: string;
+
+  /** File type determines how the viewer renders the content.
+   *  'html' | 'markdown' render as styled pages; 'file' = any other type,
+   *  served with its real mimetype (FVU — File Viewer Universal). */
+  fileType: 'html' | 'markdown' | 'file';
+}
+
+/** A record of `shared_files`: a volume file share or a To Do io share. */
+export type SharedFile = FileShare | TodoIoShare;
+
 export interface CreateShareResult {
   shareId: string;
   publicUrl: string;
+}
+
+/** The public link of a share (`<baseUrl>/share/<shareId>`), the same format for every share. */
+export function sharePublicUrl(shareId: string): string {
+  return `${config.share.baseUrl}/share/${shareId}`;
+}
+
+/** 16 bytes = 32 hex chars = 128 bits of entropy (standard for public tokens). */
+function newShareId(): string {
+  return randomBytes(16).toString('hex');
 }
 
 // ============================================================================
@@ -65,9 +107,9 @@ export class ShareService {
    * Call once at startup (e.g. from the bootstrap / migration step).
    */
   async ensureIndexes(): Promise<void> {
-    await this.collection.createIndex({ shareId: 1 }, { unique: true });
-    await this.collection.createIndex({ ownerId: 1 });
-    console.log('[ShareService] Database indexes created');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.collection, COLLECTIONS.sharedFiles);
   }
 
   // ==========================================================================
@@ -80,19 +122,18 @@ export class ShareService {
    * @param userId      - The user creating the share
    * @param filePath    - Absolute path within the volume (e.g. '/workspace/report.html')
    * @param workspaceId - Workspace ID used to resolve the correct volume
-   * @param fileType    - 'html' | 'markdown'
+   * @param fileType    - 'html' | 'markdown' | 'file' (any other type, FVU)
    * @returns           - The generated shareId and the full public URL
    */
   async createShare(
     userId: string,
     filePath: string,
     workspaceId: string,
-    fileType: 'html' | 'markdown',
+    fileType: 'html' | 'markdown' | 'file',
   ): Promise<CreateShareResult> {
-    // 16 bytes = 32 hex chars = 128 bits of entropy (standard for public tokens)
-    const shareId = randomBytes(16).toString('hex');
+    const shareId = newShareId();
 
-    const sharedFile: SharedFile = {
+    const sharedFile: FileShare = {
       shareId,
       ownerId: userId,
       filePath,
@@ -103,11 +144,49 @@ export class ShareService {
 
     await this.collection.insertOne(sharedFile as any);
 
-    const publicUrl = `${config.share.baseUrl}/share/${shareId}`;
+    const publicUrl = sharePublicUrl(shareId);
 
     console.log(`[ShareService] Created share: ${shareId} for user ${userId} → ${filePath}`);
 
     return { shareId, publicUrl };
+  }
+
+  /**
+   * Create a public share link for a To Do task's output or input.
+   * The record's `workspaceId` is the source's workspace.
+   * @spec TODOOV-REQ-4
+   */
+  async createIoShare(userId: string, source: TodoIoShareSource): Promise<CreateShareResult> {
+    const shareId = newShareId();
+    const share: TodoIoShare = {
+      shareId,
+      ownerId: userId,
+      workspaceId: source.workspaceId,
+      source: { kind: 'todo-io', workspaceId: source.workspaceId, nodeId: source.nodeId, io: source.io },
+      createdAt: new Date(),
+    };
+    await this.collection.insertOne(share as any);
+    console.log(`[ShareService] Created io share: ${shareId} for user ${userId} → ${source.nodeId}:${source.io}`);
+    return { shareId, publicUrl: sharePublicUrl(shareId) };
+  }
+
+  /**
+   * The share a user created for a task's io, or null.
+   * @spec TODOOV-REQ-4
+   */
+  async getIoShare(
+    ownerId: string,
+    workspaceId: string,
+    nodeId: string,
+    io: 'output' | 'input',
+  ): Promise<TodoIoShare | null> {
+    return (await this.collection.findOne({
+      ownerId,
+      'source.kind': 'todo-io',
+      'source.workspaceId': workspaceId,
+      'source.nodeId': nodeId,
+      'source.io': io,
+    } as any)) as TodoIoShare | null;
   }
 
   /**
@@ -132,13 +211,13 @@ export class ShareService {
     userId: string,
     filePath: string,
     workspaceId?: string,
-  ): Promise<SharedFile | null> {
+  ): Promise<FileShare | null> {
     const query: { ownerId: string; filePath: string; workspaceId?: string } = {
       ownerId: userId,
       filePath,
     };
     if (workspaceId) query.workspaceId = workspaceId;
-    return this.collection.findOne(query);
+    return (await this.collection.findOne(query as any)) as FileShare | null;
   }
 
   /**

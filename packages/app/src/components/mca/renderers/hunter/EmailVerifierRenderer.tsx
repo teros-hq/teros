@@ -37,7 +37,7 @@ export function EmailVerifierRenderer(props: ToolCallRendererProps): React.React
   const statusChip = data ? verifierStatusProps(data.status) : null;
 
   return (
-    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} verb={verb} badge={badge}>
+    <HunterToolShell toolName={toolName} status={status} appIcon={appIcon} description={verb} badge={badge}>
       {displayError ? (
         <ErrorBlock {...hunterErrorProps(displayError, 'email-verifier')} />
       ) : data ? (

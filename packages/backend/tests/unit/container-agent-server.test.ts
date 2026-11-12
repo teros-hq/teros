@@ -9,6 +9,7 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { request } from 'http'
 import type { Server } from 'http'
 import type { ContainerInfo, IContainerBackend } from '../../src/services/container-backend'
 import { createContainerAgentServer } from '../../src/services/container-agent-server'
@@ -73,8 +74,58 @@ afterEach(async () => {
   for (const s of servers.splice(0)) await new Promise((r) => s.close(r))
 })
 
-function authed(init: RequestInit = {}): RequestInit {
-  return { ...init, headers: { authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {}) } }
+/**
+ * HTTP client using Node's http.request instead of bun's fetch.
+ * bun's fetch has issues with Node http.createServer on loopback inside
+ * Docker Alpine containers (returns undefined for res.status in CI).
+ */
+interface HttpResponse {
+  status: number
+  json: () => Promise<any>
+}
+
+function httpRequest(
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string } = {},
+): Promise<HttpResponse> {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url)
+    const req = request(
+      {
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        method: init.method ?? 'GET',
+        headers: init.headers ?? {},
+      },
+      (res) => {
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
+        res.on('end', () => {
+          const body = Buffer.concat(chunks).toString('utf8')
+          resolve({
+            status: res.statusCode ?? 0,
+            json: async () => JSON.parse(body),
+          })
+        })
+        res.on('error', reject)
+      },
+    )
+    req.on('error', reject)
+    if (init.body) req.write(init.body)
+    req.end()
+  })
+}
+
+function authed(init: { method?: string; body?: string; headers?: Record<string, string> } = {}): {
+  method?: string
+  body?: string
+  headers: Record<string, string>
+} {
+  return {
+    ...init,
+    headers: { authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {}) },
+  }
 }
 
 // ===========================================================================
@@ -84,7 +135,7 @@ function authed(init: RequestInit = {}): RequestInit {
 describe('auth', () => {
   it('GET /health requires no token and reports the agent id', async () => {
     const url = await startAgent(makeBackend())
-    const res = await fetch(`${url}/health`)
+    const res = await httpRequest(`${url}/health`)
     expect(res.status).toBe(200)
     expect(await res.json()).toEqual({ status: 'ok', agentId: 'agent-test' })
   })
@@ -99,7 +150,7 @@ describe('auth', () => {
       { authorization: `Bearer ${'x'.repeat(TOKEN.length)}` }, // same length, wrong value
       { authorization: TOKEN }, // no Bearer prefix
     ]) {
-      const res = await fetch(`${url}/v1/status`, { headers })
+      const res = await httpRequest(`${url}/v1/status`, { headers })
       expect(res.status).toBe(401)
     }
     expect(backend.start).not.toHaveBeenCalled()
@@ -115,7 +166,7 @@ describe('/v1/start', () => {
     const backend = makeBackend()
     const url = await startAgent(backend)
 
-    const res = await fetch(
+    const res = await httpRequest(
       `${url}/v1/start`,
       authed({
         method: 'POST',
@@ -142,7 +193,7 @@ describe('/v1/start', () => {
     const backend = makeBackend()
     const url = await startAgent(backend)
 
-    const res = await fetch(
+    const res = await httpRequest(
       `${url}/v1/start`,
       authed({
         method: 'POST',
@@ -156,7 +207,7 @@ describe('/v1/start', () => {
 
   it('missing fields → 400 with the field name', async () => {
     const url = await startAgent(makeBackend())
-    const res = await fetch(
+    const res = await httpRequest(
       `${url}/v1/start`,
       authed({ method: 'POST', body: JSON.stringify({ mcaId: 'mca.x' }) }),
     )
@@ -172,7 +223,7 @@ describe('/v1/start', () => {
     })
     const url = await startAgent(backend)
 
-    const res = await fetch(
+    const res = await httpRequest(
       `${url}/v1/start`,
       authed({
         method: 'POST',
@@ -190,14 +241,14 @@ describe('other routes', () => {
     const backend = makeBackend()
     const url = await startAgent(backend)
 
-    const ok = await fetch(
+    const ok = await httpRequest(
       `${url}/v1/stop`,
       authed({ method: 'POST', body: JSON.stringify({ containerName: 'mca-x' }) }),
     )
     expect(ok.status).toBe(200)
     expect(backend.stop).toHaveBeenCalledWith('mca-x')
 
-    const bad = await fetch(
+    const bad = await httpRequest(
       `${url}/v1/stop`,
       authed({ method: 'POST', body: JSON.stringify({ containerName: 'a b' }) }),
     )
@@ -208,11 +259,11 @@ describe('other routes', () => {
     const backend = makeBackend({ isActuallyRunning: mock(async () => false) })
     const url = await startAgent(backend)
 
-    const res = await fetch(`${url}/v1/running?name=mca-x`, authed())
+    const res = await httpRequest(`${url}/v1/running?name=mca-x`, authed())
     expect(await res.json()).toEqual({ running: false })
     expect(backend.isActuallyRunning).toHaveBeenCalledWith('mca-x')
 
-    const bad = await fetch(`${url}/v1/running?name=a;b`, authed())
+    const bad = await httpRequest(`${url}/v1/running?name=a;b`, authed())
     expect(bad.status).toBe(400)
   })
 
@@ -220,17 +271,17 @@ describe('other routes', () => {
     const backend = makeBackend()
     const url = await startAgent(backend)
 
-    const alloc = await fetch(`${url}/v1/allocate-port`, authed({ method: 'POST' }))
+    const alloc = await httpRequest(`${url}/v1/allocate-port`, authed({ method: 'POST' }))
     expect(await alloc.json()).toEqual({ port: 13500 })
 
-    const release = await fetch(
+    const release = await httpRequest(
       `${url}/v1/release-port`,
       authed({ method: 'POST', body: JSON.stringify({ port: 13500 }) }),
     )
     expect(release.status).toBe(200)
     expect(backend.releasePort).toHaveBeenCalledWith(13500)
 
-    const cleanup = await fetch(`${url}/v1/cleanup-orphans`, authed({ method: 'POST' }))
+    const cleanup = await httpRequest(`${url}/v1/cleanup-orphans`, authed({ method: 'POST' }))
     expect(cleanup.status).toBe(200)
     expect(backend.cleanupOrphans).toHaveBeenCalledTimes(1)
   })
@@ -240,7 +291,7 @@ describe('other routes', () => {
       listContainers: async () => [{ name: 'mca-a', status: 'Up 5 minutes' }],
     })
 
-    const res = await fetch(`${url}/v1/status`, authed())
+    const res = await httpRequest(`${url}/v1/status`, authed())
     expect(await res.json()).toEqual({
       agentId: 'agent-test',
       containers: [{ name: 'mca-a', status: 'Up 5 minutes' }],
@@ -250,7 +301,7 @@ describe('other routes', () => {
 
   it('unknown routes → 404', async () => {
     const url = await startAgent(makeBackend())
-    const res = await fetch(`${url}/v1/nope`, authed())
+    const res = await httpRequest(`${url}/v1/nope`, authed())
     expect(res.status).toBe(404)
   })
 })

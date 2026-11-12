@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const updateForm: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -43,7 +43,6 @@ See https://developers.google.com/forms/api/reference/rest/v1/forms/batchUpdate 
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { formId, requests } = args as {
       formId: string;

@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync } from "fs"
 import { join } from "path"
 import type { MCASecretsRegistry, SystemSecretsRegistry } from "./types"
+import { auditLogger } from "../lib/audit-logger"
 
 interface SecretFile {
   [key: string]: any
@@ -53,6 +54,55 @@ class SecretsManager {
   }
 
   /**
+   * Read a single MCA secret file fresh from disk, bypassing the in-memory cache.
+   * If the file exists, the cache is updated so subsequent calls stay consistent.
+   * Returns undefined if the file does not exist or cannot be parsed.
+   *
+   * Use this for consumers that must see secrets created/edited after backend boot
+   * (e.g. spawn-time env injection and the /secrets/system callback endpoint).
+   */
+  getMcaFresh(mcaId: string): SecretFile | undefined {
+    this.ensureLoaded()
+    const filePath = this.getMCAPath(mcaId)
+    if (!existsSync(filePath)) {
+      // Ensure stale cache entry is removed if file was deleted
+      this.mcaSecrets.delete(mcaId)
+      return undefined
+    }
+    try {
+      const content = this.readSecretFile(filePath)
+      this.mcaSecrets.set(mcaId, content)
+      return content
+    } catch (error: any) {
+      console.error(`   ✗ Failed to read fresh MCA secret '${mcaId}':`, error.message)
+      // Keep stale cache on parse error to avoid breaking running MCAs
+      return this.mcaSecrets.get(mcaId)
+    }
+  }
+
+  /**
+   * Read a single system secret file fresh from disk, bypassing the in-memory cache.
+   * If the file exists, the cache is updated so subsequent calls stay consistent.
+   * Returns undefined if the file does not exist or cannot be parsed.
+   */
+  getSystemFresh(name: string): SecretFile | undefined {
+    this.ensureLoaded()
+    const filePath = this.getSystemPath(name)
+    if (!existsSync(filePath)) {
+      this.systemSecrets.delete(name)
+      return undefined
+    }
+    try {
+      const content = this.readSecretFile(filePath)
+      this.systemSecrets.set(name, content)
+      return content
+    } catch (error: any) {
+      console.error(`   ✗ Failed to read fresh system secret '${name}':`, error.message)
+      return this.systemSecrets.get(name)
+    }
+  }
+
+  /**
    * Get system secret (optional - returns undefined if not found)
    */
   system<K extends keyof SystemSecretsRegistry>(name: K): SystemSecretsRegistry[K] | undefined
@@ -85,6 +135,11 @@ class SecretsManager {
           `Expected file: ${this.getSystemPath(name)}`,
       )
     }
+    // Audit log: system secret accessed (Req 6.5.1)
+    auditLogger.log({
+      event: 'secret.access',
+      detail: { type: 'system', name },
+    })
     return secret
   }
 
@@ -100,6 +155,11 @@ class SecretsManager {
         `Required MCA secret '${mcaId}' not found. ` + `Expected file: ${this.getMCAPath(mcaId)}`,
       )
     }
+    // Audit log: MCA secret accessed (Req 6.5.1)
+    auditLogger.log({
+      event: 'secret.access',
+      detail: { type: 'mca', mcaId },
+    })
     return secret
   }
 

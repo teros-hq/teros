@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Read or write a git config key. Whitelisted to identity + common safe
@@ -25,7 +26,7 @@ const ALLOWED_KEYS = new Set([
   'rebase.autosquash',
 ]);
 
-export const gitConfig: ToolConfig = {
+export const gitConfig: ToolConfig = lockedGitTool('git-config', {
   annotations: { readOnlyHint: false },
   description:
     'Read or write git config (whitelisted keys only). Default scope is `local` (the repo). For identity, prefer `user.name` and `user.email`.',
@@ -58,7 +59,7 @@ export const gitConfig: ToolConfig = {
     const scopeFlag = a.scope === 'global' ? '--global' : '--local';
 
     if (action === 'list') {
-      const result = runGit(repoPath, ['config', scopeFlag, '--list']);
+      const result = await runGit(repoPath, ['config', scopeFlag, '--list']);
       if (result.code !== 0) throwClassifiedGitError(result);
       const entries: Record<string, string> = {};
       for (const line of result.stdout.split('\n').filter(Boolean)) {
@@ -82,7 +83,7 @@ export const gitConfig: ToolConfig = {
     }
 
     if (action === 'get') {
-      const result = runGit(repoPath, ['config', scopeFlag, '--get', a.key]);
+      const result = await runGit(repoPath, ['config', scopeFlag, '--get', a.key]);
       // Exit 1 with empty stderr means "not set" — return null, don't throw.
       if (result.code === 1 && !result.stderr.trim()) {
         return { repoPath, scope: a.scope ?? 'local', key: a.key, value: null };
@@ -95,14 +96,14 @@ export const gitConfig: ToolConfig = {
       if (typeof a.value !== 'string') {
         throw new Error('[GIT_INVALID_INPUT] `value` is required for action=set.');
       }
-      const result = runGit(repoPath, ['config', scopeFlag, a.key, a.value]);
+      const result = await runGit(repoPath, ['config', scopeFlag, a.key, a.value]);
       if (result.code !== 0) throwClassifiedGitError(result);
       return { repoPath, scope: a.scope ?? 'local', key: a.key, value: a.value };
     }
 
     // unset
-    const result = runGit(repoPath, ['config', scopeFlag, '--unset', a.key]);
+    const result = await runGit(repoPath, ['config', scopeFlag, '--unset', a.key]);
     if (result.code !== 0 && result.code !== 5) throwClassifiedGitError(result); // 5 = key didn't exist
     return { repoPath, scope: a.scope ?? 'local', key: a.key, value: null };
   },
-};
+});

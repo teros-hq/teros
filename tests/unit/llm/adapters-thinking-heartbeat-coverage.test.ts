@@ -59,4 +59,23 @@ describe('LLM adapters — thinking heartbeat coverage', () => {
     // Any adapter here would silently kill long reasoning turns as timeouts.
     expect(missing).toEqual([]);
   });
+
+  // @todo nira - 2026.08.26 : consider merging both heartbeat invariants into a
+  // single data-driven loop over {callback, label} pairs to reduce duplication
+  it('every streaming adapter forwards tool-input deltas to onToolInputDelta', () => {
+    // Same invariant as onThinking, but for tool-call argument streaming.
+    // Adapters buffer tool input until complete and only then fire onToolCall,
+    // so while the model writes large tool arguments these deltas are the ONLY
+    // liveness signal — without this kick the stall guard kills live streams
+    // generating >interChunkMs of tool args (TER-650). Gemini sends complete
+    // functionCall parts rather than streamed deltas, but still fires the
+    // heartbeat so the stall watchdog counts the tool-call part as progress.
+    const missing: string[] = [];
+    for (const f of ADAPTERS) {
+      const src = readFileSync(resolve(LLM_DIR, f), 'utf8');
+      if (!/onToolInputDelta\?\.\(/.test(src)) missing.push(f);
+    }
+    // Any adapter here would silently kill long tool-argument streams as timeouts.
+    expect(missing).toEqual([]);
+  });
 });

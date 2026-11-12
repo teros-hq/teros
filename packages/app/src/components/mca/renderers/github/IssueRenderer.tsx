@@ -20,18 +20,20 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   GITHUB_PALETTE,
   type GitHubIssue,
   GitHubToolShell,
+  actionLabel,
   issueStateChipProps,
   labelChipProps,
   relativeTime,
   scrollStyle,
+  listItems,
 } from './shared';
 
 // =============================================================================
@@ -48,6 +50,7 @@ function isSearchPayload(o: unknown): o is SearchIssuesPayload {
 }
 
 function IssueListItem({ issue }: { issue: GitHubIssue }) {
+  const c = useColors();
   const stateChip = issueStateChipProps(issue);
   const author = issue.user?.login ? `@${issue.user.login}` : '';
   const labels = (issue.labels ?? []) as Array<{ name: string; color?: string } | string>;
@@ -75,7 +78,7 @@ function IssueListItem({ issue }: { issue: GitHubIssue }) {
       }
       meta={
         typeof issue.comments === 'number' && issue.comments > 0 ? (
-          <IconChip icon={<MessageSquare size={9} color={globalColors.muted} />} text={String(issue.comments)} accent={globalColors.muted} />
+          <IconChip icon={<MessageSquare size={9} color={c.text3} />} text={String(issue.comments)} accent={c.text3} />
         ) : null
       }
     />
@@ -91,16 +94,12 @@ function ListIssuesRendererImpl({
   isSearch,
 }: ToolCallRendererProps & { isSearch?: boolean }) {
   const parsed = output ? parseOutput<unknown>(output) : null;
-  const items: GitHubIssue[] = isSearch
-    ? isSearchPayload(parsed)
-      ? parsed.items ?? []
-      : []
-    : Array.isArray(parsed)
-      ? (parsed as GitHubIssue[])
-      : [];
+  const items = listItems<GitHubIssue>(parsed);
 
   const total = isSearch && isSearchPayload(parsed) ? parsed.total_count ?? items.length : items.length;
-  const description = isSearch ? `Search · ${total} issue${total === 1 ? '' : 's'}` : `${items.length} issue${items.length === 1 ? '' : 's'}`;
+  const description = isSearch
+    ? actionLabel(toolName, status, 'issues', `${total} encontrados`)
+    : actionLabel(toolName, status, 'issues', `${items.length}`);
 
   return (
     <GitHubToolShell toolName={toolName} status={status} description={description}>
@@ -168,16 +167,19 @@ function issueSpecsheet(issue: GitHubIssue): SpecsheetSection[] {
 }
 
 export function GetIssueRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubIssue>(output) : null;
   const issue = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'number' in (parsed as object)
     ? (parsed as GitHubIssue)
     : null;
-  const description = issue ? `Issue #${issue.number}` : 'Issue';
+  const description = issue
+    ? actionLabel(toolName, status, `Issue #${issue.number}`, issue.title)
+    : actionLabel(toolName, status, 'issue');
   const stateChip = issue ? issueStateChipProps(issue) : null;
   const labels = (issue?.labels ?? []) as Array<{ name: string; color?: string } | string>;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={description} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={description}>
       {error && <ErrorBlock error={error} />}
       {!error && issue && (
         <ResourceCard
@@ -207,7 +209,7 @@ export function GetIssueRenderer({ toolName, status, output, error, duration }: 
               <MarkdownContent text={issue.body} />
             </ScrollView>
           ) : (
-            <Text color={globalColors.muted} fontSize={10} fontStyle="italic">
+            <Text color={c.text3} fontSize={10} fontStyle="italic">
               No description.
             </Text>
           )}
@@ -222,13 +224,14 @@ export function GetIssueRenderer({ toolName, status, output, error, duration }: 
 // =============================================================================
 
 export function CreateIssueRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubIssue>(output) : null;
   const issue = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'number' in (parsed as object)
     ? (parsed as GitHubIssue)
     : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, issue ? `Issue #${issue.number}` : 'issue', issue?.title)}>
       {error && <ErrorBlock error={error} />}
       {!error && issue && (
         <ResourceCard
@@ -239,7 +242,7 @@ export function CreateIssueRenderer({ toolName, status, output, error, duration 
           meta={<IconChip {...issueStateChipProps(issue)} />}
         >
           {issue.html_url && (
-            <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+            <Text color={c.text2} fontSize={9} fontFamily="$mono">
               {issue.html_url}
             </Text>
           )}
@@ -263,7 +266,7 @@ export function UpdateIssueRenderer({ toolName, status, output, error, duration,
   const stateChip = issue ? issueStateChipProps(issue) : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, issue ? `Issue #${issue.number}` : 'issue', issue?.title)}>
       {error && <ErrorBlock error={error} />}
       {!error && issue && (
         <ResourceCard
@@ -298,7 +301,7 @@ export function AddIssueCommentRenderer({ toolName, status, output, error, durat
   const issueNumber = input?.issue_number;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, issueNumber ? `Issue #${issueNumber}` : 'issue')}>
       {error && <ErrorBlock error={error} />}
       {!error && comment && (
         <ResourceCard
@@ -334,7 +337,7 @@ export function AddLabelsToIssueRenderer({ toolName, status, output, error, dura
   const requestedLabels: string[] = Array.isArray(input?.labels) ? (input.labels as string[]) : [];
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, input?.issue_number ? `Issue #${input.issue_number}` : 'issue')}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
         <ResourceCard

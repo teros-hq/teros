@@ -12,15 +12,21 @@
 
 import { Zap } from "@tamagui/lucide-icons"
 import type { WindowTypeDefinition } from "../../services/windowRegistry"
-import { LatitudeSignalsWindowContent } from "./LatitudeSignalsWindowContent"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const LatitudeSignalsWindowContent = lazyWithRetry(() =>
+  import("./LatitudeSignalsWindowContent").then((m) => ({
+    default: m.LatitudeSignalsWindowContent,
+  })),
+)
 
 export const latitudeSignalsWindowDefinition: WindowTypeDefinition<Record<string, never>> = {
   type: "latitude-signals",
+  audience: "admin",
   displayName: "Latitude Signals",
   icon: Zap,
-  color: "#F59E0B",
+  phIcon: "broadcast",
+  color: "#6F27FF",
   isLauncher: true,
-  adminOnly: true,
   component: LatitudeSignalsWindowContent,
 
   defaultSize: { width: 900, height: 760 },

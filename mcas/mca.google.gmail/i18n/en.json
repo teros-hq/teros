@@ -15,9 +15,10 @@
     },
     "get-message": {
       "name": "get-message",
-      "description": "Get full details of a specific email message by ID.",
+      "description": "Get full details of a specific email message by ID. Use format=\"html\" to get the original text/html part (inline styles, fonts, colors — e.g. to replicate a hand-written draft's formatting) or format=\"raw\" to get the complete MIME message in base64. Default format=\"text\" returns the plain-text body.",
       "params": {
-        "messageId": "The ID of the message to retrieve"
+        "messageId": "The ID of the message to retrieve",
+        "format": "Response format: \"text\" (default) = plain-text body as before; \"html\" = original text/html part in bodyHtml (null + hasHtmlPart:false if the message has no HTML part); \"raw\" = full MIME message in raw (base64, Gmail API format=raw)."
       }
     },
     "send-message": {
@@ -75,7 +76,9 @@
         "subject": "Email subject",
         "body": "Email body",
         "bodyFile": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string.",
-        "isHtml": "Whether body is HTML (default: false)"
+        "isHtml": "Whether body is HTML (default: false)",
+        "threadId": "Gmail thread ID. When present, the draft is created as a reply INSIDE that thread (appears in the conversation in Gmail). Optional.",
+        "replyToMessageId": "Gmail message ID being replied to. The tool fetches it and automatically derives In-Reply-To/References headers (and the threadId when none is given), so the draft threads canonically. Optional."
       }
     },
     "delete-draft": {
@@ -94,7 +97,8 @@
         "subject": "Email subject",
         "body": "Email body",
         "bodyFile": "Path to a file to use as email body (.html/.htm → HTML, .md/.markdown → Markdown auto-converted to HTML, .txt → plain text). Use instead of body to avoid passing large content as a string.",
-        "isHtml": "Whether body is HTML (default: false)"
+        "isHtml": "Whether body is HTML (default: false)",
+        "threadId": "Gmail thread ID. Moves the draft into that thread. When omitted, the current threadId of the draft is preserved automatically (an update never detaches a threaded draft). Optional."
       }
     },
     "get-attachment": {
@@ -178,6 +182,25 @@
     "get-watcher-status": {
       "name": "get-watcher-status",
       "description": "Get the current status of the email watcher: whether it is active, when it last checked, how many message IDs are tracked, and the polling interval."
+    },
+    "get-stats": {
+      "name": "get-stats",
+      "description": "Get exact mailbox statistics without pagination: messages in INBOX (total + unread), total UNREAD, STARRED count, DRAFT count, plus SPAM, TRASH, SENT and the 4 CATEGORY_* labels (PROMOTIONS, UPDATES, SOCIAL, FORUMS), and total mailbox messages/threads. Uses users.labels.get + users.getProfile — exact counts, immune to the search resultSizeEstimate cap of 100. Optionally include per-label breakdowns.",
+      "params": {
+        "includeLabels": "Include per-label breakdown for ALL labels (1 API call per label — can be slow with many labels). Default: false.",
+        "labelIds": "Specific label IDs to include in the breakdown (e.g. [\"INBOX\", \"UNREAD\", \"STARRED\"]). Cheaper than includeLabels."
+      }
+    },
+    "set-signature": {
+      "name": "set-signature",
+      "description": "Save the email signature (HTML) for the connected Gmail account. Overrides the account signature (Gmail sendAs) for emails sent from Teros. The signature is stored per-account and automatically appended to outgoing emails (send-message, reply-message, create-draft, update-draft) — never invented or reconstructed from other emails. If the user wants a signature and none is configured, ask them for it (HTML preferred) and save it with this tool.",
+      "params": {
+        "signatureHtml": "The signature as HTML (e.g. with logo <img>, styled name, role, company). Images must use absolute https URLs."
+      }
+    },
+    "get-signature": {
+      "name": "get-signature",
+      "description": "Get the email signature (HTML) for the connected Gmail account, if any. Checks the account signature (Gmail sendAs) and the Teros-stored override. Use before composing emails to check whether a signature is configured."
     }
   },
   "name": "Gmail",

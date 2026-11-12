@@ -134,6 +134,7 @@ export {
   ChatCircleIcon as MessageCircle,
   ChatTeardropIcon as MessageSquare,
   MonitorIcon as MonitorPlay,
+  DotsThreeIcon as MoreHorizontal,
   DotsThreeVerticalIcon as MoreVertical,
   CursorClickIcon as MousePointer,
   ArrowsOutCardinalIcon as Move,

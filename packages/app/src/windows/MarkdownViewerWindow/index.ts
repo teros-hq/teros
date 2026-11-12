@@ -1,3 +1,2 @@
-export { MarkdownViewerWindowContent } from './MarkdownViewerWindowContent';
-export type { MarkdownViewerWindowProps } from './definition';
+export type { MarkdownViewerWindowProps, TodoMarkdownSource } from './definition';
 export { markdownViewerWindowDefinition } from './definition';

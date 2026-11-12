@@ -13,14 +13,17 @@ export const deleteTask: ToolConfig = {
     },
     required: ['taskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     if (!taskId) throw new Error('taskId is required');
 
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
+
     await withTimeout(
-      wsClient.queryConversations<any>('delete_task', { taskId }),
+      wsClient.queryConversations<any>('delete_task', { taskId, callerAgentId }),
       15_000,
       'delete_task',
     );

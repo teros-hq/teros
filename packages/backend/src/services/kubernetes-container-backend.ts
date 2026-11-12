@@ -16,6 +16,11 @@
 
 import * as k8s from '@kubernetes/client-node';
 import { captureException } from '../lib/sentry';
+import {
+  GcsFuseAccessProvisioner,
+  type GcsFuseAccessProvider,
+  type GcsFuseAccessRequest,
+} from './gcsfuse-access-provisioner';
 import type {
   ContainerInfo,
   ContainerStartOptions,
@@ -33,20 +38,214 @@ export interface KubernetesContainerBackendConfig {
   backendPort: number;
   /** Image pull secret name (e.g., 'artifact-registry') */
   imagePullSecret?: string;
+  /** Optional provisioner override for tests and non-default deployments. */
+  gcsFuseAccessProvisioner?: GcsFuseAccessProvider;
 }
 
 const MCA_PORT = 3000;
 const POD_LABEL_APP = 'teros-mca';
 
+export function resolveKubernetesRuntimeImage(defaultImage: string, requestedImage?: string): string {
+  if (!requestedImage) return defaultImage;
+  const specialized = /^(?:docker\.io\/)?teros\/(mca-runtime-(?:bash|playwright|whatsapp)):latest$/.exec(requestedImage);
+  const configured = /^(.+)\/mca-runtime:([^/]+)$/.exec(defaultImage);
+  if (specialized && configured) {
+    return `${configured[1]}/${specialized[1]}:${configured[2]}`;
+  }
+  return requestedImage;
+}
+
+export function getGcsFuseAccessRequest(
+  mcaId: string,
+  options?: ContainerStartOptions,
+  environment: NodeJS.ProcessEnv = process.env,
+): GcsFuseAccessRequest | undefined {
+  if (!environment.TEROS_GCSFUSE_POC_BUCKET) return undefined;
+
+  const mounts = options?.volumes ?? [];
+  const workspaceMounts = mounts.filter((mount) => mount.containerPath === '/workspace');
+  const appDataMounts = mounts.filter((mount) => mount.containerPath === '/app-data');
+  if (!workspaceMounts.length && !appDataMounts.length) return undefined;
+
+  const appId = options?.appId;
+  const appName = options?.environment?.MCA_APP_NAME;
+  const workspaceId = options?.environment?.MCA_OWNER_ID;
+  if (!appId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(appId) ||
+      options?.containerMode !== 'per-app' ||
+      options.environment?.MCA_APP_ID !== appId ||
+      options.environment?.MCA_OWNER_TYPE !== 'workspace' ||
+      !appName || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(appName) ||
+      !workspaceId || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(workspaceId)) {
+    throw new Error('Workspace or app-data installation is not authorized for the GCS FUSE POC');
+  }
+
+  if (mounts.length !== workspaceMounts.length + appDataMounts.length ||
+      appDataMounts.length > 1 ||
+      workspaceMounts.some((mount) => mount.readOnly) ||
+      appDataMounts.some((mount) => mount.readOnly)) {
+    throw new Error('GCS FUSE POC requires only writable workspace and app-data mounts');
+  }
+
+  const expectedAppDataPath = (volumeId: string) =>
+    `/data/volumes/workspaces/${volumeId}/.apps/${appName}`;
+  const mountPaths = [
+    ...workspaceMounts.map((mount) => mount.hostPath),
+    ...appDataMounts.map((mount) => mount.hostPath.replace(/\/\.apps\/[^/]+$/, '')),
+  ];
+  const volumePaths = new Set(mountPaths.map((path) => {
+    const match = /^\/data\/volumes\/workspaces\/([A-Za-z0-9][A-Za-z0-9_-]{0,127})$/.exec(path);
+    return match?.[1];
+  }));
+  if (volumePaths.size !== 1 || volumePaths.has(undefined)) {
+    throw new Error('Workspace mount does not match the authorized GCS FUSE installation');
+  }
+  const volumeId = [...volumePaths][0];
+  if (!volumeId) {
+    throw new Error('Workspace mount does not match the authorized GCS FUSE installation');
+  }
+  const workspacePath = `/data/volumes/workspaces/${volumeId}`;
+  if (workspaceMounts.some((mount) => mount.hostPath !== workspacePath) ||
+      appDataMounts.some((mount) => mount.hostPath !== expectedAppDataPath(volumeId))) {
+    throw new Error('Workspace or app-data mount does not match the authorized GCS FUSE installation');
+  }
+
+  return {
+    appId,
+    appName,
+    mcaId,
+    workspaceId,
+    volumeId,
+    workspaceMount: workspaceMounts.length > 0,
+    appDataMount: appDataMounts.length > 0,
+  };
+}
+
+export function configureGcsFusePocPod(
+  pod: k8s.V1Pod,
+  mcaId: string,
+  options?: ContainerStartOptions,
+  serviceAccountName?: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): boolean {
+  const bucket = environment.TEROS_GCSFUSE_POC_BUCKET;
+  if (!bucket) return false;
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket)) {
+    throw new Error('Invalid TEROS_GCSFUSE_POC_BUCKET');
+  }
+  if (!environment.TEROS_GCSFUSE_POC_NAMESPACE ||
+      pod.metadata?.namespace !== environment.TEROS_GCSFUSE_POC_NAMESPACE) {
+    throw new Error('GCS FUSE POC namespace does not match the pod namespace');
+  }
+  const spec = pod.spec;
+  const container = spec?.containers.find((entry) => entry.name === 'mca');
+  if (!spec || !container) throw new Error('GCS FUSE POC requires an MCA container');
+
+  const request = getGcsFuseAccessRequest(mcaId, options, environment);
+  if (!request) {
+    spec.serviceAccountName = 'teros-poc-runtime';
+    spec.automountServiceAccountToken = false;
+    return false;
+  }
+  if (!serviceAccountName || !/^teros-fuse-[a-f0-9]{24}$/.test(serviceAccountName)) {
+    throw new Error('GCS FUSE installation has not been provisioned');
+  }
+
+  const allowedEnvironment = new Set([
+    'MCA_TRANSPORT', 'MCA_HTTP_PORT', 'MCA_HTTP_HOST', 'MCA_CALLBACK_BASE_URL',
+    'MCA_CALLBACK_URL', 'MCA_CALLBACK_TOKEN', 'MCA_ID', 'MCA_APP_ID', 'MCA_APP_NAME',
+    'MCA_MCP_ID', 'MCA_OWNER_ID', 'MCA_OWNER_TYPE', 'MCA_WS_URL', 'MCA_WS_TOKEN',
+    'MCA_BACKEND_URL', 'MCA_WORKSPACE_PATH',
+  ]);
+  const blockedEnvironment = new Set([
+    'GOOGLE_APPLICATION_CREDENTIALS', 'MONGODB_URI', 'MONGODB_DATABASE',
+    'MONGODB_DB_NAME', 'MCA_MONGODB_URI', 'NODE_OPTIONS',
+  ]);
+  container.env = (container.env ?? []).filter((entry) =>
+    !blockedEnvironment.has(entry.name) &&
+    !entry.name.startsWith('TEROS_GCSFUSE_') &&
+    !entry.name.startsWith('KUBERNETES_') &&
+    (allowedEnvironment.has(entry.name) || options?.environment?.[entry.name] !== undefined));
+  container.env.push({ name: 'TEROS_EXPECTED_VOLUME_ID', value: request.volumeId });
+  if (request.appDataMount) {
+    container.env.push({ name: 'TEROS_EXPECTED_APP_ID', value: request.appId });
+  }
+  spec.serviceAccountName = serviceAccountName;
+  spec.automountServiceAccountToken = false;
+  spec.terminationGracePeriodSeconds = 60;
+  const startupChecks = [];
+  spec.volumes = [];
+  container.volumeMounts = [];
+  if (request.workspaceMount) {
+    spec.volumes.push({
+      name: 'workspace',
+      csi: {
+        driver: 'gcsfuse.csi.storage.gke.io',
+        readOnly: false,
+        volumeAttributes: {
+          bucketName: bucket,
+          skipCSIBucketAccessCheck: 'true',
+          mountOptions: `enable-sidecar-bucket-access-check=false,only-dir:workspaces/${request.volumeId},metadata-cache:ttl-secs:0,metadata-cache:negative-ttl-secs:0,file-system:kernel-list-cache-ttl-secs:0,file-cache:max-size-mb:0`,
+        },
+      },
+    });
+    container.volumeMounts.push({ name: 'workspace', mountPath: '/workspace' });
+    startupChecks.push('grep -q " /workspace .* - fuse" /proc/self/mountinfo',
+      'test "$(cat /workspace/.teros-volume-id)" = "$TEROS_EXPECTED_VOLUME_ID"');
+  }
+  if (request.appDataMount) {
+    spec.volumes.push({
+      name: 'app-data',
+      csi: {
+        driver: 'gcsfuse.csi.storage.gke.io',
+        readOnly: false,
+        volumeAttributes: {
+          bucketName: bucket,
+          skipCSIBucketAccessCheck: 'true',
+          mountOptions: `enable-sidecar-bucket-access-check=false,only-dir:app-private/${request.appId},metadata-cache:ttl-secs:0,metadata-cache:negative-ttl-secs:0,file-system:kernel-list-cache-ttl-secs:0,file-cache:max-size-mb:0`,
+        },
+      },
+    });
+    container.volumeMounts.push({ name: 'app-data', mountPath: '/app-data' });
+    startupChecks.push('grep -q " /app-data .* - fuse" /proc/self/mountinfo',
+      'test "$(cat /app-data/.teros-installation-id)" = "$TEROS_EXPECTED_APP_ID"');
+  }
+  container.startupProbe = {
+    exec: { command: ['/bin/sh', '-ec', startupChecks.join(' && ')] },
+    periodSeconds: 2,
+    timeoutSeconds: 10,
+    failureThreshold: 150,
+  };
+  pod.metadata ??= {};
+  pod.metadata.annotations = {
+    ...pod.metadata?.annotations,
+    'gke-gcsfuse/volumes': 'true',
+    'gke-gcsfuse/cpu-request': '100m',
+    'gke-gcsfuse/cpu-limit': '500m',
+    'gke-gcsfuse/memory-request': '256Mi',
+    'gke-gcsfuse/memory-limit': '512Mi',
+    'gke-gcsfuse/ephemeral-storage-request': '1Gi',
+    'gke-gcsfuse/ephemeral-storage-limit': '4Gi',
+  };
+  pod.metadata.labels = { ...pod.metadata.labels, 'teros.ai/storage-poc': 'true' };
+  container.resources = {
+    requests: { cpu: '100m', memory: '256Mi', 'ephemeral-storage': '1Gi' },
+    limits: { cpu: '2', memory: '2Gi', 'ephemeral-storage': '4Gi' },
+  };
+  return true;
+}
+
 export class KubernetesContainerBackend implements IContainerBackend {
   private coreApi: k8s.CoreV1Api;
   private kc: k8s.KubeConfig;
+  private gcsFuseAccessProvisioner?: GcsFuseAccessProvider;
 
   constructor(private config: KubernetesContainerBackendConfig) {
     this.kc = new k8s.KubeConfig();
     // In-cluster config when running inside a Pod (uses ServiceAccount token)
     this.kc.loadFromCluster();
     this.coreApi = this.kc.makeApiClient(k8s.CoreV1Api);
+    this.gcsFuseAccessProvisioner = config.gcsFuseAccessProvisioner ??
+      GcsFuseAccessProvisioner.fromEnvironment(this.coreApi);
 
     console.log(
       `[KubernetesBackend] Initialized (namespace=${config.namespace}, image=${config.defaultImage})`,
@@ -72,7 +271,7 @@ export class KubernetesContainerBackend implements IContainerBackend {
     options?: ContainerStartOptions,
   ): Promise<ContainerInfo> {
     const ns = this.config.namespace;
-    const image = options?.image || this.config.defaultImage;
+    const image = resolveKubernetesRuntimeImage(this.config.defaultImage, options?.image);
     const callbackBaseUrl = `http://${this.config.backendServiceHost}:${this.config.backendPort}`;
 
     const labels: Record<string, string> = {
@@ -118,7 +317,7 @@ export class KubernetesContainerBackend implements IContainerBackend {
           {
             name: 'mca',
             image,
-            imagePullPolicy: 'Always',
+            imagePullPolicy: 'IfNotPresent',
             ports: [{ containerPort: MCA_PORT, protocol: 'TCP' }],
             env: envVars,
             resources: {
@@ -127,8 +326,8 @@ export class KubernetesContainerBackend implements IContainerBackend {
             },
             readinessProbe: {
               httpGet: { path: '/health', port: MCA_PORT as any },
-              initialDelaySeconds: 5,
-              periodSeconds: 3,
+              initialDelaySeconds: 0,
+              periodSeconds: 1,
               failureThreshold: 10,
             },
             livenessProbe: {
@@ -144,6 +343,9 @@ export class KubernetesContainerBackend implements IContainerBackend {
           : {}),
       },
     };
+
+    let fuseWorkspace = false;
+    let resourcesTouched = false;
 
     // ── Service spec ───────────────────────────────────────────────────────
     // ClusterIP service so the backend can reach the pod via stable DNS
@@ -178,7 +380,23 @@ export class KubernetesContainerBackend implements IContainerBackend {
     };
 
     try {
+      const fuseAccessRequest = getGcsFuseAccessRequest(mcaId, options);
+      let serviceAccountName: string | undefined;
+      if (fuseAccessRequest) {
+        if (!this.gcsFuseAccessProvisioner) {
+          throw new Error('GCS FUSE workspace access provisioner is not configured');
+        }
+        serviceAccountName = await this.gcsFuseAccessProvisioner.ensureAccess(fuseAccessRequest);
+      }
+      fuseWorkspace = configureGcsFusePocPod(
+        pod,
+        mcaId,
+        options,
+        serviceAccountName,
+      );
+
       // Clean up any existing pod/service with this name
+      resourcesTouched = true;
       await this.deleteResources(podName, ns);
 
       // Create Service first (so DNS is ready when pod starts)
@@ -190,7 +408,7 @@ export class KubernetesContainerBackend implements IContainerBackend {
       await this.coreApi.createNamespacedPod({ namespace: ns, body: pod });
 
       // Wait for pod to be Running + Ready
-      await this.waitForReady(podName, ns);
+      await this.waitForReady(podName, ns, fuseWorkspace ? 360_000 : 60_000);
 
       info.status = 'running';
       console.log(`[KubernetesBackend] Pod ready: ${podName} → ${baseUrl}`);
@@ -199,9 +417,11 @@ export class KubernetesContainerBackend implements IContainerBackend {
       info.status = 'error';
       info.error = error.message;
       // Best-effort cleanup on failure — original error is re-thrown below, so cleanup failure must not shadow it
-      await this.deleteResources(podName, ns).catch((cleanupErr) => {
-        console.warn(`[KubernetesBackend] Cleanup failed for pod ${podName} after start error:`, cleanupErr);
-      });
+      if (resourcesTouched) {
+        await this.deleteResources(podName, ns).catch((cleanupErr) => {
+          console.warn(`[KubernetesBackend] Cleanup failed for pod ${podName} after start error:`, cleanupErr);
+        });
+      }
       captureException(error, { context: 'k8s-backend-start', mcaId, podName });
       throw error;
     }

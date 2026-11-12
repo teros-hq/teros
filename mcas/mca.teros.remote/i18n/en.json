@@ -1,0 +1,258 @@
+{
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "Internal health check. Verifies that every allowed root is accessible and reports which search engine (ripgrep or the in-process fallback) is active."
+    },
+    "list-roots": {
+      "name": "list-roots",
+      "description": "List the roots this machine exposes (the daemon's allowedRoots). Useful for auditing scope when a path is rejected with FORBIDDEN."
+    },
+    "read-file": {
+      "name": "read-file",
+      "description": "Read a text file with optional line-based pagination. Returns content formatted as \"cat -n\" (numbered lines) plus metadata (name, size, lineCount, kind). Use offset+limit for ranges or head/tail for the first/last N lines. Returns text content; binary files are rejected.",
+      "params": {
+        "filePath": "Path to the file (e.g. '/workspace/src/file.ts')",
+        "offset": "0-based line offset (default 0)",
+        "limit": "Max lines to return (default 2000, max 10000)",
+        "head": "Return only the first N lines (overrides offset/limit)",
+        "tail": "Return only the last N lines (overrides offset/limit)",
+        "includeRaw": "If true, include raw content (without line numbers) in addition to formatted"
+      }
+    },
+    "read-files": {
+      "name": "read-files",
+      "description": "Read multiple text files in a single call. Returns an array with one entry per requested path (ok, content/error). Each file is read with the same default limits as `read-file`; pass perFileLimit to override. Failures on individual paths do not abort the batch.",
+      "params": {
+        "paths": "Paths to files (e.g. '/workspace/src/a.ts', '/workspace/src/b.ts'; max 50)",
+        "perFileLimit": "Max lines per file (default 2000, max 10000)"
+      }
+    },
+    "read-binary": {
+      "name": "read-binary",
+      "description": "Read a binary file (image, PDF, audio, archive, …) and return base64 + detected MIME type. For text files use `read-file`. Hard cap 10 MB to avoid blowing up the chat context.",
+      "params": {
+        "filePath": "Path to the file"
+      }
+    },
+    "create-file": {
+      "name": "create-file",
+      "description": "Write content to a file, overwriting if it exists. Safety: an existing file must have been read first in this session (use `read-file` before overwriting). For new files, parent directories are created automatically. Use `edit-file` for in-place modifications and `append-file` for additions.",
+      "params": {
+        "filePath": "Path to the file (e.g. '/workspace/src/file.ts')",
+        "content": "Content to write (UTF-8)"
+      }
+    },
+    "append-file": {
+      "name": "append-file",
+      "description": "Append content to the end of a file. Creates the file (and parents) if it does not exist. Does NOT require a prior read (appends are non-destructive to existing content). For replacing content, use `create-file` (after `read-file`) or `edit-file`.",
+      "params": {
+        "filePath": "Path to the file",
+        "content": "Content to append (UTF-8)"
+      }
+    },
+    "edit-file": {
+      "name": "edit-file",
+      "description": "Replace exact string occurrence(s) in a file. By default fails if `oldString` appears zero or multiple times — pass `replaceAll: true` to rewrite every match. The replacement is literal (no regex). Returns a unified diff of the change. For structured hunks use `patch-file`; for larger rewrites use `create-file`.",
+      "params": {
+        "filePath": "Path to the file to edit",
+        "oldString": "Exact substring to match (whitespace-sensitive)",
+        "newString": "Replacement text",
+        "replaceAll": "Replace every occurrence (default false)",
+        "dryRun": "Preview the change (returns diff without writing). Default false"
+      }
+    },
+    "patch-file": {
+      "name": "patch-file",
+      "description": "Apply a unified diff (patch format) to a file atomically. Useful for multi-hunk fixes where several edits must go together. Uses fuzzy matching (fuzzFactor 2) so minor context drift is tolerated. Returns whether all hunks applied. For single-point changes prefer `edit-file`.",
+      "params": {
+        "filePath": "Path to the target file to patch",
+        "unifiedDiff": "Unified diff content (standard diff -u format)",
+        "fuzzFactor": "Whitespace tolerance for context lines (default 2)",
+        "dryRun": "Preview the patch (returns diff without writing). Default false"
+      }
+    },
+    "list-files": {
+      "name": "list-files",
+      "description": "List directory entries with metadata (name, type, size, mtime, kind). Optionally recursive via `depth`. Honors `ignore` patterns (glob-style) and `respectGitignore`. Paginates with `limit` + `cursor`. For a hierarchical view use `tree-view`; for pattern-based search use `find-files`.",
+      "params": {
+        "path": "Directory to list (default: the first allowed root)",
+        "depth": "Max recursion depth (0 = current dir only, default 0, max 20)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "respectGitignore": "If true, honor .gitignore from the listed directory",
+        "limit": "Max entries to return (default 50, max 200)",
+        "cursor": "Pagination cursor from previous response"
+      }
+    },
+    "tree-view": {
+      "name": "tree-view",
+      "description": "Return a hierarchical JSON tree of a directory up to `depth` levels. Files have size and mtime; directories have children. Honors `ignore` patterns and `respectGitignore`. Capped by maxNodes to prevent runaway output. Use `list-files` for flat pagination or `find-files` for pattern match.",
+      "params": {
+        "path": "Root directory (default: the first allowed root)",
+        "depth": "Max depth to descend (default 3, max 20)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "maxNodes": "Hard cap on total nodes (default 500)"
+      }
+    },
+    "file-info": {
+      "name": "file-info",
+      "description": "Return metadata for a single path: exists, type (file/directory), size, mtime, permissions. Does NOT read content. Prefer this over `read-file` when you only need to check existence or size.",
+      "params": {
+        "path": "Path to the file or directory (e.g. '/workspace/docs')"
+      }
+    },
+    "hash-file": {
+      "name": "hash-file",
+      "description": "Compute the cryptographic hash of a file (default sha256). Reads the file and hashes in memory. Useful for integrity checks and detecting changes between reads.",
+      "params": {
+        "filePath": "Path to the file",
+        "algorithm": "Hash algorithm (default sha256)"
+      }
+    },
+    "find-files": {
+      "name": "find-files",
+      "description": "Find files matching a glob pattern (e.g. \"**/*.ts\", \"src/**/*.test.{ts,tsx}\"). Results sorted by mtime (most recently modified first). Honors `ignore` patterns and `respectGitignore`. Use `search-in-files` for content search and `list-files` for flat directory listing.",
+      "params": {
+        "pattern": "Glob pattern",
+        "path": "Base directory (default: the first allowed root)",
+        "ignore": "Extra ignore patterns (gitignore syntax)",
+        "includeDirs": "Include directories in results",
+        "dot": "Match dotfiles (default false)",
+        "limit": "Max results (default 50, max 1000)"
+      }
+    },
+    "search-in-files": {
+      "name": "search-in-files",
+      "description": "Search file contents for a regex pattern using ripgrep. `output_mode` controls the shape: \"content\" returns {file, line, match, context} objects; \"files\" returns one entry per matching file with matchCount; \"count\" returns only totals. Supports context lines (-B/-A), include glob, case insensitive, multiline. Shell-injection safe (args are not interpolated). For finding files by name use `find-files`.",
+      "params": {
+        "pattern": "Regex pattern (Rust regex syntax via ripgrep)",
+        "path": "Base directory or file (default: the first allowed root)",
+        "output_mode": "Result shape (default \"content\")",
+        "contextBefore": "Lines of context before each match",
+        "contextAfter": "Lines of context after each match",
+        "include": "Glob to filter files (e.g. \"*.ts\", \"**/*.md\")",
+        "type": "Pre-defined file type filter passed to ripgrep --type (e.g. js, py, rust, ts, go, md). Faster than `include` when you target a known language",
+        "multiline": "Allow pattern to match across newlines",
+        "respectGitignore": "Honor .gitignore (default false)",
+        "limit": "Max matches or files to return (default 50, max 100)"
+      }
+    },
+    "delete-file": {
+      "name": "delete-file",
+      "description": "Delete a file or directory. Set `recursive: true` for non-empty directories. Idempotent: succeeds silently if the path does not exist (reports existed=false).",
+      "params": {
+        "path": "Path to the file or directory to delete (e.g. '/workspace/old-dir')",
+        "recursive": "Required for non-empty directories"
+      }
+    },
+    "copy-file": {
+      "name": "copy-file",
+      "description": "Copy a file or directory. For directories set `recursive: true`. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically.",
+      "params": {
+        "source": "Path to the source file or directory (e.g. '/workspace/docs')",
+        "destination": "Path to the destination (e.g. '/workspace/docs-copy')",
+        "recursive": "Required to copy directories",
+        "overwrite": "Overwrite destination if it exists"
+      }
+    },
+    "move-file": {
+      "name": "move-file",
+      "description": "Move or rename a file or directory. Fails if the destination exists unless `overwrite: true`. Parent directories of the destination are created automatically.",
+      "params": {
+        "source": "Path to the source file or directory",
+        "destination": "Path to the destination",
+        "overwrite": "Overwrite destination if it exists"
+      }
+    },
+    "create-directory": {
+      "name": "create-directory",
+      "description": "Create a directory. By default creates parent directories as needed (recursive). Idempotent: returns created=false if the directory already exists.",
+      "params": {
+        "path": "Path to the directory to create (e.g. '/workspace/docs')",
+        "recursive": "Create parents as needed (default true)"
+      }
+    },
+    "device-status": {
+      "name": "device-status",
+      "description": "Report the paired machine's daemon status: online/offline, uptime, daemon version, allowed roots, whether bash is enabled, and the last tunnel error."
+    },
+    "get-info": {
+      "name": "get-info",
+      "description": "Get system information about the paired machine: identity (name, hostname, deviceId, daemon version), OS/arch/kernel, system uptime and boot time, local and external IP addresses (external is best-effort and may be null), CPU/memory/root-disk totals, battery status when present, and the daemon's scope (allowed roots, exec enabled). Read-only, no arguments."
+    },
+    "bash": {
+      "name": "bash",
+      "description": "Execute a bash command on this machine. Scope: full access as user <daemon-user> — NOT limited to the allowed roots (<allowedRoots>). Returns stdout, stderr and exit code. `cwd` defaults to the first allowed root as a convenience for relative paths; it is not a boundary.",
+      "params": {
+        "command": "The bash command to execute",
+        "description": "ALWAYS provide this: a 5-10 word description of what the command does. It is shown to the user as the tool-call title.",
+        "cwd": "Working directory (default: the first allowed root)",
+        "timeout": "Timeout in milliseconds (default 120000, max 600000). On expiry the process group is killed and partial output is returned with error TIMEOUT.",
+        "stream": "Accepted for parity with mca.teros.bash; streaming is not available over the tunnel in v1"
+      }
+    },
+    "pull-file": {
+      "name": "pull-file",
+      "description": "Pull a single file FROM this machine INTO the workspace volume, over the dedicated transfer plane (chunked ~512KB, sha256-verified end-to-end, resumable by offset after a reconnect). The path must be inside the allowed roots. The result is metadata only (bytes, sha256, duration, destination) — file content never appears in the tool result. Use `mode: \"resume\"` with the returned resumeToken to continue an interrupted transfer.",
+      "params": {
+        "filePath": "Absolute path on this machine (must be inside an allowed root)",
+        "destinationPath": "Destination path in the workspace volume (e.g. /workspace/downloads/file.bin). Defaults to /workspace/<basename>.",
+        "mode": "create (fail if destination exists) | overwrite | resume (continue from the last acked offset; requires resumeToken)",
+        "resumeToken": "Token from a previous interrupted transfer of the same file (mode \"resume\")"
+      }
+    },
+    "push-file": {
+      "name": "push-file",
+      "description": "Push a single file FROM the workspace volume TO this machine, over the dedicated transfer plane (chunked ~512KB, sha256-verified end-to-end, resumable by offset after a reconnect). The destination path must be inside the allowed roots. The result is metadata only (bytes, sha256, duration, destination) — file content never appears in the tool result. Use `mode: \"resume\"` with the returned resumeToken to continue an interrupted transfer.",
+      "params": {
+        "filePath": "Destination path on this machine (must be inside an allowed root)",
+        "sourcePath": "Source path in the workspace volume (e.g. /workspace/uploads/file.bin)",
+        "size": "Total size in bytes (hint from the backend; -1 when unknown)",
+        "sha256": "Expected full-file sha256 (verified before close)",
+        "mode": "create (fail if destination exists) | overwrite | resume (continue from the last acked offset; requires resumeToken)",
+        "resumeToken": "Token from a previous interrupted transfer of the same file (mode \"resume\")"
+      }
+    },
+    "manifest-directory": {
+      "name": "manifest-directory",
+      "description": "List a directory tree on this machine as a manifest: every regular file with { relPath, size, mtime, sha256 }. Read-only; the path must be inside the allowed roots. Safety caps (transfer.maxManifestFiles / maxManifestBytes) abort with LIMIT_EXCEEDED on very large trees.",
+      "params": {
+        "directoryPath": "Absolute path on this machine (must be inside an allowed root)"
+      }
+    },
+    "pull-directory": {
+      "name": "pull-directory",
+      "description": "Pull a directory tree FROM this machine INTO the workspace volume. Builds a manifest first ({ relPath, size, mtime, sha256 } per file), then transfers the files one by one over the dedicated transfer plane (chunked, sha256-verified). Files whose destination hash already matches are skipped (resume after an interrupted run). Per-file errors are reported at the end without aborting the batch. The result is metadata only — file content never appears in the tool result.",
+      "params": {
+        "directoryPath": "Absolute source path on this machine (must be inside an allowed root)",
+        "destinationPath": "Destination directory in the workspace volume (e.g. /workspace/downloads/project). Created as needed."
+      }
+    },
+    "push-directory": {
+      "name": "push-directory",
+      "description": "Push a directory tree FROM the workspace volume TO this machine. Fetches the volume manifest first, then receives the files one by one over the dedicated transfer plane (chunked, sha256-verified). Files whose local hash already matches are skipped (resume after an interrupted run). Per-file errors are reported at the end without aborting the batch. The result is metadata only — file content never appears in the tool result.",
+      "params": {
+        "sourcePath": "Source directory in the workspace volume (e.g. /workspace/builds/release)",
+        "directoryPath": "Absolute destination path on this machine (must be inside an allowed root)"
+      }
+    },
+    "sync-directory": {
+      "name": "sync-directory",
+      "description": "Synchronize a directory tree between this machine and the workspace volume (rsync-lite, no rsync on either side). With `dryRun: true` it only computes the diff: `added` (in source, not in destination), `changed` (size/mtime candidates confirmed by sha256), `deleted` (in destination, not in source). With `dryRun: false` it transfers ONLY the delta over the dedicated transfer plane. Deletions are NEVER applied unless `delete: true` is passed explicitly — by default they are reported and left untouched. `direction` picks the source side: \"pull\" (machine → volume) or \"push\" (volume → machine). The result is metadata only.",
+      "params": {
+        "direction": "pull = machine is the source (sync INTO the volume); push = volume is the source (sync ONTO this machine)",
+        "directoryPath": "Directory on this machine (must be inside an allowed root)",
+        "workspacePath": "Directory in the workspace volume (e.g. /workspace/sync/project)",
+        "dryRun": "true (default) = compute and report the diff only; false = apply the delta",
+        "delete": "Allow deletions on the destination when applying (default false — deleted files are only reported)"
+      }
+    }
+  },
+  "name": "Teros Remote",
+  "description": "Operate a paired remote machine (bash + filesystem) through an outbound tunnel — no inbound ports, no VPN. Setup once per machine: install the daemon with `curl -fsSL https://get.teros.ai/remote.sh | sh`, run `teros-remote pair`, and paste the printed key into this app (TEROS_REMOTE_KEY). Until then tools answer MACHINE_UNREACHABLE with the step to run. Filesystem tools are confined to the allowed roots; bash runs only if the daemon enables it, with the daemon user's full permissions.",
+  "changelog": [
+    {
+      "notes": "Initial release — pair a machine with teros-remote and operate its files and shell from an agent"
+    }
+  ]
+}

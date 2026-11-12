@@ -131,8 +131,8 @@ export class PhantomBillingRemediation {
         let phantomMs = 0
         let bucketsCorrected = 0
         for (const bucket of inRange) {
-          const stored = await this.storedUserActiveMs(userId, bucket)
-          const correctedMap = await this.rollupJob.computeUserActiveMsForHour(bucket)
+          const stored = await this.storedUserBilledMs(userId, bucket)
+          const correctedMap = await this.rollupJob.computeUserBilledMsForHour(bucket)
           const corrected = correctedMap.get(userId) ?? 0
           const delta = stored - corrected
           if (delta > 0) {
@@ -280,12 +280,17 @@ export class PhantomBillingRemediation {
     return byUser
   }
 
-  /** Stored billed userActiveMs for (userId, bucket), summed across workspaces. */
-  private async storedUserActiveMs(userId: string, bucket: Date): Promise<number> {
+  /**
+   * Stored billed ms for (userId, bucket), summed across workspaces. Uses the
+   * SAME metric the tracker bills (decision #29: userWorkMs with userActiveMs
+   * fallback for pre-#29 buckets) so the measured correction matches what was
+   * actually charged.
+   */
+  private async storedUserBilledMs(userId: string, bucket: Date): Promise<number> {
     const agg = (await this.userRollupsCol
       .aggregate([
         { $match: { "groupKey.userId": userId, hourBucket: bucket } },
-        { $group: { _id: null, totalMs: { $sum: "$userActiveMs" } } },
+        { $group: { _id: null, totalMs: { $sum: { $ifNull: ["$userWorkMs", "$userActiveMs"] } } } },
       ])
       .toArray()) as Array<{ totalMs: number }>
     return agg[0]?.totalMs ?? 0

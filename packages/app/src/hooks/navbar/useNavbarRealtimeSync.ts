@@ -40,6 +40,10 @@ export interface NavbarRealtimeConversation {
   agentName?: string
   agentAvatarUrl?: string
   lastMessageAt?: string
+  /** Where the channel belongs (CHAN-REQ-11); absent on `deleted`. */
+  workspaceId?: string | null
+  headless?: boolean
+  originChannelId?: string | null
 }
 
 export interface NavbarRealtimeProject {
@@ -145,15 +149,40 @@ export function useNavbarRealtimeSync(opts: UseNavbarRealtimeSyncOptions = {}): 
       if (!isReady() || !data?.workspaceId) return
       useNavbarStore.getState().removeWorkspace(data.workspaceId)
     }
+    // MUW-REQ-20/22: the user was removed from (or left) a workspace — same
+    // effect on the sidebar as an archive: the workspace disappears live.
+    const handleMembershipRemoved = handleWorkspaceArchived
 
     // ---------------- Apps ----------------
+    // MUW-REQ-13: app pushes go to the whole workspace, but a member only sees
+    // shared apps plus their own. Instead of trusting the payload (which would
+    // surface another member's private app in the sidebar), re-fetch the
+    // server-filtered list of the active workspace. Coalesced per burst.
+    let appsRefetch: ReturnType<typeof setTimeout> | null = null
+    const refetchApps = () => {
+      if (!isReady()) return
+      if (appsRefetch) clearTimeout(appsRefetch)
+      appsRefetch = setTimeout(async () => {
+        appsRefetch = null
+        const wsId = useWorkspaceStore.getState().activeWorkspaceId
+        if (!wsId) return
+        try {
+          const { apps } = await client.workspace.listWorkspaceApps(wsId)
+          useNavbarStore.getState().setApps(
+            (apps ?? []).map((app: any) => toNavbarApp({ ...app, mcaName: app.mcaName ?? app.mcpName ?? app.mcaId })),
+          )
+        } catch (err) {
+          console.warn('[NavbarRealtime] apps refetch failed:', err)
+        }
+      }, 250)
+    }
     const handleAppInstalled = (data: any) => {
-      if (!isReady() || !data?.app) return
-      useNavbarStore.getState().addApp(toNavbarApp(data.app))
+      if (!data?.app) return
+      refetchApps()
     }
     const handleAppUpdated = (data: any) => {
-      if (!isReady() || !data?.app?.appId) return
-      useNavbarStore.getState().updateApp(data.app.appId, toNavbarApp(data.app))
+      if (!data?.app?.appId) return
+      refetchApps()
     }
     const handleAppUninstalled = (data: any) => {
       if (!isReady() || !data?.appId) return
@@ -209,6 +238,9 @@ export function useNavbarRealtimeSync(opts: UseNavbarRealtimeSyncOptions = {}): 
         agentName: ch.agentName,
         agentAvatarUrl: ch.agentAvatarUrl,
         lastMessageAt: ch.lastMessageAt ?? ch.updatedAt,
+        workspaceId: ch.workspaceId,
+        headless: ch.headless,
+        originChannelId: ch.originChannelId,
       })
     }
 
@@ -222,6 +254,7 @@ export function useNavbarRealtimeSync(opts: UseNavbarRealtimeSyncOptions = {}): 
     client.on('workspace.created', handleWorkspaceCreated)
     client.on('workspace.updated', handleWorkspaceUpdated)
     client.on('workspace.archived', handleWorkspaceArchived)
+    client.on('workspace.membership_removed', handleMembershipRemoved)
     client.on('app.installed', handleAppInstalled)
     client.on('app.updated', handleAppUpdated)
     client.on('app.uninstalled', handleAppUninstalled)
@@ -237,9 +270,11 @@ export function useNavbarRealtimeSync(opts: UseNavbarRealtimeSyncOptions = {}): 
       client.off('workspace.created', handleWorkspaceCreated)
       client.off('workspace.updated', handleWorkspaceUpdated)
       client.off('workspace.archived', handleWorkspaceArchived)
+      client.off('workspace.membership_removed', handleMembershipRemoved)
       client.off('app.installed', handleAppInstalled)
       client.off('app.updated', handleAppUpdated)
       client.off('app.uninstalled', handleAppUninstalled)
+      if (appsRefetch) clearTimeout(appsRefetch)
       client.off('project.created', handleProjectCreated)
       client.off('project.updated', handleProjectUpdated)
       client.off('project.deleted', handleProjectDeleted)

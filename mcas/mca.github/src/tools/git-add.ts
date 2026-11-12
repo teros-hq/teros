@@ -1,12 +1,13 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Stage one or more paths. Passing `paths: ["."]` (or omitting `paths`) stages
  * every change in the working tree.
  */
-export const gitAdd: ToolConfig = {
+export const gitAdd: ToolConfig = lockedGitTool('git-add', {
   annotations: { readOnlyHint: false },
   description:
     'Stage local changes. Pass an array of paths to stage selectively, or omit `paths` (default `.`) to stage everything.',
@@ -41,11 +42,11 @@ export const gitAdd: ToolConfig = {
 
     const targets = a.paths && a.paths.length > 0 ? a.paths : ['.'];
     const flags = a.update ? ['-u'] : [];
-    const result = runGit(repoPath, ['add', ...flags, '--', ...targets]);
+    const result = await runGit(repoPath, ['add', ...flags, '--', ...targets]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     // Return a fresh status so the agent immediately sees what got staged.
-    const statusResult = runGit(repoPath, ['status', '--porcelain=v2', '--branch']);
+    const statusResult = await runGit(repoPath, ['status', '--porcelain=v2', '--branch']);
     if (statusResult.code !== 0) throwClassifiedGitError(statusResult);
     const { parseGitStatusPorcelain } = await import('../lib/git-local');
     const status = parseGitStatusPorcelain(statusResult.stdout);
@@ -57,4 +58,4 @@ export const gitAdd: ToolConfig = {
       stagedFiles: status.staged.map((e) => e.path),
     };
   },
-};
+});

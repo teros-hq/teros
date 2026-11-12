@@ -13,7 +13,7 @@
 import type { ServerMessage } from '@teros/shared';
 import type { WebSocket } from 'ws';
 import type { Task } from '../../types/database';
-import { type BoardService, type CreateTaskInput, buildTaskInitialMessage } from '../../services/board-service';
+import { type BoardService, type CreateTaskInput, buildTaskInitialMessage, TASK_LIST_PROJECTION } from '../../services/board-service';
 import type { ChannelManager } from '../../services/channel-manager';
 import type { PubSubService } from '../../services/pubsub-service';
 import type { WorkspaceService } from '../../services/workspace-service';
@@ -243,7 +243,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           return;
         }
 
-        await boardService.deleteProject(projectId);
+        await boardService.deleteProject(projectId, userId);
 
         sendMessage(ws, {
           type: 'project_deleted',
@@ -320,8 +320,12 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           return;
         }
 
-        // Get tasks grouped by column
-        const tasks = await boardService.listTasks(board.boardId);
+        // Get tasks grouped by column.
+        // TASK_LIST_PROJECTION — same rationale as the board.get handler: full
+        // docs on large boards exceed the client WS timeout.
+        const tasks = await boardService.listTasks(board.boardId, {
+          projection: TASK_LIST_PROJECTION,
+        });
 
         // Resolve agent names/avatars
         const agentIds = boardService.collectAgentIds(tasks);
@@ -434,6 +438,10 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           sendError(ws, 'MISSING_FIELDS', 'projectId and title are required');
           return;
         }
+        if (!taskInput.instructions || taskInput.instructions.trim().length === 0) {
+          sendError(ws, 'MISSING_FIELDS', 'instructions is required — provide detailed task instructions so the assigned agent can work autonomously');
+          return;
+        }
 
         const project = await boardService.getProject(projectId);
         if (!project) {
@@ -452,7 +460,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           type: 'task_created',
           task,
         } as any);
-        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_task_created', task });
+        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_task_created', task, boardId: project.boardId });
       } catch (error: any) {
         console.error('❌ Error creating task:', error);
         sendError(ws, 'CREATE_TASK_ERROR', error.message || 'Failed to create task');
@@ -469,6 +477,14 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
         if (!projectId || !taskInputs || !Array.isArray(taskInputs)) {
           sendError(ws, 'MISSING_FIELDS', 'projectId and tasks array are required');
           return;
+        }
+        // Validate every task has instructions
+        for (let i = 0; i < taskInputs.length; i++) {
+          const t = taskInputs[i];
+          if (!t?.instructions || t.instructions.trim().length === 0) {
+            sendError(ws, 'MISSING_FIELDS', `Task at index ${i} is missing required "instructions" — provide detailed task instructions so the assigned agent can work autonomously`);
+            return;
+          }
         }
 
         const project = await boardService.getProject(projectId);
@@ -490,7 +506,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           tasks,
           count: tasks.length,
         } as any);
-        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_tasks_batch_created', tasks });
+        pubSubService.broadcastToTopic(`board:${project.boardId}`, { type: 'board_tasks_batch_created', tasks, boardId: project.boardId });
       } catch (error: any) {
         console.error('❌ Error batch creating tasks:', error);
         sendError(ws, 'BATCH_CREATE_TASKS_ERROR', error.message || 'Failed to batch create tasks');
@@ -570,7 +586,11 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           return;
         }
 
-        const tasks = await boardService.listTasks(project.boardId, filters as any);
+        // TASK_LIST_PROJECTION — same rationale as the board.list-tasks handler.
+        const tasks = await boardService.listTasks(project.boardId, {
+          ...(filters as any),
+          projection: TASK_LIST_PROJECTION,
+        });
 
         // Resolve agent names/avatars
         const agentIds = boardService.collectAgentIds(tasks);
@@ -854,6 +874,7 @@ export function createBoardCommands(deps: BoardCommandsDeps) {
           pubSubService.broadcastToTopic(`board:${taskToDelete.boardId}`, {
             type: 'board_task_deleted',
             taskId,
+            boardId: taskToDelete.boardId,
           });
         }
       } catch (error: any) {

@@ -1,16 +1,17 @@
-import type React from 'react';
-import { Text, XStack, YStack } from 'tamagui';
-import { useColors } from './useColors';
+import type React from "react"
+import { XStack, YStack } from "tamagui"
+import { T } from "../../ui/ds/Text"
+import { useColors } from "./useColors"
 
 interface EntityCardHeaderProps {
   /** Slot izquierdo (Avatar, IconTile). */
-  leading?: React.ReactNode;
-  /** Título del card. String → estilo default (bold). ReactNode → control total. */
-  title: string | React.ReactNode;
-  /** Subtítulo. String → mono muted single-line. ReactNode → control total. */
-  subtitle?: string | React.ReactNode;
+  leading?: React.ReactNode
+  /** Título del card. String → estilo default (sans 13). ReactNode → control total. */
+  title: string | React.ReactNode
+  /** Subtítulo. String → mono 11 text3 single-line. ReactNode → control total. */
+  subtitle?: string | React.ReactNode
   /** Chips/badges alineados a la derecha del header. */
-  meta?: React.ReactNode;
+  meta?: React.ReactNode
 }
 
 /**
@@ -27,66 +28,76 @@ export function EntityCardHeader({
   subtitle,
   meta,
 }: EntityCardHeaderProps): React.ReactNode {
-  const c = useColors();
+  const c = useColors()
   return (
     <XStack
       gap={10}
-      paddingHorizontal={10}
-      paddingVertical={8}
+      paddingHorizontal={12}
+      paddingVertical={10}
       alignItems="center"
       borderBottomWidth={1}
       borderBottomColor={c.border}
     >
       {leading}
-      <YStack flex={1} gap={2}>
-        {typeof title === 'string' ? (
-          <Text color={c.text} fontSize={12} fontWeight="600">
+      <YStack flex={1} minWidth={0} gap={2}>
+        {typeof title === "string" ? (
+          <T step="sm" numberOfLines={1}>
             {title}
-          </Text>
+          </T>
         ) : (
           title
         )}
-        {subtitle && (
-          typeof subtitle === 'string' ? (
-            <Text color={c.text2} fontSize={10} fontFamily="$mono" numberOfLines={1}>
+        {subtitle &&
+          (typeof subtitle === "string" ? (
+            <T step="code" tone="text3" numberOfLines={1} style={{ fontSize: 11, lineHeight: 14 }}>
               {subtitle}
-            </Text>
+            </T>
           ) : (
             subtitle
-          )
-        )}
+          ))}
       </YStack>
       {meta && (
-        <XStack alignItems="center" gap={4}>
+        <XStack alignItems="center" gap={6} flexShrink={0}>
           {meta}
         </XStack>
       )}
     </XStack>
-  );
+  )
 }
 
 interface EntityCardProps extends EntityCardHeaderProps {
   /** Contenido del card (KeyValueGrid, lista de secciones, etc.). */
-  children?: React.ReactNode;
+  children?: React.ReactNode
 }
 
 /**
  * Card contenedor con header rico (leading slot + title + subtitle + meta) y
  * body opcional. Alternativa a ToolCallCard cuando se quiere un layout más
- * denso sin el estado expand/collapse.
+ * denso sin el estado expand/collapse. Pintado como step card (radius 10,
+ * hairline) dentro del cuerpo de la tool card.
  */
-export function EntityCard({ leading, title, subtitle, meta, children }: EntityCardProps): React.ReactNode {
-  const c = useColors();
+export function EntityCard({
+  leading,
+  title,
+  subtitle,
+  meta,
+  children,
+}: EntityCardProps): React.ReactNode {
+  const c = useColors()
   return (
     <YStack
-      backgroundColor={c.bgInner}
-      borderRadius={6}
+      backgroundColor={c.bgStep}
+      borderRadius={10}
       borderWidth={1}
       borderColor={c.border}
       overflow="hidden"
     >
       <EntityCardHeader leading={leading} title={title} subtitle={subtitle} meta={meta} />
-      {children && <YStack padding={10} gap={8}>{children}</YStack>}
+      {children && (
+        <YStack padding={12} gap={8}>
+          {children}
+        </YStack>
+      )}
     </YStack>
-  );
+  )
 }

@@ -5,15 +5,20 @@
  * Users can have multiple identities (password, Google, etc.)
  */
 
-import { generateUserId } from '@teros/core';
+import { isCloudEdition } from '@teros/shared';
+import { generateId, generateUserId } from '@teros/core';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type Collection, type Db, ObjectId } from 'mongodb';
 import { getEmailService, isEmailConfigured } from '../services/email-service';
 import type { FeatureFlagService } from '../services/feature-flag-service';
 import type { ProviderService } from '../services/provider-service';
 import type { VolumeService } from '../services/volume-service';
 import type { WorkspaceService } from '../services/workspace-service';
+import type { Workspace } from '../types/database';
 import { createDefaultSubscription } from '../models/billing';
 import type { User } from './types';
+import { DeletionService } from '../services/deletion-service';
+import type { ConsentAuditLog } from '../types/database';
 
 export class UserService {
   private users: Collection<User>;
@@ -38,6 +43,27 @@ export class UserService {
   }
 
   /**
+   * Make sure a user has their Private workspace and that `privateWorkspaceId`
+   * points at it. Idempotent. Users created outside registration (the
+   * installer's create-user script, migrations) get theirs here, at sign-in.
+   * Returns null when no WorkspaceService is bound.
+   *
+   * @spec SIP-REQ-1
+   */
+  async ensurePrivateWorkspace(userId: string): Promise<Workspace | null> {
+    if (!this.workspaceService) return null;
+    const workspace = await this.workspaceService.createPrivateWorkspace(userId);
+    const user = await this.users.findOne({ userId }, { projection: { privateWorkspaceId: 1 } });
+    if (user && user.privateWorkspaceId !== workspace.workspaceId) {
+      await this.users.updateOne(
+        { userId },
+        { $set: { privateWorkspaceId: workspace.workspaceId, updatedAt: new Date() } },
+      );
+    }
+    return workspace;
+  }
+
+  /**
    * Late-bind the FeatureFlagService (called from AuthService.setFeatureFlagService).
    * Allows the UserService to read access.auto-grant at user creation time without
    * requiring the FeatureFlagService at construction time.
@@ -59,10 +85,9 @@ export class UserService {
    * Initialize indexes for the users collection
    */
   async ensureIndexes(): Promise<void> {
-    await this.users.createIndex({ userId: 1 }, { unique: true });
-    await this.users.createIndex({ 'profile.email': 1 }, { unique: true });
-    await this.users.createIndex({ status: 1 });
-    await this.users.createIndex({ deletedAt: 1 }, { sparse: true });
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.users, COLLECTIONS.users);
   }
 
   /**
@@ -92,6 +117,7 @@ export class UserService {
         displayName: params.displayName,
         email: params.email.toLowerCase(),
         avatarUrl: params.avatarUrl,
+        conversationSummary: true, // CSUM-REQ-1
       },
       status: 'active', // No verification required for now
       role: params.role || 'user',
@@ -139,6 +165,15 @@ export class UserService {
       );
       // Don't fail user creation if subscription creation fails
     }
+
+    // MUW-14 Fase 2 (Pablo, 2026-10-27): invitations now require EXPLICIT
+    // acceptance — signup no longer auto-activates pending memberships. The
+    // pending entries stay keyed by email and surface in the app as
+    // "You've been invited to X" (workspace.list_invitations), where the new
+    // member accepts or declines. The email-matching guard from v1.4 (only a
+    // PROVEN address inherits invitations) still applies: acceptance requires
+    // an authenticated session, and the session's email must match the
+    // invited email (acceptInvitation identity guard).
 
     // Provision the default Teros provider so the user's agent has a model to
     // run on. Onboarding no longer asks users to connect a provider, so without
@@ -200,6 +235,7 @@ export class UserService {
       description?: string;
       locale?: string;
       timezone?: string;
+      conversationSummary?: boolean;
     },
   ): Promise<User | null> {
     const setFields: Record<string, any> = {
@@ -220,6 +256,9 @@ export class UserService {
     }
     if (updates.timezone !== undefined) {
       setFields['profile.timezone'] = updates.timezone;
+    }
+    if (updates.conversationSummary !== undefined) {
+      setFields['profile.conversationSummary'] = updates.conversationSummary;
     }
 
     const result = await this.users.findOneAndUpdate(
@@ -265,6 +304,48 @@ export class UserService {
       { $set: { lastChangelogSeen, updatedAt: new Date() } },
       { returnDocument: 'after' },
     );
+    return result;
+  }
+
+  /**
+   * Set the user's consent for anonymized conversation evaluation
+   * (task_047a4844b9103db3). Opt-in, default OFF: the flag only ever becomes
+   * true here, from the user's own Profile toggle — callers force their own
+   * userId (self-service, same rule as acceptTerms).
+   * Every change is audited in consent_audit_log (who, when, on/off, and the
+   * version of the consent copy shown at the time).
+   */
+  async setEvaluationConsent(
+    userId: string,
+    evaluationOptIn: boolean,
+    consentVersion: string,
+  ): Promise<User | null> {
+    const now = new Date();
+    const result = await this.users.findOneAndUpdate(
+      { userId, deletedAt: { $exists: false } },
+      {
+        $set: {
+          'consent.evaluationOptIn': evaluationOptIn,
+          'consent.evaluationConsentAt': now,
+          'consent.evaluationConsentVersion': consentVersion,
+          updatedAt: now,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+    if (!result) return null;
+
+    // Audit trail (feature_flag_audit_log pattern). A failed insert fails the
+    // action loudly — a consent change without its audit entry is not acceptable.
+    await this.db.collection<ConsentAuditLog>(COLLECTIONS.consentAuditLog).insertOne({
+      auditId: generateId('consent_audit'),
+      userId,
+      key: 'evaluation_opt_in',
+      action: evaluationOptIn ? 'on' : 'off',
+      actor: userId,
+      timestamp: now.toISOString(),
+      consentVersion,
+    });
     return result;
   }
 
@@ -435,31 +516,36 @@ export class UserService {
   /**
    * Soft delete user
    */
-  async deleteUser(userId: string): Promise<void> {
-    await this.users.updateOne(
-      { userId },
-      {
-        $set: {
-          deletedAt: new Date(),
-          status: 'suspended',
-          updatedAt: new Date(),
-        },
-      },
-    );
+  /**
+   * Erase an account: the full GDPR cascade in DeletionService.deleteUser
+   * (this used to only flag the user document, leaving identities, sessions,
+   * tokens, credentials, keys and workspaces behind — INF-3).
+   */
+  async deleteUser(userId: string, actor = 'system'): Promise<void> {
+    await new DeletionService(this.db).deleteUser(userId, actor);
   }
 
   /**
    * Grant platform access to a user
    */
   async grantAccess(userId: string): Promise<User | null> {
+    // Filter on accessGranted so a match means the user actually transitioned.
+    // Re-granting an already-granted user is a no-op that must not re-send the
+    // email — the copy is near-identical to the signup welcome, so a duplicate
+    // reads as a double send.
     const result = await this.users.findOneAndUpdate(
-      { userId, deletedAt: { $exists: false } },
+      { userId, deletedAt: { $exists: false }, accessGranted: { $ne: true } },
       { $set: { accessGranted: true, updatedAt: new Date() } },
       { returnDocument: 'after' },
     );
 
+    if (!result) {
+      // Either no such user, or already granted — return current state, no email.
+      return this.users.findOne({ userId, deletedAt: { $exists: false } });
+    }
+
     // Send access-granted email (fire-and-forget)
-    if (result && isEmailConfigured()) {
+    if (isEmailConfigured()) {
       getEmailService()
         .sendAccessGranted(result.profile.email, {
           USER_NAME: result.profile.displayName,
@@ -508,6 +594,9 @@ export class UserService {
    * so the default behaviour remains the legacy waitlist.
    */
   private async resolveAutoGrantAccess(): Promise<boolean> {
+    // ONB-REQ-3: the waitlist is a cloud concern. On a self-hosted install
+    // whoever can sign up is let in by whoever runs it.
+    if (!isCloudEdition()) return true;
     if (!this.featureFlagService) {
       return false;
     }

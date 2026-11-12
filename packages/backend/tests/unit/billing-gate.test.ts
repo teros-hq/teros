@@ -23,6 +23,7 @@ interface Plan {
   displayName: string
   agentHoursLimit: number
   features: { terosModel: boolean; byok: boolean; maxWorkspaces: number; prioritySupport: boolean }
+  automateDailyExecutionLimit?: number
 }
 
 interface Sub {
@@ -47,6 +48,7 @@ const PLANS: Record<string, Plan> = {
     name: 'pro',
     displayName: 'Pro',
     agentHoursLimit: 80,
+    automateDailyExecutionLimit: 100,
     features: { terosModel: true, byok: true, maxWorkspaces: -1, prioritySupport: false },
   },
 }
@@ -214,6 +216,7 @@ describe('BillingGateService — boosts raise the effective limit (FASE 6e)', ()
       boostHours: 25,
       agentHoursUsed: 50,
       currentPeriodEnd: '2026-07-01T00:00:00.000Z',
+      automateDailyExecutionLimit: 100,
     })
   })
 })

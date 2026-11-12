@@ -198,6 +198,27 @@ export class ChannelWorker extends EventEmitter {
     };
   }
 
+  /**
+   * Swap the TurnDriver used for FUTURE batches. The registry calls this on
+   * worker reuse so each turn runs with its own freshly-built deps — the
+   * toolExecutor above all, but also streamPublisher, memoryHooks and
+   * flag-resolved options — instead of the ones frozen at worker creation
+   * (incident 2026-10-31: a reused worker kept serving execute-tool with a
+   * pre-install executor while fresh ones were built and ignored).
+   *
+   * Safe while a batch is in flight: the running batch already entered its
+   * runTurn and completes on its own driver; the run loop reads
+   * this.deps.turnDriver per batch, so the next batch picks up the swap.
+   */
+  setTurnDriver(turnDriver: TurnDriver): void {
+    this.deps = { ...this.deps, turnDriver };
+  }
+
+  /** The TurnDriver future batches will run on (registry swap guard). */
+  getTurnDriver(): TurnDriver {
+    return this.deps.turnDriver;
+  }
+
   private ensureRunning(): void {
     if (this.runLoop || this.lifecycle === 'shutdown') return;
     this.lifecycle = 'running';
@@ -217,6 +238,16 @@ export class ChannelWorker extends EventEmitter {
           this.lifecycle = 'idle';
           this.emit('idle');
           this.armIdleTimer();
+        }
+        // Race guard (exposed by the turnDriver-swap tests): an enqueue that
+        // lands in the microtask window between the last batch's resolution
+        // and THIS finally sees a stale non-null `runLoop` and early-returns
+        // out of ensureRunning() — the item sits in the queue with no loop
+        // running and nothing left to restart it (stranded turn). Re-check
+        // the queue here, after the loop is definitively finished, and pick
+        // the stragglers up with a fresh loop.
+        if (this.queue.length > 0 && this.lifecycle !== 'shutdown') {
+          this.ensureRunning();
         }
       });
   }
@@ -250,7 +281,12 @@ export class ChannelWorker extends EventEmitter {
       }
 
       try {
-        const result = await this.deps.turnDriver.runTurn(lastItem.input, {
+        // TLANE-REQ-12: the turn answers the whole cohort, so it is
+        // interactive as soon as anyone in it is waiting.
+        const turnInput = batch.some((item) => item.input.lane === 'interactive')
+          ? { ...lastItem.input, lane: 'interactive' as const }
+          : lastItem.input
+        const result = await this.deps.turnDriver.runTurn(turnInput, {
           signal: this.currentItemAC.signal,
           getPendingItemCount: () => this.queue.length,
         });

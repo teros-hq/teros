@@ -7,7 +7,7 @@
  * the per-app OPT-OUT: pinning `App.toolExposure='direct'` keeps an app's
  * tools individually listed in the agent's tool list, like pre-proxy behavior.
  * `--mode proxy` removes the pin (back to the default).
- *
+ * See docs/specs/20260704_tool-execution-proxy.md.
  *
  * With the flag off everything is direct and this field is ignored.
  * Context-budget mechanism only — permissions are untouched. Active

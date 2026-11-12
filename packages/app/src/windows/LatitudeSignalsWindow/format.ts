@@ -7,15 +7,27 @@
  * then ongoing; a muted signal is greyed regardless.
  */
 
+import { colors as semantic } from "../../components/mca/primitives/colors"
+import type { BadgeTone } from "../../components/ui/ds/Badge"
+
 export type SignalLevel = "ok" | "warn" | "bad" | "muted" | "info"
 
-/** Colour-blind-safe palette, always paired with text/icon in the UI. */
+/** Colour-blind-safe palette (brand status ramp), always paired with text/icon in the UI. */
 export const SIGNAL_COLORS: Record<SignalLevel, string> = {
-  ok: "#3B82F6",
-  warn: "#F59E0B",
-  bad: "#EF4444",
-  muted: "#9CA3AF",
-  info: "#06B6D4",
+  ok: semantic.green,
+  warn: semantic.amber,
+  bad: semantic.red,
+  muted: semantic.main500,
+  info: semantic.purple300,
+}
+
+/** Level → `Badge` tone: bad red · warn amber · info violet · ok green · muted. */
+export const SIGNAL_TONE: Record<SignalLevel, BadgeTone> = {
+  ok: "g",
+  warn: "a",
+  bad: "r",
+  muted: "muted",
+  info: "i",
 }
 
 const STATE_LEVEL: Record<string, SignalLevel> = {
@@ -28,11 +40,16 @@ const STATE_RANK: Record<string, number> = { escalating: 3, new: 2, ongoing: 1 }
 
 export const stateLevel = (state: string): SignalLevel => STATE_LEVEL[state] ?? "muted"
 
+/** The loudest level of a signal: muted wins; else the loudest lifecycle state. */
+export function signalLevel(states: string[], muted: boolean): SignalLevel {
+  if (muted) return "muted"
+  const worst = [...states].sort((a, b) => (STATE_RANK[b] ?? 0) - (STATE_RANK[a] ?? 0))[0]
+  return worst ? stateLevel(worst) : "muted"
+}
+
 /** The accent for a whole signal: muted wins; else the loudest state's colour. */
 export function signalAccent(states: string[], muted: boolean): string {
-  if (muted) return SIGNAL_COLORS.muted
-  const worst = [...states].sort((a, b) => (STATE_RANK[b] ?? 0) - (STATE_RANK[a] ?? 0))[0]
-  return SIGNAL_COLORS[worst ? stateLevel(worst) : "muted"]
+  return SIGNAL_COLORS[signalLevel(states, muted)]
 }
 
 /** [0,1] → "25%" (rounded); "—" for a non-finite input. */

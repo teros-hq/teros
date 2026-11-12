@@ -93,7 +93,7 @@
     },
     "create-collection-scene": {
       "name": "create-collection-scene",
-      "description": "Create a new scene directly inside a specific Excalidraw collection.",
+      "description": "Create a new scene directly inside a specific Excalidraw collection. Equivalent to create-scene but scoped to the collection.",
       "params": {
         "collectionId": "The collection ID to create the scene in.",
         "name": "Name for the new scene.",
@@ -110,7 +110,7 @@
     },
     "delete-collection": {
       "name": "delete-collection",
-      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside are not deleted.",
+      "description": "Soft-delete an Excalidraw collection by moving it to trash. Scenes inside the collection are not deleted.",
       "params": {
         "collectionId": "The collection ID to delete."
       }
@@ -143,7 +143,7 @@
     },
     "update-user": {
       "name": "update-user",
-      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role or name).",
+      "description": "Update a workspace user in Excalidraw Plus (e.g. change their role).",
       "params": {
         "userId": "The user ID to update.",
         "role": "New role for the user (e.g. \"admin\", \"member\").",
@@ -152,7 +152,7 @@
     },
     "remove-user": {
       "name": "remove-user",
-      "description": "Remove a user from the Excalidraw Plus workspace, revoking their access.",
+      "description": "Remove a user from the Excalidraw Plus workspace. This revokes their access.",
       "params": {
         "userId": "The user ID to remove from the workspace."
       }

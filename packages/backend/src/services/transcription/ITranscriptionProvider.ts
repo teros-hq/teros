@@ -25,6 +25,15 @@ export interface TranscriptionOptions {
    * Include timestamps in the response
    */
   includeTimestamps?: boolean;
+
+  /**
+   * Custom vocabulary terms to improve transcription accuracy
+   * for domain-specific names, product names, acronyms, etc.
+   *
+   * - Whisper: joined into a comma-separated `prompt` string
+   * - ElevenLabs Scribe: passed as individual `keyterms` entries
+   */
+  vocabulary?: string[];
 }
 
 /**

@@ -11,7 +11,7 @@ import { describe, expect, test } from "bun:test"
 import type { Db } from "mongodb"
 import { MongoServerError } from "mongodb"
 import migration from "../../src/migrations/20260630_002_backfill_default_starter_subscription"
-import { STARTER_PLAN_ID } from "../../src/models/billing"
+import { DEFAULT_PLAN_ID } from "../../src/models/billing"
 import { InMemoryDb } from "./_stripe-test-helpers"
 
 const D = (iso: string) => new Date(iso)
@@ -71,7 +71,7 @@ describe("migration 20260630_002 — backfill Starter for users without an activ
 
     const act = activeSubs(db, "u_none")
     expect(act).toHaveLength(1) // bites: never provisioning / provisioning twice
-    expect(act[0].planId).toBe(STARTER_PLAN_ID) // bites: wrong plan
+    expect(act[0].planId).toBe(DEFAULT_PLAN_ID) // bites: wrong plan
     expect(act[0].status).toBe("active")
     expect(act[0].customPrice).toBe(0) // Starter is BETA-free
     // A real one-month window so the gate has a cycle to meter against.
@@ -91,7 +91,7 @@ describe("migration 20260630_002 — backfill Starter for users without an activ
     await run(db)
 
     expect(activeSubs(db, "u_ended")).toHaveLength(1)
-    expect(activeSubs(db, "u_ended")[0].planId).toBe(STARTER_PLAN_ID)
+    expect(activeSubs(db, "u_ended")[0].planId).toBe(DEFAULT_PLAN_ID)
     // The historical ended sub is left untouched alongside the new active one.
     expect(allSubs(db, "u_ended")).toHaveLength(2)
   })
@@ -128,10 +128,10 @@ describe("migration 20260630_002 — backfill Starter for users without an activ
 
     await run(db)
 
-    expect(activeSubs(db, "a")[0]?.planId).toBe(STARTER_PLAN_ID)
+    expect(activeSubs(db, "a")[0]?.planId).toBe(DEFAULT_PLAN_ID)
     expect(activeSubs(db, "b")).toHaveLength(1)
     expect(activeSubs(db, "b")[0].planId).toBe("plan_pro") // untouched
-    expect(activeSubs(db, "c")[0]?.planId).toBe(STARTER_PLAN_ID) // paused user now active on Starter
+    expect(activeSubs(db, "c")[0]?.planId).toBe(DEFAULT_PLAN_ID) // paused user now active on Starter
   })
 
   test("idempotent: a second run provisions nothing new", async () => {
@@ -173,7 +173,7 @@ describe("migration 20260630_002 — backfill Starter for users without an activ
       errors.restore()
     }
 
-    expect(activeSubs(db, "ok")[0]?.planId).toBe(STARTER_PLAN_ID) // batch continued
+    expect(activeSubs(db, "ok")[0]?.planId).toBe(DEFAULT_PLAN_ID) // batch continued
     expect(activeSubs(db, "race")).toHaveLength(0) // rejected, not retried
     // A lost race is expected idempotency, not a failure — nothing logged.
     expect(errors.calls).toHaveLength(0)
@@ -198,7 +198,7 @@ describe("migration 20260630_002 — backfill Starter for users without an activ
       errors.restore()
     }
 
-    expect(activeSubs(db, "ok")[0]?.planId).toBe(STARTER_PLAN_ID)
+    expect(activeSubs(db, "ok")[0]?.planId).toBe(DEFAULT_PLAN_ID)
     expect(activeSubs(db, "boom")).toHaveLength(0)
     // A genuine write failure IS surfaced (loud) for the one bad user.
     expect(errors.calls.some((args) => String(args[0]).includes("boom"))).toBe(true)

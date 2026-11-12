@@ -197,6 +197,41 @@ function makeCron(db: InMemoryDb, stripe: FakeStripe, opts = {}) {
   })
 }
 
+describe('BillingChargeCron — lease (GOV-8)', () => {
+  function seedThree(db: InMemoryDb) {
+    db.seed('billing_customers', [customer()])
+    db.seed('billing_invoices', [invoice({ _id: 'inv_1' }), invoice({ _id: 'inv_2' }), invoice({ _id: 'inv_3' })])
+    db.seed('billing_subscriptions', [activeSub()])
+  }
+
+  it('stops charging as soon as the leader lock is lost mid-run', async () => {
+    const db = new InMemoryDb()
+    seedThree(db)
+    // -1: check the lease before every invoice
+    const res = await makeCron(db, new FakeStripe(), { heartbeatEveryMs: -1 }).runOnce({
+      heartbeat: async () => false,
+    })
+
+    expect(res.charged).toBe(0)
+    expect(await db.collection('billing_invoices').countDocuments({ status: 'pending' })).toBe(3)
+  })
+
+  it('keeps going while the lease renews', async () => {
+    const db = new InMemoryDb()
+    seedThree(db)
+    let beats = 0
+    const res = await makeCron(db, new FakeStripe(), { heartbeatEveryMs: -1 }).runOnce({
+      heartbeat: async () => {
+        beats++
+        return true
+      },
+    })
+
+    expect(res.charged).toBe(3)
+    expect(beats).toBe(3)
+  })
+})
+
 describe('BillingChargeCron', () => {
   it('charges a pending Stripe invoice and persists the Stripe fields', async () => {
     const db = new InMemoryDb()
@@ -264,6 +299,25 @@ describe('BillingChargeCron', () => {
     // Sub still on its paid plan.
     expect((await db.collection('billing_subscriptions').findOne({ _id: 'sub_1' }))?.status).toBe('active')
     expect((await db.collection('billing_subscriptions').findOne({ status: 'active' }))?.planId).toBe('plan_pro')
+  })
+
+  it('BIL-6: a failure never overwrites an invoice a webhook marked paid mid-charge', async () => {
+    const db = new InMemoryDb()
+    db.seed('billing_customers', [customer()])
+    // Past the grace window: the failure write would be 'uncollectible' (= account blocked)
+    const old = new Date(Date.now() - 30 * DAY)
+    db.seed('billing_invoices', [invoice({ createdAt: old, updatedAt: old })])
+    db.seed('billing_subscriptions', [activeSub()])
+    const stripe = new FakeStripe()
+    stripe.chargeBehavior = () => {
+      // invoice.paid lands (e.g. the user paid on the hosted page) while the cron charges
+      void db.collection('billing_invoices').updateOne({ _id: 'inv_1' }, { $set: { status: 'paid' } })
+      throw { type: 'StripeCardError', decline_code: 'insufficient_funds', message: 'no funds' }
+    }
+
+    await makeCron(db, stripe).runOnce()
+
+    expect((await db.collection('billing_invoices').findOne({ _id: 'inv_1' }))?.status).toBe('paid')
   })
 
   it('persists the Stripe invoice id on a FAILED charge so a later retry reuses it, never double-charges (TER-622)', async () => {

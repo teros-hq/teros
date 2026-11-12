@@ -45,11 +45,10 @@ export { createOrUpdateFile } from './create-or-update-file';
 export { searchRepos } from './search-repos';
 export { searchCode } from './search-code';
 
-export { getInstallationContext, getUser } from './get-installation-context';
+export { getInstallationContext } from './get-installation-context';
+export { getUser } from './get-user';
 export { cloneRepo } from './clone-repo';
 
-export { createCheckRun } from './create-check-run';
-export { updateCheckRun } from './update-check-run';
 export { getRateLimit } from './get-rate-limit';
 export { dispatchEvent } from './dispatch-event';
 
@@ -101,6 +100,7 @@ export { gitBisect } from './git-bisect';
 // Extra — sync without merge (lets the agent fetch arbitrary refspecs, e.g.
 // `pull/<n>/head:pr-<n>` to pull-checkout a PR without invoking gh CLI).
 export { gitFetch } from './git-fetch';
+export { gitCleanup } from './git-cleanup';
 
 export { classifyGitError, throwClassifiedGitError } from './_git-error';
 export type { ClassifiedGitError, GitIssueAction, GitIssueCode } from './_git-error';

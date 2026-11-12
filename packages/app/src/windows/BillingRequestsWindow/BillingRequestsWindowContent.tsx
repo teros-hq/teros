@@ -7,31 +7,45 @@
  *
  * Backend returns DATA (resolved userName/email, requestedPlanName); this window
  * composes the copy.
+ *
+ * Presentation follows the OS prototype (design-testing): Page + PageHead,
+ * a ChipBtn filter row, and one LGroup of request rows.
  */
 
-import { Check, CreditCard, X } from '@tamagui/lucide-icons'
-import { useEffect, useState } from 'react'
-import { ScrollView, TouchableOpacity, View } from 'react-native'
-import { useTranslation } from 'react-i18next'
-import { Button, Input, Text, XStack, YStack } from 'tamagui'
-import { AppSpinner } from '../../components/ui'
-import { useColors } from '../../components/mca/primitives/useColors'
-import { colors as semanticColors, surface } from '../../components/mca/primitives/colors'
-import { getTerosClient } from '../../services/terosClientSingleton'
-import { useBillingStore } from '../../store/billingStore'
+import { useEffect, useState } from "react"
+import { View, useWindowDimensions } from "react-native"
+import { useTranslation } from "react-i18next"
+import { AppSpinner } from "../../components/ui"
+import { Avatar } from "../../components/Avatar"
+import {
+  Badge,
+  Btn,
+  ChipBtn,
+  EmptyState,
+  Field,
+  LGroup,
+  LRow,
+  Page,
+  PageHead,
+  Ph,
+  T,
+} from "../../components/ui/ds"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { useBillingStore } from "../../store/billingStore"
 import {
   buildResolvePayload,
   formatEstimatedCost,
   formatRequesterContext,
   type RequestStatus,
-} from './payload'
+} from "./payload"
 
 interface AccessRequest {
   _id: string
   userId: string
   userName: string | null
   userEmail: string | null
-  type: 'boost' | 'upgrade'
+  type: "boost" | "upgrade"
   requestedHours: number | null
   requestedPlanId: string | null
   requestedPlanName: string | null
@@ -47,16 +61,20 @@ interface AccessRequest {
   estimatedCostCurrency: string
 }
 
-const STATUSES: RequestStatus[] = ['pending', 'approved', 'denied']
+const STATUSES: RequestStatus[] = ["pending", "approved", "denied"]
+
+const STATUS_TONE: Record<RequestStatus, "a" | "g" | "r"> = {
+  pending: "a",
+  approved: "g",
+  denied: "r",
+}
 
 export function BillingRequestsWindowContent(_props: { windowId: string }) {
   const { t } = useTranslation()
-  const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
   const client = getTerosClient()
   const resetPendingAdminRequests = useBillingStore((s) => s.resetPendingAdminRequests)
 
-  const [status, setStatus] = useState<RequestStatus>('pending')
+  const [status, setStatus] = useState<RequestStatus>("pending")
   const [requests, setRequests] = useState<AccessRequest[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -68,7 +86,7 @@ export function BillingRequestsWindowContent(_props: { windowId: string }) {
     setIsLoading(true)
     setError(false)
     try {
-      const res = (await client.send('admin', 'list-access-requests', {
+      const res = (await client.send("admin", "list-access-requests", {
         status: forStatus,
       })) as { requests: AccessRequest[] }
       setRequests(res?.requests ?? [])
@@ -92,18 +110,18 @@ export function BillingRequestsWindowContent(_props: { windowId: string }) {
   // Live refresh: a new request landed while the pending queue is open.
   useEffect(() => {
     const onRequested = () => {
-      if (status === 'pending') load('pending')
+      if (status === "pending") load("pending")
     }
-    client.on('billing.access-requested', onRequested)
-    return () => client.off('billing.access-requested', onRequested)
+    client.on("billing.access-requested", onRequested)
+    return () => client.off("billing.access-requested", onRequested)
   }, [status])
 
-  const resolve = async (req: AccessRequest, action: 'approve' | 'deny') => {
+  const resolve = async (req: AccessRequest, action: "approve" | "deny") => {
     if (resolving.has(req._id)) return
     setResolving((prev) => new Set(prev).add(req._id))
     try {
       const data = buildResolvePayload(req, action, grantHours[req._id], note[req._id])
-      await client.send('admin', 'resolve-access-request', data)
+      await client.send("admin", "resolve-access-request", data)
       // Drop it from the (pending) list immediately for snappy UX.
       setRequests((prev) => prev.filter((r) => r._id !== req._id))
     } catch {
@@ -119,189 +137,234 @@ export function BillingRequestsWindowContent(_props: { windowId: string }) {
   }
 
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Header */}
-      <XStack
-        height={40}
-        paddingHorizontal={12}
-        alignItems="center"
-        justifyContent="space-between"
-        borderBottomWidth={1}
-        borderBottomColor={isDark ? 'rgba(39,39,42,0.6)' : c.bgInner}
-      >
-        <XStack gap={8} alignItems="center">
-          <CreditCard size={16} color={semanticColors.indigo} />
-          <Text fontSize={12} fontWeight="600" color={c.text}>
-            {t('billing.admin.title')}
-          </Text>
-        </XStack>
-        <XStack gap={4}>
-          {STATUSES.map((s) => (
-            <TouchableOpacity
-              key={s}
-              testID={`billing-req-tab-${s}`}
-              onPress={() => setStatus(s)}
-              activeOpacity={0.7}
-              style={{
-                paddingHorizontal: 8,
-                paddingVertical: 3,
-                borderRadius: 6,
-                backgroundColor: status === s ? c.badges.info.bg : 'transparent',
-              }}
-            >
-              <Text fontSize={11} fontWeight="600" color={status === s ? c.badges.info.text : c.text3}>
-                {t(`billing.admin.${s}`)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </XStack>
-      </XStack>
+    <Page>
+      <PageHead
+        eyebrow={t("billing.eyebrow", { defaultValue: "Facturación" })}
+        title={t("billing.admin.title")}
+        lead={t("billing.admin.lead", {
+          defaultValue: "Solicitudes de horas extra y cambios de plan que esperan tu revisión.",
+        })}
+      />
+
+      {/* Status filter */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
+        {STATUSES.map((s) => (
+          <ChipBtn
+            key={s}
+            testID={`billing-req-tab-${s}`}
+            on={status === s}
+            count={s === status && !isLoading && !error ? requests.length : undefined}
+            onPress={() => setStatus(s)}
+          >
+            {t(`billing.admin.${s}`)}
+          </ChipBtn>
+        ))}
+      </View>
 
       {/* Content */}
       {isLoading ? (
-        <YStack flex={1} justifyContent="center" alignItems="center">
+        <View style={{ paddingVertical: 48, alignItems: "center", justifyContent: "center" }}>
           <AppSpinner variant="brand" />
-        </YStack>
+        </View>
       ) : error ? (
-        <YStack testID="billing-req-error" flex={1} justifyContent="center" alignItems="center" padding={20}>
-          <Text fontSize={13} color={c.badges.err.text}>
-            {t('billing.admin.loadError')}
-          </Text>
-        </YStack>
+        <ErrorStrip testID="billing-req-error" text={t("billing.admin.loadError")} />
       ) : requests.length === 0 ? (
-        <YStack testID="billing-req-empty" flex={1} justifyContent="center" alignItems="center" padding={20}>
-          <Text fontSize={13} color={c.text3} textAlign="center">
-            {t('billing.admin.empty', { status: t(`billing.admin.${status}`).toLowerCase() })}
-          </Text>
-        </YStack>
+        <View testID="billing-req-empty">
+          <EmptyState
+            icon="credit-card"
+            title={t("billing.admin.empty", { status: t(`billing.admin.${status}`).toLowerCase() })}
+          />
+        </View>
       ) : (
-        <ScrollView style={{ flex: 1 }}>
-          <YStack padding={12} gap={10}>
-            {requests.map((req) => (
-              <YStack
-                key={req._id}
-                testID={`billing-req-${req._id}`}
-                borderRadius={8}
-                borderWidth={1}
-                borderColor={c.badges.info.border}
-                backgroundColor={c.bgCard}
-                padding={12}
-                gap={8}
-              >
-                <XStack alignItems="center" justifyContent="space-between" gap={8}>
-                  <YStack flex={1}>
-                    <Text fontSize={13} fontWeight="600" color={c.text}>
-                      {req.userName || req.userEmail || req.userId}
-                    </Text>
-                    {req.userEmail && req.userName && (
-                      <Text fontSize={11} color={c.text2}>
-                        {req.userEmail}
-                      </Text>
-                    )}
-                  </YStack>
-                  <View
-                    style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 3,
-                      borderRadius: 12,
-                      backgroundColor: c.badges.info.bg,
-                    }}
-                  >
-                    <Text fontSize={11} fontWeight="600" color={c.badges.info.text}>
-                      {req.type === 'boost'
-                        ? t('billing.admin.requestedHours', { hours: req.requestedHours ?? 0 })
-                        : req.requestedPlanName || t('billing.admin.upgrade')}
-                    </Text>
-                  </View>
-                </XStack>
-
-                {/* Requester's live billing context (A1): plan · usage · % and,
-                    for a boost, the market value of granting it. */}
-                {formatRequesterContext(req) && (
-                  <Text testID={`billing-req-${req._id}-context`} fontSize={11} color={c.text2}>
-                    {formatRequesterContext(req)}
-                  </Text>
-                )}
-                {req.type === 'boost' && formatEstimatedCost(req.estimatedCost, req.estimatedCostCurrency) && (
-                  <Text testID={`billing-req-${req._id}-cost`} fontSize={11} color={semanticColors.indigo}>
-                    {formatEstimatedCost(req.estimatedCost, req.estimatedCostCurrency)}
-                  </Text>
-                )}
-
-                {req.reason && (
-                  <Text fontSize={12} color={c.text2}>
-                    {req.reason}
-                  </Text>
-                )}
-
-                {req.status === 'pending' && (
-                  <YStack gap={8}>
-                    {req.type === 'boost' && (
-                      <XStack alignItems="center" gap={8}>
-                        <Text fontSize={11} color={c.text2}>
-                          {t('billing.admin.grantHours')}
-                        </Text>
-                        <Input
-                          testID={`billing-req-${req._id}-hours`}
-                          width={70}
-                          size="$2"
-                          keyboardType="number-pad"
-                          value={grantHours[req._id] ?? String(req.requestedHours ?? '')}
-                          onChangeText={(v) =>
-                            setGrantHours((prev) => ({ ...prev, [req._id]: v.replace(/[^0-9]/g, '') }))
-                          }
-                          backgroundColor={isDark ? 'rgba(39,39,42,0.6)' : c.bgInner}
-                          borderColor={c.borderStrong}
-                          color={c.text}
-                        />
-                      </XStack>
-                    )}
-                    <Input
-                      testID={`billing-req-${req._id}-note`}
-                      size="$2"
-                      placeholder={t('billing.admin.note')}
-                      placeholderTextColor={c.text3}
-                      value={note[req._id] ?? ''}
-                      onChangeText={(v) => setNote((prev) => ({ ...prev, [req._id]: v }))}
-                      backgroundColor={isDark ? 'rgba(39,39,42,0.6)' : c.bgInner}
-                      borderColor={c.borderStrong}
-                      color={c.text}
-                    />
-                    {/* Deny left, Approve right (A1): the primary/destructive
-                        action sits on the right, matching the rest of the UI. */}
-                    <XStack gap={8}>
-                      <Button
-                        testID={`billing-req-${req._id}-deny`}
-                        flex={1}
-                        size="$2"
-                        icon={X}
-                        disabled={resolving.has(req._id)}
-                        backgroundColor={c.badges.err.bg}
-                        color={c.badges.err.text}
-                        onPress={() => resolve(req, 'deny')}
-                      >
-                        {t('billing.admin.deny')}
-                      </Button>
-                      <Button
-                        testID={`billing-req-${req._id}-approve`}
-                        flex={1}
-                        size="$2"
-                        icon={Check}
-                        disabled={resolving.has(req._id)}
-                        backgroundColor={c.badges.ok.bg}
-                        color={c.badges.ok.text}
-                        onPress={() => resolve(req, 'approve')}
-                      >
-                        {t('billing.admin.approve')}
-                      </Button>
-                    </XStack>
-                  </YStack>
-                )}
-              </YStack>
-            ))}
-          </YStack>
-        </ScrollView>
+        <LGroup>
+          {requests.map((req) => (
+            <RequestRow
+              key={req._id}
+              req={req}
+              resolving={resolving.has(req._id)}
+              grantHours={grantHours[req._id] ?? String(req.requestedHours ?? "")}
+              note={note[req._id] ?? ""}
+              onGrantHours={(v) =>
+                setGrantHours((prev) => ({ ...prev, [req._id]: v.replace(/[^0-9]/g, "") }))
+              }
+              onNote={(v) => setNote((prev) => ({ ...prev, [req._id]: v }))}
+              onApprove={() => resolve(req, "approve")}
+              onDeny={() => resolve(req, "deny")}
+            />
+          ))}
+        </LGroup>
       )}
-    </YStack>
+    </Page>
+  )
+}
+
+// ─── Rows ────────────────────────────────────────────────────────────────────
+
+function RequestRow({
+  req,
+  resolving,
+  grantHours,
+  note,
+  onGrantHours,
+  onNote,
+  onApprove,
+  onDeny,
+}: {
+  req: AccessRequest
+  resolving: boolean
+  grantHours: string
+  note: string
+  onGrantHours: (v: string) => void
+  onNote: (v: string) => void
+  onApprove: () => void
+  onDeny: () => void
+}) {
+  const { t } = useTranslation()
+  const { width } = useWindowDimensions()
+  const narrow = width <= 620
+  const displayName = req.userName || req.userEmail || req.userId
+  const context = formatRequesterContext(req)
+  const cost =
+    req.type === "boost" ? formatEstimatedCost(req.estimatedCost, req.estimatedCostCurrency) : null
+
+  return (
+    <View testID={`billing-req-${req._id}`}>
+      <LRow padV={14} style={{ alignItems: "flex-start" }}>
+        <Avatar name={displayName} size={36} />
+        <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+          {/* Identity · type · amount · status */}
+          <View
+            style={{
+              flexDirection: narrow ? "column" : "row",
+              alignItems: narrow ? "flex-start" : "center",
+              gap: narrow ? 8 : 14,
+            }}
+          >
+            <View style={{ flex: narrow ? undefined : 1, minWidth: 0, gap: 1 }}>
+              <T step="sm" ellipsis>
+                {displayName}
+              </T>
+              {req.userEmail && req.userName ? (
+                <T step="12" tone="text3" ellipsis>
+                  {req.userEmail}
+                </T>
+              ) : null}
+              {context ? (
+                <T testID={`billing-req-${req._id}-context`} step="12" tone="text3">
+                  {context}
+                </T>
+              ) : null}
+            </View>
+
+            <Badge tone="i">
+              {req.type === "boost"
+                ? t("billing.admin.requestedHours", { hours: req.requestedHours ?? 0 })
+                : req.requestedPlanName || t("billing.admin.upgrade")}
+            </Badge>
+
+            {req.type === "boost" ? (
+              <View style={{ alignItems: narrow ? "flex-start" : "flex-end", minWidth: 64 }}>
+                <T step="xl">{`${req.requestedHours ?? 0}h`}</T>
+                {cost ? (
+                  <T testID={`billing-req-${req._id}-cost`} step="codenote" tone="text3">
+                    {cost}
+                  </T>
+                ) : null}
+              </View>
+            ) : null}
+
+            <Badge tone={STATUS_TONE[req.status]} dot>
+              {t(`billing.admin.${req.status}`)}
+            </Badge>
+          </View>
+
+          {req.reason ? (
+            <T step="sm" tone="text2">
+              {req.reason}
+            </T>
+          ) : null}
+
+          {/* Resolve controls (pending only) */}
+          {req.status === "pending" ? (
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              {req.type === "boost" ? (
+                <Field
+                  testID={`billing-req-${req._id}-hours`}
+                  mono
+                  icon="clock"
+                  keyboardType="number-pad"
+                  value={grantHours}
+                  onChangeText={onGrantHours}
+                  placeholder={t("billing.admin.grantHours")}
+                  containerStyle={{ width: 110 }}
+                />
+              ) : null}
+              <Field
+                testID={`billing-req-${req._id}-note`}
+                placeholder={t("billing.admin.note")}
+                value={note}
+                onChangeText={onNote}
+                containerStyle={{ flex: 1, minWidth: 160 }}
+              />
+              {/* Deny left, Approve right (A1): the primary action sits on the right. */}
+              <Btn
+                testID={`billing-req-${req._id}-deny`}
+                size="sm"
+                variant="dangerSoft"
+                icon="x"
+                disabled={resolving}
+                loading={resolving}
+                onPress={onDeny}
+              >
+                {t("billing.admin.deny")}
+              </Btn>
+              <Btn
+                testID={`billing-req-${req._id}-approve`}
+                size="sm"
+                variant="primary"
+                icon="check"
+                disabled={resolving}
+                loading={resolving}
+                onPress={onApprove}
+              >
+                {t("billing.admin.approve")}
+              </Btn>
+            </View>
+          ) : null}
+        </View>
+      </LRow>
+    </View>
+  )
+}
+
+/** Tinted red strip for a failed load. */
+function ErrorStrip({ text, testID }: { text: string; testID?: string }) {
+  const c = useColors()
+  return (
+    <View
+      testID={testID}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        padding: 14,
+        borderRadius: 12,
+        backgroundColor: c.tint.r.bg,
+        borderWidth: 1,
+        borderColor: c.tint.r.bd,
+      }}
+    >
+      <Ph name="warning" size={16} color={c.tint.r.tx} />
+      <T step="sm" color={c.tint.r.tx} style={{ flex: 1 }}>
+        {text}
+      </T>
+    </View>
   )
 }

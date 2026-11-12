@@ -64,6 +64,7 @@ export function createAssignTaskHandler(
         assignedAgentId: task.assignedAgentId,
         tags: task.tags,
         columnId: task.columnId,
+        actorUserId: ctx.userId,
       }
       boardSubscriptionService.notifySubscribers(task.boardId, {
         eventType: 'board.task_assigned',

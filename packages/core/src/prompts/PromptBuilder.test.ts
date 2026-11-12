@@ -8,7 +8,7 @@
  * 4. Edge cases: no messages, fewer than one block, exactly one block, etc.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'bun:test';
 import { buildPrompt } from './PromptBuilder';
 import type { MessageWithParts } from '../session/types';
 

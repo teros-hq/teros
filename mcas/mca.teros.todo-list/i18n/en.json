@@ -1,0 +1,254 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies MongoDB connectivity."
+    },
+    "add-node": {
+      "name": "add-node",
+      "description": "Add a new node to the tree. If parentId is omitted or null, adds as a root-level node. If parentId is provided, it must be an existing node ID — a wrong or truncated parentId returns \"Parent node not found\" and no node is created. kind \"task\" (default) is completable and has a state (default \"planning\" — an idea not yet ready; pass \"pending\" when the task is ready to start); kind \"group\" is a non-completable container (Home, Work…) with no state. A task cannot contain groups (GROUP_IN_TASK). Returns: { node: { nodeId, parentId, text, description, instructions, kind, state, blockedReason, reportedProgress, completed, collapsed, position, createdAt, updatedAt }, parentText: string | null } — node.nodeId is the complete ID of the created node.",
+      "params": {
+        "parentId": "Parent node ID to nest under — must exist (error if not found). Omit or null for a root-level node.",
+        "text": "The node title. Max 2000 chars.",
+        "description": "Short description under the title. Max 2000 chars.",
+        "instructions": "Detailed markdown instructions for what to do with this task. Max 10000 chars.",
+        "kind": "task (default, completable) or group (container without state). A group cannot go inside a task.",
+        "state": "Initial state of a task (default planning — an idea not yet ready; pass pending when the task is ready to start). Not for groups. To block a task use set-state with a reason.",
+        "expectedOutput": "Output the task must deliver: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file only: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form only: 1–40 fields [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null clears it. set-output rejects an output that does not match it (OUTPUT_MISMATCH). Not for groups."
+      }
+    },
+    "get-node": {
+      "name": "get-node",
+      "description": "Get full detail of a single node, including instructions and the complete log. Use this when you need the full content of a task (get-tree only returns lightweight fields). Returns: { node: { nodeId, parentId, text, description, instructions, kind, state, blockedReason, allowedTransitions, progress, reportedProgress, input, output, hasInput, hasOutput, expectedOutput, completed, collapsed, position, log: [{ timestamp, text, actor }], createdAt, updatedAt } }. actor is who wrote the log entry ({ kind: user|agent|system, id? }), missing on older entries. progress is the effective % (reported, else 100 for review/done, else derived from the children); input/output are { format: markdown|form|file, ... } or null (a file carries objectId, url, name, mime, size); expectedOutput is the output the task must deliver ({ format, description?, fileType?, fields? }) or null.",
+      "params": {
+        "nodeId": "Node ID to retrieve."
+      }
+    },
+    "get-tree": {
+      "name": "get-tree",
+      "description": "Get the tree of nodes for the current user as a nested hierarchy (Workflowy-style). Returns: { tree: [{ nodeId, parentId, text, description, kind, state, blockedReason, completed, collapsed, position, progress, reportedProgress, hasInput, hasOutput, childCount, completedChildren, children?: [...] }] } — kind is task|group (groups have state null), progress is the effective % (reported, else 100 for review/done, else derived from the children). Pass nodeId to get only the subtree rooted at that node. Pass depth=0 to get only root-level nodes without children (lazy loading — each node still reports childCount/completedChildren so the UI can show expand arrows). depth=-1 (default) returns the full nested tree. depth=N returns N levels of children. Tree nodes do NOT include instructions or log — use get-node for full detail.",
+      "params": {
+        "nodeId": "Optional: get only the subtree rooted at this node.",
+        "depth": "Tree depth to return. -1 = full tree (default), 0 = root level only (no children), N = N levels of children. Use 0 for lazy loading to keep responses small."
+      }
+    },
+    "update-node": {
+      "name": "update-node",
+      "description": "Update the text, description, instructions and/or expected output definition of a node. Omitted fields are unchanged. Returns: { node: { nodeId, text, description, instructions, expectedOutput, updatedAt } }.",
+      "params": {
+        "nodeId": "Node ID to update.",
+        "text": "New node title. Max 2000 chars.",
+        "description": "New short description. Max 2000 chars. Pass empty string to clear.",
+        "instructions": "New detailed markdown instructions. Max 10000 chars. Pass empty string to clear.",
+        "expectedOutput": "Output the task must deliver: { format: \"markdown\"|\"form\"|\"file\", description?, fileType? (file only: pdf|docx|xlsx|csv|png|jpg|json|md|txt|html|other), fields? (form only: 1–40 fields [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, required?, options? }]) }. null clears it. set-output rejects an output that does not match it (OUTPUT_MISMATCH). Not for groups."
+      }
+    },
+    "toggle-complete": {
+      "name": "toggle-complete",
+      "description": "Toggle the completed state of a task: a task that is not done becomes done (100%), a done task goes back to pending. Cascades to all descendants — marking a parent complete also marks all children complete, and vice versa. Adds a log entry automatically. Groups cannot be completed (NOT_A_TASK). For any other state change use set-state. Returns: { node: { nodeId, state, reportedProgress, completed, updatedAt } }.",
+      "params": {
+        "nodeId": "Node ID to toggle completion on."
+      }
+    },
+    "toggle-collapse": {
+      "name": "toggle-collapse",
+      "description": "Toggle the collapsed/expanded state of a node (hide/show children in Workflowy). Returns: { node: { nodeId, collapsed, updatedAt } }.",
+      "params": {
+        "nodeId": "Node ID to toggle collapse on."
+      }
+    },
+    "move-node": {
+      "name": "move-node",
+      "description": "Move a node to a different parent and/or position within the tree. newParentId must be an existing node ID — a wrong or truncated ID returns \"Parent node not found\" and nothing is moved. Omit newParentId to keep the current parent and only reorder among siblings; set it explicitly to null to move to root level. newPosition is the 0-based index among siblings. Detects circular moves (cannot move a node into itself or its own subtree). Returns: { node: { nodeId, parentId, position, updatedAt } }.",
+      "params": {
+        "nodeId": "Node ID to move.",
+        "newParentId": "New parent node ID — must exist (error if not found). Omit to keep the current parent (reorder only). Set explicitly to null to move to root (top-level).",
+        "newPosition": "0-based position among the new siblings (default 0)."
+      }
+    },
+    "delete-node": {
+      "name": "delete-node",
+      "description": "Delete a node and ALL its descendants (entire subtree). Irreversible. Returns: { deleted: true, node: { text, description, ... } }.",
+      "params": {
+        "nodeId": "Node ID to delete. All children will be removed recursively."
+      }
+    },
+    "search-nodes": {
+      "name": "search-nodes",
+      "description": "Search nodes by text across all of the user's nodes. Case-insensitive. Returns: { results: [{ nodeId, text, description, completed, path, updatedAt }] } where path is a breadcrumb like \"Parent / Child / Match\". Max 50 results.",
+      "params": {
+        "query": "Search text (case-insensitive). Min 1 char, max 500."
+      }
+    },
+    "add-log-entry": {
+      "name": "add-log-entry",
+      "description": "Add a chronological log entry to a node. Used to track progress, notes, and history over time. Returns: { node: { nodeId, log: [{ timestamp, text }], updatedAt } }.",
+      "params": {
+        "nodeId": "Node ID to add the log entry to.",
+        "text": "The log entry text. Max 2000 chars."
+      }
+    },
+    "set-state": {
+      "name": "set-state",
+      "description": "Move a task to another state: planning (idea, not defined yet) · pending (defined, ready to start) · working (started) · blocked (cannot continue — reason required) · review (work finished, awaiting a check) · done. Allowed moves: planning→pending; pending→working|done; working→review|blocked|pending|done; blocked→working|planning; review→done|working; done→working (reopen — give a reason). Anything else fails with INVALID_TRANSITION. Entering review or done sets progress to 100; leaving them for an open state clears a 100 (any other value is kept). Groups have no state (NOT_A_TASK). Adds a log entry \"from → to\". Returns: { node: { nodeId, parentId, text, kind, state, blockedReason, reportedProgress, completed, hasInput, hasOutput, updatedAt, ... }, transition: { from, to } }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "state": "Target state.",
+        "reason": "Why. Required for blocked (what is missing / who it waits for — shown to the user). Recommended when reopening a done task. Max 2000 chars.",
+        "reply": "Only for blocked → working (the answer to the blocked question, logged as \"Reply: <text>\") or review → working (why the task is sent back, logged as \"Sent back: <text>\"). When the task has a conversation it is posted there (a send-back as \"Sent back from review: <text>\") and its agent continues. Max 2000 chars."
+      }
+    },
+    "set-kind": {
+      "name": "set-kind",
+      "description": "Convert a node between task and group, keeping its children. A group is a non-completable container (no state, progress or output); a task can be completed and contains only tasks. To group: fails with GROUP_IN_TASK if its parent is a task and HAS_OUTPUT if it has an output. To task: fails with GROUP_IN_TASK if it contains groups; it starts pending. Adds a log entry. Returns: { node: { nodeId, parentId, text, kind, state, ... } }.",
+      "params": {
+        "nodeId": "Node ID to convert.",
+        "kind": "Target kind."
+      }
+    },
+    "set-progress": {
+      "name": "set-progress",
+      "description": "Report how far a task is, as an integer percentage 0–100, or null to clear it (the progress is then 100 for a task in review/done, else derived from its children). Editable in every state, review and done included; groups have no progress (NOT_A_TASK). Adds a log entry. Returns: { node: { nodeId, reportedProgress, state, ... } }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "progress": "Percentage 0–100, or null to clear."
+      }
+    },
+    "set-input": {
+      "name": "set-input",
+      "description": "Set the input of a node — the data the task starts from — or clear it with null. Markdown and forms are stored on the node; a file arrives either as base64 data or as a path inside the workspace volume (the backend reads and uploads it) and is stored as { format: \"file\", objectId, url, name, mime, size }. Groups may hold input. Replacing an existing input that would actually change requires overwrite: true (OUTPUT_EXISTS otherwise); re-delivering the same thing is a no-op. Adds a log entry. Returns: { node: { nodeId, hasInput, input, ... } }.",
+      "params": {
+        "nodeId": "Node ID.",
+        "input": "One of: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: value } } · { format: \"file\", path: \"/workspace/...\" (absolute path inside the workspace volume — the backend reads and uploads the file; name/mime optional, inferred from the filename) } · { format: \"file\", name, mime, data: base64 (max 10 MB, no data: prefix) — for in-memory files }. null clears it. Prefer path for any file that already exists in the workspace volume.",
+        "overwrite": "Set true to replace an existing input. Required when the node already has an input and the new one would change it."
+      }
+    },
+    "set-output": {
+      "name": "set-output",
+      "description": "Deliver the output of a task — its result (a summary in markdown, a filled form, or a file such as an invoice) — or clear it with null. A file arrives either as base64 data or as a path inside the workspace volume (the backend reads and uploads it) and is stored as { format: \"file\", objectId, url, name, mime, size }. Groups have no output (NOT_A_TASK). Adds a log entry \"Output delivered · <format>\". When the task has an expectedOutput (see get-node), the output must match it — same format, the expected file type, every required form field and no field outside the definition — or it fails with OUTPUT_MISMATCH. Replacing an existing output that would actually change requires overwrite: true (OUTPUT_EXISTS otherwise); re-delivering the same thing is a no-op. Delivering does not change the state: use set-state (e.g. working → review) as well. Returns: { node: { nodeId, hasOutput, output, ... } }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "output": "One of: { format: \"markdown\", markdown } · { format: \"form\", fields: [{ id, type: text|textarea|number|select|radio|checkbox|date|time|datetime, label, options? }], values: { [fieldId]: value } } · { format: \"file\", path: \"/workspace/...\" (absolute path inside the workspace volume — the backend reads and uploads the file; name/mime optional, inferred from the filename) } · { format: \"file\", name, mime, data: base64 (max 10 MB, no data: prefix) — for in-memory files }. null clears it. Prefer path for any file that already exists in the workspace volume.",
+        "overwrite": "Set true to replace an existing output. Required when the task already has an output and the new one would change it (e.g. a different file or different markdown)."
+      }
+    },
+    "toggle-instruction-item": {
+      "name": "toggle-instruction-item",
+      "description": "Tick or untick one checklist item of a node's instructions — the index-th (0-based) markdown checkbox line (\"- [ ] step\" / \"- [x] step\"), counting top to bottom and ignoring code blocks. Fails with ITEM_NOT_FOUND past the last item. Returns: { node: { nodeId, parentId, instructions, updatedAt }, item: { index, checked, text } }.",
+      "params": {
+        "nodeId": "Node ID.",
+        "index": "0-based index of the checkbox among all checkboxes of the instructions."
+      }
+    },
+    "plan-node": {
+      "name": "plan-node",
+      "description": "Plan a task for a calendar day (\"Por día\"), reorder it within its day, set its time, or take it off its day. day is \"YYYY-MM-DD\" in the user's calendar, or null to remove it from its day (also clears the time). index places it in the day's plan (0 = first; omitted = end of the day, or its current slot when the day does not change); the day is renumbered 0..N-1. time \"HH:MM\" sets the planned time, null clears it, omitted keeps it. Groups are never planned (NOT_A_TASK). Logs \"Planned for <day>\", \"Planned time …\" or \"Removed from the day\". Returns: { node: { nodeId, plannedFor, dayOrder, plannedTime, state, ... }, day, previousDay }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "day": "Day \"YYYY-MM-DD\", or null to remove the task from its day.",
+        "index": "Position in the day's plan (0-based). Optional.",
+        "time": "Planned time \"HH:MM\" (24 h), or null to clear it. Optional."
+      }
+    },
+    "get-day": {
+      "name": "get-day",
+      "description": "Get one day of the plan: the tasks planned for day in plan order, the overdue tasks (open tasks planned before today, oldest first) and the unplanned open tasks (no day, tree order). Pass today as the user's current calendar day \"YYYY-MM-DD\" (defaults to the UTC date). Returns: { day, today, tasks: [...], overdue: [...], unplanned: [...] } where each task is { nodeId, parentId, text, state, blockedReason, progress, reportedProgress, plannedFor, dayOrder, plannedTime, hasOutput, path: [ancestor titles, root first] }.",
+      "params": {
+        "day": "Day \"YYYY-MM-DD\".",
+        "today": "The user's current day \"YYYY-MM-DD\" (decides what is overdue). Optional."
+      }
+    },
+    "assign-node": {
+      "name": "assign-node",
+      "description": "Assign a task to an agent or a person of the workspace (\"who does what\"), or unassign it with null. assignee is { kind: \"agent\" | \"user\", id } — an agentId usable in this workspace or the userId of a workspace member (owner included); anything else fails with INVALID_ASSIGNEE. Groups cannot be assigned (NOT_A_TASK). Stores assignedAt and logs \"Assigned to <name>\" / \"Unassigned\". Assigning does not start the task. Returns: { node: { nodeId, assignee, assignedAt, state, ... } }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "assignee": "Who does it, or null to unassign."
+      }
+    },
+    "set-reviewer": {
+      "name": "set-reviewer",
+      "description": "Set the reviewer of a task — who reviews it when it enters review — or clear it with null (back to manual validation — nobody evaluates, the default). reviewer is { kind: \"agent\" | \"user\", id } — an agentId usable in this workspace or the userId of a workspace member; anything else fails with INVALID_ASSIGNEE. Groups cannot be reviewed (NOT_A_TASK). Empty by default: a task without a reviewer behaves exactly as before. When a task WITH a reviewer enters review, the reviewer is notified automatically and the task shows in their view — no subscription needed. Logs \"Reviewer set to <name>\" / \"Reviewer removed\". Returns: { node: { nodeId, reviewer, reviewedAt, state, ... } }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "reviewer": "Who reviews it, or null to clear (manual validation — nobody evaluates)."
+      }
+    },
+    "get-autoplay": {
+      "name": "get-autoplay",
+      "description": "List the Tasks autoplay runners of this workspace: the agents that pick up their own tasks (pending and planned for today or earlier) with a number of parallel slots. activeSlots is how many of the agent's tasks are running now. Returns: { runners: [{ agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing }] }."
+    },
+    "set-agent-slots": {
+      "name": "set-agent-slots",
+      "description": "Set how many tasks an agent of this workspace runs in parallel (makes it a runner if it is not one). 0 slots also pauses it. The agent must belong to the workspace (INVALID_ASSIGNEE). Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "Agent ID.",
+        "slots": "Parallel executions (0 = listed but cannot run)."
+      }
+    },
+    "set-agent-play": {
+      "name": "set-agent-play",
+      "description": "Turn autoplay on or off for an agent (makes it a runner if it is not one). With play on, Teros starts the agent's pending tasks planned for today or earlier, honouring its slots. Enabling with 0 slots fails with INVALID_STATE. Pausing never interrupts a running turn. Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "Agent ID.",
+        "enabled": "true = play, false = pause."
+      }
+    },
+    "set-agent-scope": {
+      "name": "set-agent-scope",
+      "description": "Set an agent runner's scope (makes it a runner if it is not one). With pickUnassigned true, the agent also picks up tasks with no assignee that are pending and planned for today or earlier, inside the scope group (any depth; the whole tree when scopeNodeId is null), after its own tasks; each one is assigned to the agent before it starts. Tasks assigned to the agent are picked wherever they are. scopeNodeId must be a group of this workspace (INVALID_INPUT). Read members cannot change runners (FORBIDDEN). Returns: { runner: { agentId, name, avatarUrl, slots, playEnabled, activeSlots, scopeNodeId, scopePath, pickUnassigned, scopeMissing } }.",
+      "params": {
+        "agentId": "Agent ID.",
+        "scopeNodeId": "Group node ID that bounds the unassigned pickup, or null for the whole tree.",
+        "pickUnassigned": "true = also pick up unassigned planned tasks inside the scope."
+      }
+    },
+    "remove-agent": {
+      "name": "remove-agent",
+      "description": "Remove an agent from the autoplay runners. Its running turns are not interrupted and its tasks keep their conversations. Read members cannot change runners (FORBIDDEN). Returns: { removed: true, agentId }.",
+      "params": {
+        "agentId": "Agent ID."
+      }
+    },
+    "start-node": {
+      "name": "start-node",
+      "description": "Start a task now: for a task assigned to an agent that is pending (or working without a conversation), whatever its planned day and the runner's play/slots. Moves it to working, opens (or reuses) its conversation with the agent and sends the agent the task. Not assigned to an agent: NOT_AGENT_TASK; any other state: INVALID_STATE. Returns: { node: { nodeId, state, channelId, running, ... }, channelId }.",
+      "params": {
+        "nodeId": "Task node ID."
+      }
+    },
+    "share-io": {
+      "name": "share-io",
+      "description": "Create a public link to a task's output or input (or return the one you already created for it). Anyone with the link sees the task's CURRENT io without signing in: markdown as a web page titled with the task text, a file as the file itself. A form io or a task without that io fails with INVALID_STATE. Read members cannot share (FORBIDDEN). Returns: { shareId, publicUrl }.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "io": "Which io of the task: output or input."
+      }
+    },
+    "get-io-share": {
+      "name": "get-io-share",
+      "description": "Get the public link you created for a task's output or input, if any. Read members cannot use it (FORBIDDEN). Returns: { shareId, publicUrl } or null.",
+      "params": {
+        "nodeId": "Task node ID.",
+        "io": "Which io of the task: output or input."
+      }
+    },
+    "unshare-io": {
+      "name": "unshare-io",
+      "description": "Revoke a public link to a task's output or input; the link answers 404 from then on. Only the user who created it can revoke it (FORBIDDEN). Returns: { ok: true }.",
+      "params": {
+        "shareId": "Share ID returned by share-io."
+      }
+    }
+  },
+  "name": "Tasks",
+  "description": "Workflowy-style hierarchical outliner. Single-tree architecture — no lists, every node is part of one tree. Nodes have text, description, instructions (markdown), and a chronological log. Toggle complete (cascades to descendants), collapse/expand, move subtrees, and search. All data stored in MongoDB with per-user isolation. Fully independent — no backend WebSocket required.",
+  "changelog": [
+    {
+      "notes": "Breaking: removed lists (single-tree architecture). Renamed note→description. Added instructions (markdown), log (chronological history), get-node tool. toggle-complete now cascades to descendants and logs automatically."
+    },
+    {
+      "notes": "Initial release — create lists/trees, add/update/delete/move nodes, toggle complete/collapse, search, per-user isolation, fully independent MCA"
+    }
+  ]
+}

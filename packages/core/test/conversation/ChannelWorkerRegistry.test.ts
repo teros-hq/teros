@@ -35,23 +35,23 @@ const baseDeps = (driver: IdleTurnDriver): Omit<ChannelWorkerDeps, 'onIdleTimeou
 describe('ChannelWorkerRegistry', () => {
   it('returns the same worker for repeated getOrCreate calls', () => {
     const registry = new ChannelWorkerRegistry();
-    const w1 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
-    const w2 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const w1 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
+    const w2 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(w1).toBe(w2);
     expect(registry.size()).toBe(1);
   });
 
   it('returns distinct workers per channel', () => {
     const registry = new ChannelWorkerRegistry();
-    const w1 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
-    const w2 = registry.getOrCreate('ch2', baseDeps(new IdleTurnDriver()));
+    const w1 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
+    const w2 = registry.getOrCreate('ch2', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(w1).not.toBe(w2);
     expect(registry.size()).toBe(2);
   });
 
   it('close removes worker from registry', async () => {
     const registry = new ChannelWorkerRegistry();
-    registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(registry.has('ch1')).toBe(true);
     await registry.close('ch1');
     expect(registry.has('ch1')).toBe(false);
@@ -60,7 +60,7 @@ describe('ChannelWorkerRegistry', () => {
   it('idle timeout auto-removes worker from registry', async () => {
     const registry = new ChannelWorkerRegistry();
     const driver = new IdleTurnDriver();
-    const worker = registry.getOrCreate('ch1', baseDeps(driver));
+    const worker = registry.getOrCreate('ch1', 'key_a', baseDeps(driver));
     const handle = worker.enqueue(makeInput('one'));
     await handle.awaitCompletion();
     // Idle timer kicks in after 50ms
@@ -70,9 +70,9 @@ describe('ChannelWorkerRegistry', () => {
 
   it('closeAll terminates every worker', async () => {
     const registry = new ChannelWorkerRegistry();
-    registry.getOrCreate('a', baseDeps(new IdleTurnDriver()));
-    registry.getOrCreate('b', baseDeps(new IdleTurnDriver()));
-    registry.getOrCreate('c', baseDeps(new IdleTurnDriver()));
+    registry.getOrCreate('a', 'key_a', baseDeps(new IdleTurnDriver()));
+    registry.getOrCreate('b', 'key_a', baseDeps(new IdleTurnDriver()));
+    registry.getOrCreate('c', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(registry.size()).toBe(3);
     await registry.closeAll();
     expect(registry.size()).toBe(0);
@@ -80,7 +80,7 @@ describe('ChannelWorkerRegistry', () => {
 
   it('fatal worker error self-removes from registry', async () => {
     const registry = new ChannelWorkerRegistry();
-    const worker = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const worker = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(registry.has('ch1')).toBe(true);
     // Simulate a fatal by emitting directly — production fatal arrives via
     // the run-loop .catch path; same registry response.
@@ -96,13 +96,13 @@ describe('ChannelWorkerRegistry', () => {
     // shutdown). That stale worker rejects every new `enqueue` — the user
     // sees their next message vanish silently.
     const registry = new ChannelWorkerRegistry();
-    const w1 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const w1 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     await w1.shutdown({ drain: false });
     expect(w1.inspect().lifecycle).toBe('shutdown');
     // Force the registry to still hold the stale reference (simulates the
     // racy window before the `worker.disposed` cleanup propagates).
-    (registry as unknown as { workers: Map<string, ChannelWorker> }).workers.set('ch1', w1);
-    const w2 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    (registry as unknown as { workers: Map<string, { worker: ChannelWorker; clientKey: string }> }).workers.set('ch1', { worker: w1, clientKey: 'key_a' });
+    const w2 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(w2).not.toBe(w1);
     expect(w2.inspect().lifecycle).not.toBe('shutdown');
     await w2.shutdown();
@@ -116,7 +116,7 @@ describe('ChannelWorkerRegistry', () => {
       shutdown: async () => undefined,
     } as unknown as ChannelWorker;
     const registry = new ChannelWorkerRegistry({ factory: () => fakeWorker });
-    const w = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const w = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(w).toBe(fakeWorker);
   });
 
@@ -125,16 +125,16 @@ describe('ChannelWorkerRegistry', () => {
     // `worker.disposed` to fire BEFORE `worker.created` for the replacement.
     // Otherwise the new worker has no tracker bound.
     const registry = new ChannelWorkerRegistry();
-    const w1 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const w1 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     await w1.shutdown({ drain: false });
     // Force the stale ref to remain in the map (simulates the race window).
-    (registry as unknown as { workers: Map<string, ChannelWorker> }).workers.set('ch1', w1);
+    (registry as unknown as { workers: Map<string, { worker: ChannelWorker; clientKey: string }> }).workers.set('ch1', { worker: w1, clientKey: 'key_a' });
 
     const events: string[] = [];
     registry.on('worker.disposed', () => events.push('disposed'));
     registry.on('worker.created', () => events.push('created'));
 
-    const w2 = registry.getOrCreate('ch1', baseDeps(new IdleTurnDriver()));
+    const w2 = registry.getOrCreate('ch1', 'key_a', baseDeps(new IdleTurnDriver()));
     expect(events).toEqual(['disposed', 'created']);
     expect(w2).not.toBe(w1);
     await w2.shutdown();

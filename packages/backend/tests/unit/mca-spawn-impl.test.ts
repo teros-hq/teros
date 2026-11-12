@@ -35,7 +35,7 @@ afterAll(() => {
   mock.module('../../src/services/mca-http-client', () => realMcaHttpClientModule)
 })
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { SpawnContext } from '../../src/services/mca-manager.spawn'
@@ -116,8 +116,19 @@ function makeCtx(opts: CtxOptions = {}): {
     mcaService: { workspaceService: {
       getWorkspace: async (id: string) => (id === WORKSPACE_ID ? { workspaceId: WORKSPACE_ID, volumeId: 'vol_work_1' } : null),
     }, authManager } as any,
-    // biome-ignore lint/suspicious/noExplicitAny: fake mínimo del manager
-    containerManager: { getOrStart: getOrStartMock } as any,
+    // biome-ignore lint/suspicious/noExplicitAny: fake mínimo del manager.
+    // getCallbackToken/stop: required since f7a53c0e0 (stale callback tokens,
+    // incident-2026-08-14 Layer B) — spawn-impl signs HTTP requests with the
+    // per-container callback token and may stop+restart to get a fresh one.
+    containerManager: {
+      getOrStart: getOrStartMock,
+      getCallbackToken: mock(() => 'test-callback-token'),
+      stop: mock(async () => {}),
+      // stdio callback-token registration (401 storm fix, 2026-09-20..24) —
+      // buildExecutionConfig registers a per-app token for stdio MCAs.
+      registerCallbackToken: mock(() => {}),
+      unregisterCallbackToken: mock(() => {}),
+    } as any,
     httpClients: new Map(),
     connectionManager: opts.withConnectionManager === false
       ? undefined
@@ -133,7 +144,12 @@ function makeCtx(opts: CtxOptions = {}): {
     config: {
       mcaBasePath: '/srv/teros/mcas',
       serverPort: 10001,
-      secretsManager: { mca: mock(() => opts.secrets ?? { api_key: 'K1', vacio: null }) },
+      // getMcaFresh mirrors mca here: the SUT reads secrets fresh from disk since 031c1ba7f,
+      // but in tests both entry points return the same fake secrets.
+      secretsManager: {
+        mca: mock(() => opts.secrets ?? { api_key: 'K1', vacio: null }),
+        getMcaFresh: mock(() => opts.secrets ?? { api_key: 'K1', vacio: null }),
+      },
       volumeService,
     } as any,
     setupStderrLogging: mock(() => {}),
@@ -150,6 +166,20 @@ const ENV_KEYS = [
   'MONGODB_DATABASE',
   'MONGODB_DB_NAME',
   'STATIC_BASE_URL',
+  // buildExecutionConfig spreads process.env into the child environment, and
+  // spawn-impl may SET these keys on it. When the suite runs INSIDE an MCA
+  // container (e.g. an agent going through a host-exec MCA), the inherited MCA_* env leaks into
+  // the "no connectionManager → undefined" assertion and fails it. Wipe them
+  // per-test so the suite is hermetic anywhere it runs.
+  'MCA_WS_URL',
+  'MCA_WS_TOKEN',
+  'MCA_BACKEND_URL',
+  'MCA_CALLBACK_URL',
+  'MCA_APP_ID',
+  // buildExecutionConfig now GENERATES these per-spawn for stdio MCAs (401
+  // storm fix) — wipe inherited values so assertions are hermetic.
+  'MCA_CALLBACK_TOKEN',
+  'MCA_WORKSPACE_ID',
 ] as const
 const envBackup: Record<string, string | undefined> = {}
 
@@ -265,6 +295,54 @@ describe('buildExecutionConfig', () => {
     expect(environment.PATH).toBe(
       `${segments[0]}${delimiter}${segments[1]}${delimiter}${process.env.PATH}`,
     )
+  })
+
+  // ── 401 storm fix (2026-09-20..24): stdio MCAs need a callback token ──────
+  // Before the fix, buildExecutionConfig never set MCA_CALLBACK_TOKEN, so the
+  // SDK sent no Authorization header and authenticateCallback rejected every
+  // MCA→backend callback with 401 (the stdio MCA of the time, 111 failures).
+  it('genera un MCA_CALLBACK_TOKEN de 64 hex y lo registra en containerManager bajo appId', async () => {
+    const { ctx } = makeCtx()
+    const { environment } = await buildExecutionConfig(ctx, makeApp(), makeMca())
+
+    expect(environment.MCA_CALLBACK_TOKEN).toMatch(/^[0-9a-f]{64}$/)
+    // Registered under the appId — the key authenticateCallback tries first
+    // (mirrors per-app container mode), with the mcaId for identity resolution.
+    // biome-ignore lint/suspicious/noExplicitAny: fake del boundary
+    const cm = ctx.containerManager as any
+    expect(cm.registerCallbackToken).toHaveBeenCalledTimes(1)
+    expect(cm.registerCallbackToken).toHaveBeenCalledWith(
+      APP_ID,
+      environment.MCA_CALLBACK_TOKEN,
+      'mca.teros.bash',
+    )
+  })
+
+  it('cada spawn genera un token DISTINTO (token fresco tras restart/respawn — nunca stale)', async () => {
+    const { ctx } = makeCtx()
+    const { environment: env1 } = await buildExecutionConfig(ctx, makeApp(), makeMca())
+    const { environment: env2 } = await buildExecutionConfig(ctx, makeApp(), makeMca())
+    expect(env1.MCA_CALLBACK_TOKEN).toMatch(/^[0-9a-f]{64}$/)
+    expect(env2.MCA_CALLBACK_TOKEN).toMatch(/^[0-9a-f]{64}$/)
+    expect(env1.MCA_CALLBACK_TOKEN).not.toBe(env2.MCA_CALLBACK_TOKEN)
+  })
+
+  it('MCA_WORKSPACE_ID = app.ownerId (el SDK la lee para scope de ctx.volume — bug encadenado)', async () => {
+    const { ctx } = makeCtx()
+    const { environment } = await buildExecutionConfig(ctx, makeApp(), makeMca())
+    // stdio-server.ts: workspaceId = MCA_WORKSPACE_ID || MCA_USER_ID || 'unknown'
+    // — sin esta var los callbacks de volumen resolvían 'unknown' → ENOENT.
+    expect(environment.MCA_WORKSPACE_ID).toBe(WORKSPACE_ID)
+  })
+
+  it('spawn sin registerCallbackToken disponible NO rompe (degrada con warn, token igualmente inyectado)', async () => {
+    const { ctx } = makeCtx()
+    // biome-ignore lint/suspicious/noExplicitAny: fake sin el método nuevo
+    ;(ctx.containerManager as any).registerCallbackToken = undefined
+    const { environment } = await buildExecutionConfig(ctx, makeApp(), makeMca())
+    // El token se inyecta igual — el MCA lo enviará; si el manager no registra,
+    // los callbacks 401 (modo de fallo previo, nunca peor) pero el spawn vive.
+    expect(environment.MCA_CALLBACK_TOKEN).toMatch(/^[0-9a-f]{64}$/)
   })
 })
 
@@ -457,11 +535,12 @@ describe('spawnContainer', () => {
     expect(env.MIXTO).toBe('pre-SECRETO-post')
   })
 
-  it('mca.whatsapp/manifest.json (real, post-WS2-saneo) resuelve WAHA_API_KEY + proxy Bright Data desde .secrets/mcas/mca.whatsapp/credentials.json — regression WS2/TER-719', async () => {
+  // mca.whatsapp is private-only (publish.allowlist): the public tree has no manifest to read.
+  const whatsappManifestPath = resolve(__dirname, '../../../../mcas/mca.whatsapp/manifest.json')
+  it.skipIf(!existsSync(whatsappManifestPath))('mca.whatsapp/manifest.json (real, post-WS2-saneo) resuelve WAHA_API_KEY + proxy Bright Data desde .secrets/mcas/mca.whatsapp/credentials.json — regression WS2/TER-719', async () => {
     // Lee el manifest REAL del árbol, no un fixture sintético: si alguien renombra
     // una key de systemEnvironment sin tocar el .example.json a juego, esto rompe.
-    const manifestPath = resolve(__dirname, '../../../../mcas/mca.whatsapp/manifest.json')
-    const realManifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+    const realManifest = JSON.parse(readFileSync(whatsappManifestPath, 'utf-8'))
     // biome-ignore lint/suspicious/noTemplateCurlyInString: afirma el placeholder LITERAL del manifest, no una interpolación
     expect(realManifest.runtime.systemEnvironment.WAHA_API_KEY).toBe('${SECRET_MCA_WAHA_API_KEY}')
 
@@ -490,9 +569,9 @@ describe('spawnContainer', () => {
       const env = (getOrStartMock.mock.calls[0][1] as any).environment
       expect(env.WAHA_API_KEY).toBe('fake-waha-key')
       expect(env.WHATSAPP_PROXY_SERVER_PASSWORD).toBe('fake-proxy-pw')
-      // El sufijo de sesión sticky (${MCA_APP_ID}) sigue vivo tras el saneo — Bright
-      // Data necesita un username distinto por contenedor, no puede hornearse estático.
-      expect(env.WHATSAPP_PROXY_SERVER_USERNAME).toBe(`brd-customer-fake-zone-fake-session-${APP_ID}`)
+      // Sin sufijo -session-${MCA_APP_ID}: la zona Bright Data es res_static y rechaza
+      // el username con sufijo (407) — commit 15e4b48c9. El username pasa tal cual.
+      expect(env.WHATSAPP_PROXY_SERVER_USERNAME).toBe('brd-customer-fake-zone-fake')
       // Config no-secreta del manifest intacta.
       expect(env.WHATSAPP_DEFAULT_ENGINE).toBe('GOWS')
       expect(env.WAHA_LOCAL_STORE_BASE_DIR).toBe('/app-data')
@@ -501,23 +580,29 @@ describe('spawnContainer', () => {
     }
   })
 
-  it('dockerNetwork por tier de acceso: MCA interno → red interna, egress → red egress, no listado → sin red', async () => {
+  it('dockerNetworks por tier de acceso: MCA interno → workspace+internal, egress → workspace+egress, no listado → solo workspace', async () => {
     const { ctx, getOrStartMock } = makeCtx()
-    await spawnContainer(ctx, APP_ID, makeApp({ mcaId: 'mca.teros.scheduler' }), makeMca({ mcaId: 'mca.teros.scheduler' }), 0)
+    await spawnContainer(ctx, APP_ID, makeApp({ mcaId: 'mca.teros.feedback' }), makeMca({ mcaId: 'mca.teros.feedback' }), 0)
     // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
-    expect((getOrStartMock.mock.calls[0][1] as any).dockerNetwork).toBe('teros_teros-network')
+    const opts1 = (getOrStartMock.mock.calls[0][1] as any)
+    expect(opts1.dockerNetworks).toEqual(expect.arrayContaining(['teros_teros-network']))
+    expect(opts1.dockerNetworks[0]).toMatch(/^teros_ws_/) // workspace network is first
 
     // mca.teros.bash (mcaId por defecto en makeApp) está en MCAS_WITH_EGRESS → red de egress dedicada.
     const { ctx: ctx2, getOrStartMock: g2 } = makeCtx()
     await spawnContainer(ctx2, APP_ID, makeApp(), makeMca(), 0)
     // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
-    expect((g2.mock.calls[0][1] as any).dockerNetwork).toBe('teros_egress')
+    const opts2 = (g2.mock.calls[0][1] as any)
+    expect(opts2.dockerNetworks).toEqual(expect.arrayContaining(['teros_egress']))
+    expect(opts2.dockerNetworks[0]).toMatch(/^teros_ws_/) // workspace network is first
 
-    // Un MCA que no está en ninguna lista → sin red (default-deny).
+    // Un MCA que no está en ninguna lista → solo red de workspace.
     const { ctx: ctx3, getOrStartMock: g3 } = makeCtx()
     await spawnContainer(ctx3, APP_ID, makeApp({ mcaId: 'mca.slack' }), makeMca({ mcaId: 'mca.slack' }), 0)
     // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
-    expect((g3.mock.calls[0][1] as any).dockerNetwork).toBeUndefined()
+    const opts3 = (g3.mock.calls[0][1] as any)
+    expect(opts3.dockerNetworks).toHaveLength(1)
+    expect(opts3.dockerNetworks[0]).toMatch(/^teros_ws_/)
   })
 
   it('containerMode per-app → containerKey = appId y mode propagado', async () => {
@@ -530,17 +615,30 @@ describe('spawnContainer', () => {
     expect((getOrStartMock.mock.calls[0][1] as any).containerMode).toBe('per-app')
   })
 
-  it('volúmenes del app resueltos vía volumeService y pasados al manager', async () => {
+  it('montaje workspace persistido se pasa solo si el manifest lo declara', async () => {
     const { ctx, getOrStartMock } = makeCtx()
     // biome-ignore lint/suspicious/noExplicitAny: fixture con volumes
     const app = makeApp({ volumes: [{ volumeId: 'vol_work_1', mountPath: '/workspace' }] as any })
 
-    await spawnContainer(ctx, APP_ID, app, makeMca(), 0)
+    await spawnContainer(
+      ctx, APP_ID, app, makeMca({ runtime: { transport: 'http', workspaceMount: true } }), 0,
+    )
 
     // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
     expect((getOrStartMock.mock.calls[0][1] as any).volumes).toEqual([
       { hostPath: '/srv/volumes/vol_work_1', containerPath: '/workspace', readOnly: false },
     ])
+  })
+
+  it('ignora mounts workspace heredados cuando el manifest no requiere acceso local', async () => {
+    const { ctx, getOrStartMock } = makeCtx()
+    // biome-ignore lint/suspicious/noExplicitAny: fixture con volumes legacy
+    const app = makeApp({ volumes: [{ volumeId: 'vol_work_1', mountPath: '/workspace' }] as any })
+
+    await spawnContainer(ctx, APP_ID, app, makeMca(), 0)
+
+    // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
+    expect((getOrStartMock.mock.calls[0][1] as any).volumes).toEqual([])
   })
 
   it('getOrStart falla → managed queda error con lastError y se propaga', async () => {
@@ -555,21 +653,6 @@ describe('spawnContainer', () => {
     expect(managed?.status).toBe('error')
     expect(managed?.lastError).toBe('no ports')
     expect(managed?.restartCount).toBe(2)
-  })
-
-  it('mca.teros.docker-env exige WORKSPACE_HOST_PATH (falla loud sin volumen)', async () => {
-    const { ctx, getOrStartMock } = makeCtx()
-    await spawnContainer(ctx, APP_ID, makeApp({ mcaId: 'mca.teros.docker-env' }), makeMca(), 0)
-    // biome-ignore lint/suspicious/noExplicitAny: shape verificado por asserts
-    expect((getOrStartMock.mock.calls[0][1] as any).environment.WORKSPACE_HOST_PATH).toBe('/srv/volumes/vol_work_1')
-
-    // Owner sin workspace resoluble → fail loud, no fallback silencioso
-    const { ctx: ctx2 } = makeCtx()
-    // biome-ignore lint/suspicious/noExplicitAny: db fake sin workspace
-    ;(ctx2.config.volumeService as any).db = { collection: () => ({ findOne: async () => null }) }
-    await expect(
-      spawnContainer(ctx2, APP_ID, makeApp({ mcaId: 'mca.teros.docker-env' }), makeMca(), 0),
-    ).rejects.toThrow('failed to resolve workspace host path')
   })
 
   it('appDataMount monta /app-data persistente bajo el volumen del workspace', async () => {

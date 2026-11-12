@@ -15,20 +15,6 @@ interface SetAllToolPermissionsData {
   permission: ToolPermission
 }
 
-async function canManageApp(
-  app: { ownerId: string; ownerType?: string },
-  userId: string,
-  workspaceService?: WorkspaceService,
-): Promise<boolean> {
-  if (app.ownerId === userId) return true
-  if (app.ownerId === 'system') return false
-  if (app.ownerType === 'workspace' || app.ownerId.startsWith('work_')) {
-    if (workspaceService) return workspaceService.canAdmin(app.ownerId, userId)
-    return false
-  }
-  return false
-}
-
 export function createSetAllToolPermissionsHandler(
   mcaService: McaService,
   mcaManager: McaManager | null,
@@ -50,7 +36,7 @@ export function createSetAllToolPermissionsHandler(
       throw new HandlerError('APP_NOT_FOUND', 'App not found')
     }
 
-    if (!(await canManageApp(app, ctx.userId, workspaceService))) {
+    if (!(await mcaService.canManageApp(app, ctx.userId))) {
       throw new HandlerError(
         'ACCESS_DENIED',
         'Access denied - you need admin access to modify permissions',

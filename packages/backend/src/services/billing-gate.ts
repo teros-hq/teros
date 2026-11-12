@@ -5,7 +5,7 @@
  * All checks are read-only — they query billing_subscriptions + billing_plans
  * and return booleans or throw typed errors.
  *
-
+ * Design doc: /workspace/docs/specs/BILLING-SUBSCRIPTIONS.md §6
  */
 
 import type { Collection, Db } from "mongodb"
@@ -13,13 +13,14 @@ import {
   type BillingInvoice,
   type BillingPlan,
   type BillingSubscription,
-  STARTER_PLAN_ID,
+  DEFAULT_PLAN_ID,
   type TerosProviderConfig,
   getActiveBoostHours,
   getActiveSubscription,
   getBillingInvoicesCollection,
   getBillingPlansCollection,
   getBillingSubscriptionsCollection,
+  getEffectiveAutomateDailyLimit,
   getEffectiveLimit,
   getTerosProviderConfigsCollection,
 } from "../models/billing.js"
@@ -57,6 +58,8 @@ export interface SubscriptionFeatures {
   agentHoursUsed: number
   /** End of the current billing period (ISO) — when the hours reset. null if unset. */
   currentPeriodEnd: string | null
+  /** Automate executions per UTC day (0 ⇒ unmetered). Override ?? plan. */
+  automateDailyExecutionLimit: number
 }
 
 // ============================================================================
@@ -254,6 +257,7 @@ export class BillingGateService {
       boostHours,
       agentHoursUsed: sub.agentHoursUsed,
       currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+      automateDailyExecutionLimit: getEffectiveAutomateDailyLimit(sub, plan),
     }
   }
 
@@ -403,7 +407,7 @@ export class BillingGateService {
     // billing, or paused/cancelled/ended — falls back to the Starter entry tier.
     const sub = await getActiveSubscription(this.db, userId)
     if (!sub) {
-      return this.plansCol.findOne({ _id: STARTER_PLAN_ID })
+      return this.plansCol.findOne({ _id: DEFAULT_PLAN_ID })
     }
 
     const plan = await this.plansCol.findOne({ _id: sub.planId })
@@ -413,7 +417,7 @@ export class BillingGateService {
         { subscriptionId: sub._id, planId: sub.planId, userId },
         "Subscription references missing plan; falling back to Starter",
       )
-      return this.plansCol.findOne({ _id: STARTER_PLAN_ID })
+      return this.plansCol.findOne({ _id: DEFAULT_PLAN_ID })
     }
 
     return plan

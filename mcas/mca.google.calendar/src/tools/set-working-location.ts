@@ -99,7 +99,7 @@ export const setWorkingLocation: ToolConfig = {
       workingLocationProperties,
     }
 
-    const response = await runCalendarCall(() =>
+    const response = await runCalendarCall(context, () =>
       calendar.events.insert({ calendarId, requestBody }),
     )
     const raw = response.data

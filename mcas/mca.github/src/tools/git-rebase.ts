@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Rebase the current branch onto another ref. Linear history without merge
@@ -11,7 +12,7 @@ import { throwClassifiedGitError } from './_git-error';
  * fundamentally interactive; agents that want to rewrite history should use
  * `git-reset` + new commits or amend.
  */
-export const gitRebase: ToolConfig = {
+export const gitRebase: ToolConfig = lockedGitTool('git-rebase', {
   description:
     'Rebase the current branch onto another ref (linear history). Or drive an in-progress rebase with `mode: continue/skip/abort`.',
   parameters: {
@@ -48,17 +49,21 @@ export const gitRebase: ToolConfig = {
       if (!a.onto) {
         throw new Error('[GIT_INVALID_INPUT] `onto` is required for `mode: start`.');
       }
+      assertSafeRef(a.onto, 'onto');
       const flags: string[] = [];
       if (a.autosquash) flags.push('--autosquash');
       if (a.strategyOption) flags.push('-X', a.strategyOption);
-      argv = ['rebase', ...flags, a.onto];
+      // `--` separates the agent-supplied ref from the flag section so a
+      // dash-leading value can never be parsed as an option (verified: `git
+      // rebase <flags> -- <onto>` keeps normal rebase semantics).
+      argv = ['rebase', ...flags, '--', a.onto];
     }
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const shaResult = runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const shaResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
 
     return {
       repoPath,
@@ -75,4 +80,4 @@ export const gitRebase: ToolConfig = {
     idempotentHint: false,
     openWorldHint: false,
   },
-};
+});

@@ -28,11 +28,13 @@ export const listEventSubscriptions: ToolConfig = {
       (context?.execution as any)?.channelId ??
       CURRENT_CHANNEL_ID;
     if (!channelId) throw new Error('channelId not found in execution context');
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('list_event_subscriptions', { channelId }),
+          wsClient.queryConversations<any>('list_event_subscriptions', { channelId, callerAgentId }),
           15_000,
           'list_event_subscriptions',
         ),

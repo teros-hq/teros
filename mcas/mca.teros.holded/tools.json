@@ -8,11 +8,14 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "list-contacts",
-      "description": "List contacts from Holded invoicing module. Returns a curated list of contacts with id, name, email, phone, and other key fields. Supports pagination via page and limit.",
+      "description": "List contacts from Holded. Returns a curated list of contacts with id, name, email, phone, and other key fields. Supports pagination via page and limit.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -56,8 +59,403 @@
       }
     },
     {
+      "name": "create-contact",
+      "description": "Create a new contact in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Contact name"
+          },
+          "type": {
+            "type": "string",
+            "description": "Contact type (default: client)",
+            "enum": [
+              "client",
+              "supplier",
+              "lead"
+            ],
+            "default": "client"
+          },
+          "email": {
+            "type": "string",
+            "description": "Contact email"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Contact phone number"
+          },
+          "mobile": {
+            "type": "string",
+            "description": "Contact mobile number"
+          },
+          "code": {
+            "type": "string",
+            "description": "Contact code/reference"
+          },
+          "tradeName": {
+            "type": "string",
+            "description": "Trade name"
+          },
+          "vatNumber": {
+            "type": "string",
+            "description": "VAT/Tax identification number"
+          },
+          "billAddress": {
+            "type": "object",
+            "description": "Billing address object",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Street address"
+              },
+              "city": {
+                "type": "string",
+                "description": "City"
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "Postal/ZIP code"
+              },
+              "province": {
+                "type": "string",
+                "description": "Province/state"
+              },
+              "country": {
+                "type": "string",
+                "description": "Country"
+              },
+              "country_code": {
+                "type": "string",
+                "description": "ISO country code (e.g. ES, US)"
+              }
+            }
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-contact",
+      "description": "Update an existing contact in Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Contact name"
+          },
+          "type": {
+            "type": "string",
+            "description": "Contact type",
+            "enum": [
+              "client",
+              "supplier",
+              "lead"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "description": "Contact email"
+          },
+          "phone": {
+            "type": "string",
+            "description": "Contact phone number"
+          },
+          "mobile": {
+            "type": "string",
+            "description": "Contact mobile number"
+          },
+          "code": {
+            "type": "string",
+            "description": "Contact code/reference"
+          },
+          "tradeName": {
+            "type": "string",
+            "description": "Trade name"
+          },
+          "vatNumber": {
+            "type": "string",
+            "description": "VAT/Tax identification number"
+          },
+          "billAddress": {
+            "type": "object",
+            "description": "Billing address object",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "Street address"
+              },
+              "city": {
+                "type": "string",
+                "description": "City"
+              },
+              "postal_code": {
+                "type": "string",
+                "description": "Postal/ZIP code"
+              },
+              "province": {
+                "type": "string",
+                "description": "Province/state"
+              },
+              "country": {
+                "type": "string",
+                "description": "Country"
+              },
+              "country_code": {
+                "type": "string",
+                "description": "ISO country code (e.g. ES, US)"
+              }
+            }
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-contact",
+      "description": "Delete a contact from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "search-contacts",
+      "description": "Search contacts in Holded by name. Returns matching contacts with key fields mapped to a curated output.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name to search for"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-contact-groups",
+      "description": "List contact groups from Holded. Contact groups are used to organize contacts into categories or segments. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-contact-group",
+      "description": "Get a single contact group from Holded by its ID. Returns the group details including its member contacts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact group ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-contact-group",
+      "description": "Create a new contact group in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Group name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Group description"
+          },
+          "contactIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of contact IDs to add to this group"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-contact-group",
+      "description": "Update an existing contact group in Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact group ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "New group name"
+          },
+          "description": {
+            "type": "string",
+            "description": "New group description"
+          },
+          "contactIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of contact IDs to set for this group (replaces existing)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-contact-group",
+      "description": "Delete a contact group from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded contact group ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-tags",
+      "description": "List all tags from Holded. Tags can be applied to contacts, documents, and other entities for categorization.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-tag",
+      "description": "Create a new tag in Holded. Tags are used for categorizing contacts, documents, and other entities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tag name"
+          },
+          "color": {
+            "type": "string",
+            "description": "Tag color (hex code, e.g. #FF5733)"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-tag",
+      "description": "Delete a tag from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded tag ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
       "name": "list-invoices",
-      "description": "List invoices from Holded invoicing module. Returns a curated list of invoices with id, number, date, contact, total, status, and payment info. Supports pagination.",
+      "description": "List invoices from Holded. Returns a curated list of invoices with id, number, date, contact, total, status, and payment info. Supports pagination.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -73,13 +471,2736 @@
           },
           "status": {
             "type": "string",
-            "description": "Filter by invoice status (e.g. draft, sent, paid)"
+            "description": "Filter by invoice status (e.g. draft, sent, paid, completed)"
           },
           "contactId": {
             "type": "string",
             "description": "Filter invoices by contact ID"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-invoice",
+      "description": "Get a single invoice from Holded by its ID, including line items and full details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-invoice",
+      "description": "Create a new invoice in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact ID for the invoice recipient"
+          },
+          "date": {
+            "type": "string",
+            "description": "Invoice date (ISO 8601, e.g. 2026-01-15)"
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Invoice due date (ISO 8601)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Invoice description or title"
+          },
+          "lines": {
+            "type": "array",
+            "description": "Invoice line items",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Line item name"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Line item description"
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Unit price"
+                },
+                "units": {
+                  "type": "number",
+                  "description": "Quantity (default: 1)"
+                },
+                "discount": {
+                  "type": "number",
+                  "description": "Discount percentage (0-100)"
+                },
+                "tax": {
+                  "type": "number",
+                  "description": "Tax rate percentage"
+                },
+                "taxes": {
+                  "type": "array",
+                  "description": "Array of tax objects (alternative to single tax rate)",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "productId": {
+                  "type": "string",
+                  "description": "Related product ID"
+                },
+                "serviceId": {
+                  "type": "string",
+                  "description": "Related service ID"
+                }
+              }
+            }
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (e.g. EUR, USD)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags to assign to the invoice",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "description": "Payment method ID"
+          },
+          "customFields": {
+            "type": "object",
+            "description": "Custom fields key-value pairs"
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-invoice",
+      "description": "Update an existing invoice in Holded by its ID. All fields are optional.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Contact ID for the invoice recipient"
+          },
+          "date": {
+            "type": "string",
+            "description": "Invoice date (ISO 8601)"
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Invoice due date (ISO 8601)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Invoice description"
+          },
+          "lines": {
+            "type": "array",
+            "description": "Updated line items (replaces existing)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Line item name"
+                },
+                "description": {
+                  "type": "string",
+                  "description": "Line item description"
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Unit price"
+                },
+                "units": {
+                  "type": "number",
+                  "description": "Quantity"
+                },
+                "discount": {
+                  "type": "number",
+                  "description": "Discount percentage (0-100)"
+                },
+                "tax": {
+                  "type": "number",
+                  "description": "Tax rate percentage"
+                },
+                "taxes": {
+                  "type": "array",
+                  "description": "Array of tax objects",
+                  "items": {
+                    "type": "object"
+                  }
+                },
+                "productId": {
+                  "type": "string",
+                  "description": "Related product ID"
+                },
+                "serviceId": {
+                  "type": "string",
+                  "description": "Related service ID"
+                }
+              }
+            }
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (e.g. EUR, USD)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags to assign to the invoice",
+            "items": {
+              "type": "string"
+            }
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "description": "Payment method ID"
+          },
+          "customFields": {
+            "type": "object",
+            "description": "Custom fields key-value pairs"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-invoice",
+      "description": "Delete an invoice from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "cancel-invoice",
+      "description": "Cancel an invoice in Holded by its ID. This changes the invoice status to cancelled.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Reason for cancellation"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "approve-invoice",
+      "description": "Approve an invoice in Holded by its ID. This moves a draft invoice to approved/sent status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "send-invoice",
+      "description": "Send an invoice to the contact via email from Holded. Defaults to the contact's email if no email is provided.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          },
+          "email": {
+            "type": "string",
+            "description": "Override recipient email address (defaults to contact email)"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Custom email subject line"
+          },
+          "message": {
+            "type": "string",
+            "description": "Custom message to include in the email body"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "find-invoices",
+      "description": "Search invoices in Holded by document number. Returns matching invoices with key fields.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentNumber": {
+            "type": "string",
+            "description": "The invoice document number to search for (e.g. INV-2026-001)"
+          }
+        },
+        "required": [
+          "documentNumber"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-invoice-pdf",
+      "description": "Download the PDF of an invoice from Holded. Returns the PDF as a base64-encoded string with a filename.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded invoice ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-estimates",
+      "description": "List estimates (quotes) from Holded. Returns estimates with id, number, date, contact, total, and status. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter by contact ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status (e.g. draft, sent, accepted, rejected)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-estimate",
+      "description": "Get a single estimate from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded estimate ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-estimate",
+      "description": "Create a new estimate (quote) in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact ID"
+          },
+          "date": {
+            "type": "string",
+            "description": "Estimate date (ISO 8601)"
+          },
+          "expiryDate": {
+            "type": "string",
+            "description": "Expiry date (ISO 8601)"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Line items"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Notes"
+          }
+        },
+        "required": [
+          "contactId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-proformas",
+      "description": "List proformas from Holded. Supports pagination and filtering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25)",
+            "default": 25
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter by contact ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status (e.g. draft, sent, accepted, rejected)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-proforma",
+      "description": "Get a single proforma from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded proforma ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-credit-notes",
+      "description": "List credit notes from Holded. Supports pagination and filtering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25)",
+            "default": 25
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter by contact ID"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-credit-note",
+      "description": "Get a single credit note from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded credit note ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-recurring-invoices",
+      "description": "List recurring invoices from Holded. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-recurring-invoice",
+      "description": "Get a single recurring invoice from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded recurring invoice ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-sales-receipts",
+      "description": "List sales receipts from Holded. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25)",
+            "default": 25
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by status (e.g. draft, sent, paid)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-services",
+      "description": "List services from Holded. Services are non-physical sellable items.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Results per page (default: 25)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-sales-channels",
+      "description": "List sales channels from Holded. Sales channels track different distribution sources.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-numbering-series",
+      "description": "List numbering series from Holded for a specific document type. Numbering series define document numbering patterns per type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "documentType": {
+            "type": "string",
+            "description": "Document type to list numbering series for (e.g. invoice, salesreceipt, creditnote, estimate, proform, waybill, salesorder, purchase, purchaserefund, order, purchaseshipment, receiptnote, productionorder)"
+          }
+        },
+        "required": [
+          "documentType"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-products",
+      "description": "List products from Holded. Returns a curated list of products with id, name, SKU, price, cost price, stock, category, type, and tax info. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-product",
+      "description": "Get a single product from Holded by its ID. Returns full product details including price, cost price, stock, category, type, unit type, and tax info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded product ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-product",
+      "description": "Create a new product in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Product name"
+          },
+          "sku": {
+            "type": "string",
+            "description": "Product SKU (stock keeping unit)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Product description"
+          },
+          "price": {
+            "type": "number",
+            "description": "Selling price"
+          },
+          "cost_price": {
+            "type": "number",
+            "description": "Cost price"
+          },
+          "category": {
+            "type": "string",
+            "description": "Product category"
+          },
+          "type": {
+            "type": "string",
+            "description": "Product type: \"product\" or \"service\"",
+            "enum": [
+              "product",
+              "service"
+            ]
+          },
+          "unit_type": {
+            "type": "string",
+            "description": "Unit of measure (e.g. pcs, kg, hours)"
+          },
+          "tax": {
+            "type": "number",
+            "description": "Tax rate percentage"
+          },
+          "stock": {
+            "type": "number",
+            "description": "Initial stock quantity"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-product",
+      "description": "Update an existing product in Holded by its ID. All fields are optional.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded product ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Product name"
+          },
+          "sku": {
+            "type": "string",
+            "description": "Product SKU"
+          },
+          "description": {
+            "type": "string",
+            "description": "Product description"
+          },
+          "price": {
+            "type": "number",
+            "description": "Selling price"
+          },
+          "cost_price": {
+            "type": "number",
+            "description": "Cost price"
+          },
+          "category": {
+            "type": "string",
+            "description": "Product category"
+          },
+          "type": {
+            "type": "string",
+            "description": "Product type: \"product\" or \"service\"",
+            "enum": [
+              "product",
+              "service"
+            ]
+          },
+          "unit_type": {
+            "type": "string",
+            "description": "Unit of measure"
+          },
+          "tax": {
+            "type": "number",
+            "description": "Tax rate percentage"
+          },
+          "stock": {
+            "type": "number",
+            "description": "Stock quantity"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-product",
+      "description": "Delete a product from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded product ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-warehouses",
+      "description": "List warehouses from Holded. Warehouses are storage locations for product inventory. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-warehouse",
+      "description": "Get a single warehouse from Holded by its ID. Returns warehouse details including name, address, and default status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded warehouse ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-price-lists",
+      "description": "List price lists from Holded. Price lists define custom pricing tiers for different customer segments. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-price-list",
+      "description": "Get a single price list from Holded by its ID, including the full list of product prices.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded price list ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-accounting-accounts",
+      "description": "List accounting accounts (chart of accounts) from Holded. Returns accounts with id, code, name, group, and balance.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "group": {
+            "type": "string",
+            "description": "Filter by account group (e.g. assets, liabilities, equity, income, expenses)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-ledger-entries",
+      "description": "List ledger entries from Holded. Returns journal entries with date, account, debit/credit amounts, and description. If no date range is provided, defaults to the current calendar year.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter entries from this date (ISO 8601)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter entries up to this date (ISO 8601)"
+          },
+          "accountId": {
+            "type": "string",
+            "description": "Filter by accounting account ID"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-expenses-accounts",
+      "description": "List expenses accounts from Holded. These are accounts used for tracking business expenses.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-expenses-account",
+      "description": "Get a single expenses account from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded expenses account ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-payments",
+      "description": "List payments from Holded. Returns payments with id, date, amount, contact, method, and related document info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter payments by contact ID"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter payments from this date (ISO 8601)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter payments up to this date (ISO 8601)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-payment",
+      "description": "Get a single payment from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded payment ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-payment",
+      "description": "Create a new payment in Holded. Payments can be linked to invoices or other documents.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Contact ID the payment is associated with"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Payment amount"
+          },
+          "date": {
+            "type": "string",
+            "description": "Payment date (ISO 8601)"
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "description": "Payment method ID"
+          },
+          "documentId": {
+            "type": "string",
+            "description": "Related document ID (e.g. invoice ID)"
+          },
+          "documentType": {
+            "type": "string",
+            "description": "Type of related document (e.g. invoice, expense)"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (e.g. EUR, USD)"
+          },
+          "reference": {
+            "type": "string",
+            "description": "Payment reference"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Payment notes"
+          }
+        },
+        "required": [
+          "contactId",
+          "amount"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-payment",
+      "description": "Update an existing payment in Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded payment ID"
+          },
+          "amount": {
+            "type": "number",
+            "description": "New payment amount"
+          },
+          "date": {
+            "type": "string",
+            "description": "New payment date (ISO 8601)"
+          },
+          "paymentMethodId": {
+            "type": "string",
+            "description": "New payment method ID"
+          },
+          "reference": {
+            "type": "string",
+            "description": "New payment reference"
+          },
+          "notes": {
+            "type": "string",
+            "description": "New payment notes"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-payment",
+      "description": "Delete a payment from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded payment ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-taxes",
+      "description": "List taxes from Holded. Returns tax rates with id, name, percentage, and type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-purchases",
+      "description": "List purchases from Holded. Returns purchase records with id, number, date, supplier, total, and status. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Filter purchases by supplier contact ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by purchase status (e.g. draft, sent, paid)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-purchase",
+      "description": "Get a single purchase from Holded by its ID, including line items and full details.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded purchase ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-purchase",
+      "description": "Create a new purchase (supplier invoice) in Holded. Requires an existing supplier contactId and at least one item. Returns the created purchase with its id.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "contactId": {
+            "type": "string",
+            "description": "Supplier contact ID (required — must be an existing contact)"
+          },
+          "contactName": {
+            "type": "string",
+            "description": "Supplier contact name (optional)"
+          },
+          "items": {
+            "type": "array",
+            "description": "Purchase line items (required)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Item name"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Item type (e.g. 'product', 'service')"
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Unit price"
+                },
+                "units": {
+                  "type": "number",
+                  "description": "Quantity (default: 1)"
+                },
+                "discount": {
+                  "type": "number",
+                  "description": "Discount percentage (0-100)"
+                },
+                "taxes": {
+                  "type": "array",
+                  "description": "Array of tax IDs (e.g. [\"s_iva_21\"]) applied to this item",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sku": {
+                  "type": "string",
+                  "description": "Product SKU"
+                },
+                "serviceId": {
+                  "type": "string",
+                  "description": "Related service ID"
+                },
+                "account": {
+                  "type": "string",
+                  "description": "Accounting account for this item"
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "Related project ID"
+                },
+                "unitType": {
+                  "type": "string",
+                  "description": "Unit type (e.g. units, hours, kg)"
+                }
+              }
+            }
+          },
+          "date": {
+            "type": "string",
+            "description": "Purchase date (ISO 8601, e.g. 2026-01-15)"
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Payment due date (ISO 8601)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Purchase description or title"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Internal notes"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (e.g. EUR, USD)"
+          },
+          "language": {
+            "type": "string",
+            "description": "Document language code (e.g. es, en)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags to assign to the purchase",
+            "items": {
+              "type": "string"
+            }
+          },
+          "customFields": {
+            "type": "array",
+            "description": "Custom fields as {field, value} pairs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "description": "Custom field name"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Custom field value"
+                }
+              }
+            }
+          },
+          "number": {
+            "type": "string",
+            "description": "Custom document number (optional)"
+          },
+          "warehouseId": {
+            "type": "string",
+            "description": "Warehouse ID for stock movements"
+          },
+          "discount": {
+            "type": "number",
+            "description": "Global discount percentage (0-100)"
+          }
+        },
+        "required": [
+          "contactId",
+          "items"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-purchase",
+      "description": "Update an existing purchase in Holded by its ID. All fields are optional.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded purchase ID"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Supplier contact ID"
+          },
+          "contactName": {
+            "type": "string",
+            "description": "Supplier contact name"
+          },
+          "items": {
+            "type": "array",
+            "description": "Updated purchase items (replaces existing)",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Item name"
+                },
+                "type": {
+                  "type": "string",
+                  "description": "Item type (e.g. 'product', 'service')"
+                },
+                "price": {
+                  "type": "number",
+                  "description": "Unit price"
+                },
+                "units": {
+                  "type": "number",
+                  "description": "Quantity (default: 1)"
+                },
+                "discount": {
+                  "type": "number",
+                  "description": "Discount percentage (0-100)"
+                },
+                "taxes": {
+                  "type": "array",
+                  "description": "Array of tax IDs (e.g. [\"s_iva_21\"]) applied to this item",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "sku": {
+                  "type": "string",
+                  "description": "Product SKU"
+                },
+                "serviceId": {
+                  "type": "string",
+                  "description": "Related service ID"
+                },
+                "account": {
+                  "type": "string",
+                  "description": "Accounting account for this item"
+                },
+                "projectId": {
+                  "type": "string",
+                  "description": "Related project ID"
+                },
+                "unitType": {
+                  "type": "string",
+                  "description": "Unit type (e.g. units, hours, kg)"
+                }
+              }
+            }
+          },
+          "date": {
+            "type": "string",
+            "description": "Purchase date (ISO 8601)"
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Payment due date (ISO 8601)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Purchase description or title"
+          },
+          "notes": {
+            "type": "string",
+            "description": "Internal notes"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency code (e.g. EUR, USD)"
+          },
+          "language": {
+            "type": "string",
+            "description": "Document language code (e.g. es, en)"
+          },
+          "tags": {
+            "type": "array",
+            "description": "Tags to assign to the purchase",
+            "items": {
+              "type": "string"
+            }
+          },
+          "customFields": {
+            "type": "array",
+            "description": "Custom fields as {field, value} pairs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "description": "Custom field name"
+                },
+                "value": {
+                  "type": "string",
+                  "description": "Custom field value"
+                }
+              }
+            }
+          },
+          "number": {
+            "type": "string",
+            "description": "Custom document number"
+          },
+          "warehouseId": {
+            "type": "string",
+            "description": "Warehouse ID for stock movements"
+          },
+          "discount": {
+            "type": "number",
+            "description": "Global discount percentage (0-100)"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-purchase",
+      "description": "Delete a purchase from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded purchase ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "attach-purchase-file",
+      "description": "Attach a file (e.g. the supplier invoice PDF) to a Holded purchase. Uploads real multipart/form-data with the file under the `file` field — max 10 MB. Provide either dataUrl (data:<mime>;base64,<payload>) or a raw base64 string, plus a filename. Returns the attachment info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "purchaseId": {
+            "type": "string",
+            "description": "The Holded purchase ID"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Filename including extension (e.g. 'factura-proveedor.pdf')"
+          },
+          "contentType": {
+            "type": "string",
+            "description": "MIME type (e.g. 'application/pdf'). Defaults from dataUrl or octet-stream."
+          },
+          "dataUrl": {
+            "type": "string",
+            "description": "Data URI scheme — exact format `data:<mime>;base64,<base64Payload>`. Either this or base64 is required."
+          },
+          "base64": {
+            "type": "string",
+            "description": "Raw base64-encoded file content. Either this or dataUrl is required."
+          }
+        },
+        "required": [
+          "purchaseId",
+          "filename"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-purchase-attachments",
+      "description": "List files attached to a Holded purchase by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded purchase ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-banking-accounts",
+      "description": "List banking accounts from Holded. Returns bank accounts with id, name, bank, IBAN, balance, and currency.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-banking-account",
+      "description": "Get a single banking account from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded banking account ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-banking-movements",
+      "description": "List banking movements for a specific Holded bank account. Returns transactions with date, amount, description, and reconciliation status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "description": "The Holded banking account ID"
+          },
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter movements from this date (ISO 8601)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter movements up to this date (ISO 8601)"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "income",
+              "expense"
+            ],
+            "description": "Filter movements by type: income or expense"
+          }
+        },
+        "required": [
+          "accountId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-payment-methods",
+      "description": "List payment methods from Holded. Payment methods define how invoices and payments are processed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-payment-method",
+      "description": "Get a single payment method from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded payment method ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-remittances",
+      "description": "List remittances from Holded. Remittances are batch payment collections (typically SEPA direct debits).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by remittance status (e.g. draft, sent, processed)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-remittance",
+      "description": "Get a single remittance from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded remittance ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-funnels",
+      "description": "List CRM funnels from Holded. Funnels represent sales pipelines with stages that leads move through.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-funnel",
+      "description": "Get a single CRM funnel from Holded by its ID, including its stages.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded funnel ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-leads",
+      "description": "List CRM leads from Holded. Returns leads with id, name, email, phone, stage, funnel, and value. Supports pagination and filtering by funnel and stage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "funnelId": {
+            "type": "string",
+            "description": "Filter leads by funnel ID"
+          },
+          "stageId": {
+            "type": "string",
+            "description": "Filter leads by stage ID"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-lead",
+      "description": "Get a single CRM lead from Holded by its ID, with full detail including description, tags, and custom fields.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded lead ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-lead",
+      "description": "Create a new CRM lead in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Lead name (required)"
+          },
+          "funnelId": {
+            "type": "string",
+            "description": "Funnel ID to place the lead in"
+          },
+          "stageId": {
+            "type": "string",
+            "description": "Stage ID within the funnel"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Associated contact ID"
+          },
+          "value": {
+            "type": "number",
+            "description": "Estimated deal value"
+          },
+          "expectedCloseDate": {
+            "type": "string",
+            "description": "Expected close date (ISO date string, e.g. 2026-12-31)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Lead description"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to assign to the lead"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-lead",
+      "description": "Update an existing CRM lead in Holded by its ID. All fields are optional — only provided fields are updated.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded lead ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "Lead name"
+          },
+          "funnelId": {
+            "type": "string",
+            "description": "Funnel ID"
+          },
+          "stageId": {
+            "type": "string",
+            "description": "Stage ID within the funnel"
+          },
+          "contactId": {
+            "type": "string",
+            "description": "Associated contact ID"
+          },
+          "value": {
+            "type": "number",
+            "description": "Estimated deal value"
+          },
+          "expectedCloseDate": {
+            "type": "string",
+            "description": "Expected close date (ISO date string)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Lead description"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags to assign to the lead"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-lead-stage",
+      "description": "Move a CRM lead to a different stage within its funnel. This is the primary action for advancing leads through the sales pipeline.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded lead ID"
+          },
+          "stageId": {
+            "type": "string",
+            "description": "The target stage ID to move the lead to"
+          }
+        },
+        "required": [
+          "id",
+          "stageId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-projects",
+      "description": "List projects from Holded. Returns a curated list of projects with id, name, description, status, budget, dates, and contact. Supports pagination via page and limit.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-project",
+      "description": "Get a single project from Holded by its ID. Returns full project details including name, description, status, budget, dates, and contact.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded project ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-project-summary",
+      "description": "Get a summary of a Holded project including financial and time metrics such as budget usage, total time, and task counts.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded project ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-tasks",
+      "description": "List tasks from Holded. Returns tasks with id, name, status, assignee, project, and dates. Supports filtering by project and status, plus pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Filter tasks by project ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by task status (e.g. todo, in_progress, done)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-task",
+      "description": "Get a single task from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded task ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-task",
+      "description": "Create a new task in Holded.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Task name"
+          },
+          "projectId": {
+            "type": "string",
+            "description": "ID of the project this task belongs to"
+          },
+          "description": {
+            "type": "string",
+            "description": "Task description"
+          },
+          "assigneeId": {
+            "type": "string",
+            "description": "ID of the assigned team member"
+          },
+          "dueDate": {
+            "type": "string",
+            "description": "Task due date (ISO 8601)"
+          },
+          "status": {
+            "type": "string",
+            "description": "Task status (e.g. todo, in_progress, done)"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-project-time-entries",
+      "description": "List time entries for a specific Holded project. Returns time entries with id, date, duration, user, and task info. Supports date range filtering and pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "The Holded project ID"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor returned by the previous response. Omit to start from the first page."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 200)",
+            "default": 25
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter entries on or after this date (ISO 8601, YYYY-MM-DD)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter entries on or before this date (ISO 8601, YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "projectId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-all-time-entries",
+      "description": "List all time entries across all Holded projects. Returns time entries with id, date, duration, user, task, and project info. Cursor-paginated: pass the cursor from the previous response to fetch the next page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor returned by the previous response. Omit to start from the first page."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 200)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-employees",
+      "description": "List employees from Holded. Returns a curated list with id, name, email, phone, department, position, status, startDate, and timestamps. Supports pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-employee",
+      "description": "Get a single employee from Holded by their ID. Returns full employee details including name, email, phone, department, position, status, and dates.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded employee ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-employee-time-entries",
+      "description": "List time tracking entries for a specific Holded employee. Returns clock-in/out records with dates and durations. Supports date range filtering and pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "description": "The Holded employee ID"
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor returned by the previous response. Omit to start from the first page."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 200)",
+            "default": 25
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter entries on or after this date (ISO 8601, YYYY-MM-DD)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter entries on or before this date (ISO 8601, YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "employeeId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-all-employee-time-entries",
+      "description": "List time tracking entries across all Holded employees. Returns clock-in/out records with dates and durations. Cursor-paginated: pass the cursor from the previous response to fetch the next page.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor returned by the previous response. Omit to start from the first page."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 200)",
+            "default": 25
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-payslips",
+      "description": "List payslips from Holded. Returns a curated list with id, employee, period, gross/net amounts, and status. Supports filtering by employee, status, and period, plus pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "employeeId": {
+            "type": "string",
+            "description": "Filter payslips by employee ID"
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by payslip status (e.g. draft, approved, paid)"
+          },
+          "period": {
+            "type": "string",
+            "description": "Filter by pay period (e.g. 2026-01 for January 2026)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-payslip",
+      "description": "Get a single payslip from Holded by its ID. Returns full payslip details including employee, period, gross/net amounts, deductions, taxes, and status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded payslip ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-time-off-requests",
+      "description": "List time-off requests from Holded. Returns a curated list with id, employee, type, dates, and approval status. Supports filtering by employee, status, and type, plus pagination.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 50)",
+            "default": 50
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor from a previous response. Pass the cursor value to get the next page."
+          },
+          "employeeId": {
+            "type": "string",
+            "description": "Filter by employee ID. When provided, queries the per-employee endpoint."
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by approval status (e.g. pending, accepted, rejected, cancelled)"
+          },
+          "timeOffTypeId": {
+            "type": "string",
+            "description": "Filter by time-off type ID (e.g. holiday, sick leave, vacation)"
+          },
+          "teamId": {
+            "type": "string",
+            "description": "Filter by team ID (account-wide endpoint only)"
+          },
+          "startDateFrom": {
+            "type": "string",
+            "description": "Start date lower bound (YYYY-MM-DD, e.g. 2026-01-01). Required by the API. Defaults to the start of the current year."
+          },
+          "startDateTo": {
+            "type": "string",
+            "description": "Start date upper bound (YYYY-MM-DD, e.g. 2026-12-31). Required by the API. Defaults to the end of the current year."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-time-off-request",
+      "description": "Get a single time-off request from Holded by its ID. Returns full details including employee, type, dates, days, approval status, and approver info.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "description": "The Holded employee ID (24-character hex ObjectId)"
+          },
+          "id": {
+            "type": "string",
+            "description": "The Holded time-off request ID (24-character hex ObjectId)"
+          }
+        },
+        "required": [
+          "employeeId",
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-events",
+      "description": "List calendar events from Holded. Returns events with id, title, start/end dates, all-day flag, location, and attendees. Supports pagination and date range filtering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Filter events starting from this date (ISO 8601, e.g. 2026-01-01)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "Filter events ending before this date (ISO 8601, e.g. 2026-12-31)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-event",
+      "description": "Get a single calendar event from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded event ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-event",
+      "description": "Create a new calendar event in Holded. Requires a title, start date, and end date.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Event title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Event description"
+          },
+          "start": {
+            "type": "string",
+            "description": "Event start date (ISO 8601, e.g. 2026-01-15T10:00:00)"
+          },
+          "end": {
+            "type": "string",
+            "description": "Event end date (ISO 8601, e.g. 2026-01-15T11:00:00)"
+          },
+          "allDay": {
+            "type": "boolean",
+            "description": "Whether this is an all-day event"
+          },
+          "location": {
+            "type": "string",
+            "description": "Event location"
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of attendee email addresses"
+          }
+        },
+        "required": [
+          "title",
+          "start",
+          "end"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-inbox-documents",
+      "description": "List inbox documents from Holded. The inbox contains documents received from external sources. Returns documents with id, name, status, type, and timestamps. Supports pagination and status filtering.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "number",
+            "description": "Page number for pagination (default: 1)",
+            "default": 1
+          },
+          "limit": {
+            "type": "number",
+            "description": "Number of results per page (default: 25, max: 100)",
+            "default": 25
+          },
+          "status": {
+            "type": "string",
+            "description": "Filter by document status (e.g. pending, processed, rejected)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-inbox-document",
+      "description": "Get a single inbox document from Holded by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded inbox document ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-api-usage",
+      "description": "Get API usage statistics for the current Holded account. Shows request counts, rate limit info, and overall usage.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "startDate": {
+            "type": "string",
+            "description": "Start date for usage period (ISO 8601, e.g. 2026-01-01)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for usage period (ISO 8601, e.g. 2026-12-31)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-api-usage-by-type",
+      "description": "Get API usage statistics broken down by a specific type (e.g. \"requests\", \"errors\"). Returns usage details for the given type.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "The usage type to filter by (e.g. \"requests\", \"errors\")"
+          },
+          "startDate": {
+            "type": "string",
+            "description": "Start date for usage period (ISO 8601, e.g. 2026-01-01)"
+          },
+          "endDate": {
+            "type": "string",
+            "description": "End date for usage period (ISO 8601, e.g. 2026-12-31)"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-webhooks",
+      "description": "List all webhooks configured in Holded. Webhooks are HTTP callbacks that notify your application when events occur.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-webhook",
+      "description": "Get a single webhook from Holded by its ID. Returns full webhook details including URL, subscribed events, and enabled status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded webhook ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "create-webhook",
+      "description": "Create a new webhook in Holded. The webhook will receive HTTP POST callbacks for the specified events at the given URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL where webhook events will be delivered (must be HTTPS)"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Array of event types to subscribe to (e.g. [\"contact.created\", \"invoice.paid\"]). Use list-webhook-events to see available events."
+          }
+        },
+        "required": [
+          "url",
+          "events"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "update-webhook",
+      "description": "Update an existing webhook in Holded. Can modify the URL, subscribed events, or enabled status.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded webhook ID"
+          },
+          "url": {
+            "type": "string",
+            "description": "The new URL where webhook events will be delivered (must be HTTPS)"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New array of event types to subscribe to"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable or disable the webhook"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "delete-webhook",
+      "description": "Delete a webhook from Holded by its ID. This permanently removes the webhook and stops all event deliveries to its URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The Holded webhook ID"
+          }
+        },
+        "required": [
+          "id"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "list-webhook-events",
+      "description": "List all supported webhook event types in Holded. Use this to discover which events you can subscribe to when creating or updating webhooks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
       },
       "annotations": {
         "readOnlyHint": true

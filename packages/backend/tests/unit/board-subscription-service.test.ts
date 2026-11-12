@@ -12,6 +12,7 @@
 
 import { describe, expect, it } from 'bun:test';
 import { BoardSubscriptionService } from '../../src/services/board-subscription-service';
+import type { BoardEventType } from '../../src/types/database';
 
 type Sub = { channelId: string; boardId: string; filter: any };
 
@@ -88,6 +89,54 @@ describe('BoardSubscriptionService._dispatch', () => {
     expect(injected).toEqual([]);
   });
 
+  // El actor viaja en el payload → llega al `metadata` del ScheduledEvent, que es
+  // lo que consume el self-wake guard de event-handler (actorAgentId === channel.agentId).
+  it('propaga actorAgentId / actorUserId del payload al metadata del ScheduledEvent', async () => {
+    const { svc, injected } = makeService([{ channelId: 'ch_1', boardId: 'board_1', filter: {} }]);
+
+    await (svc as any)._dispatch(
+      'board_1',
+      event({
+        eventType: 'board.task_moved',
+        payload: { taskId: 't1', assignedAgentId: 'agent_2', actorAgentId: 'agent_1' },
+      }),
+    );
+    expect(injected[0].metadata.actorAgentId).toBe('agent_1');
+
+    injected.length = 0;
+    await (svc as any)._dispatch(
+      'board_1',
+      event({
+        eventType: 'board.task_updated',
+        payload: { taskId: 't1', actorUserId: 'user_9' },
+      }),
+    );
+    expect(injected[0].metadata.actorUserId).toBe('user_9');
+    expect(injected[0].metadata.actorAgentId).toBeUndefined();
+  });
+
+  it('otros suscriptores del mismo board siguen despertando (wakeUpAgent=true) aunque el actor sea un agente', async () => {
+    const { svc, injected } = makeService([
+      { channelId: 'ch_runner', boardId: 'board_1', filter: {} },
+      { channelId: 'ch_manager', boardId: 'board_1', filter: {} },
+    ]);
+
+    await (svc as any)._dispatch(
+      'board_1',
+      event({
+        eventType: 'board.task_moved',
+        payload: { taskId: 't1', actorAgentId: 'agent_runner' },
+      }),
+    );
+
+    // La supresion del wake es una decision del guard (por canal), NO del servicio:
+    // aqui ambos reciben wakeUpAgent=true y es event-handler quien decide.
+    expect(injected.map((e) => [e.channelId, e.wakeUpAgent])).toEqual([
+      ['ch_runner', true],
+      ['ch_manager', true],
+    ]);
+  });
+
   it('entrega a TODOS los subscribers que pasan el filtro', async () => {
     const { svc, injected } = makeService([
       { channelId: 'ch_1', boardId: 'board_1', filter: {} },
@@ -161,6 +210,21 @@ describe('_passesFilter', () => {
     expect(passes({ tags: ['a'] }, event({ payload: {} }))).toBe(false);
   });
 
+  // Bug fix (feedback Pablo 2026-10-01): taskIds estaba documentado en ninguna parte y
+  // era ignorado silenciosamente por _passesFilter — una suscripcion con taskIds
+  // recibia TODOS los eventos del board. Ahora se evalua como el resto de dimensiones.
+  it('taskIds: matchea payload.taskId', () => {
+    expect(passes({ taskIds: ['task_1'] }, event({ payload: { taskId: 'task_1' } }))).toBe(true);
+    expect(passes({ taskIds: ['task_1', 'task_2'] }, event({ payload: { taskId: 'task_2' } }))).toBe(true);
+    expect(passes({ taskIds: ['task_1'] }, event({ payload: { taskId: 'task_9' } }))).toBe(false);
+    expect(passes({ taskIds: ['task_1'] }, event({ payload: {} }))).toBe(false);
+  });
+
+  it('taskIds: filtro vacio ([] o ausente) NO bloquea eventos', () => {
+    expect(passes({ taskIds: [] }, event({ payload: { taskId: 'task_1' } }))).toBe(true);
+    expect(passes({}, event({ payload: { taskId: 'task_1' } }))).toBe(true);
+  });
+
   it('combina filtros (AND entre dimensiones)', () => {
     const filter = { eventTypes: ['board.task_moved'], agentIds: ['agent_1'] };
     expect(passes(filter, event({ eventType: 'board.task_moved', payload: { assignedAgentId: 'agent_1' } }))).toBe(true);
@@ -181,10 +245,29 @@ describe('_shouldWake', () => {
     expect(wake({ wakeUpOn: ['board.task_created'] }, 'board.task_moved')).toBe(false);
   });
 
-  it('sin wakeUpOn: usa DEFAULT_WAKE_UP (solo progress_note despierta)', () => {
-    expect(wake({}, 'board.task_progress_note')).toBe(true);
-    expect(wake({}, 'board.task_moved')).toBe(false);
-    expect(wake({}, 'board.task_created')).toBe(false);
+  // Decision Pablo 2026-09-24: TODOS los event types despiertan por defecto.
+  // El silencio por defecto ocultaba actividad del board; el exceso de wakes se
+  // monitoriza (guard 🔕 en event-handler) y se ajusta despues, nunca al reves.
+  it('sin wakeUpOn: usa DEFAULT_WAKE_UP y TODOS los event types despiertan', () => {
+    const ALL: BoardEventType[] = [
+      'board.task_moved',
+      'board.task_archived',
+      'board.task_assigned',
+      'board.task_created',
+      'board.task_updated',
+      'board.task_progress_note',
+      'board.agent_play_changed',
+      'board.agent_slots_changed',
+      'board.dependency_added',
+      'board.dependency_removed',
+    ];
+    for (const t of ALL) expect(wake({}, t)).toBe(true);
+  });
+
+  it('una suscripcion legacy sin wakeUpOn despierta por CUALQUIER evento (sin migracion)', async () => {
+    const { svc, injected } = makeService([{ channelId: 'ch_1', boardId: 'board_1', filter: {} }]);
+    await (svc as any)._dispatch('board_1', event({ eventType: 'board.task_moved' }));
+    expect(injected[0].wakeUpAgent).toBe(true);
   });
 });
 

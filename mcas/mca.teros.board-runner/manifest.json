@@ -3,7 +3,7 @@
   "id": "mca.teros.board-runner",
   "name": "Board Runner",
   "version": "2.0.0",
-  "description": "Task execution capabilities for worker agents. Provides access to assigned tasks only \u2014 view task details, update progress, move tasks through workflow stages, and add progress notes. To propose new tasks or escalate blockers, use the notes field with the 'PROPUESTA:' prefix so the supervisor can act on it.",
+  "description": "Task execution capabilities for worker agents. Provides access to assigned tasks only — view task details, update progress, move tasks through workflow stages, and add progress notes. To propose new tasks or escalate blockers, use the notes field with the 'PROPUESTA:' prefix so the supervisor can act on it.",
   "type": "system",
   "icon": "icon.svg",
   "category": "productivity",
@@ -16,7 +16,7 @@
     "enabled": true,
     "multi": false,
     "system": true,
-    "hidden": false,
+    "hidden": true,
     "role": "user"
   },
   "systemSecrets": [],

@@ -47,13 +47,6 @@ await secretsManager.reload();
 
 ### Formato de Archivos
 
-#### `.secrets/system/anthropic.json`
-```json
-{
-  "apiKey": "sk-ant-api03-..."
-}
-```
-
 #### `.secrets/system/database.json`
 ```json
 {
@@ -88,12 +81,12 @@ El SecretsManager valida:
 
 Si falta un secreto requerido:
 ```
-Error: Missing required secret file: .secrets/system/anthropic.json
+Error: Missing required secret file: .secrets/system/database.json
 ```
 
 Si falta una clave en el archivo:
 ```
-Error: Missing required key 'apiKey' in .secrets/system/anthropic.json
+Error: Missing required key 'apiKey' in .secrets/system/openai.json
 ```
 
 ## Seguridad

@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const createPull: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -21,6 +21,7 @@ export const createPull: ToolConfig = {
     const { owner, repo, title, body, head, base, draft } = args as {
       owner: string; repo: string; title: string; body?: string; head: string; base: string; draft?: boolean;
     };
+    assertOwnerRepo(owner, repo);
     return await githubRequest(context, `/repos/${owner}/${repo}/pulls`, {
       method: 'POST',
       body: { title, body, head, base, draft: draft ?? false },

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  blobToBase64,
   assembleBlob,
+  shouldBlockUnload,
   calculateMetering,
   expandSamples,
   formatDuration,
@@ -81,5 +83,37 @@ describe('calculateMetering — RMS → dB con clamp [-60, 0]', () => {
     const db = calculateMetering(fakeAnalyser(255))
     expect(db).toBeGreaterThan(-60)
     expect(db).toBeLessThanOrEqual(0)
+  })
+})
+
+describe('blobToBase64 — Blob → base64 para persistencia', () => {
+  it('convierte bytes a base64 (round-trip con atob)', async () => {
+    const bytes = new Uint8Array([1, 2, 3, 250, 255])
+    const blob = new Blob([bytes], { type: 'audio/webm' })
+    const b64 = await blobToBase64(blob)
+    // round-trip: atob devuelve los mismos bytes
+    const back = atob(b64)
+    expect(back.length).toBe(5)
+    expect(back.charCodeAt(0)).toBe(1)
+    expect(back.charCodeAt(3)).toBe(250)
+    expect(back.charCodeAt(4)).toBe(255)
+  })
+  it('blob vacío → string vacío', async () => {
+    expect(await blobToBase64(new Blob([]))).toBe('')
+  })
+})
+
+describe('shouldBlockUnload — guard beforeunload', () => {
+  it('idle sin envío → no bloquea', () => {
+    expect(shouldBlockUnload('idle', false)).toBe(false)
+  })
+  it('grabando bloquea aunque no se esté enviando', () => {
+    expect(shouldBlockUnload('recording', false)).toBe(true)
+  })
+  it('pausado (blob en mano) bloquea', () => {
+    expect(shouldBlockUnload('paused', false)).toBe(true)
+  })
+  it('idle pero envío en vuelo → bloquea (el caso del bug)', () => {
+    expect(shouldBlockUnload('idle', true)).toBe(true)
   })
 })

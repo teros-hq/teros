@@ -10,6 +10,7 @@
  */
 
 import { normalizeError, type TokenBudget } from "@teros/shared"
+import { obfuscateText } from "@teros/shared"
 import { useCallback, useEffect, useRef, useState } from "react"
 import i18n from "../../i18n"
 import { getTerosClient } from "../../services/terosClientSingleton"
@@ -32,6 +33,10 @@ export interface Conversation {
   createdAt: string
   updatedAt: string
   lastMessageAt?: string | null
+  /** Channel scope — 'personal' or 'shared'. Missing = 'personal'. */
+  scope?: 'personal' | 'shared'
+  /** The userId of the channel creator — used for owner-only actions like redaction (REQ-4). */
+  userId?: string
 }
 
 export interface ChatChannelState {
@@ -216,6 +221,8 @@ export function useChatChannel(
           updatedAt: cachedChannel.updatedAt || new Date().toISOString(),
           lastMessageAt:
             cachedChannel.lastMessageAt || cachedChannel.updatedAt || new Date().toISOString(),
+          scope: (cachedChannel as any).scope ?? 'personal',
+          userId: (cachedChannel as any).userId,
         }
         setConversation(conv)
         if (cachedChannel.agentName) setAgentName(cachedChannel.agentName)
@@ -282,7 +289,9 @@ export function useChatChannel(
           participants: ch.agentId ? [{ agentId: ch.agentId, role: "agent" }] : [],
           createdAt: ch.createdAt || new Date().toISOString(),
           updatedAt: ch.updatedAt || new Date().toISOString(),
-          lastMessageAt: ch.updatedAt || new Date().toISOString(),
+          lastMessageAt: ch.lastMessageAt || ch.updatedAt || new Date().toISOString(),
+          scope: chAny.scope ?? 'personal',
+          userId: chAny.userId,
         }
         setConversation(conv)
 
@@ -292,12 +301,15 @@ export function useChatChannel(
 
         useChatStore.getState().updateChannel(ch.channelId, {
           title: conv.title,
-          isPrivate: ch.isPrivate ?? false,
+          scope: ch.scope ?? 'personal',
           agentName: chAny.agentName,
           agentAvatarUrl: chAny.agentAvatarUrl,
           modelString: chAny.modelString,
           modelName: chAny.modelName,
           providerName: chAny.providerName,
+          // Hydrate cached composer suggestions (regenerated server-side after
+          // each agent response; empty/absent = nothing to show).
+          suggestedPrompts: chAny.metadata?.suggestedPrompts ?? null,
         })
       } catch (error) {
         console.error("[useChatChannel] Error loading conversation:", error)
@@ -339,6 +351,19 @@ export function useChatChannel(
           if (phase) {
             useChatStore.getState().setAgentPhase(channelId as string, phase)
           }
+          // v1.4.4: hydration of the chips' visibility gate. A fresh tab /
+          // post-reconnect reload mid-turn must NOT resurrect the old chips —
+          // the persisted set is still the pre-turn one. Turn in course
+          // (thinking/streaming/executing, or a queued/running user message)
+          // → suppressed; idle/absent → visible.
+          const turnInCourse =
+            (phase && phase !== "idle") ||
+            (Array.isArray(subscribeResp.pendingUserMessageIds) &&
+              (subscribeResp.pendingUserMessageIds as unknown[]).length > 0) ||
+            typeof subscribeResp.runningUserMessageId === "string"
+          useChatStore
+            .getState()
+            .setSuggestedPromptsSuppressed(channelId as string, Boolean(turnInCourse))
           // Applied AFTER history load below so the statuses survive the upsert.
           const pendingIds = Array.isArray(subscribeResp.pendingUserMessageIds)
             ? (subscribeResp.pendingUserMessageIds as string[])
@@ -355,35 +380,46 @@ export function useChatChannel(
         const {
           messages: history,
           hasMore,
-          tokenBudget: initialBudget,
         } = await client.channel.getMessages(channelId as string, 20)
         setHasMoreMessages(hasMore)
 
-        if (initialBudget) {
-          setTokenBudget(initialBudget)
+        // Token usage is admin-only now (Pablo, 2026-10-30): channel.get-messages
+        // no longer carries tokenBudget. Admins read it from the admin-api domain
+        // (requireAdmin-guarded server-side); non-admins never see the data.
+        // Role is read imperatively (store snapshot) so this closure never goes
+        // stale and the effect's dep array stays untouched.
+        const role = useAuthStore.getState().user?.role
+        if (role === "admin" || role === "super") {
+          try {
+            const { budget } = await client.admin.channelTokenBudget(channelId as string)
+            if (budget) {
+              setTokenBudget(budget)
+            }
+          } catch (err) {
+            console.warn("[useChatChannel] Failed to load admin token budget:", err)
+          }
         }
 
         const historicalMessages: Message[] = history
           .map((msg: any) => {
-            const role: "user" | "agent" | "system" =
-              msg.sender === "system" || msg.content?.type === "event"
-                ? "system"
-                : msg.role === "user"
-                  ? "user"
-                  : "agent"
+            const isUserMsg = msg.role === "user"
             const persistedQueueState: 'pending' | 'running' | 'done' | undefined =
               msg.meta?.queueState
             const status: Message['status'] =
-              role === 'user' && persistedQueueState === 'pending'
+              isUserMsg && persistedQueueState === 'pending'
                 ? 'queued'
-                : role === 'user'
+                : isUserMsg
                   ? 'sent'
                   : undefined
             return {
               id: msg.messageId || msg.id,
               channelId: channelId as string,
               content: msg.content,
-              sender: role,
+              sender: (msg.sender?.type ??
+                (msg.source === "voice" ? (msg.role === "user" ? "user" : "agent") : "agent")) as
+                | "user"
+                | "agent"
+                | "system",
               senderInfo: msg.sender
                 ? {
                     type: msg.sender.type,
@@ -393,8 +429,19 @@ export function useChatChannel(
                   }
                 : undefined,
               source: msg.source,
+              // REQ-9 (F3b): overheard flag rides with source:'voice' — the
+              // tenue row routing depends on it.
+              ...(msg.overheard !== undefined ? { overheard: msg.overheard } : {}),
               timestamp: new Date(msg.timestamp),
               isStreaming: false,
+              ...(msg.redacted !== undefined ? { redacted: msg.redacted } : {}),
+              ...(msg.redactedBy ? { redactedBy: msg.redactedBy } : {}),
+              ...(msg.redactedAt ? { redactedAt: msg.redactedAt } : {}),
+              ...(msg.redactedPlaceholder ? { redactedPlaceholder: msg.redactedPlaceholder } : {}),
+              // v2 non-blocking: pointer to the pending form this message
+              // answered in chat (spec §Implementation design 2) — renders
+              // the "answered the form" pill.
+              ...(msg.respondsTo ? { respondsTo: msg.respondsTo } : {}),
               ...(status ? { status } : {}),
             } as Message
           })
@@ -444,7 +491,6 @@ export function useChatChannel(
       const store = useChatStore.getState()
       const messageId = data.message.messageId
       const isUserMessage = data.message.role === "user"
-      const isSystemMessage = data.message.role === "system"
 
       const existingMessage = store.messages[messageId]
 
@@ -476,7 +522,15 @@ export function useChatChannel(
         id: messageId,
         channelId: data.channelId,
         content: data.message.content,
-        sender: isUserMessage ? "user" : isSystemMessage ? "system" : "agent",
+        // Voice transcripts (F0 single channel) persist with `role` but no
+        // `sender` — derive it so the user's spoken words render on their
+        // side of the thread (F3b, ui-evolution §2.4.4).
+        sender: (data.message.sender?.type ??
+          (data.message.source === "voice"
+            ? data.message.role === "user"
+              ? "user"
+              : "agent"
+            : "agent")) as "user" | "agent" | "system",
         senderInfo: data.message.sender
           ? {
               type: data.message.sender.type,
@@ -486,8 +540,15 @@ export function useChatChannel(
             }
           : undefined,
         source: data.message.source,
+        // REQ-9 (F3b): overheard flag rides with source:'voice'.
+        ...(data.message.overheard !== undefined
+          ? { overheard: data.message.overheard }
+          : {}),
         timestamp: new Date(data.message.timestamp),
         isStreaming: false,
+        // v2 non-blocking: pointer to the pending form this message answered
+        // in chat — same passthrough as the history-load path.
+        ...(data.message.respondsTo ? { respondsTo: data.message.respondsTo } : {}),
       }
 
       store.upsertMessage(message)
@@ -544,6 +605,22 @@ export function useChatChannel(
       const phase: 'idle' | 'thinking' | 'streaming_text' | 'executing_tool' | undefined = data.phase
       if (!phase) return
       useChatStore.getState().setAgentPhase(channelId, phase)
+      // v1.4.4: chips visibility follows the turn. Any ACTIVE phase → hidden
+      // (covers a queued turn starting right after the previous one ended —
+      // the FIFO drain is immediate, the flag must not lag behind it).
+      // idle → show again, UNLESS user messages still sit in the FIFO/flight:
+      // another turn is about to run and would re-stale whatever set shows.
+      if (phase === 'idle') {
+        const s = useChatStore.getState()
+        const ids = s.channelMessages[channelId] || []
+        const hasPendingUser = ids.some((id) => {
+          const m = s.messages[id]
+          return m?.sender === 'user' && (m.status === 'queued' || m.status === 'sending')
+        })
+        if (!hasPendingUser) s.setSuggestedPromptsSuppressed(channelId, false)
+      } else {
+        useChatStore.getState().setSuggestedPromptsSuppressed(channelId, true)
+      }
     }
 
     const handleMessageChunk = (data: any) => {
@@ -648,12 +725,6 @@ export function useChatChannel(
       }
     }
 
-    const handleTokenBudget = (data: any) => {
-      if (data.channelId === channelId && data.budget) {
-        setTokenBudget(data.budget)
-      }
-    }
-
     const handleSystemEvent = (data: any) => {
       if (data.channelId === channelId && data.event) {
         const eventMessage: Message = {
@@ -732,7 +803,20 @@ export function useChatChannel(
         }
         if (data.externalActionRequested !== undefined)
           updates.externalActionRequested = data.externalActionRequested
-        if (data.isPrivate !== undefined) updates.isPrivate = data.isPrivate
+        if (data.scope !== undefined) updates.scope = data.scope
+        // v2 non-blocking interactions: unified awaiting-user channel state
+        // (form | permission | auth). null = nothing waiting — the chip hides.
+        if (data.awaitingUser !== undefined) updates.awaitingUser = data.awaitingUser
+        // Contextual composer suggestions — fresh set after each agent response.
+        if (data.suggestedPrompts !== undefined) {
+          updates.suggestedPrompts = data.suggestedPrompts
+          // v1.4.4: a fresh set may show again — but NOT while another turn is
+          // already in course (the broadcast is async and can land after the
+          // FIFO drained the next queued message: its set would be stale for
+          // the turn now running). Persist the set; gate on the live phase.
+          const livePhase = useChatStore.getState().channels[channelId]?.agentPhase
+          updates.suggestedPromptsSuppressed = livePhase !== undefined && livePhase !== 'idle'
+        }
 
         if (Object.keys(updates).length > 0) {
           useChatStore.getState().updateChannel(channelId, updates)
@@ -740,9 +824,9 @@ export function useChatChannel(
       }
     }
 
-    const handleChannelPrivateUpdated = (data: any) => {
+    const handleChannelScopeUpdated = (data: any) => {
       if (data.channelId === channelId) {
-        useChatStore.getState().updateChannel(channelId, { isPrivate: data.isPrivate })
+        useChatStore.getState().updateChannel(channelId, { scope: data.scope })
       }
     }
 
@@ -767,18 +851,78 @@ export function useChatChannel(
       }
     }
 
+    // Handle message redaction state change (REQ-4, AC-5, AC-6, AC-7).
+    // The broadcast contains NO message content — only the redaction state.
+    // For owners: update the redacted flag on the existing message (content is already in store).
+    // For non-owners: the message content was never received, so we just update the flag.
+    // If the message is being un-redacted (redacted=false), non-owners would need a page reload
+    // to fetch the now-visible content — the broadcast intentionally doesn't include it.
+    // MUW-REQ-9: the creator keeps the content (click-to-reveal); every other
+    // viewer must end up with exactly what the backend would serve them — the
+    // obfuscated text + placeholder on redact, and the real content again on
+    // un-redact (which the client no longer has, so it is refetched).
+    const handleMessageRedacted = (data: any) => {
+      if (data.channelId !== channelId) return
+      const store = useChatStore.getState()
+      const existing = store.messages[data.messageId]
+      if (!existing) return
+      const channel = store.channels[channelId as string] as any
+      const creatorId = channel?.creatorId ?? channel?.userId
+      const viewerId = useAuthStore.getState().user?.userId
+      const isCreator = !!creatorId && creatorId === viewerId
+      const stateUpdate = {
+        redacted: data.redacted,
+        ...(data.redactedBy ? { redactedBy: data.redactedBy } : {}),
+        ...(data.redactedAt ? { redactedAt: data.redactedAt } : {}),
+      }
+      if (isCreator) {
+        store.updateMessage(data.messageId, stateUpdate)
+        return
+      }
+      if (data.redacted) {
+        const text = existing.content?.type === "text" ? existing.content.text : ""
+        store.updateMessage(data.messageId, {
+          ...stateUpdate,
+          content: { type: "text", text: obfuscateText(text) } as any,
+          redactedPlaceholder: {
+            type: "redacted",
+            reason: "protected_by_owner",
+            originalAuthor: (existing as any).sender?.type ?? (existing as any).role ?? "user",
+            originalTimestamp:
+              existing.timestamp instanceof Date ? existing.timestamp.toISOString() : String(existing.timestamp),
+          },
+        } as any)
+        return
+      }
+      // Un-redacted for a non-creator: the real content lives only on the
+      // backend — refetch the recent page and restore this message's content
+      // in place (updateMessage keeps the store's own id/timestamp shape; a raw
+      // upsert of the wire message would duplicate the row with a string
+      // timestamp).
+      store.updateMessage(data.messageId, { ...stateUpdate, redactedPlaceholder: undefined } as any)
+      client.channel
+        .getMessages(channelId as string, 50)
+        .then(({ messages: page }) => {
+          const fresh = page.find((m: any) => (m.messageId ?? m.id) === data.messageId)
+          if (fresh?.content) {
+            useChatStore.getState().updateMessage(data.messageId, { content: fresh.content, redacted: false, redactedPlaceholder: undefined } as any)
+          }
+        })
+        .catch((err) => console.warn("[useChatChannel] refetch after un-redact failed:", err))
+    }
+
     client.on("message", handleMessage)
     client.on("message_chunk", handleMessageChunk)
     client.on("message_sent", handleMessageSent)
     client.on("queue_state", handleQueueState)
     client.on("agent_phase", handleAgentPhase)
     client.on("typing", handleTyping)
-    client.on("token_budget", handleTokenBudget)
     client.on("system_event", handleSystemEvent)
     client.on("channel_status", handleChannelStatus)
-    client.on("channel_private_updated", handleChannelPrivateUpdated)
+    client.on("channel_scope_updated", handleChannelScopeUpdated)
     client.on("conversation.message.feedback.created", handleMessageFeedbackCreated)
     client.on("conversation.message.action.executed", handleMessageActionExecuted)
+    client.on("message_redacted", handleMessageRedacted)
     client.on("error", handleError)
 
     return () => {
@@ -788,12 +932,12 @@ export function useChatChannel(
       client.off("queue_state", handleQueueState)
       client.off("agent_phase", handleAgentPhase)
       client.off("typing", handleTyping)
-      client.off("token_budget", handleTokenBudget)
       client.off("system_event", handleSystemEvent)
       client.off("channel_status", handleChannelStatus)
-      client.off("channel_private_updated", handleChannelPrivateUpdated)
+      client.off("channel_scope_updated", handleChannelScopeUpdated)
       client.off("conversation.message.feedback.created", handleMessageFeedbackCreated)
       client.off("conversation.message.action.executed", handleMessageActionExecuted)
+      client.off("message_redacted", handleMessageRedacted)
       client.off("error", handleError)
 
       // Reset before unmount so re-entry doesn't flash a stale phase from the previous session.
@@ -822,6 +966,9 @@ export function useChatChannel(
 
     if (channelId) {
       useChatStore.getState().setTyping(channelId, false)
+      // v1.4.4: leaving the channel — reset the chips' visibility gate so the
+      // next mount hydrates it fresh from the subscribe snapshot.
+      useChatStore.getState().setSuggestedPromptsSuppressed(channelId, false)
     }
 
     const safetyTimeout = setTimeout(() => {
@@ -866,9 +1013,14 @@ export function useChatChannel(
         id: msg.messageId || msg.id,
         channelId: channelId,
         content: msg.content,
-        sender: (
-          msg.role === "user" ? "user" : msg.sender === "system" ? "system" : "agent"
-        ) as "user" | "agent" | "system",
+        // Voice transcripts (F0) persist with `role` but no `sender` — derive
+        // it (F3b, ui-evolution §2.4.4). Same rule as the history/broadcast
+        // ingestion paths.
+        sender: (msg.sender?.type ??
+          (msg.source === "voice" ? (msg.role === "user" ? "user" : "agent") : "agent")) as
+          | "user"
+          | "agent"
+          | "system",
         senderInfo: msg.sender
           ? {
               type: msg.sender.type,
@@ -880,6 +1032,18 @@ export function useChatChannel(
         source: msg.source,
         timestamp: new Date(msg.timestamp),
         isStreaming: false as const,
+        // Redaction fields — must be preserved so MessageBubble routes to
+        // RedactedMessageBubble instead of crashing on null content.
+        // @fixme nira - 2026.09.15 : this duplicates the field-spreading in the
+        // initial-load map above (lines 401-404); extract into a shared
+        // normalizeMessage helper to prevent future drift.
+        ...(msg.redacted !== undefined ? { redacted: msg.redacted } : {}),
+        ...(msg.redactedBy ? { redactedBy: msg.redactedBy } : {}),
+        ...(msg.redactedAt ? { redactedAt: msg.redactedAt } : {}),
+        ...(msg.redactedPlaceholder ? { redactedPlaceholder: msg.redactedPlaceholder } : {}),
+        // v2 non-blocking: pointer to the pending form this message answered
+        // in chat — same passthrough as the other ingestion paths.
+        ...(msg.respondsTo ? { respondsTo: msg.respondsTo } : {}),
       }))
       useChatStore.getState().prependMessages(channelId, formatted)
     } catch (error) {

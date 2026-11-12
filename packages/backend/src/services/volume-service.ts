@@ -282,16 +282,37 @@ export class VolumeService {
    * List all volumes accessible to a user
    */
   async listVolumes(userId: string): Promise<Volume[]> {
-    return this.collection
-      .find({
-        $or: [
-          // Workspaces where user is owner
-          { ownerId: userId },
-          // Workspaces where user is member
-          { 'members.userId': userId },
-        ],
-      })
+    // Volumes where user is owner
+    const ownedVolumes = await this.collection
+      .find({ ownerId: userId })
       .toArray();
+
+    // Get workspace IDs where user is a member (workspace_members — single source of truth)
+    const memberships = await this.db
+      .collection('workspace_members')
+      .find({ userId })
+      .toArray();
+    const memberWorkspaceIds = memberships.map((m) => m.workspaceId);
+
+    // Volumes for member workspaces
+    const memberVolumes =
+      memberWorkspaceIds.length > 0
+        ? await this.collection
+            .find({ workspaceId: { $in: memberWorkspaceIds } })
+            .toArray()
+        : [];
+
+    // Combine and dedupe
+    const seen = new Set(ownedVolumes.map((v) => v.volumeId));
+    const result = [...ownedVolumes];
+    for (const vol of memberVolumes) {
+      if (!seen.has(vol.volumeId)) {
+        seen.add(vol.volumeId);
+        result.push(vol);
+      }
+    }
+
+    return result;
   }
 
   /**

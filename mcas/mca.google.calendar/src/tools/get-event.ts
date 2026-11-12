@@ -37,7 +37,7 @@ export const getEvent: ToolConfig = {
       includeRaw?: boolean
     }
 
-    const response = await wrapCalendarCall(() =>
+    const response = await wrapCalendarCall(context, () =>
       calendar.events.get({
         calendarId: calendarId ?? "primary",
         eventId,

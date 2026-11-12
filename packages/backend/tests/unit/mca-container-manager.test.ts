@@ -316,6 +316,104 @@ describe('callback tokens', () => {
 })
 
 // ===========================================================================
+// Tokens de MCAs stdio (fix tormenta 401, 2026-09-20..24)
+//
+// Los MCAs stdio corren como procesos hijos del backend (no
+// contenedor). buildExecutionConfig registra su callback token aquí porque
+// authenticateCallback (SEC-5) exige token válido en TODAS las rutas
+// callback. Antes del fix, el MCA stdio no tenía token → 401 en cada
+// ctx.volume call durante 4 días.
+// ===========================================================================
+
+describe('stdio callback tokens (registerCallbackToken)', () => {
+  const STIO_KEY = 'app_stdio0123456789' // appId — clave que authenticateCallback prueba primero
+
+  it('registerCallbackToken valida el token sin contenedor y expone el mcaId', async () => {
+    const manager = makeManager(makeBackend())
+    manager.registerCallbackToken(STIO_KEY, 'a'.repeat(64), MCA_ID)
+
+    expect(manager.verifyCallbackToken(STIO_KEY, 'a'.repeat(64))).toBe(true)
+    expect(manager.verifyCallbackToken(STIO_KEY, 'b'.repeat(64))).toBe(false)
+    // Identidad resuelta desde el registro (no hay ContainerInfo para stdio)
+    expect(manager.getCallbackTokenMcaId(STIO_KEY)).toBe(MCA_ID)
+    // ...y sigue resolviendo para contenedores vía getInfo
+    const backend = makeBackend()
+    const m2 = makeManager(backend)
+    await m2.getOrStart(MCA_ID)
+    expect(m2.getCallbackTokenMcaId(MCA_ID)).toBe(MCA_ID)
+    expect(m2.getCallbackTokenMcaId(STIO_KEY)).toBeUndefined()
+  })
+
+  it('unregisterCallbackToken revoca el token (kill de MCA stdio)', async () => {
+    const manager = makeManager(makeBackend())
+    manager.registerCallbackToken(STIO_KEY, 'c'.repeat(64), MCA_ID)
+    manager.unregisterCallbackToken(STIO_KEY)
+
+    expect(manager.verifyCallbackToken(STIO_KEY, 'c'.repeat(64))).toBe(false)
+    expect(manager.getCallbackTokenMcaId(STIO_KEY)).toBeUndefined()
+    // Idempotente: unregister de clave desconocida no lanza
+    expect(() => manager.unregisterCallbackToken(STIO_KEY)).not.toThrow()
+  })
+
+  it('re-registro con token fresco tras kill+respawn: el token viejo deja de valer', async () => {
+    const manager = makeManager(makeBackend())
+    const oldToken = 'd'.repeat(64)
+    manager.registerCallbackToken(STIO_KEY, oldToken, MCA_ID)
+
+    // kill → respawn (buildExecutionConfig re-registra)
+    manager.unregisterCallbackToken(STIO_KEY)
+    const freshToken = 'e'.repeat(64)
+    manager.registerCallbackToken(STIO_KEY, freshToken, MCA_ID)
+
+    expect(manager.verifyCallbackToken(STIO_KEY, oldToken)).toBe(false)
+    expect(manager.verifyCallbackToken(STIO_KEY, freshToken)).toBe(true)
+  })
+
+  it('CICLO DE VIDA TRAS RESTART DEL BACKEND: token stdio nunca queda stale', async () => {
+    // Simula el escenario del incidente: backend session 1 registra el token
+    // del MCA stdio; el backend muere (PM2 restart) y arranca session 2 con
+    // los Maps vacíos. El proceso hijo stdio también muere con el backend
+    // (PM2 fork) — así que el token viejo NO debe validar en la session 2,
+    // y el nuevo spawn registra uno nuevo que SÍ valida.
+    const backend1 = makeBackend()
+    const manager1 = makeManager(backend1)
+    const tokenSession1 = 'f'.repeat(64)
+    manager1.registerCallbackToken(STIO_KEY, tokenSession1, MCA_ID)
+    expect(manager1.verifyCallbackToken(STIO_KEY, tokenSession1)).toBe(true)
+
+    // ── "Restart" del backend: NUEVO manager (Maps en memoria vacíos) ──
+    const manager2 = makeManager(makeBackend())
+    // El token de la sesión anterior ya no vale (fail-closed, como en el
+    // incidente real — pero aquí el proceso hijo también murió, así que
+    // NADIE puede presentarlo de forma legítima).
+    expect(manager2.verifyCallbackToken(STIO_KEY, tokenSession1)).toBe(false)
+
+    // El siguiente spawn del MCA stdio registra token fresco → autentica.
+    const tokenSession2 = '0'.repeat(64)
+    manager2.registerCallbackToken(STIO_KEY, tokenSession2, MCA_ID)
+    expect(manager2.verifyCallbackToken(STIO_KEY, tokenSession2)).toBe(true)
+    expect(manager2.getCallbackTokenMcaId(STIO_KEY)).toBe(MCA_ID)
+  })
+
+  it('registro stdio NO interfiere con claves de contenedor (namespaces disjuntos en la práctica)', async () => {
+    const backend = makeBackend()
+    const manager = makeManager(backend)
+    await manager.getOrStart(MCA_ID) // contenedor: clave = mcaId
+    const containerToken = backend.start.mock.calls[0][2] as string
+    manager.registerCallbackToken(STIO_KEY, '9'.repeat(64), MCA_ID) // stdio: clave = appId
+
+    // Cada token valida SOLO para su clave
+    expect(manager.verifyCallbackToken(MCA_ID, containerToken)).toBe(true)
+    expect(manager.verifyCallbackToken(STIO_KEY, containerToken)).toBe(false)
+    expect(manager.verifyCallbackToken(STIO_KEY, '9'.repeat(64))).toBe(true)
+    expect(manager.verifyCallbackToken(MCA_ID, '9'.repeat(64))).toBe(false)
+    // isValidCallbackToken (media upload) acepta cualquiera de los dos
+    expect(manager.isValidCallbackToken(containerToken)).toBe(true)
+    expect(manager.isValidCallbackToken('9'.repeat(64))).toBe(true)
+  })
+})
+
+// ===========================================================================
 // Inactividad y consultas
 // ===========================================================================
 

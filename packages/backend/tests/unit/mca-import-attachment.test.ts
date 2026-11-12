@@ -3,7 +3,7 @@
  *
  * Covers the WS action that copies a chat-uploaded file from static/uploads
  * into a workspace volume (server-side, no URL fetch). Functional + security:
- * access control, private channels, workspace-sovereign destination, path
+ * access control, caller-scope gating, workspace-sovereign destination, path
  * traversal on destPath, symlink-escape defense, collision policy, and the
  * source-from-DB-URL guarantee (agent filename is match-only, never a path).
  *
@@ -22,6 +22,7 @@ import { handleConversationAction } from '../../src/services/mca-connection-mana
 
 const USER_ID = 'user_test'
 const CHANNEL_ID = 'ch_test'
+const CALLER_CHANNEL_ID = 'ch_caller'
 const WORKSPACE_ID = 'work_test'
 const VOLUME_ID = 'vol_test'
 const AGENT_ID = 'agent_test'
@@ -49,7 +50,10 @@ interface CtxOpts {
   hostPath: string
   messages: Array<{ messageId: string; content: unknown }>
   canAccess?: boolean
-  isPrivate?: boolean
+  /** Scope of the target channel. Default: 'personal'. */
+  scope?: 'personal' | 'shared'
+  /** Scope of the caller channel (the conversation the MCA runs in). Default: 'personal'. */
+  callerScope?: 'personal' | 'shared'
   workspaceId?: string | undefined
   volumeId?: string | undefined
   hasServices?: boolean
@@ -58,11 +62,13 @@ interface CtxOpts {
 function makeCtx(opts: CtxOpts): any {
   return {
     channelManager: {
-      getChannel: async (_id: string) => ({
-        channelId: CHANNEL_ID,
+      getChannel: async (id: string) => ({
+        channelId: id,
         agentId: AGENT_ID,
         status: 'active',
-        isPrivate: opts.isPrivate ?? false,
+        // The caller channel carries callerScope; any other id is the target
+        // channel and carries the configured target scope.
+        scope: id === CALLER_CHANNEL_ID ? opts.callerScope ?? 'personal' : opts.scope ?? 'personal',
         workspaceId: 'workspaceId' in opts ? opts.workspaceId : WORKSPACE_ID,
       }),
       canAccessChannel: async () => opts.canAccess ?? true,
@@ -87,10 +93,15 @@ function fileMsg(messageId: string, url: string, filename: string, size: number)
 }
 
 async function run(ctx: any, params: Record<string, unknown>) {
-  return handleConversationAction(ctx, 'import_channel_attachment', params, USER_ID, AGENT_ID, {
-    ownerId: USER_ID,
-    currentChannelId: CHANNEL_ID,
-  } as any)
+  // The MCA runs in CALLER_CHANNEL_ID and imports from CHANNEL_ID (the target).
+  return handleConversationAction(
+    ctx,
+    'import_channel_attachment',
+    { channelId: CHANNEL_ID, ...params },
+    USER_ID,
+    AGENT_ID,
+    { ownerId: USER_ID, currentChannelId: CALLER_CHANNEL_ID } as any,
+  )
 }
 
 afterEach(() => {
@@ -137,11 +148,42 @@ describe('import_channel_attachment', () => {
     await expect(run(ctx, { filename: 'photo.png' })).rejects.toThrow('Access denied')
   })
 
-  it('throws on private channels', async () => {
+  it('allows a personal caller to import from a personal conversation', async () => {
     const { url, size } = makeSourceFile()
     const hostPath = makeVolume()
-    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, 'photo.png', size)], isPrivate: true })
-    await expect(run(ctx, { filename: 'photo.png' })).rejects.toThrow('private')
+    const ctx = makeCtx({
+      hostPath,
+      messages: [fileMsg('msg_1', url, 'photo.png', size)],
+      scope: 'personal',
+      callerScope: 'personal',
+    })
+    const result: any = await run(ctx, { filename: 'photo.png' })
+    expect(result.success).toBe(true)
+  })
+
+  it('blocks a shared caller from importing out of a personal conversation', async () => {
+    const { url, size } = makeSourceFile()
+    const hostPath = makeVolume()
+    const ctx = makeCtx({
+      hostPath,
+      messages: [fileMsg('msg_1', url, 'photo.png', size)],
+      scope: 'personal',
+      callerScope: 'shared',
+    })
+    await expect(run(ctx, { filename: 'photo.png' })).rejects.toThrow('personal conversation')
+  })
+
+  it('allows a shared caller to import from a shared conversation', async () => {
+    const { url, size } = makeSourceFile()
+    const hostPath = makeVolume()
+    const ctx = makeCtx({
+      hostPath,
+      messages: [fileMsg('msg_1', url, 'photo.png', size)],
+      scope: 'shared',
+      callerScope: 'shared',
+    })
+    const result: any = await run(ctx, { filename: 'photo.png' })
+    expect(result.success).toBe(true)
   })
 
   it('throws when the channel has no workspace (sovereign destination)', async () => {
@@ -216,6 +258,68 @@ describe('import_channel_attachment', () => {
     const result: any = await run(ctx, { filename: 'foto _1_.png' })
     expect(result.success).toBe(true)
     expect(existsSync(join(hostPath, 'foto (1).png'))).toBe(true)
+  })
+
+  it('matches NFD-stored filenames when agent sends NFC (Unicode normalization)', async () => {
+    const { url, size } = makeSourceFile('NFCPNG')
+    const hostPath = makeVolume()
+    // BD stores filename in NFD (combining diacriticals): "café.png" = c a f e\u0301 .png
+    const nfdFilename = 'cafe\u0301.png'
+    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, nfdFilename, size)] })
+
+    // Agent sends NFC (precomposed): "café.png" = c a f \u00e9 .png
+    const result: any = await run(ctx, { filename: 'caf\u00e9.png' })
+    expect(result.success).toBe(true)
+    expect(existsSync(join(hostPath, nfdFilename))).toBe(true)
+  })
+
+  it('matches NFC-stored filenames when agent sends NFD (Unicode normalization)', async () => {
+    const { url, size } = makeSourceFile('NFDPNG')
+    const hostPath = makeVolume()
+    // BD stores filename in NFC: "café.png" = c a f \u00e9 .png
+    const nfcFilename = 'caf\u00e9.png'
+    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, nfcFilename, size)] })
+
+    // Agent sends NFD (combining diacriticals): "café.png" = c a f e\u0301 .png
+    const result: any = await run(ctx, { filename: 'cafe\u0301.png' })
+    expect(result.success).toBe(true)
+    expect(existsSync(join(hostPath, nfcFilename))).toBe(true)
+  })
+
+  it('matches filenames with ñ in both NFC and NFD forms', async () => {
+    const { url, size } = makeSourceFile('NPNG')
+    const hostPath = makeVolume()
+    // BD stores "niño.txt" in NFD: n i n \u0303 .txt
+    const nfdFilename = 'nin\u0303o.txt'
+    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, nfdFilename, size)] })
+
+    // Agent sends NFC: "niño.txt" = n i \u00f1 .txt
+    const result: any = await run(ctx, { filename: 'ni\u00f1o.txt' })
+    expect(result.success).toBe(true)
+    expect(existsSync(join(hostPath, nfdFilename))).toBe(true)
+  })
+
+  it('matches filenames case-insensitively', async () => {
+    const { url, size } = makeSourceFile('CASEPNG')
+    const hostPath = makeVolume()
+    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, 'Photo.PNG', size)] })
+
+    const result: any = await run(ctx, { filename: 'photo.png' })
+    expect(result.success).toBe(true)
+    expect(existsSync(join(hostPath, 'Photo.PNG'))).toBe(true)
+  })
+
+  it('matches accented filenames case-insensitively with Unicode normalization', async () => {
+    const { url, size } = makeSourceFile('ACCENTPNG')
+    const hostPath = makeVolume()
+    // BD stores "Información.pdf" in NFD
+    const nfdFilename = 'Informacio\u0301n.pdf'
+    const ctx = makeCtx({ hostPath, messages: [fileMsg('msg_1', url, nfdFilename, size)] })
+
+    // Agent sends lowercase NFC: "información.pdf"
+    const result: any = await run(ctx, { filename: 'informaci\u00f3n.pdf' })
+    expect(result.success).toBe(true)
+    expect(existsSync(join(hostPath, nfdFilename))).toBe(true)
   })
 
   it('throws when volume/workspace services are unavailable', async () => {

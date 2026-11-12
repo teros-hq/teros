@@ -1,5 +1,6 @@
 import type { ToolConfig } from '@teros/mca-sdk'
 import { createGraphClient, buildRecipients, processEmailBody } from '../lib'
+import { resolveSignatureHtml, withSignature } from '../lib/signature'
 import type { OutlookSecrets } from '../lib'
 
 export const createDraft: ToolConfig = {
@@ -33,11 +34,16 @@ export const createDraft: ToolConfig = {
       args.isHtml as boolean | undefined,
     )
 
+    // Signature: appended AFTER body processing so the Markdown converter
+    // never touches signature markup (logos, tables, inline styles).
+    const signature = resolveSignatureHtml(secrets.SIGNATURE_HTML)
+    const finalBody = withSignature(processedBody, isHtml, signature)
+
     const draft: any = {
       subject: args.subject as string,
       body: {
         contentType: isHtml ? 'HTML' : 'Text',
-        content: processedBody,
+        content: finalBody,
       },
       toRecipients: buildRecipients(args.to as string),
     }

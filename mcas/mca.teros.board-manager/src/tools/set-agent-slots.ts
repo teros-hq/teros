@@ -20,8 +20,10 @@ export const setAgentSlots: ToolConfig = {
     },
     required: ['projectId', 'agentId', 'slots'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     const agentId = args?.agentId as string;
@@ -37,6 +39,7 @@ export const setAgentSlots: ToolConfig = {
         projectId,
         agentId,
         slots,
+        callerAgentId,
       }),
       15_000,
       'set_agent_slots',

@@ -32,12 +32,12 @@ export type StatusKind =
   | "running"
 
 export const tokens = {
-  accent: "#5E6AD2",
-  accentPress: "#3F4A9E",
+  accent: "#6F27FF",
+  accentPress: "#9C6BFF",
 
   text: "#E4E4E7",
   textSecondary: "#D4D4D8",
-  textTertiary: "#9CA3AF",
+  textTertiary: "#968FA7",
   textMuted: "#52525B",
 
   bg: "#0A0A0F",
@@ -51,9 +51,9 @@ export const tokens = {
 
   border: "rgba(255,255,255,0.04)",
   borderHover: "rgba(255,255,255,0.08)",
-  borderFocus: "#5E6AD2",
+  borderFocus: "#6F27FF",
 
-  success: "#22C55E",
+  success: "#1CA24D",
   warning: "#F59E0B",
   error: "#EF4444",
 } as const
@@ -80,7 +80,11 @@ export const levelLabels = LEVEL_LABELS
 
 /** Color for a level: warn→amber, critical→red, ok→muted (signal over noise). */
 function levelToneColor(level: HealthLevel): string {
-  return level === "critical" ? tokens.error : level === "warn" ? tokens.warning : tokens.textSecondary
+  return level === "critical"
+    ? tokens.error
+    : level === "warn"
+      ? tokens.warning
+      : tokens.textSecondary
 }
 /** Color for a "higher is better" level: ok→green, warn→amber, critical→red. */
 function goodnessColor(level: HealthLevel): string {

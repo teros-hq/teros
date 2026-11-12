@@ -32,7 +32,7 @@ export const deleteEvent: ToolConfig = {
     const send = normaliseSendUpdates(sendUpdates)
     const targetCalendar = calendarId ?? "primary"
 
-    await runCalendarCall(() =>
+    await runCalendarCall(context, () =>
       calendar.events.delete({
         calendarId: targetCalendar,
         eventId,

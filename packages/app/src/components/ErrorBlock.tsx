@@ -1,15 +1,14 @@
-import { AlertTriangle, ChevronDown, ChevronUp, RefreshCw } from "@tamagui/lucide-icons"
 import type React from "react"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { TouchableOpacity } from "react-native"
-import { Button, Text, XStack, YStack } from "tamagui"
+import { Platform, Pressable, View } from "react-native"
 import { useColors } from "./mca/primitives/useColors"
-import { colors as semanticColors } from "./mca/primitives/colors"
 import { getDateLocale } from "../i18n"
+import { AutomateQuotaWidget } from "./billing/AutomateQuotaWidget"
 import { HoursExhaustedWidget } from "./billing/HoursExhaustedWidget"
 import { PaymentDueWidget } from "./billing/PaymentDueWidget"
 import { ProviderErrorWidget, isProviderErrorClass } from "./ProviderErrorWidget"
+import { Btn, Ph, T } from "./ui/ds"
 
 export interface ErrorBlockProps {
   errorType: "llm" | "tool" | "session" | "validation" | "network" | "unknown" | "upgrade_required"
@@ -25,8 +24,42 @@ export interface ErrorBlockProps {
 // Main ErrorBlock Component
 // ============================================================================
 
+/** A quiet disclosure row ("Show technical details" + caret). */
+function Disclosure({
+  open,
+  onPress,
+  label,
+}: {
+  open: boolean
+  onPress: () => void
+  label: string
+}) {
+  const c = useColors()
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          alignSelf: "flex-start",
+          opacity: pressed ? 0.7 : 1,
+        },
+        Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+      ]}
+    >
+      <T step="12" tone="text3">
+        {label}
+      </T>
+      <Ph name={open ? "caret-up" : "caret-down"} size={11} color={c.text3} />
+    </Pressable>
+  )
+}
+
 export const ErrorBlock: React.FC<ErrorBlockProps> = ({
-    errorType,
+  errorType,
   userMessage,
   technicalMessage,
   context,
@@ -67,8 +100,7 @@ export const ErrorBlock: React.FC<ErrorBlockProps> = ({
   // Agent-hours hard block (FASE 6, decision #10): the turn was rejected because
   // the user exhausted their plan's agent-hours. Render the request-access CTA
   // instead of a plain error so they can ask for a boost without leaving the chat.
-  const isHoursExhausted =
-    errorType === "upgrade_required" && context?.reason === "hours_exhausted"
+  const isHoursExhausted = errorType === "upgrade_required" && context?.reason === "hours_exhausted"
   if (isHoursExhausted) {
     return (
       <HoursExhaustedWidget
@@ -81,11 +113,27 @@ export const ErrorBlock: React.FC<ErrorBlockProps> = ({
     )
   }
 
+  // Automate daily quota (2026-10-15): the automation that messages this channel
+  // was skipped because the creator's plan budget of runs per day is spent.
+  // Same 'upgrade_required' carrier, disambiguated by reason === 'automate_quota'.
+  const isAutomateQuota = errorType === "upgrade_required" && context?.reason === "automate_quota"
+  if (isAutomateQuota) {
+    return (
+      <AutomateQuotaWidget
+        used={context?.used}
+        limit={context?.limit}
+        planName={context?.planName}
+        resetsAt={context?.resetsAt}
+        starterName={context?.starterName}
+        topStarters={context?.topStarters}
+      />
+    )
+  }
+
   // Transversal payment block (FASE 9, decision B): the turn was rejected because
   // the account has an unpaid invoice past grace. Carried on the same
   // 'upgrade_required' errorType, disambiguated by reason === 'payment_due'.
-  const isPaymentDue =
-    errorType === "upgrade_required" && context?.reason === "payment_due"
+  const isPaymentDue = errorType === "upgrade_required" && context?.reason === "payment_due"
   if (isPaymentDue) {
     return (
       <PaymentDueWidget
@@ -113,120 +161,109 @@ export const ErrorBlock: React.FC<ErrorBlockProps> = ({
     }
   }
 
+  const hasContext = !!context && Object.keys(context).length > 0
+
   return (
-    <YStack
-      backgroundColor={c.bgInner}
-      borderColor={c.border}
-      borderWidth={1}
-      borderRadius="$3"
-      padding="$3"
-      marginVertical="$2"
-      marginHorizontal="$2"
-      maxWidth="85%"
-      alignSelf="flex-start"
+    <View
+      style={{
+        backgroundColor: c.bgStep,
+        borderWidth: 1,
+        borderColor: c.border,
+        borderLeftWidth: 2,
+        borderLeftColor: c.tint.a.bd,
+        borderRadius: 16,
+        padding: 14,
+        paddingHorizontal: 16,
+        marginVertical: 8,
+        marginHorizontal: 8,
+        maxWidth: "85%",
+        alignSelf: "flex-start",
+        gap: 8,
+      }}
     >
-      {/* Header with icon and title */}
-      <XStack alignItems="center" gap="$2" marginBottom="$2">
-        <AlertTriangle size={16} color={semanticColors.amber} />
-        <Text color={c.text2} fontWeight="500" fontSize="$2">
-          {getErrorTitle(errorType)}
-        </Text>
-      </XStack>
+      {/* Header with icon tile and title */}
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 7,
+            backgroundColor: c.tint.a.bg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ph name="warning" size={13} color={c.tint.a.tx} />
+        </View>
+        <T step="sm">{getErrorTitle(errorType)}</T>
+      </View>
 
       {/* Mensaje principal para el usuario */}
-      <Text color={c.text2} fontSize="$2" lineHeight="$4" marginBottom="$2">
+      <T step="sm" tone="text2" style={{ lineHeight: 19 }}>
         {resolvedMessage}
-      </Text>
+      </T>
 
       {/* Non-recoverable hint */}
       {!recoverable && !onRetry && (
-        <Text color={c.text3} fontSize="$1" marginBottom="$2">
+        <T step="12" tone="text3">
           {t("errors.contactSupport")}
-        </Text>
+        </T>
       )}
 
       {/* Technical message — collapsed by default */}
       {technicalMessage && (
-        <TouchableOpacity onPress={() => setShowTechnical(!showTechnical)}>
-          <XStack alignItems="center" gap="$2" marginBottom="$2">
-            <Text color={c.text3} fontSize="$1">
-              {showTechnical
-                ? t("errors.hideTechnicalDetails")
-                : t("errors.showTechnicalDetails")}
-            </Text>
-            {showTechnical ? (
-              <ChevronUp size={12} color={c.text3} />
-            ) : (
-              <ChevronDown size={12} color={c.text3} />
-            )}
-          </XStack>
-        </TouchableOpacity>
+        <Disclosure
+          open={showTechnical}
+          onPress={() => setShowTechnical(!showTechnical)}
+          label={
+            showTechnical ? t("errors.hideTechnicalDetails") : t("errors.showTechnicalDetails")
+          }
+        />
       )}
       {showTechnical && technicalMessage && (
-        <Text
-          color={c.text3}
-          fontSize="$1"
-          fontFamily="$mono"
-          lineHeight="$3"
-          marginBottom="$2"
-        >
+        <T step="code" tone="text3" style={{ lineHeight: 17 }}>
           {technicalMessage}
-        </Text>
+        </T>
       )}
 
       {/* Additional context (only visible when technical details expanded) */}
-      {showTechnical && context && Object.keys(context).length > 0 && (
-        <TouchableOpacity onPress={() => setShowDetails(!showDetails)}>
-          <XStack alignItems="center" gap="$2" marginBottom="$2">
-            <Text color={c.text3} fontSize="$1">
-              {showDetails ? t("errors.hideContext") : t("errors.showContext")}
-            </Text>
-            {showDetails ? (
-              <ChevronUp size={12} color={c.text3} />
-            ) : (
-              <ChevronDown size={12} color={c.text3} />
-            )}
-          </XStack>
-        </TouchableOpacity>
+      {showTechnical && hasContext && (
+        <Disclosure
+          open={showDetails}
+          onPress={() => setShowDetails(!showDetails)}
+          label={showDetails ? t("errors.hideContext") : t("errors.showContext")}
+        />
       )}
-      {showDetails && showTechnical && context && Object.keys(context).length > 0 && (
-        <YStack
-          backgroundColor={c.bgInner}
-          borderRadius="$2"
-          padding="$2"
-          marginBottom="$2"
-        >
-          <Text color={c.text3} fontSize="$1" fontWeight="500" marginBottom="$1">
+      {showDetails && showTechnical && hasContext && (
+        <View style={{ backgroundColor: c.nest, borderRadius: 10, padding: 10, gap: 4 }}>
+          <T step="codenote" tone="text3">
             {t("errors.context")}
-          </Text>
-          <Text color={c.text3} fontSize="$1" fontFamily="$mono" lineHeight="$3">
+          </T>
+          <T step="code" tone="text3" style={{ lineHeight: 17 }}>
             {JSON.stringify(context, null, 2)}
-          </Text>
-        </YStack>
+          </T>
+        </View>
       )}
 
       {/* Acciones */}
-      <XStack gap="$2" alignItems="center">
-        {onRetry && (
-          <Button
-            size="$2"
-            backgroundColor={c.bgInner}
-            borderColor={c.border}
-            color={c.text2}
-            onPress={onRetry}
-            icon={RefreshCw}
-            fontSize="$1"
-          >
-            {t("common.retry")}
-          </Button>
-        )}
+      {(onRetry || timestamp) && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 }}>
+          {onRetry && (
+            <Btn variant="sec" size="sm" icon="arrow-clockwise" onPress={onRetry}>
+              {t("common.retry")}
+            </Btn>
+          )}
 
-        {timestamp && (
-          <Text fontSize="$1" color={c.text3}>
-            {timestamp.toLocaleTimeString(getDateLocale(), { hour: "2-digit", minute: "2-digit" })}
-          </Text>
-        )}
-      </XStack>
-    </YStack>
+          {timestamp && (
+            <T step="codenote" tone="text3">
+              {timestamp.toLocaleTimeString(getDateLocale(), {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </T>
+          )}
+        </View>
+      )}
+    </View>
   )
 }

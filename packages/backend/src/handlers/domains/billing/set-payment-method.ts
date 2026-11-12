@@ -8,14 +8,16 @@
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
+import type { Db } from 'mongodb'
 import type { StripePaymentService } from '../../../services/stripe-payment-service'
 import { StripePaymentError } from '../../../services/_stripe-error'
+import { markActiveSubscriptionStripe } from '../../../services/billing-subscription-ops.js'
 
 interface SetPaymentMethodData {
   paymentMethodId?: string
 }
 
-export function createSetPaymentMethodHandler(stripe: StripePaymentService) {
+export function createSetPaymentMethodHandler(stripe: StripePaymentService, db?: Db | null) {
   return async function setPaymentMethod(ctx: WsHandlerContext, rawData: unknown) {
     if (!stripe.isEnabled()) {
       throw new HandlerError('STRIPE_NOT_CONFIGURED', 'Card payments are not enabled on this server.')
@@ -28,7 +30,9 @@ export function createSetPaymentMethodHandler(stripe: StripePaymentService) {
 
     try {
       const customer = await stripe.setDefaultPaymentMethod(ctx.userId, paymentMethodId)
-      return { ok: true, defaultPaymentMethodId: customer.defaultPaymentMethodId }
+      // A card on file = renewals are charged to it (not "manual").
+      const subscriptionSwitched = db ? await markActiveSubscriptionStripe(db, ctx.userId, new Date()) : false
+      return { ok: true, defaultPaymentMethodId: customer.defaultPaymentMethodId, subscriptionSwitched }
     } catch (err) {
       if (err instanceof StripePaymentError) {
         throw new HandlerError(err.issue.code, err.issue.message)

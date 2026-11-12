@@ -358,6 +358,136 @@ describe('AgentUsageRollupJob.processHour (characterization)', () => {
     expect(userHourly).toHaveLength(1)
     expect(userHourly[0].doc.sessionCount).toBe(2)
   })
+
+  // ==========================================================================
+  // Decision #29 — userWorkMs (sum of overlaps) vs userActiveMs (union)
+  // ==========================================================================
+
+  it('WS1: two OVERLAPPING sessions → userActiveMs = union, userWorkMs = sum', async () => {
+    // Two parallel agents, same user, both working 10:00:00–10:10:00 (10 min).
+    // Union = 10 min (wall-clock the user was "active"); work = 20 min (two
+    // agents × 10 min — what the quota must burn, decision #29).
+    const s1 = makeSession({
+      sessionUsageId: 'usess_p1',
+      agentId: 'agent_a',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:10:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const s2 = makeSession({
+      sessionUsageId: 'usess_p2',
+      agentId: 'agent_b',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:10:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const { db, upserts } = makeDb([s1, s2])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+    await job.processHour(HOUR)
+    const userHourly = upserts.find((u) => u.collection === 'user_hourly')!
+    expect(userHourly.doc.userActiveMs).toBe(10 * 60_000) // union — unchanged (decision #26)
+    expect(userHourly.doc.userWorkMs).toBe(20 * 60_000) // sum — the billed metric (decision #29)
+    expect(userHourly.doc.schemaVersion).toBe(2)
+  })
+
+  it('WS1: partial overlap → union < sum, both correct', async () => {
+    // A: 10:00–10:10, B: 10:05–10:15. Union = 15 min; sum = 20 min.
+    const s1 = makeSession({
+      sessionUsageId: 'usess_q1',
+      agentId: 'agent_a',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:10:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const s2 = makeSession({
+      sessionUsageId: 'usess_q2',
+      agentId: 'agent_b',
+      startedAt: new Date('2026-05-20T10:05:00Z'),
+      endedAt: new Date('2026-05-20T10:15:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const { db, upserts } = makeDb([s1, s2])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+    await job.processHour(HOUR)
+    const userHourly = upserts.find((u) => u.collection === 'user_hourly')!
+    expect(userHourly.doc.userActiveMs).toBe(15 * 60_000)
+    expect(userHourly.doc.userWorkMs).toBe(20 * 60_000)
+  })
+
+  it('WS1: session crossing the hour boundary → correct fraction in BOTH fields', async () => {
+    // Session [09:30 - 10:30) overlaps the 10:00 hour by exactly 30 min.
+    // Both metrics must carry the same clamped 30 min for this bucket.
+    const cross = makeSession({
+      sessionUsageId: 'usess_cross',
+      startedAt: new Date('2026-05-20T09:30:00Z'),
+      endedAt: new Date('2026-05-20T10:30:00Z'),
+      durationMs: 60 * 60 * 1000,
+    })
+    const { db, upserts } = makeDb([cross])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+    await job.processHour(HOUR)
+    const userHourly = upserts.find((u) => u.collection === 'user_hourly')!
+    expect(userHourly.doc.userActiveMs).toBe(30 * 60 * 1000)
+    expect(userHourly.doc.userWorkMs).toBe(30 * 60 * 1000)
+    // Tokens split proportionally (50%) — unchanged behavior.
+    expect(userHourly.doc.totalTokens).toBe(75)
+  })
+
+  it('WS1: phantom sessions excluded from userWorkMs exactly like userActiveMs (TER-650)', async () => {
+    // Real 30s + phantom 19.5min reconciled_timeout overlapping the real one.
+    // The phantom must contribute to NEITHER metric.
+    const real = makeSession({
+      sessionUsageId: 'usess_real',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:00:30Z'),
+      durationMs: 30_000,
+      totalTokens: 150,
+    })
+    const phantom = makeSession({
+      sessionUsageId: 'usess_phantom',
+      status: 'timed_out',
+      errorKind: 'reconciled_timeout',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:19:30Z'),
+      durationMs: 1_170_000,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+    })
+    const { db, upserts } = makeDb([real, phantom])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+    await job.processHour(HOUR)
+    const userHourly = upserts.find((u) => u.collection === 'user_hourly')!
+    expect(userHourly.doc.userActiveMs).toBe(30_000)
+    expect(userHourly.doc.userWorkMs).toBe(30_000)
+    expect(userHourly.doc.sessionCount).toBe(1)
+  })
+
+  it('WS1: computeUserBilledMsForHour exposes both metrics (work = sum, active = union)', async () => {
+    const s1 = makeSession({
+      sessionUsageId: 'usess_w1',
+      agentId: 'agent_a',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:10:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const s2 = makeSession({
+      sessionUsageId: 'usess_w2',
+      agentId: 'agent_b',
+      startedAt: new Date('2026-05-20T10:00:00Z'),
+      endedAt: new Date('2026-05-20T10:10:00Z'),
+      durationMs: 10 * 60_000,
+    })
+    const { db } = makeDb([s1, s2])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+
+    const work = await job.computeUserBilledMsForHour(HOUR)
+    const active = await job.computeUserActiveMsForHour(HOUR)
+
+    expect(work.get('user_1')).toBe(20 * 60_000)
+    expect(active.get('user_1')).toBe(10 * 60_000)
+  })
 })
 
 // ============================================================================
@@ -398,12 +528,71 @@ describe('AgentUsageRollupJob demo-seed exclusion + completion marker', () => {
     expect(markers[0].agentDocsWritten).toBe(1)
     expect(markers[0].userDocsWritten).toBe(1)
 
-    // An hour with no rollable data must stay unmarked so a late-closing session
-    // can still be picked up within the catch-up window.
+    // An empty hour is final too and gets marked (BIL-3): the tracker bills up
+    // to the first unmarked hour, so leaving gaps would stall billing.
     const empty = makeDb([])
     const emptyJob = new AgentUsageRollupJob(empty.db as any, stubLogger)
     await emptyJob.processHour(HOUR)
-    expect(empty.markers).toHaveLength(0)
+    expect(empty.markers).toHaveLength(1)
+    expect(empty.markers[0].agentDocsWritten).toBe(0)
+  })
+
+  it('BIL-2: leaves an hour unmarked while a recent session overlapping it is still open', async () => {
+    const recentHour = new Date(truncateToHourUTC(new Date()).getTime() - 3_600_000)
+    const closed = makeSession({
+      sessionUsageId: 'usess_closed',
+      startedAt: new Date(recentHour.getTime() + 60_000),
+      endedAt: new Date(recentHour.getTime() + 90_000),
+    })
+    const open = makeSession({
+      sessionUsageId: 'usess_open',
+      startedAt: new Date(recentHour.getTime() + 50 * 60_000),
+      endedAt: null as any,
+      status: 'running' as any,
+    })
+    const { db, upserts, markers } = makeDb([closed, open])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+
+    await job.processHour(recentHour)
+
+    expect(upserts.length).toBeGreaterThan(0) // the closed session is still rolled
+    expect(markers).toHaveLength(0) // but the hour is not final
+  })
+
+  it('BIL-2: a long-open zombie session does not hold the hour back', async () => {
+    const oldHour = new Date(truncateToHourUTC(new Date()).getTime() - 5 * 3_600_000)
+    const zombie = makeSession({
+      sessionUsageId: 'usess_zombie',
+      startedAt: new Date(oldHour.getTime() + 60_000),
+      endedAt: null as any,
+      status: 'running' as any,
+    })
+    const { db, markers } = makeDb([zombie])
+    const job = new AgentUsageRollupJob(db as any, stubLogger)
+
+    await job.processHour(oldHour)
+
+    expect(markers).toHaveLength(1)
+  })
+
+  it('BIL-2: a failed upsert leaves the hour unmarked so it is retried', async () => {
+    const env = makeDb([makeSession({})])
+    const realCollection = env.db.collection.bind(env.db)
+    env.db.collection = (name: string) => {
+      const col = realCollection(name)
+      if (name !== 'agent_usage_rollups_user_hourly') return col
+      return {
+        ...col,
+        async updateOne() {
+          throw new Error('write failed')
+        },
+      }
+    }
+    const job = new AgentUsageRollupJob(env.db as any, stubLogger)
+
+    await job.processHour(HOUR)
+
+    expect(env.markers).toHaveLength(0)
   })
 
   it('rolls the real sessions of an hour that already holds a demo rollup (A1.2 acceptance)', async () => {
@@ -453,13 +642,15 @@ describe('AgentUsageRollupJob demo-seed exclusion + completion marker', () => {
 
     await job.runOnce()
     const afterFirst = upserts.length
+    const markersAfterFirst = markers.length
     expect(afterFirst).toBeGreaterThan(0)
-    expect(markers).toHaveLength(1) // only the hour with data is marked
+    expect(markers.some((m) => m.hourBucket.getTime() === recentHour.getTime())).toBe(true)
 
-    // Second run: the marker is present → the data hour is skipped, no new
-    // upserts. (Empty hours are re-scanned but produce nothing.)
+    // Second run: every scanned hour (data or empty) is marked → nothing is
+    // reprocessed, no new upserts, no new markers.
     await job.runOnce()
     expect(upserts.length).toBe(afterFirst)
+    expect(markers.length).toBe(markersAfterFirst)
   })
 
   it('reprocesses an hour that has a rollup doc but NO marker (partial-write recovery)', async () => {

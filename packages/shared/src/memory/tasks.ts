@@ -82,14 +82,14 @@ export async function searchTasks(
     : undefined;
 
   try {
-    const results = await qdrant.search(collectionName, {
-      vector,
+    const results = await qdrant.query(collectionName, {
+      query: vector,
       limit,
       filter,
       with_payload: true,
     });
 
-    return results.map((result) => ({
+    return results.points.map((result) => ({
       id: result.id,
       score: result.score,
       payload: result.payload as TaskMemory,

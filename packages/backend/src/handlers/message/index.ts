@@ -10,7 +10,9 @@ export {
   type ResolvedProviderCredentials,
 } from './llm-client-manager';
 export {
+  buildPermissionBatchWakeText,
   createPermissionManager,
+  type PermissionBatchOutcome,
   type PermissionManager,
   type PermissionStatusCallbacks,
   type ToolCallContext,

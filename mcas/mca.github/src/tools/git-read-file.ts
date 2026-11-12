@@ -4,6 +4,7 @@ import { resolve } from 'path';
 
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { agentGitTool } from './_locked';
 
 /**
  * Read a file either from the current working tree or from a specific git
@@ -13,7 +14,7 @@ import { throwClassifiedGitError } from './_git-error';
  * invoking git). When `ref` is provided, uses `git show <ref>:<path>` so the
  * content is the version recorded at that ref.
  */
-export const gitReadFile: ToolConfig = {
+export const gitReadFile: ToolConfig = agentGitTool({
   annotations: { readOnlyHint: true },
   description:
     'Read a file from the working tree or from a specific git revision. Pass `ref` (commit/branch/tag) to read the version at that point.',
@@ -49,7 +50,7 @@ export const gitReadFile: ToolConfig = {
     const encoding = a.encoding ?? 'utf8';
 
     if (a.ref) {
-      const result = runGit(repoPath, ['show', `${a.ref}:${a.path}`]);
+      const result = await runGit(repoPath, ['show', `${a.ref}:${a.path}`]);
       if (result.code !== 0) throwClassifiedGitError(result);
       const content =
         encoding === 'base64'
@@ -72,4 +73,4 @@ export const gitReadFile: ToolConfig = {
     const content = encoding === 'base64' ? buf.toString('base64') : buf.toString('utf-8');
     return { repoPath, path: a.path, ref: 'working-tree', encoding, content, size: buf.byteLength };
   },
-};
+});

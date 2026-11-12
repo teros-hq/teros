@@ -5,21 +5,26 @@
  * Muestra el volumen, apps instaladas y miembros.
  */
 
-import { Folder } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { WorkspaceWindowContent } from './WorkspaceWindowContent';
+import { Folder } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const WorkspaceWindowContent = lazyWithRetry(() =>
+  import("./WorkspaceWindowContent").then((m) => ({ default: m.WorkspaceWindowContent })),
+)
 
 export interface WorkspaceWindowProps {
   /** ID del workspace a mostrar */
-  workspaceId: string;
+  workspaceId: string
 }
 
 export const workspaceWindowDefinition: WindowTypeDefinition<WorkspaceWindowProps> = {
-  type: 'workspace',
-  displayName: 'Workspace',
+  type: "workspace",
+  audience: "user",
+  displayName: "Workspace",
   icon: Folder,
-  color: '#C4923B',
+  phIcon: "buildings",
+  color: "#C4923B",
   component: WorkspaceWindowContent,
 
   defaultSize: { width: 800, height: 600 },
@@ -35,4 +40,4 @@ export const workspaceWindowDefinition: WindowTypeDefinition<WorkspaceWindowProp
   deserialize: (data) => ({
     workspaceId: data.workspaceId,
   }),
-};
+}

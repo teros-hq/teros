@@ -16,7 +16,7 @@ import type { Migration } from './types.js';
  * `expiresAt` comparison in `LeaderElectionService.tryAcquire`. The TTL is
  * just a safety net to keep the collection bounded.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §13 (multi-instance addendum)
  */
 
 const migration: Migration = {

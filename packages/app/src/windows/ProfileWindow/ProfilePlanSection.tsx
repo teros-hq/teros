@@ -23,15 +23,14 @@ import {
   CreditCard,
   ExternalLink,
   FileText,
-  Infinity as InfinityIcon,
   Receipt,
 } from "@tamagui/lucide-icons"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Linking, Platform, ScrollView } from "react-native"
-import { Button, Text, View, XStack, YStack } from "tamagui"
+import { Linking, ScrollView } from "react-native"
+import { Button, Text, XStack, YStack } from "tamagui"
 import { PaymentMethodSetup } from "../../components/billing/PaymentMethodSetup"
-import { installUnlimitedGlareKeyframes } from "./unlimitedGlareKeyframes"
+import { useStripeSetupReturn } from "../../components/billing/useStripeSetupReturn"
 import { useToast } from "../../components/Toast"
 import { AppSpinner } from "../../components/ui"
 import i18n from "../../i18n"
@@ -145,6 +144,8 @@ const INVOICE_TONE: Record<InvoiceView["status"], Tone> = {
   invoiced: "warn",
   overdue: "warn",
   uncollectible: "danger",
+  held: "warn",
+  refunded: "muted",
 }
 
 function SectionHeading({ icon, label }: { icon: React.ReactNode; label: string }) {
@@ -164,9 +165,6 @@ function SectionHeading({ icon, label }: { icon: React.ReactNode; label: string 
 function UsageHero({ sub }: { sub: SubscriptionView }) {
   const { t } = useTranslation()
   const c = useColors()
-  // The hidden Unlimited tier gets a distinct chrome-metallic hero (TER-638) —
-  // only its holders ever see it; everyone else falls through to the default.
-  if (sub.planId === "plan_unlimited") return <UnlimitedHero sub={sub} />
   const metered = sub.terosModel && sub.agentHoursLimit > 0
   const unmetered = sub.terosModel && sub.agentHoursLimit === 0
   const pct = metered ? Math.min(sub.agentHoursUsed / sub.agentHoursLimit, 1) : 0
@@ -273,102 +271,6 @@ function UsageHero({ sub }: { sub: SubscriptionView }) {
   )
 }
 
-// ── Unlimited hero (chrome-metallic, glare sweep) — only plan_unlimited holders ──
-
-/**
- * Premium treatment for the hidden internal Unlimited tier: a polished
- * graphite→silver→graphite metallic panel with a diagonal light glare that
- * sweeps across it. Gated by the caller to plan_unlimited only. The sweep is a
- * CSS-keyframes overlay (web) that honours prefers-reduced-motion; native falls
- * back to a static faint highlight.
- */
-function UnlimitedHero({ sub }: { sub: SubscriptionView }) {
-  const { t } = useTranslation()
-  const c = useColors()
-  useEffect(() => {
-    installUnlimitedGlareKeyframes()
-  }, [])
-
-  const statusTone: Tone =
-    sub.status === "active" ? "ok" : sub.status === "past_due" ? "danger" : "warn"
-
-  // Reduce-motion: pin the glare sweep off (static highlight stays).
-  const reduceMotion =
-    Platform.OS === "web" &&
-    typeof window !== "undefined" &&
-    typeof window.matchMedia === "function" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-
-  // Polished-metal base: a web CSS gradient (native falls back to solid graphite).
-  // Kept as a CSS background instead of expo-linear-gradient so the render harness
-  // can parse it and the effect stays web-first like the glare.
-  const metalStyle =
-    Platform.OS === "web"
-      ? ({
-          background:
-            "linear-gradient(135deg, #0f1115 0%, #2a2f3a 32%, #c2cad8 50%, #2a2f3a 68%, #0f1115 100%)",
-        } as object)
-      : { backgroundColor: "#2a2f3a" }
-
-  const glareStyle =
-    Platform.OS === "web"
-      ? ({
-          background:
-            "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.45) 50%, transparent 60%)",
-          ...(reduceMotion
-            ? {}
-            : { animation: "teros-unlimited-glare 4.5s ease-in-out infinite" }),
-        } as object)
-      : { backgroundColor: "rgba(255,255,255,0.06)" }
-
-  return (
-    <YStack
-      testID="plan-hero"
-      position="relative"
-      overflow="hidden"
-      borderRadius={16}
-      borderWidth={1}
-      borderColor="rgba(214,221,235,0.45)"
-      padding={20}
-      gap={16}
-    >
-      {/* Polished-metal base. */}
-      <View
-        pointerEvents="none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...metalStyle }}
-      />
-      {/* Moving glare (mirrors the chat shimmer technique). */}
-      <View
-        testID="unlimited-glare"
-        pointerEvents="none"
-        style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, ...glareStyle }}
-      />
-
-      {/* Content above the metallic layers. */}
-      <YStack zIndex={1} gap={14}>
-        <XStack alignItems="center" gap={10} flexWrap="wrap">
-          <InfinityIcon size={22} color={c.text} />
-          <Text fontSize={22} fontWeight="800" color={c.text}>
-            {sub.planName}
-          </Text>
-          <Pill label={t(`profile.plan.status.${sub.status}`)} tone={statusTone} testID="plan-status" />
-        </XStack>
-        <Text testID="unlimited-tagline" fontSize={15} fontWeight="700" color={c.text}>
-          {t("profile.plan.hoursUnmetered")}
-        </Text>
-        <Text fontSize={13} color={c.text2}>
-          {sub.cancelAtPeriodEnd
-            ? t("profile.plan.endsOn", { date: formatDate(sub.currentPeriodEnd) })
-            : t("profile.plan.renewsInDays", {
-                date: formatDate(sub.currentPeriodEnd),
-                days: daysUntil(sub.currentPeriodEnd),
-              })}
-        </Text>
-      </YStack>
-    </YStack>
-  )
-}
-
 // ── Pricing card (comparable, side-by-side) ──────────────────────────────────────
 
 function priceText(plan: BillingPlanView, t: (k: string, o?: any) => string): string {
@@ -442,6 +344,11 @@ function PricingCard({
         {plan.contactSales || plan.agentHoursLimit === 0
           ? t("profile.plan.unmeteredShort")
           : t("profile.plan.hoursPerMonth", { hours: plan.agentHoursLimit })}
+      </Text>
+      <Text fontSize={12} color={c.text2} testID={`plan-automate-runs-${plan.planId}`}>
+        {plan.contactSales || !plan.automateDailyExecutionLimit
+          ? t("profile.plan.automateRunsUnlimited")
+          : t("profile.plan.automateRunsPerDay", { runs: plan.automateDailyExecutionLimit })}
       </Text>
 
       {plan.highlights.slice(0, 4).map((h) => (
@@ -611,12 +518,14 @@ function PaymentMethodCard({
   onEdit,
   onSuccess,
   onCancel,
+  initialDetails,
 }: {
   card: PaymentMethodView | null
   editing: boolean
   onEdit: () => void
   onSuccess: () => void
   onCancel: () => void
+  initialDetails?: { country: string | null; taxId: string | null } | null
 }) {
   const { t } = useTranslation()
   const c = useColors()
@@ -629,7 +538,7 @@ function PaymentMethodCard({
         borderRadius={16}
         padding={18}
       >
-        <PaymentMethodSetup onSuccess={onSuccess} onCancel={onCancel} />
+        <PaymentMethodSetup onSuccess={onSuccess} onCancel={onCancel} initialDetails={initialDetails} />
       </YStack>
     )
   }
@@ -648,17 +557,23 @@ function PaymentMethodCard({
         {card ? (
           <>
             <Text testID="payment-card-display" fontSize={14} fontWeight="600" color={c.text}>
-              {t("profile.plan.cardOnFile", {
-                brand: card.brand.charAt(0).toUpperCase() + card.brand.slice(1),
-                last4: card.last4,
-              })}
+              {card.type === "link"
+                ? t("profile.plan.linkOnFile", { defaultValue: "Link · {{email}}", email: card.email ?? "" })
+                : card.type === "sepa_debit"
+                  ? t("profile.plan.sepaOnFile", { defaultValue: "SEPA ···· {{last4}}", last4: card.last4 })
+                  : t("profile.plan.cardOnFile", {
+                      brand: card.brand.charAt(0).toUpperCase() + card.brand.slice(1),
+                      last4: card.last4,
+                    })}
             </Text>
-            <Text fontSize={12} color={c.text2}>
-              {t("profile.plan.cardExpires", {
-                month: String(card.expMonth).padStart(2, "0"),
-                year: card.expYear,
-              })}
-            </Text>
+            {card.expYear > 0 ? (
+              <Text fontSize={12} color={c.text2}>
+                {t("profile.plan.cardExpires", {
+                  month: String(card.expMonth).padStart(2, "0"),
+                  year: card.expYear,
+                })}
+              </Text>
+            ) : null}
           </>
         ) : (
           <Text fontSize={14} color={c.text2}>
@@ -780,6 +695,7 @@ export function ProfilePlanSection({ onBack }: { onBack: () => void }) {
 
   const [sub, setSub] = useState<SubscriptionView | null>(null)
   const [card, setCard] = useState<PaymentMethodView | null>(null)
+  const [billingDetails, setBillingDetails] = useState<{ country: string | null; taxId: string | null } | null>(null)
   const [plans, setPlans] = useState<BillingPlanView[]>([])
   const [invoices, setInvoices] = useState<InvoiceView[]>([])
   const [loading, setLoading] = useState(true)
@@ -812,12 +728,13 @@ export function ProfilePlanSection({ onBack }: { onBack: () => void }) {
     setLoadError(false)
     try {
       await waitForConnection()
-      const [{ subscription, paymentMethod }, { plans: list }] = await Promise.all([
+      const [{ subscription, paymentMethod, billingDetails: details }, { plans: list }] = await Promise.all([
         client.billing.getSubscription(),
         client.billing.listPlans(),
       ])
       setSub(subscription)
       setCard(paymentMethod)
+      setBillingDetails(details ? { country: details.country, taxId: details.taxId } : null)
       setPlans(list)
       // Invoices are best-effort: a failure there must not hide the plan.
       try {
@@ -901,6 +818,13 @@ export function ProfilePlanSection({ onBack }: { onBack: () => void }) {
               })
             : undefined,
         )
+      } else if (kind === "downgrade_cancelled") {
+        toast.success(
+          t("profile.plan.toastDowngradeCancelled", {
+            plan: plan.displayName,
+            defaultValue: "You'll stay on {{plan}}. The scheduled change was cancelled.",
+          }),
+        )
       } else {
         toast.success(t("profile.plan.toastUpgraded", { plan: plan.displayName }))
       }
@@ -946,6 +870,24 @@ export function ProfilePlanSection({ onBack }: { onBack: () => void }) {
       /* best-effort */
     }
   }, [client, toast, t])
+
+  // Redirect-based card setup (3DS / SCA): Stripe sent the browser back here
+  // with `setup_intent` in the URL; finish it server-side and refresh the card.
+  const onSetupReturn = useCallback(
+    (result: "succeeded" | "failed" | "none") => {
+      if (result === "succeeded") {
+        toast.success(t("profile.plan.payment.returnSuccess", { defaultValue: "Card saved." }))
+        client.billing
+          .getSubscription()
+          .then(({ paymentMethod }) => setCard(paymentMethod))
+          .catch(() => {})
+      } else if (result === "failed") {
+        toast.error(t("profile.plan.payment.returnFailed", { defaultValue: "The card setup did not complete. Please try again." }))
+      }
+    },
+    [client, toast, t],
+  )
+  useStripeSetupReturn(onSetupReturn)
 
   const openSales = useCallback(() => {
     Linking.openURL(SALES_CONTACT_URL).catch(() => {})
@@ -1066,6 +1008,7 @@ export function ProfilePlanSection({ onBack }: { onBack: () => void }) {
                 onEdit={() => setEditingPayment(true)}
                 onSuccess={handlePaymentSuccess}
                 onCancel={() => setEditingPayment(false)}
+                initialDetails={billingDetails}
               />
             </YStack>
 

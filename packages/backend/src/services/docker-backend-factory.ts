@@ -58,5 +58,6 @@ export function createDockerContainerBackend(
     // both default to the same-machine behavior when unset.
     advertiseHost: process.env.CONTAINER_AGENT_ADVERTISE_HOST || undefined,
     callbackHost: process.env.MCA_CALLBACK_HOST || undefined,
+    backendContainerName: process.env.BACKEND_CONTAINER_NAME || undefined,
   });
 }

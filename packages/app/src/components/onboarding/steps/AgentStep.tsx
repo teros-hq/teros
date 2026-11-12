@@ -5,37 +5,29 @@
  * The wizard handles scroll and footer rendering.
  */
 
-import {
-  Briefcase,
-  Code2,
-  FlaskConical,
-  Sparkles,
-  TreePine,
-} from '@tamagui/lucide-icons'
-import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Input, Text, XStack, YStack } from 'tamagui'
-import { getTerosClient } from '../../../services/terosClientSingleton'
-import { colors as semanticColors } from '../../mca/primitives/colors'
-import { useColors } from '../../mca/primitives/useColors'
-import { StepHeader } from '../StepHeader'
-import type { StepFooterConfig } from '../StepFooter'
+import React, { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
+import { View } from "react-native"
+import { getTerosClient } from "../../../services/terosClientSingleton"
+import { Chip, Field, FieldLabel } from "../../ui/ds"
+import { StepHeader } from "../StepHeader"
+import type { StepFooterConfig } from "../StepFooter"
 
 const USE_CASES = [
-  { id: 'work',       labelKey: 'onboarding.useCaseWork',       Icon: Briefcase    },
-  { id: 'dev',        labelKey: 'onboarding.useCaseDev',        Icon: Code2        },
-  { id: 'research',   labelKey: 'onboarding.useCaseResearch',   Icon: FlaskConical },
-  { id: 'personal',   labelKey: 'onboarding.useCasePersonal',   Icon: TreePine     },
-  { id: 'everything', labelKey: 'onboarding.useCaseEverything', Icon: Sparkles     },
+  { id: "work", labelKey: "onboarding.useCaseWork", icon: "briefcase" },
+  { id: "dev", labelKey: "onboarding.useCaseDev", icon: "code" },
+  { id: "research", labelKey: "onboarding.useCaseResearch", icon: "flask" },
+  { id: "personal", labelKey: "onboarding.useCasePersonal", icon: "tree" },
+  { id: "everything", labelKey: "onboarding.useCaseEverything", icon: "sparkle" },
 ]
 
 // English labels used for context storage (backward-compatible parsing)
 const USE_CASE_STORAGE_LABELS: Record<string, string> = {
-  work: 'Work & productivity',
-  dev: 'Software development',
-  research: 'Research',
-  personal: 'Personal projects',
-  everything: 'A bit of everything',
+  work: "Work & productivity",
+  dev: "Software development",
+  research: "Research",
+  personal: "Personal projects",
+  everything: "A bit of everything",
 }
 
 interface DefaultAgent {
@@ -62,8 +54,8 @@ function parseOnboardingContext(context: string | undefined): {
   useCaseId: string | null
   preferredName: string
 } {
-  if (!context || !context.includes('[User context — set during onboarding]')) {
-    return { useCaseId: null, preferredName: '' }
+  if (!context || !context.includes("[User context — set during onboarding]")) {
+    return { useCaseId: null, preferredName: "" }
   }
 
   let useCaseId: string | null = null
@@ -74,7 +66,7 @@ function parseOnboardingContext(context: string | undefined): {
     if (found) useCaseId = found[0]
   }
 
-  let preferredName = ''
+  let preferredName = ""
   const nameMatch = context.match(/The user prefers to be called "([^"]+)"/)
   if (nameMatch) preferredName = nameMatch[1]
 
@@ -83,16 +75,23 @@ function parseOnboardingContext(context: string | undefined): {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export function AgentStep({ defaultAgent, onComplete, onSkip, onBack, setFooterConfig, registerContinueHandler }: AgentStepProps) {
+export function AgentStep({
+  defaultAgent,
+  onComplete,
+  onSkip,
+  onBack,
+  setFooterConfig,
+  registerContinueHandler,
+}: AgentStepProps) {
   const { t } = useTranslation()
-  const c = useColors()
   const client = getTerosClient()
 
-  const { useCaseId: initialUseCase, preferredName: initialName } =
-    parseOnboardingContext(defaultAgent?.context)
+  const { useCaseId: initialUseCase, preferredName: initialName } = parseOnboardingContext(
+    defaultAgent?.context,
+  )
 
   const [selectedUseCases, setSelectedUseCases] = useState<string[]>(() =>
-    initialUseCase ? [initialUseCase] : []
+    initialUseCase ? [initialUseCase] : [],
   )
   const [preferredName, setPreferredName] = useState(initialName)
   const [saving, setSaving] = useState(false)
@@ -102,7 +101,7 @@ export function AgentStep({ defaultAgent, onComplete, onSkip, onBack, setFooterC
     setFooterConfig({
       showBack: true,
       showSkip: true,
-      continueLabel: saving ? t('common.saving') : t('onboarding.continueButton'),
+      continueLabel: saving ? t("common.saving") : t("onboarding.continueButton"),
       continueDisabled: saving,
     })
   }, [saving, t])
@@ -117,7 +116,7 @@ export function AgentStep({ defaultAgent, onComplete, onSkip, onBack, setFooterC
 
   const toggleUseCase = (id: string) => {
     setSelectedUseCases((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
     )
   }
 
@@ -125,22 +124,22 @@ export function AgentStep({ defaultAgent, onComplete, onSkip, onBack, setFooterC
     setSaving(true)
     try {
       if (defaultAgent?.agentId && selectedUseCases.length > 0) {
-        const useCaseLabels = selectedUseCases
-          .map((id) => USE_CASE_STORAGE_LABELS[id] ?? id)
-        const useCaseStr = useCaseLabels.join(', ')
+        const useCaseLabels = selectedUseCases.map((id) => USE_CASE_STORAGE_LABELS[id] ?? id)
+        const useCaseStr = useCaseLabels.join(", ")
         const nameClause = preferredName.trim()
           ? ` The user prefers to be called "${preferredName.trim()}".`
-          : ''
+          : ""
         const patch = `[User context — set during onboarding]\nPrimary use case: ${useCaseStr}.${nameClause}`
         await client.agent.updateAgent({ agentId: defaultAgent.agentId, context: patch })
       }
     } catch (err) {
-      console.error('[AgentStep] Failed to update agent:', err)
+      console.error("[AgentStep] Failed to update agent:", err)
     } finally {
       setSaving(false)
-      const useCaseValue = selectedUseCases.length > 0
-        ? selectedUseCases.map((id) => USE_CASE_STORAGE_LABELS[id] ?? id).join(', ')
-        : null
+      const useCaseValue =
+        selectedUseCases.length > 0
+          ? selectedUseCases.map((id) => USE_CASE_STORAGE_LABELS[id] ?? id).join(", ")
+          : null
       onComplete({ useCase: useCaseValue, preferredName: preferredName.trim() })
     }
   }, [defaultAgent, selectedUseCases, preferredName, onComplete])
@@ -151,83 +150,48 @@ export function AgentStep({ defaultAgent, onComplete, onSkip, onBack, setFooterC
   }, [handleContinue])
 
   return (
-    <YStack gap={20}>
+    <View style={{ gap: 22 }}>
       <StepHeader
-        title={t('onboarding.agentStep.title')}
-        description={t('onboarding.tellMeAboutYourselfDescription')}
+        title={t("onboarding.agentStep.title")}
+        description={t("onboarding.tellMeAboutYourselfDescription")}
       />
 
       {/* Q1: Use case chips — multi-select */}
-      <YStack gap={10}>
-        <Text
-          fontSize={11}
-          fontWeight="600"
-          color={c.text2}
-          textTransform="uppercase"
-          letterSpacing={1}
-        >
-          {t('onboarding.whatWillYouUseTeros')}
-        </Text>
-        <XStack flexWrap="wrap" gap={8}>
+      <View>
+        <FieldLabel>{t("onboarding.whatWillYouUseTeros")}</FieldLabel>
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
           {USE_CASES.map((uc) => {
             const isSelected = selectedUseCases.includes(uc.id)
             return (
-              <XStack
+              <Chip
                 key={uc.id}
-                paddingHorizontal={14}
-                paddingVertical={7}
-                borderRadius={20}
-                backgroundColor={isSelected ? semanticColors.indigoGlow : c.bgInner}
-                borderWidth={1}
-                borderColor={isSelected ? semanticColors.indigo : c.border}
-                cursor="pointer"
-                pressStyle={{ opacity: 0.7 }}
-                animation="quick"
+                icon={uc.icon}
+                on={isSelected}
                 onPress={() => toggleUseCase(uc.id)}
-                alignItems="center"
-                gap={6}
+                testID={`use-case-${uc.id}`}
+                accessibilityState={{ selected: isSelected }}
               >
-                <uc.Icon size={12} color={isSelected ? semanticColors.indigo : c.text2} />
-                <Text
-                  fontSize={12}
-                  fontWeight="500"
-                  color={isSelected ? semanticColors.indigo : c.text2}
-                >
-                  {t(uc.labelKey)}
-                </Text>
-              </XStack>
+                {t(uc.labelKey)}
+              </Chip>
             )
           })}
-        </XStack>
-      </YStack>
+        </View>
+      </View>
 
       {/* Q2: Preferred name */}
-      <YStack gap={6}>
-        <Text
-          fontSize={11}
-          fontWeight="600"
-          color={c.text2}
-          textTransform="uppercase"
-          letterSpacing={1}
-        >
-          {t('onboarding.whatShouldICallYou')}
-        </Text>
-        <Input
-          backgroundColor={c.bgInner}
-          borderWidth={1}
-          borderColor={c.border}
-          borderRadius={6}
-          color={c.text}
-          fontSize={13}
-          placeholderTextColor={c.text2}
-          placeholder={t('onboarding.agentStep.namePlaceholder')}
+      <View>
+        <FieldLabel>{t("onboarding.whatShouldICallYou")}</FieldLabel>
+        <Field
+          lg
+          icon="user"
+          placeholder={t("onboarding.agentStep.namePlaceholder")}
           value={preferredName}
           onChangeText={setPreferredName}
           maxLength={40}
-          focusStyle={{ borderColor: semanticColors.indigo }}
           autoCapitalize="words"
+          testID="preferred-name-input"
         />
-      </YStack>
-    </YStack>
+      </View>
+    </View>
   )
 }

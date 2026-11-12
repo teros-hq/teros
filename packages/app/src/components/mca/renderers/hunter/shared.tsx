@@ -226,8 +226,8 @@ interface HunterToolShellProps {
   toolName: string;
   status: ToolStatus;
   appIcon?: string;
-  /** Frase con verbo imperativo líder (el primitivo conjuga el tense). */
-  verb: string;
+  /** Description estática del tool call. */
+  description: string;
   badge?: React.ReactNode;
   defaultExpanded?: boolean;
   children?: React.ReactNode;
@@ -237,7 +237,7 @@ export function HunterToolShell({
   toolName,
   status,
   appIcon,
-  verb,
+  description,
   badge,
   defaultExpanded,
   children,
@@ -246,7 +246,7 @@ export function HunterToolShell({
   return (
     <ToolCallCard
       status={statusType(status)}
-      verb={verb}
+      description={description}
       iconUri={appIcon}
       badge={badge}
       defaultExpanded={expanded}

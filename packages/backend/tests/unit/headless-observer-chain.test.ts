@@ -44,6 +44,9 @@ function makeMcaService(): McaService {
     })),
     getApp: mock(async () => app),
     hasAccess: mock(async () => true),
+    // MUW-REQ-12: no channel document behind CHANNEL here — a null viewer keeps
+    // the executor's own user context.
+    getChannelViewer: mock(async () => null),
     getAgentAppAccess: mock(async () => ({
       appId: APP,
       permissions: { tools: [{ name: TOOL, permission: 'ask' }] },

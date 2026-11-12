@@ -70,6 +70,7 @@ test.describe("autoplay attribution (TER-650/G3) @usage", () => {
         async ({ pid, col, aid }) => {
           const r = await window.teros.board.createTask(pid, {
             title: "autorun task",
+            instructions: "Autorun task for usage attribution.",
             columnId: col,
           })
           await window.teros.board.assignTask(r.task.taskId, aid)

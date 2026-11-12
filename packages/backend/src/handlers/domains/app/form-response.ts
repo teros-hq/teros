@@ -1,6 +1,6 @@
 /**
  * app.form-response — User response to an inline form (request-user-input tool)
- *
+ * (docs/specs/20260705_inline-user-forms.md)
  *
  * Payload: { formRequestId, values?, notes?, dismissed? }. Values are validated
  * server-side against the persisted form spec; on validation failure the form

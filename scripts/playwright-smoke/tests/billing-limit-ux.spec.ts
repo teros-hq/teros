@@ -44,7 +44,7 @@ test.afterAll(async () => {
 })
 
 test.describe("billing — UX de límite I4 @billing", () => {
-  test("boostPricing: presente en plan metered (Pro), null en no-metered (Enterprise)", async ({
+  test("boostPricing: presente en plan metered (Pro), null en no-metered (Enterprise) @stripe", async ({
     user2Page,
   }) => {
     // Metered (plan_pro): el modal de compra se habilita con el precio configurado.
@@ -60,7 +60,7 @@ test.describe("billing — UX de límite I4 @billing", () => {
     expect(ent.boostPricing, "boostPricing null en plan no-metered").toBeNull()
   })
 
-  test("purchase-boost compra horas: cobra la tarjeta + concede el boost + sube el límite", async ({
+  test("purchase-boost compra horas: cobra la tarjeta + concede el boost + sube el límite @stripe", async ({
     user2Page,
   }) => {
     // Regresión F4 (arreglada en fase4-stripe): el cobro creaba el invoice item sin
@@ -127,7 +127,7 @@ test.describe("billing — UX de límite I4 @billing", () => {
     expect((await getBoosts(KIMI_USER)).length, "no concede horas todavía").toBe(0)
   })
 
-  test("banner 80%: se muestra con el evento usage-warning y su CTA abre el BoostModal", async ({
+  test("banner 80%: se muestra con el evento usage-warning y su CTA abre el BoostModal @stripe", async ({
     user2Page,
   }) => {
     // El backend emite `billing.usage-warning` al cruzar el 80%; lo forzamos para

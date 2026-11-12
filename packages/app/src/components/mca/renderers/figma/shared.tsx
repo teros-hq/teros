@@ -29,12 +29,13 @@ import type React from "react"
 import { Text } from "tamagui"
 import { Badge, ToolCallCard, useColors } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
+import { backendUrl } from "../../../../config/runtime"
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const FIGMA_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.figma/icon.png`
+export const FIGMA_ICON = `${backendUrl()}/static/mcas/mca.figma/icon.svg`
 
 /**
  * Figma's official brand palette — the five colours of the toolbar. Used as
@@ -511,8 +512,7 @@ export function FigmaToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      description={description}
-      verb={getToolLabel(toolName)}
+      description={description ?? getToolLabel(toolName)}
       iconUri={FIGMA_ICON}
       badge={badge ?? statusBadge(status)}
       defaultExpanded={defaultExpanded}

@@ -133,8 +133,11 @@ interface TerosTestClient {
     }): Promise<{ agent: AgentLite }>
     deleteAgent(agentId: string): Promise<{ agentId: string }>
     listCores(status?: "active" | "inactive"): Promise<{ cores: Array<{ coreId: string }> }>
-    setProviders(agentId: string, providers: string[]): Promise<unknown>
-    setPreferredProvider(agentId: string, providerId: string | null): Promise<unknown>
+    setModel(
+      agentId: string,
+      providerId: string | null,
+      modelId?: string | null,
+    ): Promise<{ agentId: string; selectedProviderId: string | null; selectedModelId: string | null }>
   }
 
   workspace: {
@@ -160,7 +163,14 @@ interface TerosTestClient {
     getBoard(projectId: string): Promise<{ board: BoardLite; tasks: TaskLite[]; agents: unknown[] }>
     createTask(
       projectId: string,
-      input: { title: string; description?: string; priority?: string; columnId?: string },
+      // instructions: required since b049bbfaa (board.create-task → MISSING_FIELDS without it).
+      input: {
+        title: string
+        instructions: string
+        description?: string
+        priority?: string
+        columnId?: string
+      },
     ): Promise<{ task: TaskLite }>
     listTasks(
       projectId: string,

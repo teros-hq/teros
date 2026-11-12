@@ -4,21 +4,26 @@
  * Agent configuration: permissions, apps, avatar, etc.
  */
 
-import { Bot } from '@tamagui/lucide-icons';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { AgentWindowContent } from './AgentWindowContent';
-import i18n from '../../i18n';
+import { Bot } from "@tamagui/lucide-icons"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const AgentWindowContent = lazyWithRetry(() =>
+  import("./AgentWindowContent").then((m) => ({ default: m.AgentWindowContent })),
+)
+import i18n from "../../i18n"
 
 export interface AgentWindowProps {
-  agentId: string;
-  workspaceId?: string;
+  agentId: string
+  workspaceId?: string
 }
 
 export const agentWindowDefinition: WindowTypeDefinition<AgentWindowProps> = {
-  type: 'agent',
-  displayName: 'Agente',
+  type: "agent",
+  audience: "user",
+  displayName: "Agente",
   icon: Bot,
-  color: '#4A9E5B',
+  phIcon: "identification-badge",
+  color: "#4A9E5B",
   component: AgentWindowContent,
 
   defaultSize: { width: 600, height: 500 },
@@ -31,4 +36,4 @@ export const agentWindowDefinition: WindowTypeDefinition<AgentWindowProps> = {
 
   serialize: (props) => ({ agentId: props.agentId, workspaceId: props.workspaceId }),
   deserialize: (data) => ({ agentId: data.agentId, workspaceId: data.workspaceId }),
-};
+}

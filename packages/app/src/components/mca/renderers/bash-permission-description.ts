@@ -1,5 +1,6 @@
 /**
- * Permission helpers for `mca.teros.bash` and `mca.teros.admin.bash`
+ * Permission helpers for `mca.teros.bash` (and, historically, the retired
+ * `mca.teros.admin.bash` — removed 2026-10-19).
  * (and any other shell-shaped tool reusing them via wrapper).
  *
  * Three things are derived from the user-supplied shell command:

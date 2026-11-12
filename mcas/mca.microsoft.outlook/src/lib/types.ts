@@ -6,6 +6,7 @@ export interface OutlookSecrets {
   REFRESH_TOKEN?: string
   EMAIL?: string
   EXPIRY_DATE?: string
+  SIGNATURE_HTML?: string
 }
 
 export interface GraphError {

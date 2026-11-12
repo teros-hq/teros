@@ -4,7 +4,7 @@
  * Three synthetic tools injected by McaToolExecutor into every conversation,
  * so the LLM can discover and execute app tools on demand instead of having
  * every installed app's tools preloaded in its context window
- *.
+ * (docs/specs/20260704_tool-execution-proxy.md).
  *
  * Naming invariant: meta-tool names contain NO underscore. Real app tools are
  * always namespaced `${appName}_${tool}`, so a collision is impossible by
@@ -72,9 +72,9 @@ export function buildProxyToolDefinitions(installedAppsSummary?: string): ToolDe
     {
       name: PROXY_TOOL_LIST_APP_TOOLS,
       description:
-        "List the tools an installed app provides. By default returns a compact list: tool name, description " +
-        "and permission flags. Pass `tools` with specific tool names to also get their full input schemas — " +
-        `do that before calling ${PROXY_TOOL_EXECUTE} for a tool whose parameters you do not know.` +
+        "List the tools an installed app provides. By default returns a compact list: tool name, description, " +
+        "permission flags, required parameters and property names. Pass `tools` with specific tool names to also " +
+        "get their full input schemas — do that when you need type details or descriptions of individual parameters." +
         SILENT_CHAINING,
       input_schema: {
         type: "object",

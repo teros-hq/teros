@@ -1,57 +1,40 @@
-import {
-  BarChart3,
-  Briefcase,
-  Bug,
-  Code,
-  FileText,
-  Headphones,
-  Megaphone,
-  Palette,
-  Server,
-  Shield,
-  User,
-  Workflow,
-} from '@tamagui/lucide-icons';
-import React from 'react';
-
-// Local type for lucide icon components (tamagui no longer exports this)
-type LucideIcon = React.ComponentType<{ size?: number; color?: string }>;
-import { useTranslation } from 'react-i18next';
-import {
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { colors, surface } from './mca/primitives/colors';
+/**
+ * SelectAgentRoleModal — pick a role template for a new agent.
+ *
+ * OS prototype vocabulary (design-testing): a centred card on a dim overlay,
+ * serif title, a 2-column grid of role cards (Phosphor tile + name + sub) and
+ * a ghost "custom" action. Colours come from `useColors()`.
+ */
+import React from "react"
+import { useTranslation } from "react-i18next"
+import { Modal, Platform, Pressable, ScrollView, View, useWindowDimensions } from "react-native"
+import { useColors } from "./mca/primitives/useColors"
+import { Btn, Card, IconBtn, Ph, T } from "./ui/ds"
 
 // ============================================================================
 // AGENT ROLE TEMPLATES
 // ============================================================================
 
 export interface AgentRoleTemplate {
-  id: string;
-  name: string;
-  description: string;
-  icon: LucideIcon;
-  color: string;
-  role: string;
-  intro: string;
-  responseStyle: string;
+  id: string
+  name: string
+  description: string
+  /** Phosphor icon name (kebab-case). */
+  icon: string
+  color: string
+  role: string
+  intro: string
+  responseStyle: string
 }
 
 export const AGENT_ROLE_TEMPLATES: AgentRoleTemplate[] = [
   {
-    id: 'personal-assistant',
-    name: 'Personal Assistant',
-    description: 'General help, tasks, organization',
-    icon: User,
-    color: '#8B5CF6',
-    role: 'Personal Assistant',
+    id: "personal-assistant",
+    name: "Personal Assistant",
+    description: "General help, tasks, organization",
+    icon: "user",
+    color: "#8B5CF6",
+    role: "Personal Assistant",
     intro: `I'm your Personal Assistant, ready to help with any task you need.
 
 I can help with:
@@ -60,15 +43,15 @@ I can help with:
 - Writing and editing documents
 - Scheduling and reminders
 - General problem-solving`,
-    responseStyle: 'friendly',
+    responseStyle: "friendly",
   },
   {
-    id: 'product-manager',
-    name: 'Product Manager',
-    description: 'Roadmaps, features, user stories',
-    icon: Briefcase,
-    color: '#6366F1',
-    role: 'Product Manager',
+    id: "product-manager",
+    name: "Product Manager",
+    description: "Roadmaps, features, user stories",
+    icon: "briefcase",
+    color: "#6366F1",
+    role: "Product Manager",
     intro: `I'm your Product Manager assistant, helping you define and prioritize product strategy.
 
 I can help with:
@@ -77,15 +60,15 @@ I can help with:
 - Prioritizing features and backlog management
 - Stakeholder communication and alignment
 - Market analysis and competitive research`,
-    responseStyle: 'strategic',
+    responseStyle: "strategic",
   },
   {
-    id: 'fullstack-developer',
-    name: 'Fullstack Developer',
-    description: 'Frontend, backend, APIs, databases',
-    icon: Code,
-    color: '#14B8A6',
-    role: 'Fullstack Developer',
+    id: "fullstack-developer",
+    name: "Fullstack Developer",
+    description: "Frontend, backend, APIs, databases",
+    icon: "code",
+    color: "#14B8A6",
+    role: "Fullstack Developer",
     intro: `I'm your Fullstack Developer assistant, ready to help with any coding task.
 
 I can help with:
@@ -94,15 +77,15 @@ I can help with:
 - Database design and queries
 - Code review and debugging
 - Architecture decisions`,
-    responseStyle: 'practical',
+    responseStyle: "practical",
   },
   {
-    id: 'devops-engineer',
-    name: 'DevOps Engineer',
-    description: 'CI/CD, infrastructure, deployments',
-    icon: Server,
-    color: '#F97316',
-    role: 'DevOps Engineer',
+    id: "devops-engineer",
+    name: "DevOps Engineer",
+    description: "CI/CD, infrastructure, deployments",
+    icon: "hard-drives",
+    color: "#F97316",
+    role: "DevOps Engineer",
     intro: `I'm your DevOps Engineer assistant, focused on infrastructure and deployment automation.
 
 I can help with:
@@ -111,15 +94,15 @@ I can help with:
 - Container orchestration (Docker, Kubernetes)
 - Monitoring and observability
 - Cloud services (AWS, GCP, Azure)`,
-    responseStyle: 'technical',
+    responseStyle: "technical",
   },
   {
-    id: 'qa-tester',
-    name: 'QA Tester',
-    description: 'Testing, automation, quality',
-    icon: Bug,
-    color: '#A855F7',
-    role: 'QA Tester',
+    id: "qa-tester",
+    name: "QA Tester",
+    description: "Testing, automation, quality",
+    icon: "bug",
+    color: "#A855F7",
+    role: "QA Tester",
     intro: `I'm your QA Tester assistant, focused on software quality and testing.
 
 I can help with:
@@ -128,15 +111,15 @@ I can help with:
 - Bug reporting and tracking
 - Test automation frameworks
 - Quality metrics and coverage`,
-    responseStyle: 'meticulous',
+    responseStyle: "meticulous",
   },
   {
-    id: 'automation-specialist',
-    name: 'Automation Specialist',
-    description: 'Workflows, integrations, scripts',
-    icon: Workflow,
-    color: '#06B6D4',
-    role: 'Automation Specialist',
+    id: "automation-specialist",
+    name: "Automation Specialist",
+    description: "Workflows, integrations, scripts",
+    icon: "flow-arrow",
+    color: "#06B6D4",
+    role: "Automation Specialist",
     intro: `I'm your Automation Specialist, helping you streamline workflows and processes.
 
 I can help with:
@@ -145,15 +128,15 @@ I can help with:
 - API integrations
 - Process optimization
 - Repetitive task elimination`,
-    responseStyle: 'efficient',
+    responseStyle: "efficient",
   },
   {
-    id: 'data-analyst',
-    name: 'Data Analyst',
-    description: 'Metrics, dashboards, insights',
-    icon: BarChart3,
-    color: '#10B981',
-    role: 'Data Analyst',
+    id: "data-analyst",
+    name: "Data Analyst",
+    description: "Metrics, dashboards, insights",
+    icon: "chart-bar",
+    color: "#10B981",
+    role: "Data Analyst",
     intro: `I'm your Data Analyst assistant, helping you make sense of your data.
 
 I can help with:
@@ -162,15 +145,15 @@ I can help with:
 - SQL queries and data extraction
 - KPI definition and tracking
 - Statistical analysis and insights`,
-    responseStyle: 'analytical',
+    responseStyle: "analytical",
   },
   {
-    id: 'ux-designer',
-    name: 'UX Designer',
-    description: 'Interfaces, wireframes, usability',
-    icon: Palette,
-    color: '#EC4899',
-    role: 'UX Designer',
+    id: "ux-designer",
+    name: "UX Designer",
+    description: "Interfaces, wireframes, usability",
+    icon: "palette",
+    color: "#EC4899",
+    role: "UX Designer",
     intro: `I'm your UX Designer assistant, focused on creating great user experiences.
 
 I can help with:
@@ -179,15 +162,15 @@ I can help with:
 - Usability analysis and improvements
 - Design system guidance
 - Accessibility best practices`,
-    responseStyle: 'creative',
+    responseStyle: "creative",
   },
   {
-    id: 'technical-writer',
-    name: 'Technical Writer',
-    description: 'Documentation, APIs, guides',
-    icon: FileText,
-    color: '#64748B',
-    role: 'Technical Writer',
+    id: "technical-writer",
+    name: "Technical Writer",
+    description: "Documentation, APIs, guides",
+    icon: "file-text",
+    color: "#64748B",
+    role: "Technical Writer",
     intro: `I'm your Technical Writer assistant, helping you create clear documentation.
 
 I can help with:
@@ -196,15 +179,15 @@ I can help with:
 - README files and changelogs
 - Technical specifications
 - Knowledge base articles`,
-    responseStyle: 'clear',
+    responseStyle: "clear",
   },
   {
-    id: 'security-analyst',
-    name: 'Security Analyst',
-    description: 'Audits, vulnerabilities, compliance',
-    icon: Shield,
-    color: '#EF4444',
-    role: 'Security Analyst',
+    id: "security-analyst",
+    name: "Security Analyst",
+    description: "Audits, vulnerabilities, compliance",
+    icon: "shield-check",
+    color: "#EF4444",
+    role: "Security Analyst",
     intro: `I'm your Security Analyst assistant, focused on keeping your systems secure.
 
 I can help with:
@@ -213,15 +196,15 @@ I can help with:
 - Compliance requirements (SOC2, GDPR)
 - Security best practices
 - Incident response planning`,
-    responseStyle: 'thorough',
+    responseStyle: "thorough",
   },
   {
-    id: 'marketing-specialist',
-    name: 'Marketing Specialist',
-    description: 'Campaigns, copywriting, SEO',
-    icon: Megaphone,
-    color: '#F59E0B',
-    role: 'Marketing Specialist',
+    id: "marketing-specialist",
+    name: "Marketing Specialist",
+    description: "Campaigns, copywriting, SEO",
+    icon: "megaphone",
+    color: "#F59E0B",
+    role: "Marketing Specialist",
     intro: `I'm your Marketing Specialist assistant, helping you grow your audience.
 
 I can help with:
@@ -230,15 +213,15 @@ I can help with:
 - SEO optimization
 - Social media strategy
 - Analytics and performance tracking`,
-    responseStyle: 'persuasive',
+    responseStyle: "persuasive",
   },
   {
-    id: 'customer-support',
-    name: 'Customer Support',
-    description: 'Help desk, FAQs, problem solving',
-    icon: Headphones,
-    color: '#3B82F6',
-    role: 'Customer Support Specialist',
+    id: "customer-support",
+    name: "Customer Support",
+    description: "Help desk, FAQs, problem solving",
+    icon: "headset",
+    color: "#3B82F6",
+    role: "Customer Support Specialist",
     intro: `I'm your Customer Support assistant, focused on helping users succeed.
 
 I can help with:
@@ -247,19 +230,74 @@ I can help with:
 - Troubleshooting common issues
 - Escalation procedures
 - Customer satisfaction improvement`,
-    responseStyle: 'empathetic',
+    responseStyle: "empathetic",
   },
-];
+]
 
 // ============================================================================
 // COMPONENT
 // ============================================================================
 
 interface SelectAgentRoleModalProps {
-  visible: boolean;
-  onClose: () => void;
-  onSelectRole: (template: AgentRoleTemplate) => void;
-  onSelectCustom: () => void;
+  visible: boolean
+  onClose: () => void
+  onSelectRole: (template: AgentRoleTemplate) => void
+  onSelectCustom: () => void
+}
+
+/** One role card of the grid — tile tinted with the template colour. */
+export function RoleTemplateCard({
+  template,
+  onPress,
+  busy,
+  disabled,
+}: {
+  template: AgentRoleTemplate
+  onPress: () => void
+  busy?: boolean
+  disabled?: boolean
+}) {
+  const { t } = useTranslation()
+  const c = useColors()
+  return (
+    <Card
+      hov
+      accent
+      pad
+      onPress={onPress}
+      disabled={disabled}
+      style={{ opacity: disabled && !busy ? 0.5 : 1 }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            backgroundColor: `${template.color}20`,
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {busy ? (
+            <Ph name="circle-notch" size={18} color={template.color} />
+          ) : (
+            <Ph name={template.icon} size={18} color={template.color} />
+          )}
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <T step="sm" ellipsis>
+            {t(`agent.roles.${template.id}`)}
+          </T>
+          <T step="12" tone="text3" ellipsis>
+            {t(`agent.roles.${template.id}Desc`)}
+          </T>
+        </View>
+        <Ph name="caret-right" size={14} color={c.text3} />
+      </View>
+    </Card>
+  )
 }
 
 export function SelectAgentRoleModal({
@@ -268,172 +306,92 @@ export function SelectAgentRoleModal({
   onSelectRole,
   onSelectCustom,
 }: SelectAgentRoleModalProps) {
-  const { t } = useTranslation();
+  const { t } = useTranslation()
+  const c = useColors()
+  const { width } = useWindowDimensions()
+  const cols = width <= 620 ? 1 : 2
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={styles.overlay} onPress={onClose}>
-        <Pressable style={styles.modal} onPress={(e) => e.stopPropagation()}>
+      <Pressable
+        onPress={onClose}
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(32,28,39,0.55)",
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 16,
+        }}
+      >
+        <Pressable
+          onPress={(e) => e.stopPropagation()}
+          style={[
+            {
+              width: "100%",
+              maxWidth: 640,
+              maxHeight: "88%",
+              borderRadius: 24,
+              backgroundColor: c.bgSheet,
+              overflow: "hidden",
+            },
+            Platform.OS === "web" ? ({ boxShadow: c.elevRaised } as any) : null,
+          ]}
+        >
           {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>{t('agent.createNewAgent')}</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              gap: 12,
+              padding: 24,
+              paddingBottom: 8,
+            }}
+          >
+            <View style={{ flex: 1 }}>
+              <T step="xs" tone="accent" style={{ marginBottom: 10 }}>
+                {t("agent.createAgent")}
+              </T>
+              <T step="xl">{t("agent.createNewAgent")}</T>
+              <T step="sm" tone="text2" style={{ marginTop: 6 }}>
+                {t("agent.chooseRole")}
+              </T>
+            </View>
+            <IconBtn icon="x" plain onPress={onClose} title={t("common.close")} />
           </View>
 
           {/* Content */}
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.subtitle}>{t('agent.chooseRole')}</Text>
-
-            <View style={styles.rolesGrid}>
-              {AGENT_ROLE_TEMPLATES.map((template) => {
-                const Icon = template.icon;
-                return (
-                  <TouchableOpacity
-                    key={template.id}
-                    style={styles.roleCard}
-                    onPress={() => onSelectRole(template)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.roleIcon, { backgroundColor: `${template.color}20` }]}>
-                      <Icon size={20} color={template.color} />
-                    </View>
-                    <View style={styles.roleInfo}>
-                      <Text style={styles.roleName}>{t(`agent.roles.${template.id}`)}</Text>
-                      <Text style={styles.roleDescription}>{t(`agent.roles.${template.id}Desc`)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+          <ScrollView
+            style={{ maxHeight: 460 }}
+            contentContainerStyle={{ padding: 24, paddingTop: 8 }}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -5 }}>
+              {AGENT_ROLE_TEMPLATES.map((template) => (
+                <View
+                  key={template.id}
+                  style={{ width: `${100 / cols}%`, paddingHorizontal: 5, marginBottom: 10 }}
+                >
+                  <RoleTemplateCard template={template} onPress={() => onSelectRole(template)} />
+                </View>
+              ))}
             </View>
           </ScrollView>
 
           {/* Footer with custom option */}
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.customButton}
-              onPress={onSelectCustom}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.customButtonText}>{t('agent.orCreateCustom')}</Text>
-            </TouchableOpacity>
+          <View
+            style={{
+              padding: 16,
+              borderTopWidth: 1,
+              borderTopColor: c.border,
+              alignItems: "center",
+            }}
+          >
+            <Btn variant="ghost" icon="sparkle" onPress={onSelectCustom}>
+              {t("agent.orCreateCustom")}
+            </Btn>
           </View>
         </Pressable>
       </Pressable>
     </Modal>
-  );
+  )
 }
-
-// ============================================================================
-// STYLES
-// ============================================================================
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: surface.dark.bgInner,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modal: {
-    backgroundColor: surface.dark.bgCard,
-    borderRadius: 12,
-    width: '90%',
-    maxWidth: 560,
-    maxHeight: '85%',
-    borderWidth: 1,
-    borderColor: surface.dark.borderStrong,
-    ...Platform.select({
-      web: {
-        boxShadow: surface.dark.shadow,
-      },
-      default: {
-        shadowColor: surface.dark.bgPage,
-        shadowOffset: { width: 0, height: 25 },
-        shadowOpacity: 0.5,
-        shadowRadius: 50,
-        elevation: 25,
-      },
-    }),
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: surface.dark.border,
-  },
-  title: {
-    color: surface.dark.text,
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  closeButtonText: {
-    color: surface.dark.text3,
-    fontSize: 20,
-  },
-  content: {
-    padding: 16,
-    maxHeight: 450,
-  },
-  subtitle: {
-    color: surface.dark.text2,
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  rolesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  roleCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: surface.dark.bgInner,
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: surface.dark.border,
-    width: '48.5%',
-    minWidth: 200,
-  },
-  roleIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  roleInfo: {
-    flex: 1,
-  },
-  roleName: {
-    color: surface.dark.text,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  roleDescription: {
-    color: surface.dark.text3,
-    fontSize: 11,
-  },
-  footer: {
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: surface.dark.border,
-    alignItems: 'center',
-  },
-  customButton: {
-    paddingVertical: 8,
-  },
-  customButtonText: {
-    color: colors.violet,
-    fontSize: 13,
-  },
-});

@@ -69,6 +69,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies Render API key and connectivity.',
   parameters: {
     type: 'object',

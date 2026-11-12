@@ -20,7 +20,7 @@ import {
   setUsed,
 } from "../helpers/billing"
 import { closeDb } from "../helpers/db"
-import { fillStripeCard, openBoostModalViaBanner, openChat } from "../helpers/dom"
+import { chat, composerInput, fillStripeCard, openBoostModalViaBanner, openChat } from "../helpers/dom"
 import { ensureTerosProvider } from "../helpers/provider"
 import { evalTeros, getPrimaryIds } from "../helpers/teros"
 
@@ -51,23 +51,23 @@ test.describe("billing — UX de límite I4 (DOM) @billing", () => {
     )
     // Enviar un mensaje por el composer (DOM) → el gate corta el turno → ErrorBlock
     // renderiza el HoursExhaustedWidget en el chat.
-    const input = user2Page.getByTestId("composer-input")
+    const input = composerInput(user2Page, channelId)
     await input.fill("hola")
     await input.press("Enter")
 
-    await expect(user2Page.getByTestId("hours-exhausted-widget")).toBeVisible({ timeout: 30_000 })
+    await expect(chat(user2Page, channelId).getByTestId("hours-exhausted-widget")).toBeVisible({ timeout: 30_000 })
     // El cuerpo enmarca el bloqueo con el plan (Pro) — el carrier planName de I4.
-    await expect(user2Page.getByTestId("hours-exhausted-body")).toContainText("Pro")
-    await expect(user2Page.getByTestId("exhausted-upgrade")).toBeVisible()
+    await expect(chat(user2Page, channelId).getByTestId("hours-exhausted-body")).toContainText("Pro")
+    await expect(chat(user2Page, channelId).getByTestId("exhausted-upgrade")).toBeVisible()
 
     // El CTA "conseguir más horas" abre el BoostModal.
-    await user2Page.getByTestId("exhausted-boost").click()
+    await chat(user2Page, channelId).getByTestId("exhausted-boost").click()
     await expect(user2Page.getByTestId("boost-panel")).toBeVisible({ timeout: 10_000 })
 
     await evalTeros(user2Page, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
 
-  test("BoostModal compra individual: el stepper mueve el total y comprar concede el boost", async ({
+  test("BoostModal compra individual: el stepper mueve el total y comprar concede el boost @stripe", async ({
     user2Page,
   }) => {
     test.setTimeout(60_000) // la compra cobra la tarjeta vía Stripe
@@ -145,12 +145,12 @@ test.describe("billing — UX de límite I4 (DOM) @billing", () => {
       privateWorkspaceId as string,
       `PWdue${Date.now()}`,
     )
-    const input = user2Page.getByTestId("composer-input")
+    const input = composerInput(user2Page, channelId)
     await input.fill("hola")
     await input.press("Enter")
 
     // ErrorBlock renderiza el PaymentDueWidget (reason 'payment_due'), no el de horas.
-    await expect(user2Page.getByTestId("payment-due-widget")).toBeVisible({ timeout: 30_000 })
+    await expect(chat(user2Page, channelId).getByTestId("payment-due-widget")).toBeVisible({ timeout: 30_000 })
 
     await evalTeros(user2Page, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
@@ -170,21 +170,21 @@ test.describe("billing — UX de límite I4 (DOM) @billing", () => {
       privateWorkspaceId as string,
       `PWupg${Date.now()}`,
     )
-    const input = user2Page.getByTestId("composer-input")
+    const input = composerInput(user2Page, channelId)
     await input.fill("hola")
     await input.press("Enter")
-    await expect(user2Page.getByTestId("hours-exhausted-widget")).toBeVisible({ timeout: 30_000 })
+    await expect(chat(user2Page, channelId).getByTestId("hours-exhausted-widget")).toBeVisible({ timeout: 30_000 })
 
     // El CTA "Subir de plan" llama openWindow('profile',{initialMode:'plan'}) → la
     // ventana de Perfil se abre directamente en la sección de plan (UsageHero).
-    await user2Page.getByTestId("exhausted-upgrade").click()
+    await chat(user2Page, channelId).getByTestId("exhausted-upgrade").click()
     await expect(user2Page.getByTestId("plan-hero")).toBeVisible({ timeout: 15_000 })
     await expect(user2Page.getByTestId("plan-hero")).toContainText("Pro")
 
     await evalTeros(user2Page, (cid) => window.teros.channel.close(cid).then(() => null), channelId)
   })
 
-  test("BoostModal sin método de pago: NO_PAYMENT_METHOD → formulario → re-vault → reintento concede el boost", async ({
+  test("BoostModal sin método de pago: NO_PAYMENT_METHOD → formulario → re-vault → reintento concede el boost @stripe", async ({
     user2Page,
   }) => {
     test.setTimeout(140_000) // re-vault con Stripe Elements + cobro de la compra

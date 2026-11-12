@@ -1,0 +1,45 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.automate",
+  "name": "Automate",
+  "version": "1.0.0",
+  "description": "Automations for agents: reminders, schedules, webhooks and event triggers that create tasks, message a channel or start a flow. Same engine as the Automate window.",
+  "type": "utility",
+  "icon": "icon.png",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Teros",
+    "email": "hello@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "backend": {
+    "actions": ["automate.*", "app.list-event-topics"]
+  },
+  "keywords": ["automate", "automation", "scheduler", "reminders", "recurring", "cron", "webhook", "events", "triggers"],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-10-14",
+      "notes": "Initial release — automations (schedule / once / webhook / event × create-task / channel-event / start-flow) over the backend automate.* API; absorbs the scheduler MCA (reminders, recurring tasks, snooze, bulk cancel, upcoming, time parsing)."
+    }
+  ]
+}

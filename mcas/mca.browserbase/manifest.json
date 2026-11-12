@@ -33,7 +33,8 @@
   "runtime": {
     "transport": "http",
     "containerMode": "per-app",
-    "dockerImage": "teros/mca-runtime"
+    "workspaceMount": true,
+    "dockerImage": "teros/mca-runtime-playwright"
   },
   "keywords": ["browser", "browserbase", "automation", "scraping", "headless", "cloud", "stealth", "captcha"],
   "changelog": [

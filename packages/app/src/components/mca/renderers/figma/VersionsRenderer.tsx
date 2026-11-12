@@ -14,9 +14,9 @@ import {
   Empty,
   EntityRow,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   parseOutput,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -44,6 +44,7 @@ export function ListFileVersionsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const parsed = output ? (parseOutput<VersionsResponse>(output) as VersionsResponse | null) : null
   const { items, count } = unwrapList<FigmaVersion>(parsed, "versions")
@@ -79,7 +80,7 @@ export function ListFileVersionsRenderer({
                       </XStack>
                     }
                     meta={
-                      <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                      <Text color={c.text2} fontSize={9} fontFamily="$mono">
                         {formatDateTime(v.createdAt)}
                       </Text>
                     }
@@ -89,7 +90,7 @@ export function ListFileVersionsRenderer({
             </YStack>
           </ScrollView>
           {nextPage && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               More versions available — pass `before` cursor to paginate.
             </Text>
           )}

@@ -85,6 +85,7 @@ export function createMoveMyTaskHandler(
         toColumnId: columnId,
         toColumnName: toColumn?.name,
         columnId,
+        actorAgentId: agentId,
       }
       boardSubscriptionService.notifySubscribers(updatedTask.boardId, {
         eventType: 'board.task_moved',

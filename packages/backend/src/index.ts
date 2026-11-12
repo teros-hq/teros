@@ -18,28 +18,32 @@ import { AuthManager } from './auth/auth-manager'
 import { initMcaOAuth } from './auth/mca-oauth'
 import { config } from './config'
 import { createContainer } from './container'
+import { getSchemaWriteMode, withSchemaValidation } from './db/validated'
 import { captureException, flush as flushSentry, initSentry } from './lib/sentry'
+import { createLogger } from './lib/logger'
 import { SecretsManager, secrets } from './secrets/secrets-manager'
 import { bootstrapServer } from './bootstrap'
+
+const log = createLogger('Bootstrap')
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 async function main() {
-  console.log('Teros Backend starting...')
+  log.info('Teros Backend starting...')
 
   // -------------------------------------------------------------------------
   // SENTRY ERROR TRACKING
   // -------------------------------------------------------------------------
   initSentry({
-    environment: process.env.NODE_ENV || 'development',
+    environment: process.env.NODE_ENV || 'production',
   })
 
   // -------------------------------------------------------------------------
   // SECRETS
   // -------------------------------------------------------------------------
 
-  console.log('Loading secrets...')
+  log.info('Loading secrets...')
   const secretsPath = join(__dirname, '../../../.secrets')
   process.env.SECRETS_PATH = secretsPath
 
@@ -62,9 +66,9 @@ async function main() {
     )
   }
   if (missingSecrets.length > 0) {
-    console.error('❌ Missing required secrets:')
-    missingSecrets.forEach((s) => console.error(`   - ${s}`))
-    console.error('\nSee .secrets/system/*.example.json for reference.')
+    log.error('Missing required secrets:')
+    missingSecrets.forEach((s) => log.error({ secret: s }, `  - ${s}`))
+    log.error('See .secrets/system/*.example.json for reference.')
     process.exit(1)
   }
 
@@ -73,7 +77,7 @@ async function main() {
   // Priority: env var (for Docker/infra overrides) > SecretsManager > defaults
   // -------------------------------------------------------------------------
 
-  console.log('Connecting to MongoDB...')
+  log.info('Connecting to MongoDB...')
   const dbSecret = secretsManager.system('database')
   const mongoUri = process.env.MONGODB_URI || dbSecret?.uri || 'mongodb://localhost:27017'
   const mongoDatabase = process.env.MONGODB_DATABASE || dbSecret?.database || 'teros'
@@ -82,17 +86,22 @@ async function main() {
   // PM2's kill_timeout when Mongo is down, instead of stacking 30s waits (A1.9).
   const mongoClient = new MongoClient(mongoUri, { serverSelectionTimeoutMS: 5000 })
   await mongoClient.connect()
-  const db = mongoClient.db(mongoDatabase)
-  console.log(`MongoDB connected (${mongoDatabase})`)
+  // Collections with a document schema (src/db/schemas.ts) validate reads
+  // (warn and continue) and writes (DB_SCHEMA_WRITES: warn | error) — GOV-2
+  const db = withSchemaValidation(mongoClient.db(mongoDatabase))
+  log.info({ database: mongoDatabase, schemaWrites: getSchemaWriteMode() }, 'MongoDB connected')
 
   // -------------------------------------------------------------------------
   // AUTH SETUP
   // -------------------------------------------------------------------------
 
   const authManager = new AuthManager(db)
-  console.log('AuthManager initialized')
+  log.info('AuthManager initialized')
 
   const mcaOAuth = initMcaOAuth(db, authManager, secretsManager)
+
+  // REQ-11: Initialize per-user auth service for personal apps
+  // (its indexes are applied in bootstrapServer, after migrations — GOV-4)
 
   // -------------------------------------------------------------------------
   // BOOTSTRAP SERVER
@@ -111,7 +120,7 @@ async function main() {
 }
 
 main().catch(async (error) => {
-  console.error('Fatal error:', error)
+  log.fatal({ err: error }, 'Fatal error in main()')
   captureException(error, { context: 'main' })
   await flushSentry(2000)
   process.exit(1)
@@ -119,7 +128,19 @@ main().catch(async (error) => {
 
 // Global unhandled rejection handler
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+  // Log the FULL stack explicitly: pino serializes Error objects as
+  // {type, message} without .stack by default, which made RangeErrors
+  // ("Maximum call stack size exceeded") impossible to locate from logs
+  // (incident task_9489fb0ae1682990, 2026-10-22).
+  const stack = reason instanceof Error ? reason.stack : String(reason)
+  log.error(
+    {
+      err: reason instanceof Error ? reason : new Error(String(reason)),
+      stack,
+      promiseTag: typeof (promise as any)?.tag === 'string' ? (promise as any).tag : undefined,
+    },
+    'Unhandled Rejection',
+  )
   captureException(reason instanceof Error ? reason : new Error(String(reason)), {
     context: 'unhandledRejection',
   })
@@ -127,7 +148,7 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Global uncaught exception handler
 process.on('uncaughtException', async (error) => {
-  console.error('Uncaught Exception:', error)
+  log.fatal({ err: error }, 'Uncaught Exception')
   captureException(error, { context: 'uncaughtException' })
   await flushSentry(2000)
   process.exit(1)

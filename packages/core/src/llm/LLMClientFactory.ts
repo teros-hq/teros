@@ -11,6 +11,7 @@
  * - 'zhipu': Z.ai / ZhipuAI (GLM models)
  * - 'zhipu-coding': Z.ai coding API
  * - 'ollama': Local Ollama models
+ * - 'helmcode': Helmcode (EU private inference, OpenAI-compatible)
  */
 
 import { log } from "../logger"
@@ -41,7 +42,7 @@ import { MockLLMAdapter, RecordingLLMAdapter } from '../testing/LLMRecorder';
 const MODULE = "LLMClientFactory"
 
 export interface LLMConfig {
-  provider: 'anthropic' | 'anthropic-oauth' | 'openai' | 'openai-codex-oauth' | 'openrouter' | 'google' | 'zhipu' | 'zhipu-coding' | 'ollama' | 'ollama-cloud' | 'openai-compatible' | 'minimax' | 'teros' | 'cloudflare' | 'fireworks' | 'together';
+  provider: 'anthropic' | 'anthropic-oauth' | 'openai' | 'openai-codex-oauth' | 'openrouter' | 'google' | 'zhipu' | 'zhipu-coding' | 'ollama' | 'ollama-cloud' | 'openai-compatible' | 'minimax' | 'teros' | 'cloudflare' | 'fireworks' | 'together' | 'helmcode';
   anthropic?: {
     apiKey?: string // Optional for 'anthropic' - can use env or Claude Code CLI
     model: string // Model is required
@@ -59,7 +60,7 @@ export interface LLMConfig {
     onTokenRefresh?: (newTokens: CodexOAuthTokens) => Promise<void>;
   };
   openrouter?: {
-    apiKey?: string // Optional - can use env OPENROUTER_API_KEY
+    apiKey?: string // Optional - falls back to resolveOpenRouterApiKey, which requires an explicit key (no env fallback)
     model: string // Model is required (e.g., 'deepseek/deepseek-chat', 'openrouter/auto')
     maxTokens?: number
     routingStrategy?: "cheapest" | "fastest" | "best" // For auto-routing
@@ -109,8 +110,19 @@ export interface LLMConfig {
     maxTokens?: number
     /** Upstream base URL — set by resolveTerosUpstream (TER-617/F3). Defaults to Fireworks. */
     baseUrl?: string
-    /** Real upstream label (`fireworks` | `together`) for telemetry. Defaults to `fireworks`. */
+    /** Real upstream label (`fireworks` | `together` | `helmcode`) for telemetry. Defaults to `fireworks`. */
     actualProvider?: string
+    /** Whether the upstream model accepts images (from the Teros upstream catalogue, TPROV-REQ-7). */
+    vision?: boolean
+    /**
+     * Thinking-model reasoning budget passed through to the upstream as
+     * `reasoning_effort` ('none' | 'low' | 'medium' | 'high'). Fireworks GLM-5.x
+     * models are thinking-only — 'low' keeps internal one-off tasks (titles,
+     * letters) from burning the whole max_tokens budget on reasoning. 'none'
+     * is for models that accept it (deepseek/kimi — F5a voice fast leg: zero
+     * reasoning tokens, fastest TTFT).
+     */
+    reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   }
   cloudflare?: {
     apiKey: string // Cloudflare API token (user secret)
@@ -126,6 +138,11 @@ export interface LLMConfig {
   together?: {
     apiKey: string // Together AI API key (user secret)
     model: string // Model name (e.g., 'meta-llama/Llama-3.3-70B-Instruct-Turbo')
+    maxTokens?: number
+  }
+  helmcode?: {
+    apiKey: string // Helmcode API key (user secret, BYOK)
+    model: string // Model name (e.g., 'glm5.3')
     maxTokens?: number
   }
 }
@@ -284,6 +301,17 @@ async function resolveTogetherApiKey(config: LLMConfig["together"]): Promise<str
   )
 }
 
+async function resolveHelmcodeApiKey(config: LLMConfig["helmcode"]): Promise<string> {
+  if (config?.apiKey) {
+    log.debug(MODULE, "Using explicit Helmcode API key")
+    return config.apiKey
+  }
+
+  throw new Error(
+    "No Helmcode API key available.\n" + "Configure a provider in the UI with your Helmcode API key.",
+  )
+}
+
 /**
  * Resolve Anthropic API key
  *
@@ -292,7 +320,7 @@ async function resolveTogetherApiKey(config: LLMConfig["together"]): Promise<str
  * 2. Claude Code CLI credentials (~/.claude/.credentials.json)
  *
  * Note: No environment variable fallback — API keys are managed via
- * user providers (DB) or .secrets/system/anthropic.json (SecretsManager).
+ * user providers (DB) or Claude Code CLI credentials.
  */
 async function resolveAnthropicApiKey(config: LLMConfig["anthropic"]): Promise<string> {
   // 1. Explicit API key (from user provider or system secret)
@@ -312,9 +340,8 @@ async function resolveAnthropicApiKey(config: LLMConfig["anthropic"]): Promise<s
   throw new Error(
     "No Anthropic API key available. Please provide one of:\n" +
       "  1. Configure a provider in the UI with your API key\n" +
-      "  2. Add key to .secrets/system/anthropic.json\n" +
-      "  3. Claude Code CLI credentials (run: claude auth login)\n" +
-      '  4. Or use provider: "anthropic-oauth" with Claude Max subscription',
+      "  2. Claude Code CLI credentials (run: claude auth login)\n" +
+      '  3. Or use provider: "anthropic-oauth" with Claude Max subscription',
   )
 }
 
@@ -640,6 +667,8 @@ export class LLMClientFactory {
           model: config.teros.model,
           defaultMaxTokens: config.teros.maxTokens,
           actualProvider,
+          reasoningEffort: config.teros.reasoningEffort,
+          supportsVision: config.teros.vision,
         })
       }
 
@@ -706,6 +735,26 @@ export class LLMClientFactory {
           model: config.together.model,
           defaultMaxTokens: config.together.maxTokens,
           actualProvider: 'together',
+        })
+      }
+      case 'helmcode': {
+        if (!config.helmcode?.model) {
+          throw new Error("Helmcode model is required")
+        }
+
+        const helmcodeApiKey = await resolveHelmcodeApiKey(config.helmcode)
+        const helmcodeBaseUrl = 'https://api.helmcode.com/v1'
+
+        log.info(MODULE, "✅ Using Helmcode provider (EU private inference)", {
+          model: config.helmcode.model,
+        })
+
+        return new OpenAICompatibleLLMAdapter({
+          baseUrl: helmcodeBaseUrl,
+          apiKey: helmcodeApiKey,
+          model: config.helmcode.model,
+          defaultMaxTokens: config.helmcode.maxTokens,
+          actualProvider: 'helmcode',
         })
       }
 

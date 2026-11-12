@@ -30,6 +30,12 @@
     },
     "agent": false
   },
+  "backend": {
+    "actions": [
+      "provider.list",
+      "provider.update"
+    ]
+  },
   "runtime": {
     "transport": "http",
     "containerMode": "per-app",

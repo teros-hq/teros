@@ -3,7 +3,10 @@
 /**
  * Teros Filesystem
  *
- *   - Path-traversal safe (CVE-2025-53109 / 53110 pattern)
+ *   - Role-aware path validation (MCA_FS_ROLE):
+ *       workspace role → strict /workspace prefix, volume-relative paths via ctx.volume
+ *       admin role     → full host access from / via native node:fs
+ *   - Path-traversal safe (workspace role)
  *   - Shell-injection safe (execa with args arrays, never shell:true)
  *   - ripgrep-backed grep with content + context + pagination
  *   - structuredContent + cursor pagination + stability annotations
@@ -12,57 +15,86 @@
 
 import { McaServer } from '@teros/mca-sdk';
 import {
-  append,
-  copy,
-  deleteTool,
-  edit,
-  glob,
-  grep,
-  hash,
+  appendFile,
+  copyFile,
+  createDirectory,
+  createFile,
+  deleteFile,
+  editFile,
+  fileInfo,
+  findFiles,
+  hashFile,
   healthCheck,
-  list,
+  listFiles,
   listRoots,
-  mkdir,
-  move,
-  patch,
-  read,
-  readBatch,
-  readMedia,
-  stat,
-  tree,
-  write,
+  moveFile,
+  patchFile,
+  readBinary,
+  readFile,
+  readFiles,
+  searchInFiles,
+  treeView,
 } from './tools';
+import { getFsRole } from './lib/path-safety';
+import { withNativeVolume } from './lib/native-volume';
+import type { ToolConfig } from '@teros/mca-sdk';
+
+/**
+ * Wrap a tool so that, in the ADMIN role, every call receives a
+ * NativeVolumeStorage (native node:fs rooted at the host root `/`) instead of
+ * the SDK's callback-backed ctx.volume. In the workspace role the context
+ * passes through untouched. Selected at handler-context build time based on
+ * MCA_FS_ROLE — the admin MCA sets it in its entry before starting the server.
+ */
+function roleAware(name: string, config: ToolConfig): { name: string; config: ToolConfig } {
+  if (getFsRole() !== 'admin') {
+    return { name, config };
+  }
+  return {
+    name,
+    config: {
+      ...config,
+      handler: async (args: Record<string, unknown>, ctx: unknown) =>
+        config.handler(args, withNativeVolume(ctx as Parameters<typeof config.handler>[1])),
+    },
+  };
+}
 
 export function createFilesystemServer(options: { id: string; name: string }) {
   const server = new McaServer({
     id: options.id,
     name: options.name,
-    version: '2.1.0',
+    version: '2.3.0',
   });
 
-  server.tool('-health-check', healthCheck);
-  server.tool('list-roots', listRoots);
+  const register = (name: string, config: ToolConfig) => {
+    const wrapped = roleAware(name, config);
+    server.tool(wrapped.name, wrapped.config);
+  };
 
-  server.tool('read', read);
-  server.tool('read-batch', readBatch);
-  server.tool('read-media', readMedia);
-  server.tool('write', write);
-  server.tool('append', append);
-  server.tool('edit', edit);
-  server.tool('patch', patch);
+  register('health-check', healthCheck);
+  register('list-roots', listRoots);
 
-  server.tool('list', list);
-  server.tool('tree', tree);
-  server.tool('stat', stat);
-  server.tool('hash', hash);
+  register('read-file', readFile);
+  register('read-files', readFiles);
+  register('read-binary', readBinary);
+  register('create-file', createFile);
+  register('append-file', appendFile);
+  register('edit-file', editFile);
+  register('patch-file', patchFile);
 
-  server.tool('glob', glob);
-  server.tool('grep', grep);
+  register('list-files', listFiles);
+  register('tree-view', treeView);
+  register('file-info', fileInfo);
+  register('hash-file', hashFile);
 
-  server.tool('delete', deleteTool);
-  server.tool('copy', copy);
-  server.tool('move', move);
-  server.tool('mkdir', mkdir);
+  register('find-files', findFiles);
+  register('search-in-files', searchInFiles);
+
+  register('delete-file', deleteFile);
+  register('copy-file', copyFile);
+  register('move-file', moveFile);
+  register('create-directory', createDirectory);
 
   return server;
 }

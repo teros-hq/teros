@@ -22,9 +22,12 @@ export interface AgentData {
   avatarUrl?: string
   coreId?: string
   workspaceId?: string
-  availableProviders?: string[]
   selectedProviderId?: string | null
   selectedModelId?: string | null
+  /** System-capability toggles (v1.4.4) — mcaIds the agent has explicitly
+   * disabled (default-ON caps) / enabled (default-OFF power caps). */
+  disabledSystemApps?: string[]
+  enabledSystemApps?: string[]
 }
 
 export interface AgentCoreData {
@@ -71,8 +74,8 @@ export interface ProviderData {
 
 export interface AgentProvidersData {
   agentId: string
-  availableProviders: string[]
-  preferredProviderId: string | null
+  selectedProviderId: string | null
+  selectedModelId: string | null
   providers: ProviderData[]
 }
 
@@ -111,10 +114,12 @@ export class AgentApi {
     avatarUrl?: string
     maxSteps?: number
     context?: string
-    availableProviders?: string[]
     selectedProviderId?: string | null
     selectedModelId?: string | null
     appearance?: { color?: string; icon?: string }
+    /** System-capability toggles (v1.4.4) — full-list PUT semantics. */
+    disabledSystemApps?: string[]
+    enabledSystemApps?: string[]
   }): Promise<{ agent: AgentData }> {
     return this.transport.request('agent.update', data as Record<string, unknown>)
   }
@@ -189,19 +194,16 @@ export class AgentApi {
     return this.transport.request('agent.list-providers', { agentId })
   }
 
-  /** Set availableProviders for an agent */
-  setProviders(
-    agentId: string,
-    availableProviders: string[],
-  ): Promise<{ agentId: string; availableProviders: string[] }> {
-    return this.transport.request('agent.set-providers', { agentId, availableProviders })
-  }
-
-  /** Set preferredProviderId for an agent (null to clear) */
-  setPreferredProvider(
+  /**
+   * Pin an agent to an exact model (selectedProviderId + selectedModelId).
+   * Pass providerId: null to clear the pin (System Default = the user's
+   * default provider + its defaultModelId).
+   */
+  setModel(
     agentId: string,
     providerId: string | null,
-  ): Promise<{ agentId: string; preferredProviderId: string | null }> {
-    return this.transport.request('agent.set-preferred-provider', { agentId, providerId })
+    modelId?: string | null,
+  ): Promise<{ agentId: string; selectedProviderId: string | null; selectedModelId: string | null }> {
+    return this.transport.request('agent.set-model', { agentId, providerId, modelId: modelId ?? null })
   }
 }

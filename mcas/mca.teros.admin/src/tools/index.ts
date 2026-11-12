@@ -23,14 +23,24 @@ export { adminAppsUpdate } from './admin-apps-update.js';
 export { adminAppsDelete } from './admin-apps-delete.js';
 export { adminAppsGetAccess } from './admin-apps-get-access.js';
 export { adminAppsSetPermissions } from './admin-apps-set-permissions.js';
+export { adminAppsCopyAuth } from './admin-apps-copy-auth.js';
 
 // Access
 export { adminAccessList } from './admin-access-list.js';
 export { adminAccessGrant } from './admin-access-grant.js';
 export { adminAccessRevoke } from './admin-access-revoke.js';
 
+// Users (waitlist access + roles) — tn_h3KIMygPUs0nvl5F
+export { adminUsersGrantAccess } from './admin-users-grant-access.js';
+export { adminUsersUpdateRole } from './admin-users-update-role.js';
+
 // Catalog
+export { adminCatalogGet } from './admin-catalog-get.js';
 export { adminCatalogList } from './admin-catalog-list.js';
+
+// System
+export { adminActiveSessions } from './admin-active-sessions.js';
+export { adminRefreshClients } from './admin-refresh-clients.js';
 
 // Usage
 export { adminUsageSummary } from './admin-usage-summary.js';
@@ -40,6 +50,15 @@ export { adminUsageByAgent } from './admin-usage-by-agent.js';
 export { adminUsageByModel } from './admin-usage-by-model.js';
 export { adminUsageExpensiveConversations } from './admin-usage-expensive-conversations.js';
 export { adminUsageTimeline } from './admin-usage-timeline.js';
+export { adminUsageSessions } from './admin-usage-sessions.js';
+export { adminUsageSessionDetail } from './admin-usage-session-detail.js';
+
+// LLM Health & Observability
+export { adminModelHealth } from './admin-model-health.js';
+export { adminModelHealthTimeseries } from './admin-model-health-timeseries.js';
+export { adminUpstreamErrors } from './admin-upstream-errors.js';
+export { adminInFlight } from './admin-in-flight.js';
+export { adminProviderStatus } from './admin-provider-status.js';
 
 // Feature Flags
 export { adminFeatureFlagsList } from './admin-feature-flags-list.js';

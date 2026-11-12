@@ -102,6 +102,7 @@ export function createGetUserDetailHandler(userService: UserService, db: Db) {
             customPrice: billingSub.customPrice,
             customPriceNote: billingSub.customPriceNote,
             customAgentHoursLimit: billingSub.customAgentHoursLimit,
+            customAutomateDailyExecutionLimit: billingSub.customAutomateDailyExecutionLimit ?? null,
             terosProviderConfigId: billingSub.terosProviderConfigId ?? null,
             teamId: billingSub.teamId ?? null,
             teamName,

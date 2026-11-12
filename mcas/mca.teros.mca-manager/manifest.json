@@ -23,7 +23,13 @@
     "transport": "http",
     "containerMode": "per-app"
   },
-  "keywords": ["admin", "monitoring", "mca", "manager", "system"],
+  "keywords": [
+    "admin",
+    "monitoring",
+    "mca",
+    "manager",
+    "system"
+  ],
   "layers": {
     "tools": true,
     "events": false,
@@ -38,5 +44,10 @@
       "date": "2026-02-23",
       "notes": "Monitor running apps, stop or clean up idle processes, list installed apps, browse the catalog, and review agent access"
     }
-  ]
+  ],
+  "backend": {
+    "actions": [
+      "admin-api.*"
+    ]
+  }
 }

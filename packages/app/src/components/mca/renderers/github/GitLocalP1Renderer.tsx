@@ -22,9 +22,10 @@ import {
   type SpecsheetSection,
   colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { GITHUB_PALETTE, GitHubToolShell, scrollStyle } from './shared';
+import { GITHUB_PALETTE, GitHubToolShell, actionLabel, scrollStyle, noun, detailText } from './shared';
 
 // =============================================================================
 // git-diff
@@ -56,11 +57,12 @@ function isGitDiffResult(o: unknown): o is GitDiffResult {
 }
 
 export function GitDiffRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitDiffResult>(output) : null;
   const data = isGitDiffResult(parsed) ? parsed : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.from ?? 'working tree', detailText('files', { count: data.totals.files })) : actionLabel(toolName, status, 'diff')}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <YStack gap={8}>
@@ -78,7 +80,7 @@ export function GitDiffRenderer({ toolName, status, output, error, duration }: T
               {data.files.map((f) => (
                 <EntityRow
                   key={`${f.origPath ?? ''}-${f.path}`}
-                  leading={<IconTile icon={<FileText size={11} color={globalColors.text2} />} accent={globalColors.indigo} size={20} />}
+                  leading={<IconTile icon={<FileText size={11} color={c.text2} />} accent={globalColors.indigo} size={20} />}
                   title={f.origPath ? `${f.origPath} → ${f.path}` : f.path}
                   badges={
                     <>
@@ -92,7 +94,7 @@ export function GitDiffRenderer({ toolName, status, output, error, duration }: T
           )}
           {data.patch && data.patch.length > 0 && (
             <ScrollView style={scrollStyle(320)}>
-              <Text fontFamily="$mono" fontSize={11} color={globalColors.text2}>
+              <Text fontFamily="$mono" fontSize={11} color={c.text2}>
                 {data.patch}
               </Text>
             </ScrollView>
@@ -152,7 +154,7 @@ export function GitLogRenderer({ toolName, status, output, error, duration }: To
   const data = isGitLogResult(parsed) ? parsed : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.ref ?? 'HEAD', `${data.total} commits`) : actionLabel(toolName, status, 'log')}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <YStack gap={8}>
@@ -204,11 +206,12 @@ function isGitListFilesResult(o: unknown): o is GitListFilesResult {
 }
 
 export function GitListFilesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitListFilesResult>(output) : null;
   const data = isGitListFilesResult(parsed) ? parsed : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, noun('files'), `${data.totals.tracked} tracked` + (data.totals.untracked > 0 ? `, ${data.totals.untracked} untracked` : '')) : actionLabel(toolName, status, noun('files'))}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <YStack gap={8}>
@@ -221,7 +224,7 @@ export function GitListFilesRenderer({ toolName, status, output, error, duration
           />
           {data.tracked.length > 0 && (
             <YStack gap={4}>
-              <Text color={globalColors.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 tracked ({data.tracked.length})
               </Text>
               <PillList items={data.tracked} accent={GITHUB_PALETTE.queued} max={40} />
@@ -229,7 +232,7 @@ export function GitListFilesRenderer({ toolName, status, output, error, duration
           )}
           {data.untracked.length > 0 && (
             <YStack gap={4}>
-              <Text color={globalColors.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 untracked ({data.untracked.length})
               </Text>
               <PillList items={data.untracked} accent={globalColors.indigo} max={40} />
@@ -237,10 +240,10 @@ export function GitListFilesRenderer({ toolName, status, output, error, duration
           )}
           {data.ignored.length > 0 && (
             <YStack gap={4}>
-              <Text color={globalColors.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text3} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 ignored ({data.ignored.length})
               </Text>
-              <PillList items={data.ignored} accent={globalColors.text3} max={40} />
+              <PillList items={data.ignored} accent={c.text3} max={40} />
             </YStack>
           )}
         </YStack>
@@ -309,7 +312,7 @@ export function GitBatchCommitRenderer({ toolName, status, output, error, durati
     : [];
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.branch, `${data.changedFiles.length} archivos`) : actionLabel(toolName, status, 'batch commit')}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <ResourceCard
@@ -387,6 +390,7 @@ const AUTHOR_COLOURS = [
 ];
 
 export function GitBlameRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitBlameResult>(output) : null;
   const data = isGitBlameResult(parsed) ? parsed : null;
 
@@ -413,7 +417,7 @@ export function GitBlameRenderer({ toolName, status, output, error, duration }: 
   }
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} duration={duration} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} duration={duration} description={data ? actionLabel(toolName, status, data.path, detailText('lines', { count: data.total })) : actionLabel(toolName, status, 'blame')}>
       {error && <ErrorBlock error={error} />}
       {!error && data && (
         <YStack gap={8}>
@@ -435,22 +439,22 @@ export function GitBlameRenderer({ toolName, status, output, error, duration }: 
                       {g.shortSha}
                     </Text>
                     <User size={10} color={g.accent} />
-                    <Text fontSize={10} color={globalColors.text2}>
+                    <Text fontSize={10} color={c.text2}>
                       {g.author}
                     </Text>
-                    <Text fontSize={9} color={globalColors.text3}>
+                    <Text fontSize={9} color={c.text3}>
                       {g.date ? g.date.slice(0, 10) : ''}
                     </Text>
-                    <Text fontSize={9} color={globalColors.text3}>
+                    <Text fontSize={9} color={c.text3}>
                       · {g.lines.length} line{g.lines.length === 1 ? '' : 's'}
                     </Text>
                   </XStack>
                   {g.lines.map((line) => (
                     <XStack key={`${g.sha}-${line.lineNumber}`} paddingHorizontal={4}>
-                      <Text fontFamily="$mono" fontSize={10} color={globalColors.text3} width={40} textAlign="right">
+                      <Text fontFamily="$mono" fontSize={10} color={c.text3} width={40} textAlign="right">
                         {line.lineNumber}
                       </Text>
-                      <Text fontFamily="$mono" fontSize={11} color={globalColors.text2} flex={1}>
+                      <Text fontFamily="$mono" fontSize={11} color={c.text2} flex={1}>
                         {line.content || ' '}
                       </Text>
                     </XStack>

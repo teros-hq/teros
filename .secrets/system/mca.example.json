@@ -1,0 +1,3 @@
+{
+  "internalToken": "RUN: bun run scripts/generate-mca-internal-token.ts"
+}

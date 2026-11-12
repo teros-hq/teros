@@ -21,7 +21,7 @@
 import Tokenizer, { models } from "ai-tokenizer"
 import * as encoding from "ai-tokenizer/encoding"
 import { isSubscriptionProvider } from "@teros/shared"
-import { lookupModelPrice } from "./model-pricing"
+import { lookupModelPrice, lookupModelPriceAt } from "./model-pricing"
 
 type EncodingName = "claude" | "o200k_base" | "cl100k_base" | "p50k_base"
 
@@ -64,7 +64,7 @@ export function encodingForProvider(provider: string | undefined): EncodingName 
     case "google":
       return "o200k_base"
     default:
-      // openrouter / ollama / zhipu / zhipu-coding / fireworks / teros /
+      // openrouter / ollama / zhipu / zhipu-coding / fireworks / teros / helmcode /
       // cloudflare / desconocidos → BPE OpenAI clásico
       return "cl100k_base"
   }
@@ -103,6 +103,12 @@ export function countTokensForProvider(text: string | undefined, provider?: stri
  * MÁS NUEVOS que el registry, así que un mapeo por-provider daría precio de un
  * modelo distinto (bug de cambio-de-significado). Se precian en `model-pricing.ts`
  * (owned) con figura verificada; sin verificar quedan `null` → UI "—".
+ *
+ * EXCEPCIÓN: `openrouter` tiene un `case` explícito en el switch que retorna
+ * `null` — NO se mapea a ningún vendor de ai-tokenizer porque OpenRouter sirve
+ * 400+ modelos de múltiples vendors, y un mapeo por-provider daría precio de un
+ * modelo distinto. El pricing de OpenRouter se resuelve exclusivamente vía las
+ * reglas owned en `model-pricing.ts` (bug fix 2026-09-15).
  */
 function inferVendor(provider: string | undefined): string | null {
   switch (provider) {
@@ -118,6 +124,12 @@ function inferVendor(provider: string | undefined): string | null {
       return "google"
     case "minimax":
       return "minimax"
+    case "openrouter":
+      // OpenRouter is pass-through; the owned rules in model-pricing.ts handle
+      // the common cases. For the ai-tokenizer fallback, we can't pick a single
+      // vendor because OpenRouter serves 400+ models. Return null — the owned
+      // rules are the primary source. (bug fix 2026-09-15)
+      return null
     default:
       return null
   }
@@ -168,6 +180,14 @@ export interface CostBreakdownInput {
    * (`isSubscriptionProvider`). TER-666 / A2.4.
    */
   billingType?: "usage" | "subscription"
+  /**
+   * Point in time for historical pricing resolution. When provided, the owned
+   * pricing table is queried with `lookupModelPriceAt` so rules with
+   * `effectiveFrom`/`effectiveTo` are honoured. When omitted, the current price
+   * is used (same behaviour as before this field existed). Used by historical
+   * re-calculation scripts.
+   */
+  at?: Date
 }
 
 /** Per-component USD cost, or null when there is no verified/meaningful price. */
@@ -205,7 +225,9 @@ function isSubscriptionBilling(input: CostBreakdownInput): boolean {
  */
 export function estimateCostBreakdownUsd(input: CostBreakdownInput): CostBreakdownUsd | null {
   if (isSubscriptionBilling(input)) return null
-  const owned = lookupModelPrice(input.provider, input.modelId)
+  const owned = input.at
+    ? lookupModelPriceAt(input.provider, input.modelId, input.at)
+    : lookupModelPrice(input.provider, input.modelId)
   let price: { input: number; output: number; cacheRead: number; cacheWrite: number } | null = null
   if (owned) {
     // No separate cache-write rate upstream → charge writes at the input rate.

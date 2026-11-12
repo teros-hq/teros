@@ -11,11 +11,21 @@ import { type ILLMClient, LLMClientFactory } from '@teros/core';
 import type { EffectiveLLMConfig } from '../../services/model-service';
 import { PROVIDER_TYPES_WITHOUT_SECRETS } from '../../services/provider-service';
 import { secrets } from '../../secrets/secrets-manager';
-import {
-  TerosFallbackClient,
-  type TerosFallbackMode,
-} from '../../services/teros-fallback-client';
-import { resolveTerosUpstream } from '../../services/teros-upstream';
+import { TerosFallbackClient } from '../../services/teros-fallback-client';
+import { TerosLaneClient, TerosRouterClient } from '../../services/teros-router-client';
+import { resolveTerosFailoverRoute } from '../../services/teros-upstream';
+import { sizeForLegacyModelId, TEROS_LANES, type TerosLane, type TerosSizesConfig } from '../../models/providers/teros';
+
+/**
+ * The Teros routing that applies to a turn (TPROV-REQ-4): the user's provider
+ * config (sizes + failover) and a version so a config edit invalidates the
+ * cached client on the next turn (TPROV-NFR-1).
+ */
+export interface TerosRoutingForTurn {
+  id: string;
+  version: string;
+  routing: TerosSizesConfig;
+}
 
 // Cache for LLM clients per provider and model
 // Key format: "providerId:modelString"
@@ -39,6 +49,7 @@ const SUPPORTED_PROVIDERS = [
   'cloudflare',
   'fireworks',
   'together',
+  'helmcode',
 ] as const;
 type SupportedProvider = (typeof SUPPORTED_PROVIDERS)[number];
 
@@ -76,38 +87,64 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
     async getClient(
       config: EffectiveLLMConfig,
       resolvedCredentials: ResolvedProviderCredentials,
-      opts: { terosFallbackMode?: TerosFallbackMode } = {},
+      opts: { terosRouting?: TerosRoutingForTurn } = {},
     ): Promise<ILLMClient | null> {
       // If there's a mock LLM client (tests), use it
       if (mockClient) {
         return mockClient;
       }
 
-      // Teros failover (TER-617/F3): when armed AND a ZDR-safe Together target
-      // exists, the client wraps two upstreams and the policy varies per user
-      // (flag override / %rollout) → NOT cacheable. When armed but NO target
-      // exists (today always — Together is classified 'retains'), the result is
-      // the plain Fireworks client, which IS cacheable. Resolve the target ONCE
-      // here so an inert-but-armed flag doesn't rebuild + re-resolve + log every
-      // turn (R8.4).
-      const fallbackMode = opts.terosFallbackMode ?? 'off';
-      const terosFallbackArmed =
-        resolvedCredentials.providerType === 'teros' && fallbackMode !== 'off';
-      const failoverTarget = terosFallbackArmed
-        ? resolveTerosUpstream(
-            'together',
-            { modelId: config.modelId, modelString: config.modelString },
-            secrets,
-          )
-        : null;
-      const willWrap = failoverTarget !== null;
+      // Teros (TPROV): one size router per (provider, size, config version),
+      // with the config's failover wrapped around it. Cached by config version
+      // so an admin edit takes effect on the next turn (TPROV-NFR-1).
+      if (resolvedCredentials.providerType === 'teros') {
+        const teros = opts.terosRouting;
+        if (!teros) throw new Error('Teros provider config missing for a teros turn (TPROV-REQ-4)');
+        const size = sizeForLegacyModelId(config.modelId);
+        const terosKey = `${resolvedCredentials.providerId}:teros-${size}:${teros.id}@${teros.version}`;
+        const cached = llmClientCache.get(terosKey);
+        if (cached) return cached;
+        // TLANE-REQ-8: the lane is per request, so the cache key does not carry it.
+        const primary = new TerosRouterClient({ size, config: teros.routing, secrets, maxTokens: config.maxTokens });
+        const { failover } = teros.routing;
+        const secondary =
+          failover.mode === 'off'
+            ? null
+            : new TerosRouterClient({
+                size,
+                config: teros.routing,
+                secrets,
+                maxTokens: config.maxTokens,
+                leg: 'failover',
+                resolveRoute: (s, lane) => resolveTerosFailoverRoute({ size: s, lane, config: teros.routing, secrets }),
+              });
+        // TLANE-REQ-7: the config's one failover applies to both lanes; each
+        // lane is wrapped only when the failover upstream offers its family.
+        const byLane = {} as Record<TerosLane, ILLMClient>;
+        for (const lane of TEROS_LANES) {
+          const primaryUpstream = teros.routing.sizes[size][lane].upstream;
+          const failoverRoute = secondary ? resolveTerosFailoverRoute({ size, lane, config: teros.routing, secrets }) : null;
+          if (secondary && failoverRoute) {
+            byLane[lane] = new TerosFallbackClient(primary, secondary, failover.mode, {
+              primary: primaryUpstream,
+              secondary: failover.upstream,
+            });
+          } else {
+            byLane[lane] = primary;
+          }
+          console.log(
+            `[LLMClientManager] Teros size ${size.toUpperCase()} ${lane} → ${primaryUpstream}; failover ${failover.mode}` +
+              (failover.mode === 'off' ? '' : failoverRoute ? ` → ${failover.upstream}` : ` (no route on ${failover.upstream})`),
+          );
+        }
+        const client: ILLMClient = new TerosLaneClient(byLane, primary);
+        llmClientCache.set(terosKey, client);
+        return client;
+      }
 
       // Cache key: providerId:modelString
       const cacheKey = `${resolvedCredentials.providerId}:${config.modelString}`;
-
-      // Cache hit only when we won't wrap (the wrapper is per-user; the plain
-      // client is shared). An armed-but-inert flag falls through to the cache.
-      if (!willWrap && llmClientCache.has(cacheKey)) {
+      if (llmClientCache.has(cacheKey)) {
         return llmClientCache.get(cacheKey)!;
       }
 
@@ -218,23 +255,6 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
                   maxTokens: config.maxTokens,
                 }
               : undefined,
-          teros: (() => {
-            if (provider !== 'teros') return undefined;
-            // Single source of truth (TER-617/F3): baseUrl/apiKey/modelString come
-            // from resolveTerosUpstream — never read the upstream system secret here.
-            const fw = resolveTerosUpstream(
-              'fireworks',
-              { modelId: config.modelId, modelString: config.modelString },
-              secrets,
-            );
-            return {
-              apiKey: fw?.apiKey ?? '',
-              model: fw?.modelString ?? config.modelString,
-              maxTokens: config.maxTokens,
-              baseUrl: fw?.baseUrl,
-              actualProvider: fw?.actualProvider ?? 'fireworks',
-            };
-          })(),
           cloudflare: (() => {
             if (provider !== 'cloudflare') return undefined;
             return {
@@ -260,35 +280,15 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
               maxTokens: config.maxTokens,
             };
           })(),
-        });
-
-        // Teros failover (TER-617/F3): wrap with a Together fallback when the flag
-        // is armed AND a ZDR-safe Together target exists (resolved once above).
-        if (willWrap && failoverTarget) {
-          const secondary = await LLMClientFactory.create({
-            provider: 'teros',
-            teros: {
-              apiKey: failoverTarget.apiKey,
-              model: failoverTarget.modelString,
+          helmcode: (() => {
+            if (provider !== 'helmcode') return undefined;
+            return {
+              apiKey: apiKey ?? '',
+              model: config.modelString,
               maxTokens: config.maxTokens,
-              baseUrl: failoverTarget.baseUrl,
-              actualProvider: failoverTarget.actualProvider,
-            },
-          });
-          console.log(
-            `[LLMClientManager] Teros fallback armed (${fallbackMode}) → Together available for ${config.modelId}`,
-          );
-          // Not cached: the policy is per-user (flag override / %rollout).
-          return new TerosFallbackClient(client, secondary, fallbackMode);
-        }
-
-        // Armed but inert (no ZDR-safe target): log ONCE per built client — not
-        // per turn, since subsequent turns hit the cache below (R8.4).
-        if (terosFallbackArmed) {
-          console.log(
-            `[LLMClientManager] Teros fallback '${fallbackMode}' armed but no ZDR-safe Together target for ${config.modelId} — Fireworks-only (cached)`,
-          );
-        }
+            };
+          })(),
+        });
 
         llmClientCache.set(cacheKey, client);
         console.log(
@@ -308,6 +308,21 @@ export function createLLMClientManager(options: LLMClientManagerOptions = {}) {
     clearCache(provider: string, modelString: string): void {
       const cacheKey = `${provider}:${modelString}`;
       llmClientCache.delete(cacheKey);
+    },
+
+    /**
+     * Clear all cached clients whose key starts with `providerId:`.
+     * Used when a provider's credentials are rotated (updateProvider /
+     * setProviderSecrets) so stale clients with the old API key don't
+     * survive until the next backend restart (TER-617 secondary fix).
+     */
+    clearCacheForProvider(providerId: string): void {
+      const prefix = `${providerId}:`;
+      for (const key of llmClientCache.keys()) {
+        if (key.startsWith(prefix)) {
+          llmClientCache.delete(key);
+        }
+      }
     },
 
     /**

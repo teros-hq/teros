@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.messaging",
   "name": "Messaging",
-  "version": "1.2.0",
-  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, and notification emails via Resend",
+  "version": "1.3.0",
+  "description": "Send multimedia messages to the user: images, audio, video, documents, HTML widgets, notification emails via Resend, and public share links for workspace files",
   "type": "system",
   "icon": "icon.png",
   "category": "communication",
@@ -21,14 +21,20 @@
   },
   "runtime": {
     "transport": "http",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
+  },
+  "backend": {
+    "actions": ["share.create", "share.get", "share.revoke"]
   },
   "keywords": [
     "messaging",
     "images",
     "audio",
     "video",
-    "media"
+    "media",
+    "share",
+    "public-link"
   ],
   "layers": {
     "tools": true,
@@ -39,6 +45,11 @@
     "agent": false
   },
   "changelog": [
+    {
+      "version": "1.3.0",
+      "date": "2026-10-21",
+      "notes": "Public share links: share-file / unshare-file / get-share over the backend share.* WS domain (same actions the FileViewer UI uses). The generated URL is public — anyone with it can view the file until revoked."
+    },
     {
       "version": "0.9.0",
       "date": "2026-01-23",

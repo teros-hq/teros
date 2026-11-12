@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -61,7 +64,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -80,7 +85,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -154,7 +161,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -227,7 +236,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -247,7 +258,9 @@
       },
       "annotations": {
         "readOnlyHint": false,
-        "irreversible": true
+        "irreversible": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -274,7 +287,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -293,7 +308,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -321,7 +338,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -356,7 +375,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -379,7 +400,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -398,7 +421,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -431,7 +456,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -450,7 +477,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -502,7 +531,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -557,7 +588,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -577,7 +610,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -596,7 +631,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -629,7 +666,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -640,7 +679,9 @@
         "properties": {}
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -667,7 +708,9 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -678,7 +721,9 @@
         "properties": {}
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
@@ -702,7 +747,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -726,7 +773,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -746,7 +795,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
@@ -780,7 +831,9 @@
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "readOnlyHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     }
   ]

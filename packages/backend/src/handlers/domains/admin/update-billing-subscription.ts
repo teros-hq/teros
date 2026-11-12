@@ -5,6 +5,7 @@
  *   - change tier (planId)
  *   - edit customPrice + customPriceNote
  *   - edit customAgentHoursLimit
+ *   - edit customAutomateDailyExecutionLimit (Automate runs per UTC day; 0 = unmetered, null = plan default)
  *   - mark billingStatus (pending/invoiced/paid/waived)
  *   - edit billingNotes
  *   - pause/reactivate (subscription status)
@@ -22,7 +23,7 @@ import {
   getBillingInvoicesCollection,
   getTerosProviderConfigsCollection,
   getBillingTeamsCollection,
-  STARTER_PLAN_ID,
+  DEFAULT_PLAN_ID,
   type BillingSubscription,
 } from '../../../models/billing'
 import type { StripePaymentService } from '../../../services/stripe-payment-service'
@@ -34,6 +35,7 @@ interface UpdateBillingData {
   customPrice?: number | null
   customPriceNote?: string | null
   customAgentHoursLimit?: number | null
+  customAutomateDailyExecutionLimit?: number | null
   paymentMethod?: 'stripe' | 'manual'
   billingNotes?: string
   status?: 'active' | 'paused' | 'cancelled' | 'past_due'
@@ -95,6 +97,10 @@ export function createUpdateBillingSubscriptionHandler(
       min: 0,
       integer: true,
     })
+    assertNullableNumber(data.customAutomateDailyExecutionLimit, 'customAutomateDailyExecutionLimit', {
+      min: 0,
+      integer: true,
+    })
 
     const subsCol = getBillingSubscriptionsCollection(db)
     const plansCol = getBillingPlansCollection(db)
@@ -105,12 +111,12 @@ export function createUpdateBillingSubscriptionHandler(
 
     // No active sub (new user, or fully paused/ended) — open a default Starter one.
     if (!active) {
-      const starterPlan = await plansCol.findOne({ _id: STARTER_PLAN_ID })
+      const starterPlan = await plansCol.findOne({ _id: DEFAULT_PLAN_ID })
       const bootNow = new Date()
       const newSub: BillingSubscription = {
         _id: crypto.randomUUID(),
         userId: targetUserId,
-        planId: STARTER_PLAN_ID,
+        planId: DEFAULT_PLAN_ID,
         customAgentHoursLimit: null,
         customPrice: starterPlan?.price ?? 0,
         customPriceNote: null,
@@ -162,6 +168,7 @@ export function createUpdateBillingSubscriptionHandler(
     if (data.customPrice !== undefined) edits.customPrice = data.customPrice
     if (data.customPriceNote !== undefined) edits.customPriceNote = data.customPriceNote
     if (data.customAgentHoursLimit !== undefined) edits.customAgentHoursLimit = data.customAgentHoursLimit
+    if (data.customAutomateDailyExecutionLimit !== undefined) edits.customAutomateDailyExecutionLimit = data.customAutomateDailyExecutionLimit
     if (data.paymentMethod !== undefined) edits.paymentMethod = data.paymentMethod
     if (data.billingNotes !== undefined) edits.billingNotes = data.billingNotes
     if (data.terosProviderConfigId !== undefined) edits.terosProviderConfigId = data.terosProviderConfigId
@@ -225,6 +232,7 @@ export function createUpdateBillingSubscriptionHandler(
         customPrice: updatedSub?.customPrice,
         customPriceNote: updatedSub?.customPriceNote,
         customAgentHoursLimit: updatedSub?.customAgentHoursLimit,
+        customAutomateDailyExecutionLimit: updatedSub?.customAutomateDailyExecutionLimit ?? null,
         agentHoursUsed: updatedSub?.agentHoursUsed ?? 0,
         overageHours: updatedSub?.overageHours ?? 0,
         status: updatedSub?.status,

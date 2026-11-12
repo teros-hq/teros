@@ -12,6 +12,7 @@ import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
 import type { BoardSubscriptionService } from '../../../services/board-subscription-service'
+import type { ChannelManager } from '../../../services/channel-manager'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import type { BoardSubscriptionFilter } from '../../../types/database'
 
@@ -26,6 +27,7 @@ export function createSubscribeToBoardHandler(
   boardService: BoardService,
   workspaceService: WorkspaceService,
   boardSubscriptionService: BoardSubscriptionService,
+  channelManager: ChannelManager,
 ) {
   return async function subscribeToBoard(ctx: WsHandlerContext, rawData: unknown) {
     const data = rawData as SubscribeToBoardData
@@ -44,7 +46,14 @@ export function createSubscribeToBoardHandler(
     const role = await workspaceService.getUserRole(project.workspaceId, ctx.userId)
     if (role === null) throw new HandlerError('FORBIDDEN', 'No access to this board')
 
-    const sub = await boardSubscriptionService.subscribe(
+    // Board events are delivered into channelId and can wake its agent, so the
+    // caller must also have access to that conversation. agentId is client
+    // supplied: never pass it here (canAccessChannel trusts a matching agentId).
+    if (!(await channelManager.canAccessChannel(channelId, ctx.userId))) {
+      throw new HandlerError('FORBIDDEN', 'No access to this channel')
+    }
+
+    const { subscription: sub, created } = await boardSubscriptionService.subscribeWithStatus(
       boardId,
       channelId,
       agentId ?? ctx.userId,
@@ -55,7 +64,13 @@ export function createSubscribeToBoardHandler(
       subscriptionId: sub.subscriptionId,
       boardId: sub.boardId,
       filter: sub.filter,
-      message: `Subscribed to board ${boardId}. You will receive board events in this conversation.`,
+      // fb_d211b16343bd3034: subscribing twice on the same board+channel is an
+      // UPSERT — the previous filter is replaced in place. Surfaced so the
+      // caller knows whether they created a new subscription or replaced one.
+      created,
+      message: created
+        ? `Subscribed to board ${boardId}. You will receive board events in this conversation.`
+        : `Updated existing subscription to board ${boardId} — the previous filter was REPLACED by this one (same subscription, same conversation).`,
     }
   }
 }

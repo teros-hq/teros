@@ -4,13 +4,13 @@ import { resolveUrl } from '../lib';
 export const sendImage: ToolConfig = {
   annotations: { readOnlyHint: true },
   description:
-    'Send an image to the user. The image will be displayed in the chat. Supports public URLs or local file paths.',
+    'DEPRECATED - prefer the universal send-file tool (works for images and every other file type). Send an image to the user; displayed inline in the chat. Supports public URLs or local file paths.',
   parameters: {
     type: 'object',
     properties: {
       url: {
         type: 'string',
-        description: 'Public URL of the image (use this OR filePath)',
+        description: 'Public URL of the image, objectId (obj_...) or objects URL (.../objects/obj_...) (use this OR filePath)',
       },
       filePath: {
         type: 'string',

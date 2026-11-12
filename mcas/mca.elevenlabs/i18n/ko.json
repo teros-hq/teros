@@ -48,7 +48,7 @@
     }
   },
   "name": "ElevenLabs",
-  "description": "ElevenLabs 텍스트-음성 변환 - AI 음성을 사용하여 텍스트에서 자연스러운 음성을 생성합니다.",
+  "description": "ElevenLabs 음성 앱 — 텍스트에서 자연스러운 음성을 생성(TTS)하고 대화형 음성 에이전트로 전화를 겁니다(Twilio를 통한 발신 전화, 통화 녹취 및 분석, ConvAI 에이전트 구성).",
   "changelog": [
     {
       "notes": "초기 릴리스 — 텍스트를 자연스러운 음성으로 변환하고, AI 음성을 탐색 및 검사하며, 다중 화자 대화를 구축하고, 계획 사용량을 추적합니다."

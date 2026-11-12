@@ -251,8 +251,13 @@ export class OpenAILLMAdapter implements ILLMClient {
         ...(cachedReadTokens > 0 ? { cacheReadInputTokens: cachedReadTokens } : {}),
       }
 
-      log.info("OpenAILLM", "Response complete", {
+      // maxTokensSent (2026-09-24 silent-turn incident): the final value of
+      // createParams.max_tokens / max_completion_tokens — see the matching
+      // comment in OpenAICompatibleLLMAdapter for why both fields are logged.
+      log.debug("OpenAILLM", "Response complete", {
         stopReason,
+        maxTokensSent: maxTokensValue,
+        rawFinishReason: finishReason,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         model: model || this.defaultModel,

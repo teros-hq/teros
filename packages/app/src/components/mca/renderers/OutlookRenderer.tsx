@@ -13,9 +13,10 @@ import { Image, Text, XStack, YStack } from 'tamagui';
 import { colors as semantic, Empty, type McaStatusType, ToolCallCard, useColors } from '../primitives';
 import type { ToolCallRendererProps } from '../types';
 import { withPermissionSupport } from '../withPermissionSupport';
+import { backendUrl } from '../../../config/runtime';
 
 // Outlook icon served from backend static assets
-const OUTLOOK_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/mcas/mca.microsoft.outlook/icon.png`;
+const OUTLOOK_ICON = `${backendUrl()}/static/mcas/mca.microsoft.outlook/icon.svg`;
 
 // ============================================================================
 // Colors — Renderer UX Guide v2 §5 (theme-adaptive).
@@ -42,7 +43,7 @@ function useOutlookColors() {
     badgeBlue: c.badges.info,
     badgeYellow: c.badges.warn,
     badgeRed: c.badges.err,
-    badgePurple: { text: '#c4b5fd', bg: 'rgba(139,92,246,0.1)' },
+    badgePurple: c.badges.info,
 
     // Email unread dot — official Outlook brand blue (theme-agnostic)
     unread: '#0078d4',
@@ -52,7 +53,7 @@ function useOutlookColors() {
     secondary: c.text2,
     muted: c.text3,
     bright: c.text,
-    white: '#fafafa',
+    white: c.text,
 
     // Backgrounds (theme-adaptive)
     bgInner: c.bgInner,
@@ -89,7 +90,11 @@ function parseOutput<T>(output?: string): T | null {
   }
 }
 
-function extractSenderName(from: string): string {
+function extractSenderName(from: string | undefined | null): string {
+  // `from` can be undefined when the backend message lacks a From header —
+  // degrade gracefully instead of crashing the bubble render
+  // (TypeError: reading 'match' of undefined, same as GmailRenderer).
+  if (!from) return '(unknown)';
   const match = from.match(/^([^<]+)</);
   if (match) return match[1].trim();
   const atIndex = from.indexOf('@');
@@ -726,10 +731,12 @@ function MoveMessageRenderer({ input, status, output, error, duration }: SubRend
 
 // --- Delete Message ---
 
-function DeleteMessageRenderer({ input, status, output, error, duration }: SubRendererProps) {
+function DeleteMessageRenderer({ toolName, input, status, output, error, duration }: SubRendererProps) {
   const c = useColors();
   const colors = useOutlookColors();
   const permanent = input?.permanent as boolean | undefined;
+  // Also renders delete-draft (same layout).
+  const isDraft = getShortToolName(toolName) === 'delete-draft';
 
   const badge =
     status === 'failed'
@@ -740,7 +747,11 @@ function DeleteMessageRenderer({ input, status, output, error, duration }: SubRe
 
   const headerProps = {
     status,
-    description: permanent ? 'Permanently delete message' : 'Move message to trash',
+    description: isDraft
+      ? 'Delete draft'
+      : permanent
+        ? 'Permanently delete message'
+        : 'Move message to trash',
     duration,
     badge,
   };

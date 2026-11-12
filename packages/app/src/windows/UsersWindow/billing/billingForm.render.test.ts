@@ -115,7 +115,7 @@ describe("buildUpdateParams", () => {
 
   it("sends plan/status only when they changed, and forwards parsed numbers + ids", () => {
     const v = values({
-      planId: "plan_unlimited",
+      planId: "plan_enterprise",
       subStatus: "paused",
       customPriceNote: "Partner",
       billingNotes: "internal",
@@ -124,7 +124,7 @@ describe("buildUpdateParams", () => {
     })
     expect(buildUpdateParams("user_1", v, 120, 500, original)).toEqual({
       targetUserId: "user_1",
-      planId: "plan_unlimited",
+      planId: "plan_enterprise",
       customPrice: 120,
       customPriceNote: "Partner",
       customAgentHoursLimit: 500,

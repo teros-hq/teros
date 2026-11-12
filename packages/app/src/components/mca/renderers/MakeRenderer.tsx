@@ -41,7 +41,7 @@ function FallbackRenderer({ toolName, status, appIcon }: ToolCallRendererProps):
     ) : null;
 
   return (
-    <ToolCallCard status={status} verb={shortName.replace(/-/g, ' ')} badge={badge} iconUri={appIcon} />
+    <ToolCallCard status={status} description={shortName.replace(/-/g, ' ')} badge={badge} iconUri={appIcon} />
   );
 }
 

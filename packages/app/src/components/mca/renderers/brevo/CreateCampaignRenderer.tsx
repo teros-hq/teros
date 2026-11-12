@@ -28,7 +28,7 @@ export function CreateCampaignRenderer({ input, status, output, error, appIcon }
   return (
     <ToolCallCard
       status={status}
-      verb="Create campaign"
+      description="Create campaign"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

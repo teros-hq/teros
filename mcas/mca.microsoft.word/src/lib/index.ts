@@ -1,0 +1,51 @@
+export { createGraphClient, buildGraphError, type GraphRequestOptions } from './graph-client'
+export {
+  assertDocxName,
+  encodePathSegments,
+  formatItem,
+  itemAction,
+  itemRef,
+  normalizePath,
+} from './helpers'
+export {
+  addImagePart,
+  assertUsableDocx,
+  bodyInsertionPoint,
+  buildImageParagraphXml,
+  buildPageBreakXml,
+  buildParagraphXml,
+  buildTableXml,
+  DOCX_CONTENT_TYPE,
+  editDocxInPlace,
+  escapeXmlText,
+  type GraphRequestFn,
+  imageContentType,
+  insertParagraphsXml,
+  MAX_DOCX_BYTES,
+  nextDrawingId,
+  openDocx,
+  packDocx,
+  paragraphRanges,
+  readPart,
+  removeParagraph,
+  replaceInParagraph,
+  replaceTextInDocument,
+  setCoreProperty,
+  type TextNode,
+  textNodes,
+  unescapeXmlText,
+  validateDocx,
+  writePart,
+} from './ooxml'
+export { buildDocx, type ParagraphContent, type DocumentContent } from './build-docx'
+export {
+  coreProperties,
+  documentXmlOf,
+  docxToHtml,
+  docxToMarkdown,
+  listParagraphs,
+  paragraphStyle,
+  paragraphText,
+  readComments,
+} from './read-docx'
+export type { GraphSecrets, GraphError } from './types'

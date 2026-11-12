@@ -4,8 +4,7 @@
  * (CLAUDE.md): the availability chip, the segmented health bar, and each tool row are their own
  * small components. Display + per-row controls only — all run logic lives in useMcaHealthRunner.
  */
-import { ChevronDown, ChevronRight, ChevronUp, Package } from "@tamagui/lucide-icons"
-import { Button, Separator, Text, XStack, YStack } from "tamagui"
+import { Platform, Pressable, View } from "react-native"
 import { AppSpinner } from "../../components/ui"
 import type { McaData, McaResolvability } from "../../services/AppApi"
 import { Badge } from "./McaStatusBadge"
@@ -19,7 +18,7 @@ import {
 } from "./mcaHealth.utils"
 import type { McaOverallStatus, McaRowData, McaToolResult } from "./mcaStatus.types"
 import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors } from "../../components/mca/primitives/colors"
+import { Btn, LGroup, LRow, Ph, T, Tile } from "../../components/ui/ds"
 
 type Translate = (key: string, opts?: Record<string, unknown>) => string
 
@@ -54,29 +53,38 @@ function McaHealthBar({
 }) {
   const c = useColors()
   return (
-    <XStack flex={1} minWidth={60} alignItems="center" gap="$2">
-      <XStack
-        flex={1}
-        height={8}
-        borderRadius="$10"
-        overflow="hidden"
-        backgroundColor={c.borderStrong}
+    <View style={{ flex: 1, minWidth: 60, flexDirection: "row", alignItems: "center", gap: 8 }}>
+      <View
+        style={{
+          flex: 1,
+          height: 6,
+          borderRadius: 100,
+          overflow: "hidden",
+          flexDirection: "row",
+          backgroundColor: c.wash2,
+        }}
       >
         {counted === 0 ? (
           // Never tested — single neutral grey segment (D-05).
-          <XStack flex={1} backgroundColor={STATUS_COLORS.pending} />
+          <View style={{ flex: 1, backgroundColor: STATUS_COLORS.pending, opacity: 0.35 }} />
         ) : (
           <>
-            {passing > 0 && <XStack flex={passing} backgroundColor={STATUS_COLORS.ok} />}
-            {confirm > 0 && <XStack flex={confirm} backgroundColor={STATUS_COLORS.confirm} />}
-            {fail > 0 && <XStack flex={fail} backgroundColor={STATUS_COLORS.fail} />}
+            {passing > 0 && <View style={{ flex: passing, backgroundColor: STATUS_COLORS.ok }} />}
+            {confirm > 0 && (
+              <View style={{ flex: confirm, backgroundColor: STATUS_COLORS.confirm }} />
+            )}
+            {fail > 0 && <View style={{ flex: fail, backgroundColor: STATUS_COLORS.fail }} />}
           </>
         )}
-      </XStack>
-      <Text fontSize="$1" color={c.text3} fontFamily="$mono" minWidth={48} textAlign="right">
+      </View>
+      <T
+        step="codenote"
+        tone="text3"
+        style={{ minWidth: 48, textAlign: "right", textTransform: "none" }}
+      >
         {counted === 0 ? t("mca.status.healthBar.notTested") : `${passing}/${counted}`}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }
 
@@ -103,44 +111,48 @@ function McaToolRow({
   const c = useColors()
   const toolTestedAt = formatTestedAt(tr.testedAt, locale)
   const retestDisabled = running || nonRunnable || formOpen
+  // Flat row: name · tested-at · status · notes · retest — all direct children so the
+  // name's parent is the row (the per-tool status lives next to it).
   return (
-    <XStack gap="$3" alignItems="center">
-      <YStack flex={2} gap="$0.5">
-        <Text fontSize="$2" fontFamily="$mono" color="$color">
-          {tr.tool}
-        </Text>
-        {toolTestedAt ? (
-          <Text fontSize="$1" color={c.text3}>
-            {t("mca.status.toolTestedAt", { date: toolTestedAt })}
-          </Text>
-        ) : null}
-      </YStack>
-      <XStack flex={1} alignItems="center">
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderTopWidth: 1,
+        borderTopColor: c.border,
+      }}
+    >
+      <T step="code" style={{ flex: 2, minWidth: 0 }} numberOfLines={1}>
+        {tr.tool}
+      </T>
+      {toolTestedAt ? (
+        <T step="12" tone="text3" numberOfLines={1} style={{ flexShrink: 1 }}>
+          {t("mca.status.toolTestedAt", { date: toolTestedAt })}
+        </T>
+      ) : null}
+      <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
         {running ? (
           <AppSpinner size="sm" />
         ) : (
           <Badge color={STATUS_COLORS[tr.status]}>{t(`mca.status.toolStatus.${tr.status}`)}</Badge>
         )}
-      </XStack>
-      <Text flex={3} fontSize="$2" color={c.text3}>
+      </View>
+      <T step="12" tone="text3" style={{ flex: 3 }} numberOfLines={2}>
         {running ? t("mca.status.run.inFlight") : (tr.notes ?? "")}
-      </Text>
-      <XStack flex={1} justifyContent="flex-end">
-        <Button
-          size="$2"
-          disabled={retestDisabled}
-          opacity={retestDisabled ? 0.5 : 1}
-          backgroundColor={c.bgCardHover}
-          borderWidth={1}
-          borderColor={c.borderStrong}
-          onPress={() => onRetestPress(mcaId, tr.tool)}
-        >
-          <Text fontSize="$1" color={c.text2}>
-            {t("mca.status.retestTool")}
-          </Text>
-        </Button>
-      </XStack>
-    </XStack>
+      </T>
+      <Btn
+        variant="sec"
+        size="sm"
+        icon="arrows-clockwise"
+        disabled={retestDisabled}
+        onPress={() => onRetestPress(mcaId, tr.tool)}
+      >
+        {t("mca.status.retestTool")}
+      </Btn>
+    </View>
   )
 }
 
@@ -169,36 +181,50 @@ function McaToolTable({
   const c = useColors()
   const testedAtLabel = formatTestedAt(testedAt, locale)
   return (
-    <YStack padding="$3" paddingTop={0} gap="$3">
-      <Separator backgroundColor={c.borderStrong} />
-      {testedAtLabel ? (
-        <Text fontSize="$1" color={c.text3}>
-          {t("mca.status.testedAt", { date: testedAtLabel })}
-        </Text>
+    <View style={{ backgroundColor: c.wash, borderTopWidth: 1, borderTopColor: c.border }}>
+      {testedAtLabel || nonRunnable ? (
+        <View style={{ paddingHorizontal: 16, paddingTop: 10, gap: 8 }}>
+          {testedAtLabel ? (
+            <T step="12" tone="text3">
+              {t("mca.status.testedAt", { date: testedAtLabel })}
+            </T>
+          ) : null}
+          {/* Non-runnable reason (SC5) — MCA can't be tested (D-13/D-14). `reason` is a typed wire
+              code, never display text, so always render the localized copy (REQ-16/AC-14). */}
+          {nonRunnable ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <Badge color={STATUS_COLORS.pending}>
+                {t("mca.status.nonRunnable.installToTest")}
+              </Badge>
+              <T step="12" tone="text3" style={{ flex: 1 }}>
+                {t("mca.status.nonRunnable.reason")}
+              </T>
+            </View>
+          ) : null}
+        </View>
       ) : null}
-      {/* Non-runnable reason (SC5) — MCA can't be tested (D-13/D-14). `reason` is a typed wire code,
-          never display text, so always render the localized copy (REQ-16/AC-14). */}
-      {nonRunnable && (
-        <XStack alignItems="center" gap="$2">
-          <Badge color={STATUS_COLORS.pending}>{t("mca.status.nonRunnable.installToTest")}</Badge>
-          <Text flex={1} fontSize="$1" color={c.text3}>
-            {t("mca.status.nonRunnable.reason")}
-          </Text>
-        </XStack>
-      )}
       {/* Table header (Tool / Status / Notes) */}
-      <XStack gap="$3" alignItems="center">
-        <Text flex={2} fontSize="$1" fontWeight="700" color={c.text2}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          paddingHorizontal: 16,
+          paddingTop: 10,
+          paddingBottom: 6,
+        }}
+      >
+        <T step="xs" tone="text3" style={{ flex: 2 }}>
           {t("mca.status.columns.tool")}
-        </Text>
-        <Text flex={1} fontSize="$1" fontWeight="700" color={c.text2}>
+        </T>
+        <T step="xs" tone="text3" style={{ flex: 1 }}>
           {t("mca.status.columns.status")}
-        </Text>
-        <Text flex={3} fontSize="$1" fontWeight="700" color={c.text2}>
+        </T>
+        <T step="xs" tone="text3" style={{ flex: 3 }}>
           {t("mca.status.columns.notes")}
-        </Text>
-        <XStack flex={1} />
-      </XStack>
+        </T>
+        <View style={{ width: 90 }} />
+      </View>
       {effectiveRows.map((tr) => (
         <McaToolRow
           key={tr.tool}
@@ -212,7 +238,7 @@ function McaToolTable({
           t={t}
         />
       ))}
-    </YStack>
+    </View>
   )
 }
 
@@ -258,51 +284,34 @@ function McaRowBar({
 }) {
   const c = useColors()
   return (
-    <XStack
-      padding="$3"
-      alignItems="center"
-      gap="$3"
-      cursor="pointer"
-      hoverStyle={{ backgroundColor: c.bgCardHover }}
-      pressStyle={{ opacity: 0.8 }}
-      onPress={() => onToggle(mca.mcaId)}
-    >
-      <Package size={16} color={c.text3} />
-      <Text fontSize="$3" fontWeight="600" color="$color" flexShrink={1} numberOfLines={1}>
+    <LRow hov gap={12} onPress={() => onToggle(mca.mcaId)}>
+      <Tile xs icon="package" tone="muted" />
+      <T step="sm" numberOfLines={1} style={{ flexShrink: 1, minWidth: 80 }}>
         {mca.name}
-      </Text>
+      </T>
       <Badge color={STATUS_COLORS[mca.availability.system ? "pending" : overall]}>
         {availabilityLabel(mca, t)}
       </Badge>
       <Badge color={STATUS_COLORS[overall]}>{overallLabel(overall, t)}</Badge>
       <McaHealthBar {...health} t={t} />
-      <Button
-        size="$2"
+      <Btn
+        variant="primary"
+        size="sm"
+        icon="play"
         disabled={testDisabled}
-        opacity={testDisabled ? 0.5 : 1}
-        backgroundColor={semanticColors.indigoGlow}
-        borderWidth={1}
-        borderColor={semanticColors.indigo}
-        onPress={(e) => {
-          e.stopPropagation?.()
+        onPress={(e: any) => {
+          e?.stopPropagation?.()
           onTest(mca.mcaId)
         }}
       >
-        <Text fontSize="$1" color={semanticColors.indigo}>
-          {t("mca.status.test")}
-        </Text>
-      </Button>
-      {expanded ? (
-        <ChevronUp size={18} color={c.text3} />
-      ) : (
-        <ChevronDown size={18} color={c.text3} />
-      )}
-    </XStack>
+        {t("mca.status.test")}
+      </Btn>
+      <Ph name={expanded ? "caret-up" : "caret-down"} size={14} color={c.text3} />
+    </LRow>
   )
 }
 
 function McaRow({ data, ctx }: { data: McaRowData; ctx: McaRowContext }) {
-  const c = useColors()
   const { mca, toolRows, testedAt } = data
   const expanded = ctx.expandedMcas.has(mca.mcaId)
   const nonRunnable = ctx.resolvabilityCache.get(mca.mcaId)?.runnable === false
@@ -315,13 +324,7 @@ function McaRow({ data, ctx }: { data: McaRowData; ctx: McaRowContext }) {
   const testDisabled = nonRunnable || ctx.formOpen || ctx.runningMcas.has(mca.mcaId)
 
   return (
-    <YStack
-      backgroundColor={c.bgInner}
-      borderRadius="$4"
-      borderWidth={1}
-      borderColor={c.border}
-      overflow="hidden"
-    >
+    <View>
       <McaRowBar
         mca={mca}
         overall={overall}
@@ -346,7 +349,7 @@ function McaRow({ data, ctx }: { data: McaRowData; ctx: McaRowContext }) {
           t={ctx.t}
         />
       )}
-    </YStack>
+    </View>
   )
 }
 
@@ -364,30 +367,31 @@ export function CategoryGroup({
 }) {
   const c = useColors()
   return (
-    <YStack gap="$2">
-      <XStack
-        alignItems="center"
-        gap="$2"
-        paddingVertical="$1"
-        cursor="pointer"
-        hoverStyle={{ opacity: 0.8 }}
-        pressStyle={{ opacity: 0.6 }}
+    <View style={{ gap: 8 }}>
+      <Pressable
+        accessibilityRole="button"
         onPress={() => onToggleCategory(group.key)}
+        style={[
+          { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6 },
+          Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+        ]}
       >
-        {collapsed ? (
-          <ChevronRight size={16} color={c.text3} />
-        ) : (
-          <ChevronDown size={16} color={c.text3} />
-        )}
-        <Text fontSize="$3" fontWeight="600" color="$color">
+        <Ph name={collapsed ? "caret-right" : "caret-down"} size={12} color={c.text3} />
+        <T step="xs" tone="text2">
           {group.label}
-        </Text>
-        <Text fontSize="$2" color={c.text3}>
-          ({group.rows.length})
-        </Text>
-      </XStack>
-      {!collapsed &&
-        group.rows.map((data) => <McaRow key={data.mca.mcaId} data={data} ctx={ctx} />)}
-    </YStack>
+        </T>
+        <View style={{ flex: 1, height: 1, backgroundColor: c.border, opacity: 0.7 }} />
+        <T step="codenote" tone="text3">
+          {String(group.rows.length)}
+        </T>
+      </Pressable>
+      {!collapsed && (
+        <LGroup>
+          {group.rows.map((data) => (
+            <McaRow key={data.mca.mcaId} data={data} ctx={ctx} />
+          ))}
+        </LGroup>
+      )}
+    </View>
   )
 }

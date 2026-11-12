@@ -18,6 +18,7 @@
  */
 import { expect, test } from "../fixtures"
 import { CONFIG } from "../helpers/config"
+import { dismissWhatsNew } from "../helpers/login"
 
 test.describe("i18n — ventana My Providers en español (#239) @security", () => {
   test("los textos de proveedores se muestran en español, no en inglés", async ({ browser }) => {
@@ -34,6 +35,8 @@ test.describe("i18n — ventana My Providers en español (#239) @security", () =
       // alone normalizes back to /chat in the tiling shell).
       await page.goto(CONFIG.targetUrl, { waitUntil: "networkidle", timeout: 30000 })
       await page.waitForTimeout(2500)
+      // Own context (not the bootstrapped fixture) → close What's New if it shows.
+      await dismissWhatsNew(page)
       await page.locator("text=Proveedores").first().click({ timeout: 8000 })
       await page.waitForTimeout(3000)
 

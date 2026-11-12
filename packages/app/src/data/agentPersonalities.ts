@@ -217,7 +217,13 @@ export const SURNAMES = [
 // ============================================================================
 
 /**
- * Get avatar filename for a given name
+ * Get avatar filename for a given name.
+ *
+ * INVARIANT: assumes a `<name>-avatar.jpg` asset exists in the backend static
+ * dir. Only names in NAMES_WITH_AVATARS are safe here (the generators filter by
+ * hasAvatar()). The `.jpg` extension is hardcoded — if an avatar is ever shipped
+ * as .png/.webp, this helper must change too or it 404s. The whitelist↔assets
+ * parity is enforced by agentAvatarAssets.render.test.ts.
  */
 export function getAvatarForName(name: string): string {
   return `${name.toLowerCase()}-avatar.jpg`;

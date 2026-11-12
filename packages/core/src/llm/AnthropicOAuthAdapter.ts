@@ -52,7 +52,7 @@ import { ImagePipeline, type ProcessedImage } from './ImagePipeline';
 /**
  * Sanitize a tool call ID so it matches Anthropic's required pattern: ^[a-zA-Z0-9_-]+$
  * IDs stored in DB may come from other providers (e.g. OpenAI legacy format uses dots
- * and colons like "functions.bash-admin_bash:37"). We translate at the adapter boundary
+ * and colons like "functions.some-app_bash:37"). We translate at the adapter boundary
  * so the DB remains provider-agnostic.
  */
 function sanitizeToolId(id: string): string {
@@ -66,6 +66,7 @@ import {
   tokensNeedRefresh,
 } from './ClaudeOAuth';
 import type { ILLMClient, LLMResponse, StreamMessageOptions, ToolCall } from './ILLMClient';
+import { splitSystemPromptForCache } from './ILLMClient';
 
 const MODULE = 'AnthropicOAuth';
 
@@ -188,6 +189,7 @@ export class AnthropicOAuthAdapter implements ILLMClient {
       messages,
       tools,
       systemPrompt,
+      systemPromptVolatile,
       model,
       temperature,
       maxTokens,
@@ -230,12 +232,19 @@ export class AnthropicOAuthAdapter implements ILLMClient {
       cache_control?: { type: 'ephemeral' };
     }> = [{ type: 'text', text: CLAUDE_CODE_SYSTEM_PREFIX }];
     if (systemPrompt) {
-      // Add the actual system prompt with cache_control to cache both prefix and prompt
-      systemPromptBlocks.push({
-        type: 'text',
-        text: systemPrompt,
-        cache_control: { type: 'ephemeral' },
-      });
+      // Split off the per-request volatile suffix so cache_control covers only the
+      // stable prefix (prefix + stable system prompt); the volatile tail is appended
+      // as a separate, non-cached block (TER-618).
+      const { stable, volatile } = splitSystemPromptForCache(systemPrompt, systemPromptVolatile);
+      if (stable) {
+        systemPromptBlocks.push({ type: 'text', text: stable, cache_control: { type: 'ephemeral' } });
+      } else {
+        // Entire system prompt is volatile — cache just the prefix.
+        systemPromptBlocks[0].cache_control = { type: 'ephemeral' };
+      }
+      if (volatile) {
+        systemPromptBlocks.push({ type: 'text', text: volatile });
+      }
     } else {
       // If no custom prompt, cache just the prefix
       systemPromptBlocks[0].cache_control = { type: 'ephemeral' };
@@ -343,8 +352,13 @@ export class AnthropicOAuthAdapter implements ILLMClient {
           }
         : undefined;
 
-      log.info(MODULE, 'Response complete', {
+      // maxTokensSent (2026-09-24 silent-turn incident): final max_tokens sent
+      // upstream; rawFinishReason: Anthropic's stop_reason before mapping — see
+      // OpenAICompatibleLLMAdapter for the rationale.
+      log.debug(MODULE, 'Response complete', {
         stopReason,
+        maxTokensSent: maxTokens || this.defaultMaxTokens,
+        rawFinishReason: finalMessage.stop_reason,
         inputTokens: usage?.inputTokens,
         outputTokens: usage?.outputTokens,
         cacheCreation: usage?.cacheCreationInputTokens,

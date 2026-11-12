@@ -37,7 +37,7 @@ test.afterAll(async () => {
 })
 
 test.describe("billing — perfil → plan I3 (DOM) @billing", () => {
-  test("la sección de plan renderiza hero + barra de uso + tarjeta", async ({ user2Page }) => {
+  test("la sección de plan renderiza hero + barra de uso + tarjeta @stripe", async ({ user2Page }) => {
     test.setTimeout(60_000)
     await openProfilePlan(user2Page)
 
@@ -52,7 +52,7 @@ test.describe("billing — perfil → plan I3 (DOM) @billing", () => {
     await expect(user2Page.getByTestId("payment-card-display")).toContainText(/\d{4}/)
   })
 
-  test("cambiar de plan: el preview muestra el importe y al confirmar aplica el upgrade", async ({
+  test("cambiar de plan: el preview muestra el importe y al confirmar aplica el upgrade @stripe", async ({
     user2Page,
   }) => {
     test.setTimeout(60_000) // el upgrade cobra proración vía Stripe (best-effort)
@@ -83,7 +83,7 @@ test.describe("billing — perfil → plan I3 (DOM) @billing", () => {
       .toBe("plan_ultra")
   })
 
-  test("gestionar método de pago: el toggle abre el formulario de Stripe", async ({
+  test("gestionar método de pago: el toggle abre el formulario de Stripe @stripe", async ({
     user2Page,
   }) => {
     test.setTimeout(60_000)

@@ -10,8 +10,58 @@ import { existsSync, lstatSync, realpathSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { uploadDir } from '../lib/static-paths';
-import type { QueryHandlerContext } from './mca-connection-manager.types';
+import type { ActiveConnection, QueryHandlerContext } from './mca-connection-manager.types';
 import { assertSafePath } from './volume-service';
+
+/**
+ * Resolve the scope of the conversation an MCA is running in (the "caller").
+ *
+ * `scope` is a VISIBILITY flag, not a privacy flag:
+ *   - 'personal' — only the creator sees the conversation (the default for every
+ *     channel created since MUW; see ChannelManager.createChannel)
+ *   - 'shared'   — visible to all workspace members
+ *
+ * A missing scope is treated as 'personal' (defense in depth, NFR-3).
+ * The caller channel id comes from the MCA tool params (`callerChannelId`, the
+ * race-free path also used by board-manager/delegate-task) with the connection
+ * context as a fallback for stdio MCAs.
+ */
+async function resolveCallerScope(
+  ctx: QueryHandlerContext,
+  params: Record<string, unknown>,
+  connection?: ActiveConnection,
+): Promise<'personal' | 'shared'> {
+  const callerChannelId =
+    (params.callerChannelId as string | undefined) ?? connection?.currentChannelId;
+  if (!callerChannelId) return 'personal';
+  const caller = await ctx.channelManager!.getChannel(callerChannelId);
+  return (caller?.scope as 'personal' | 'shared' | undefined) ?? 'personal';
+}
+
+// @todo alice - 2026.09.24 : extend caller-scope gate tests beyond import_channel_attachment —
+// search_messages / list_channels / get_channel_messages / get_channel_summary paths have no dedicated coverage yet
+// (shared caller blocked from personal targets, personal caller allowed, missing scope treated as personal)
+
+/**
+ * Enforce the caller-scope gate for reading a specific conversation.
+ *
+ * A 'shared' caller runs in a conversation every workspace member can see, so
+ * letting it pull the owner's 'personal' history would leak it to the whole
+ * workspace. A 'personal' caller is the owner's own context and may read any of
+ * their conversations. Shared targets are readable by anyone with channel access.
+ */
+async function assertCallerCanReadChannel(
+  ctx: QueryHandlerContext,
+  params: Record<string, unknown>,
+  connection: ActiveConnection | undefined,
+  targetScope: string | undefined,
+): Promise<void> {
+  if ((targetScope ?? 'personal') !== 'personal') return;
+  const callerScope = await resolveCallerScope(ctx, params, connection);
+  if (callerScope === 'shared') {
+    throw new Error('Cannot access a personal conversation from a shared conversation');
+  }
+}
 
 /**
  * Handle conversation/channel query actions.
@@ -37,7 +87,12 @@ case 'search_messages': {
     throw new Error('Query must be at least 2 characters');
   }
 
-  const results = await ctx.channelManager!.searchMessages(userId, query, limit);
+  // Caller-scope gate: a 'shared' caller must not search the owner's personal
+  // conversations — they would leak into a workspace-visible context.
+  const callerScope = await resolveCallerScope(ctx, params, connection);
+  const results = await ctx.channelManager!.searchMessages(userId, query, limit, {
+    includePersonal: callerScope !== 'shared',
+  });
 
   // Filter out the current channel if specified
   if (excludeChannelId) {
@@ -60,8 +115,12 @@ case 'list_channels': {
 
   let channels = listResult.channels;
 
-  // Filter out private channels (MCAs should not access private conversations)
-  channels = channels.filter((c) => !c.isPrivate);
+  // Caller-scope gate: a 'shared' caller must not see the owner's personal
+  // conversations. A 'personal' caller sees everything it owns.
+  const callerScope = await resolveCallerScope(ctx, params, connection);
+  if (callerScope === 'shared') {
+    channels = channels.filter((c) => (c.scope ?? 'personal') !== 'personal');
+  }
 
   // Filter out the current channel if specified
   if (excludeChannelId) {
@@ -103,10 +162,8 @@ case 'get_channel_messages': {
     throw new Error('Access denied');
   }
 
-  // MCAs cannot access private channels
-  if (channel.isPrivate) {
-    throw new Error('Cannot access private conversation');
-  }
+  // Caller-scope gate: a 'shared' caller must not read the owner's personal history.
+  await assertCallerCanReadChannel(ctx, params, connection, channel.scope);
 
   const result = await ctx.channelManager!.getMessages(channelId, limit, before);
 
@@ -152,10 +209,8 @@ case 'get_channel_summary': {
     throw new Error('Access denied');
   }
 
-  // MCAs cannot access private channels
-  if (channel.isPrivate) {
-    throw new Error('Cannot access private conversation');
-  }
+  // Caller-scope gate: a 'shared' caller must not read the owner's personal history.
+  await assertCallerCanReadChannel(ctx, params, connection, channel.scope);
 
   // Get first and last messages
   const { messages: recentMessages } = await ctx.channelManager!.getMessages(channelId, 1);
@@ -349,6 +404,16 @@ case 'send_message': {
 
   await ctx.channelManager!.saveMessage(userMessage);
 
+  // Broadcast the user message to all channel subscribers so frontends
+  // with that channel open render it in real-time (mirrors handleSendMessage
+  // in message-handler.ts). Without this, the message is saved and the agent
+  // processes it, but the frontend never receives the WebSocket push.
+  ctx.pubSubService?.broadcastToTopic(`channel:${channelId}`, {
+    type: 'message',
+    channelId,
+    message: userMessage,
+  });
+
   // Emit event so MessageHandler can process the agent response
   // This is done via the 'mca:send_message' event
   ctx.emit('mca:send_message', {
@@ -425,9 +490,8 @@ case 'import_channel_attachment': {
   if (!canAccess) {
     throw new Error('Access denied');
   }
-  if (channel.isPrivate) {
-    throw new Error('Cannot access private conversation');
-  }
+  // Caller-scope gate: a 'shared' caller must not import from the owner's personal history.
+  await assertCallerCanReadChannel(ctx, params, connection, channel.scope);
 
   // Workspace is sovereign — the destination volume derives ONLY from the channel's
   // workspace, never from an agent-supplied param (ENGINEERING-PRINCIPLES.md §6).
@@ -446,7 +510,11 @@ case 'import_channel_attachment': {
   // Locate the attachment among the channel's recent messages. The agent-supplied
   // `filename` is used ONLY to match — the source path is derived from the URL
   // persisted server-side, never from agent input (no traversal/exfiltration).
-  const normalize = (s: string) => s.replace(/[[\]()]/g, '_').trim();
+  // Normalize: strip markdown chars, NFC-normalize Unicode (BD may store NFD
+  // combining diacriticals while agents send NFC precomposed), and lowercase
+  // for case-insensitive comparison.
+  const normalize = (s: string) =>
+    s.replace(/[[\]()]/g, '_').trim().normalize('NFC').toLowerCase();
   const target = normalize(filename);
   const { messages } = await ctx.channelManager!.getMessages(channelId, 200);
   const matches = messages.filter((m) => {
@@ -460,6 +528,21 @@ case 'import_channel_attachment': {
     );
   });
   if (matches.length === 0) {
+    // Diagnostic: log what we searched and what we found, to identify the root cause.
+    const fileMessages = messages.filter((m) => {
+      const c = m.content as { type?: string };
+      return c?.type === 'file';
+    });
+    const allTypes = messages.map((m) => {
+      const c = m.content as { type?: string };
+      return c?.type || typeof m.content;
+    });
+    console.warn(
+      `[import_channel_attachment] NO MATCH. channel=${channelId} target="${target}" ` +
+      `totalMsgs=${messages.length} fileMsgs=${fileMessages.length} ` +
+      `fileFilenames=${JSON.stringify(fileMessages.map((m) => (m.content as { filename?: string }).filename))} ` +
+      `allTypes=${JSON.stringify(allTypes)}`,
+    );
     throw new Error(`No attachment named "${filename}" found in this conversation`);
   }
   if (matches.length > 1 && !messageId) {
@@ -525,6 +608,74 @@ case 'import_channel_attachment': {
     workspacePath: relative(volume.hostPath, destAbs),
     size: match.size ?? null,
     mime: match.mimeType ?? null,
+  };
+  break;
+}
+
+case 'redact_by_value': {
+  // Agent secret tools (docs/specs/20261031_agent-secret-tools.md, design A).
+  // Value-based redaction sweep over the calling channel. Permission is asked
+  // at the TOOL layer (alwaysAsk annotation on the conversations MCA tool) —
+  // by the time this runs the user has confirmed. Authorization here is the
+  // narrow exception to owner-only canRedact: the acting agent may redact
+  // ONLY messages matching the given value, in the calling channel.
+  const channelId = (params.channelId as string) || connection?.currentChannelId;
+  const value = params.value as string;
+  const windowNum = params.window as number | undefined;
+  const alsoRedact = params.alsoRedact as string[] | undefined;
+
+  if (!channelId) {
+    throw new Error('channelId is required (no current channel in context)');
+  }
+  if (!value || typeof value !== 'string') {
+    throw new Error('value is required');
+  }
+
+  // Access control: the acting agent must be able to access the channel it
+  // is sweeping (same gate as get_channel_messages — owner or member).
+  const channel = await ctx.channelManager!.getChannel(channelId);
+  if (!channel) {
+    throw new Error('Channel not found');
+  }
+  const canAccess = await ctx.channelManager!.canAccessChannel(channelId, userId, effectiveAgentId);
+  if (!canAccess) {
+    throw new Error('Access denied');
+  }
+
+  const { sweepRedactByValue } = await import('./redaction-sweep');
+  const result = await sweepRedactByValue(ctx.db, ctx.channelManager!, channelId, value, {
+    ...(windowNum ? { window: windowNum } : {}),
+    ...(alsoRedact ? { alsoRedact } : {}),
+    redactedBy: effectiveAgentId ?? userId,
+  });
+
+  // Broadcast per-message redaction events so subscribed UIs update live —
+  // same shape as channel.toggle_redaction, NO content (ids + state only).
+  if (ctx.pubSubService) {
+    for (const messageId of result.messageIds) {
+      ctx.pubSubService.broadcastToTopic(`channel:${channelId}`, {
+        type: 'message_redacted',
+        channelId,
+        messageId,
+        redacted: true,
+        redactedBy: effectiveAgentId ?? userId,
+        redactedAt: new Date().toISOString(),
+      });
+    }
+  }
+
+  // Coverage report for the agent — ids only, never the value (AC 3/6).
+  data = {
+    success: true,
+    channelId,
+    redactedCount: result.redactedCount,
+    messageIds: result.messageIds,
+    sessionDocsFlagged: result.sessionDocsFlagged,
+    surfaces: result.surfaces,
+    alsoRedacted: result.alsoRedacted,
+    note:
+      'Every message containing the value has been redacted (including this tool call itself). ' +
+      'The owner can un-redact any of them. Reference the secret only by its mask from now on.',
   };
   break;
 }

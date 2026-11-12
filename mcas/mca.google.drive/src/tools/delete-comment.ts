@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, withAuthRetry } from '../lib';
+import { initializeGoogleClients, withAuthRetry } from '../lib';
 
 export const deleteComment: ToolConfig = {
   annotations: { readOnlyHint: false, irreversible: true },
@@ -20,7 +20,6 @@ export const deleteComment: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { fileId, commentId } = args as { fileId: string; commentId: string };
 

@@ -11,7 +11,6 @@
  */
 
 import { McaRegistry } from './McaRegistry';
-import { AdminBashToolCallRenderer } from './renderers/AdminBashRenderer';
 import { BrowserbaseToolCallRenderer } from './renderers/BrowserbaseRenderer';
 import { BashToolCallRenderer } from './renderers/BashRenderer';
 import { BrevoToolCallRenderer } from './renderers/BrevoRenderer';
@@ -44,12 +43,17 @@ import { GuideToolCallRenderer } from './renderers/GuideRenderer';
 import { RailwayToolCallRenderer } from './renderers/RailwayRenderer';
 import { RenderToolCallRenderer } from './renderers/RenderRenderer';
 import { RunnToolCallRenderer } from './renderers/RunnRenderer';
-import { SchedulerToolCallRenderer } from './renderers/scheduler';
+import { SanchoToolCallRenderer } from './renderers/SanchoRenderer';
+import { AutomateToolCallRenderer } from './renderers/automate';
 import { SlackToolCallRenderer } from './renderers/SlackRenderer';
+import { RemoteToolCallRenderer } from './renderers/RemoteRenderer';
+import { TwilioToolCallRenderer } from './renderers/TwilioRenderer';
 import { TerosCoreToolCallRenderer } from './renderers/TerosCoreRenderer';
 import { WhatsappToolCallRenderer } from './renderers/WhatsappRenderer';
-import { DockerEnvToolCallRenderer } from './renderers/DockerEnvRenderer';
+import { TelegramToolCallRenderer } from './renderers/TelegramRenderer';
 import { ActiveCampaignToolCallRenderer } from './renderers/ActiveCampaignRenderer';
+import { TodoListToolCallRenderer } from './renderers/TodoListRenderer';
+import { TerminalToolCallRenderer } from './renderers/terminal/TerminalRenderer';
 
 /**
  * Register all MCAs with their UI components
@@ -74,20 +78,12 @@ export function registerAllMcas(): void {
     ToolCallRenderer: BashToolCallRenderer,
   });
 
-  // Register Admin Bash MCA (host access)
+  // Register Terminal MCA (standard cards + the needs-you card when a coding agent asks)
   McaRegistry.register({
-    mcaId: 'mca.teros.admin.bash',
-    name: 'Command (Admin)',
+    mcaId: 'mca.teros.terminal',
+    name: 'Terminal',
     toolNames: [],
-    ToolCallRenderer: AdminBashToolCallRenderer,
-  });
-
-  // Register Admin Filesystem MCA (host access, stdio, no jail)
-  McaRegistry.register({
-    mcaId: 'mca.teros.admin.filesystem',
-    name: 'Filesystem (Admin)',
-    toolNames: [],
-    ToolCallRenderer: FilesystemToolCallRenderer,
+    ToolCallRenderer: TerminalToolCallRenderer,
   });
 
   // Register Messaging MCA (minimal renderer for send-image, send-video, etc.)
@@ -349,20 +345,20 @@ export function registerAllMcas(): void {
     ToolCallRenderer: WhatsappToolCallRenderer,
   });
 
-  // Register Docker Environments MCA
+  // Register Telegram MCA (messaging: auth, chats, history, send, groups, events)
   McaRegistry.register({
-    mcaId: 'mca.teros.docker-env',
-    name: 'Docker Environments',
+    mcaId: 'mca.telegram',
+    name: 'Telegram',
     toolNames: [],
-    ToolCallRenderer: DockerEnvToolCallRenderer,
+    ToolCallRenderer: TelegramToolCallRenderer,
   });
 
-  // Register Scheduler MCA (TER-186 audit)
+  // Register Automate MCA (agent tools over the automate.* API)
   McaRegistry.register({
-    mcaId: 'mca.teros.scheduler',
-    name: 'Scheduler',
+    mcaId: 'mca.teros.automate',
+    name: 'Automate',
     toolNames: [],
-    ToolCallRenderer: SchedulerToolCallRenderer,
+    ToolCallRenderer: AutomateToolCallRenderer,
   });
 
   // Register HTTP Request MCA (generic REST client: http-request + health-check)
@@ -389,6 +385,40 @@ export function registerAllMcas(): void {
     name: 'Runn',
     toolNames: [],
     ToolCallRenderer: RunnToolCallRenderer,
+  });
+
+  // Register Sancho MCA (SanchoCMO/Growth4U via MCP: client context, tasks,
+  // Brand Brain documents, semantic recall + mcp-call escape hatch).
+  // 12 dedicated sub-renderers + mcp-call on FallbackBody by design.
+  McaRegistry.register({
+    mcaId: 'mca.sancho',
+    name: 'Sancho',
+    toolNames: [],
+    ToolCallRenderer: SanchoToolCallRenderer,
+  });
+
+  // Register Tasks MCA (mca.teros.todo-list — Workflowy-style hierarchical outliner)
+  McaRegistry.register({
+    mcaId: 'mca.teros.todo-list',
+    name: 'Tasks',
+    toolNames: [],
+    ToolCallRenderer: TodoListToolCallRenderer,
+  });
+
+  // Register Remote MCA (paired machines: filesystem parity + bash + device tools)
+  McaRegistry.register({
+    mcaId: 'mca.teros.remote',
+    name: 'Remote',
+    toolNames: [],
+    ToolCallRenderer: RemoteToolCallRenderer,
+  });
+
+  // Register Twilio MCA (SMS, calls, phone numbers)
+  McaRegistry.register({
+    mcaId: 'mca.twilio',
+    name: 'Twilio',
+    toolNames: [],
+    ToolCallRenderer: TwilioToolCallRenderer,
   });
 
   console.log('[registerMcas] All MCAs registered');

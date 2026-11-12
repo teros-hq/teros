@@ -6,7 +6,10 @@ import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 export const blockMyTask: ToolConfig = {
   description:
     'Mark your assigned task blocked. Moves it to Blocked + adds a progress note with the reason. Clears running. Use for dependencies, missing info, or external blockers. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: "blocked" } }.',
-  annotations: { readOnlyHint: false, version: '1.0.0', stability: 'stable' },
+  // safeWriteHint: critical for headless runners — these are the tools a runner
+  // uses to report its work. If they ask permission in a conversation with no
+  // human watching, nobody can approve and the runner deadlocks.
+  annotations: { readOnlyHint: false, safeWriteHint: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {

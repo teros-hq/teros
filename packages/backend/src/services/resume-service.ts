@@ -16,44 +16,46 @@
  *   - If NOT linked to a board task → trigger system_resume directly
  *     (normal user conversations not managed by the board)
  *
- * This replaces the old heuristic approach (updatedAt window + message state detection).
+ * system_resume is the ONLY recovery mechanism. Boot does NOT re-drive queued
+ * user messages through the agent pipeline: the interrupted messages are
+ * already persisted in the channel history, and the system_resume event
+ * instructs the agent to read that history before continuing. Re-driving them
+ * blindly at boot made the agent re-execute instructions that had already run
+ * (including tool calls against MCAs that were not up yet), and because
+ * interrupted messages were never marked `done`, every restart replayed the
+ * channel's entire stale backlog (incident 2026-08-14).
+ *
+ * Queue-state hygiene: any user message still `pending`/`running` from before
+ * this boot is swept to `done` so it can never be replayed and never shows up
+ * as a ghost entry in the channel runtime snapshot.
  */
 
-import { reconcileChannel, type MessageWithParts, type Part, type SessionStore } from '@teros/core';
+import { reconcileChannel, type SessionStore } from '@teros/core';
 import type { Db } from 'mongodb';
 import type { EventHandler } from '../handlers/event-handler';
 import type { ChannelManager } from './channel-manager';
 import type { AutoplayService } from './autoplay-service';
+import type { InstanceRegistry } from './instance-registry';
+import { cappedPush, TASK_ACTIVITY_CAP } from '../lib/task-arrays';
 
 // Channels running for more than this threshold are considered zombies and just reset
 const ZOMBIE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
 // Delay before checking (let all services initialize)
 const STARTUP_DELAY_MS = 5000;
-
-// Parallelism cap for channel-level replay during boot. Per-channel order is
-// preserved by serializing within a channel; different channels run in parallel
-// but not unbounded — otherwise N pending channels = N concurrent LLM turns at
-// boot, which overwhelms providers and DB pools.
-const REPLAY_CHANNEL_CONCURRENCY = 5;
-
-/**
- * Callback invoked for each queued user message that needs to be re-driven
- * through the normal agent pipeline after a crash.
- *
- * `text` is the joined text from all `text` parts (may be empty when the
- * message only had file parts). `parts` is the full part list so the callback
- * can reconstruct file descriptors / multimodal context if needed.
- */
-export type QueuedMessageReplay = (
-  channelId: string,
-  messageId: string,
-  text: string,
-  parts: Part[],
-) => Promise<void>;
+// DEP-REQ-6: how often the boot sweep re-checks for other live instances, and
+// how long it waits at most before sweeping with a warning.
+const SOLE_INSTANCE_POLL_MS = 2000;
+const SOLE_INSTANCE_MAX_WAIT_MS = 10 * 60 * 1000;
 
 export class ResumeService {
-  private replayUserMessage: QueuedMessageReplay | null = null;
+  /**
+   * Anything queued before this instant belongs to a previous process life.
+   * The service is constructed during bootstrap, before the server accepts
+   * connections, so messages created after it are live traffic and must not
+   * be swept.
+   */
+  private readonly bootTimeMs = Date.now();
 
   constructor(
     private db: Db,
@@ -62,11 +64,6 @@ export class ResumeService {
     private autoplayService: AutoplayService | null = null,
     private sessionStore: SessionStore | null = null,
   ) {}
-
-  /** Late-binding to break the ResumeService ↔ MessageHandler circular dep. */
-  setQueueReplayHook(replay: QueuedMessageReplay): void {
-    this.replayUserMessage = replay;
-  }
 
   /**
    * Check for interrupted conversations and trigger resume events.
@@ -85,15 +82,6 @@ export class ResumeService {
         .find({ running: true })
         .toArray();
 
-      if (runningChannels.length === 0) {
-        console.log('🔄 ResumeService: No interrupted conversations found');
-        return;
-      }
-
-      console.log(
-        `🔄 ResumeService: Found ${runningChannels.length} channel(s) with running=true`,
-      );
-
       const zombies: string[] = [];
       const recoverable: string[] = [];
 
@@ -110,6 +98,14 @@ export class ResumeService {
         }
       }
 
+      if (runningChannels.length === 0) {
+        console.log('🔄 ResumeService: No interrupted conversations found');
+      } else {
+        console.log(
+          `🔄 ResumeService: Found ${runningChannels.length} channel(s) with running=true`,
+        );
+      }
+
       // Reset zombies (just clear the flag, no resume)
       if (zombies.length > 0) {
         console.log(
@@ -120,9 +116,17 @@ export class ResumeService {
             { channelId },
             { $set: { running: false }, $unset: { runningAt: '' } },
           );
+          // Also reset any board task linked to this channel — a zombie channel
+          // means the task's running flag is also stale. Without this the task
+          // keeps consuming autoplay slots forever (the root bug).
+          await this.resetTaskRunningForChannel(channelId);
           console.log(`🔄 ResumeService: Reset zombie channel ${channelId}`);
         }
       }
+
+      // Sweep stale queue state BEFORE waking any agent, so nothing can ever
+      // re-drive these messages. The agent still sees them in history.
+      await this.sweepStaleQueueState();
 
       // Recover interrupted channels
       if (recoverable.length > 0) {
@@ -139,12 +143,37 @@ export class ResumeService {
   }
 
   /**
+   * Mark every user message left `pending`/`running` by a previous process
+   * life as `done`. These messages are already part of the channel history;
+   * they must never be re-driven through the agent pipeline. Time-guarded by
+   * bootTimeMs so live messages arriving during boot are untouched.
+   */
+  private async sweepStaleQueueState(): Promise<void> {
+    try {
+      const result = await this.db.collection('session_messages').updateMany(
+        {
+          'info.role': 'user',
+          'info.meta.queueState': { $in: ['pending', 'running'] },
+          'info.time.created': { $lt: this.bootTimeMs },
+        },
+        { $set: { 'info.meta.queueState': 'done' } },
+      );
+      if (result.modifiedCount > 0) {
+        console.log(
+          `🔄 ResumeService: Swept ${result.modifiedCount} stale queued message(s) to done (pre-boot pending/running)`,
+        );
+      }
+    } catch (err) {
+      console.error('🔄 ResumeService: Failed to sweep stale queue state:', err);
+    }
+  }
+
+  /**
    * For each recoverable channel, decide whether to delegate to AutoplayService
    * (board tasks) or trigger system_resume directly (normal conversations).
    */
   private async recoverChannels(channelIds: string[]): Promise<void> {
     const reconciled = await this.reconcileOrphansAcross(channelIds);
-    await this.replayPendingQueuedMessages(reconciled);
     const { boardPairs, normalChannels } = await this.classifyByBoardLink(reconciled);
     await this.dispatchRecovery(boardPairs, normalChannels);
   }
@@ -154,6 +183,11 @@ export class ResumeService {
       console.warn(
         '🔄 ResumeService: SessionStore not provided — skipping TurnReconciler (orphans will be handled by live INV-1 pipeline on next prompt)',
       );
+      // incident-2026-08-14: even without SessionStore, cancel orphaned
+      // permissions so they don't accumulate in DB forever.
+      for (const channelId of channelIds) {
+        await this.cancelOrphanedPermissions(channelId, 'SessionStore unavailable — turn reconciliation skipped');
+      }
       return channelIds;
     }
     const reconciledOk: string[] = [];
@@ -171,114 +205,63 @@ export class ResumeService {
           console.warn(
             `🔄 ResumeService: TurnReconciler did NOT fully recover channel ${channelId} — skipping resume`,
           );
+          // incident-2026-08-14: INV-1 failed — the turn is dead. Cancel
+          // any pending permission requests so they don't accumulate.
+          await this.cancelOrphanedPermissions(
+            channelId,
+            'INV-1 reconciliation failed — turn is dead',
+          );
           await this.clearRunningFlag(channelId);
         }
       } catch (err) {
         console.error(`🔄 ResumeService: TurnReconciler failed for channel ${channelId}:`, err);
+        // incident-2026-08-14: TurnReconciler threw — same cleanup.
+        await this.cancelOrphanedPermissions(
+          channelId,
+          `TurnReconciler threw: ${err instanceof Error ? err.message : String(err)}`,
+        );
         await this.clearRunningFlag(channelId);
       }
     }
     return reconciledOk;
   }
 
-  private async replayPendingQueuedMessages(channelIds: string[]): Promise<void> {
-    if (!this.sessionStore || channelIds.length === 0) return;
-    try {
-      const pending = await this.sessionStore.listPendingQueueMessages(channelIds);
-      if (pending.length === 0) {
-        // running=true but nothing pending → clear the flag so it doesn't
-        // stay stuck across future recoveries.
-        await Promise.all(
-          channelIds.map((cid) =>
-            this.clearRunningFlag(cid).catch(() => undefined),
-          ),
-        );
-        return;
-      }
-
-      if (!this.replayUserMessage) {
-        console.warn(
-          `🔄 ResumeService: ${pending.length} user message(s) left in the worker queue at crash time — no replay hook wired, marking done (manual replay needed)`,
-          { messageIds: pending.map((m) => m.info.id) },
-        );
-        await Promise.all(
-          pending.map((m) =>
-            this.sessionStore!.updateUserMessageQueueState(m.info.id, 'done').catch(() => undefined),
-          ),
-        );
-        return;
-      }
-
-      // Group by channelId — the worker is FIFO PER channel, so messages
-      // within a channel must be replayed in order. Different channels can
-      // (and should) be re-driven in parallel up to REPLAY_CHANNEL_CONCURRENCY.
-      const byChannel = new Map<string, MessageWithParts[]>();
-      for (const m of pending) {
-        const cid = m.info.sessionID;
-        const list = byChannel.get(cid);
-        if (list) list.push(m);
-        else byChannel.set(cid, [m]);
-      }
-
-      console.log(
-        `🔄 ResumeService: re-driving ${pending.length} interrupted user message(s) across ${byChannel.size} channel(s) (concurrency=${REPLAY_CHANNEL_CONCURRENCY})`,
-      );
-      await this.replayChannelsWithConcurrency(byChannel, REPLAY_CHANNEL_CONCURRENCY);
-    } catch (err) {
-      console.error('🔄 ResumeService: failed to drain pending queueState:', err);
-    }
-  }
-
   /**
-   * Process N channels in parallel; messages within a channel stay serial
-   * so the existing per-channel FIFO ordering is preserved.
+   * Cancel all pending permission requests for a channel by marking
+   * their `channel_messages` documents as `failed`.
+   *
+   * incident-2026-08-14: when a turn dies (INV-1 failure, crash,
+   * TurnReconciler error), any permission requests it created are
+   * orphaned. Without this cleanup they persist in DB indefinitely
+   * and are re-broadcast on every subscribe via restorePendingApprovals.
+   *
+   * This is a DB-only operation — no broadcast (at boot time there
+   * are no active WebSocket subscribers). The frontend will see the
+   * `failed` status when it loads the channel history.
    */
-  private async replayChannelsWithConcurrency(
-    byChannel: Map<string, MessageWithParts[]>,
-    concurrency: number,
-  ): Promise<void> {
-    const queue: Array<[string, MessageWithParts[]]> = [...byChannel.entries()];
-    const workers = Array.from({ length: Math.min(concurrency, queue.length) }, async () => {
-      while (queue.length > 0) {
-        const entry = queue.shift();
-        if (!entry) return;
-        const [, messages] = entry;
-        for (const m of messages) {
-          await this.replaySingleMessage(m);
-        }
-      }
-    });
-    await Promise.all(workers);
-  }
-
-  // Replay failures mark `done` so the next boot doesn't keep hammering
-  // broken state. Messages with only file parts (no text) are still replayed
-  // so the user doesn't lose attachments on crash recovery; only fully-empty
-  // messages (no text, no files) get auto-marked done.
-  private async replaySingleMessage(m: MessageWithParts): Promise<void> {
-    if (!this.sessionStore || !this.replayUserMessage) return;
-    const channelId = m.info.sessionID;
-    const text = m.parts
-      .filter((p) => p.type === 'text')
-      .map((p) => (p as { type: 'text'; text: string }).text)
-      .join('\n');
-    const hasFileParts = m.parts.some((p) => p.type === 'file');
-    if (!text.trim() && !hasFileParts) {
-      await this.sessionStore
-        .updateUserMessageQueueState(m.info.id, 'done')
-        .catch(() => undefined);
-      return;
-    }
+  private async cancelOrphanedPermissions(channelId: string, reason: string): Promise<void> {
     try {
-      await this.replayUserMessage(channelId, m.info.id, text, m.parts);
-    } catch (err) {
-      console.error(
-        `🔄 ResumeService: replay failed for message ${m.info.id} in channel ${channelId}:`,
-        err,
+      const result = await this.db.collection('channel_messages').updateMany(
+        {
+          channelId,
+          'content.type': 'tool_execution',
+          'content.status': 'pending_permission',
+        },
+        {
+          $set: {
+            'content.status': 'failed',
+            'content.error': `Permission cancelled: ${reason}`,
+            'content.permissionRequestId': undefined,
+          },
+        },
       );
-      await this.sessionStore
-        .updateUserMessageQueueState(m.info.id, 'done')
-        .catch(() => undefined);
+      if (result.modifiedCount > 0) {
+        console.log(
+          `🔄 ResumeService: Cancelled ${result.modifiedCount} orphaned permission(s) for channel ${channelId}: ${reason}`,
+        );
+      }
+    } catch (err) {
+      console.error(`🔄 ResumeService: Failed to cancel orphaned permissions for ${channelId}:`, err);
     }
   }
 
@@ -361,6 +344,42 @@ export class ResumeService {
     await this.db
       .collection('channels')
       .updateOne({ channelId }, { $set: { running: false }, $unset: { runningAt: '' } });
+    // Also clear the task running flag — if the channel is no longer running,
+    // neither is the task. Without this the task stays running=true and blocks
+    // autoplay slots indefinitely.
+    await this.resetTaskRunningForChannel(channelId);
+  }
+
+  /**
+   * Reset the running flag on any board task linked to the given channel.
+   * Called during zombie/recovery cleanup to ensure task.running matches
+   * channel.running. Without this, tasks stuck with running=true consume
+   * autoplay slots and prevent new tasks from being picked up.
+   */
+  private async resetTaskRunningForChannel(channelId: string): Promise<void> {
+    try {
+      const result = await this.db.collection('tasks').updateMany(
+        { channelId, running: true },
+        {
+          $set: { running: false, updatedAt: new Date().toISOString() },
+          $push: {
+            activity: cappedPush({
+              eventType: 'status_changed',
+              actor: 'system:resume-service',
+              timestamp: new Date().toISOString(),
+              details: { reason: 'channel_running_reset', fromRunning: true, toRunning: false },
+            }, TASK_ACTIVITY_CAP) as any,
+          },
+        },
+      );
+      if (result.modifiedCount > 0) {
+        console.log(
+          `🔄 ResumeService: Reset running=false on ${result.modifiedCount} task(s) linked to channel ${channelId}`,
+        );
+      }
+    } catch (err) {
+      console.error(`🔄 ResumeService: Failed to reset task running flag for channel ${channelId}:`, err);
+    }
   }
 
   /**
@@ -411,7 +430,8 @@ export class ResumeService {
     channelManager: ChannelManager,
     autoplayService: AutoplayService | null = null,
     sessionStore: SessionStore | null = null,
-    queueReplayHook: QueuedMessageReplay | null = null,
+    instanceRegistry: InstanceRegistry | null = null,
+    startupDelayMs: number = STARTUP_DELAY_MS,
   ): Promise<ResumeService> {
     const service = new ResumeService(
       db,
@@ -420,11 +440,21 @@ export class ResumeService {
       autoplayService,
       sessionStore,
     );
-    if (queueReplayHook) service.setQueueReplayHook(queueReplayHook);
 
     setTimeout(async () => {
+      // Blue/green handoff (DEP-REQ-6): while the previous color is still
+      // alive, every `running: true` channel is ITS live conversation, not an
+      // interrupted one. Sweeping now would wake a second agent turn on each
+      // of them. Wait until we are the only instance; after the maximum wait
+      // sweep anyway (logged) rather than never resuming.
+      if (instanceRegistry) {
+        await instanceRegistry.waitUntilSoleInstance({
+          pollMs: SOLE_INSTANCE_POLL_MS,
+          timeoutMs: SOLE_INSTANCE_MAX_WAIT_MS,
+        });
+      }
       await service.checkAndResumeConversations();
-    }, STARTUP_DELAY_MS);
+    }, startupDelayMs);
 
     return service;
   }

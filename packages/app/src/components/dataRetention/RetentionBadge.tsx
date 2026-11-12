@@ -6,10 +6,11 @@
  * Pair with <RetentionNotice> for the full explanation when one is selected.
  */
 
-import { Text, XStack } from 'tamagui'
-import { useTranslation } from 'react-i18next'
-import type { RetentionInfo } from '@teros/shared'
-import { RETENTION_VISUALS } from './retentionStyle'
+import { View } from "react-native"
+import { useTranslation } from "react-i18next"
+import type { RetentionInfo } from "@teros/shared"
+import { Badge } from "../ui/ds"
+import { RETENTION_VISUALS } from "./retentionStyle"
 
 interface RetentionBadgeProps {
   info: RetentionInfo
@@ -20,24 +21,12 @@ interface RetentionBadgeProps {
 export function RetentionBadge({ info, compact = false }: RetentionBadgeProps) {
   const { t } = useTranslation()
   const visual = RETENTION_VISUALS[info.tier]
-  const { Icon } = visual
 
   return (
-    <XStack
-      testID={`retention-badge-${info.tier}`}
-      alignItems="center"
-      gap={4}
-      paddingHorizontal={compact ? 6 : 8}
-      paddingVertical={compact ? 2 : 3}
-      borderRadius={999}
-      backgroundColor={visual.bg}
-      borderWidth={1}
-      borderColor={visual.border}
-    >
-      <Icon size={compact ? 10 : 12} color={visual.fg} />
-      <Text fontSize={compact ? 9 : 11} fontWeight="600" color={visual.fg}>
+    <View testID={`retention-badge-${info.tier}`} style={{ alignSelf: "flex-start" }}>
+      <Badge tone={visual.tint} icon={visual.icon} pill sm={compact}>
         {t(`dataRetention.tier.${info.tier}.label`)}
-      </Text>
-    </XStack>
+      </Badge>
+    </View>
   )
 }

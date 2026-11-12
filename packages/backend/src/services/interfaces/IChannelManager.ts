@@ -5,13 +5,11 @@
  */
 
 import type {
-  AgentConfig,
   AgentId,
   Channel,
   ChannelId,
   ChannelMetadata,
   Message,
-  UserApp,
   UserId,
 } from '@teros/shared';
 
@@ -30,16 +28,6 @@ export interface ListChannelsResult {
   channels: Channel[];
   nextCursor: string | null;
   hasMore: boolean;
-}
-
-/**
- * Channel details with related data
- */
-export interface ChannelDetails {
-  channel: Channel;
-  agentConfig: AgentConfig;
-  userApps: UserApp[];
-  recentMessages: Message[];
 }
 
 /**
@@ -102,10 +90,6 @@ export interface IChannelManager {
    */
   autonameChannel(channelId: ChannelId): Promise<string | null>;
 
-  /**
-   * Get channel with full details
-   */
-  getChannelDetails(channelId: ChannelId): Promise<ChannelDetails | null>;
 
   // ============================================================================
   // MESSAGE OPERATIONS

@@ -5,7 +5,7 @@
 
 import type { Clock, ILLMClient, SessionStore } from "@teros/core"
 import type { AuthMessage, ClientMessage, ServerMessage } from "@teros/shared"
-import { isClientMessage, isWsRequest, normalizeError, parseClientMessage } from "@teros/shared"
+import { isClientMessage, isWsRequest, normalizeError, parseClientMessage, TEROS_EDITION } from "@teros/shared"
 import type { Db } from "mongodb"
 import type { IncomingMessage } from "http"
 import type { RawData, WebSocket, WebSocketServer } from "ws"
@@ -16,10 +16,12 @@ import type { McaOAuth } from "../auth/mca-oauth"
 import { captureException, runWithRequestContext } from "../lib/sentry"
 import { getWsLogger, jsonBytes } from "../lib/ws-logger"
 import { createLogger } from "../lib/logger"
+import { parseCookies, SESSION_COOKIE_NAME } from "../lib/session-cookie"
 import type { SecretsManager } from "../secrets/secrets-manager"
 import type { BoardService } from "../services/board-service"
 import type { BoardSubscriptionService } from "../services/board-subscription-service"
 import type { AutoplayService } from "../services/autoplay-service"
+import { ActionBridgeManager } from "../services/workflow-action-bridge"
 import type { DesktopStateService } from "../services/desktop-state-service"
 import type { ProjectService } from "../services/project-service"
 import type { SkillService } from "../services/skill-service"
@@ -33,9 +35,11 @@ import type { SessionManager } from "../services/session-manager"
 import type { VolumeService } from "../services/volume-service"
 import type { WorkspaceService } from "../services/workspace-service"
 import { ShareService } from "../services/share-service"
+import { UsageService } from "../services/usage-service"
 import { loggingMiddleware, WsRouter } from "../ws-framework"
 
 import { UserService } from "../auth/user-service"
+import { isDevAutologinRequestAllowed } from "../auth/dev-autologin"
 import { AuthHandler } from "./auth-handler"
 import { register as registerAdminDomain } from "./domains/admin"
 import { register as registerAdminApiDomain } from "./domains/admin-api"
@@ -44,7 +48,11 @@ import { register as registerAgentDomain } from "./domains/agent"
 import { register as registerAppDomain } from "./domains/app"
 import { register as registerBoardDomain } from "./domains/board"
 import { register as registerChannelDomain } from "./domains/channel"
-import { register as registerSchedulerDomain } from "./domains/scheduler"
+import { LetterService } from "../services/letter-service"
+import { InternalLLMService } from "../services/internal-llm-service"
+import { register as registerAutomateDomain } from "./domains/automate"
+import { register as registerArtifactDomain } from "./domains/artifact"
+import type { AutomateRunner } from "../services/automate-runner"
 import {
   cleanupWatcherRegistry,
   createWatcherRegistry,
@@ -54,13 +62,17 @@ import {
 import { register as registerProfileDomain } from "./domains/profile"
 import { register as registerProviderDomain } from "./domains/provider"
 import { register as registerWorkspaceDomain } from "./domains/workspace"
+import { register as registerNavbarDomain } from "./domains/navbar"
 import { register as registerFsBrowserDomain } from "./domains/fs-browser"
 import { register as registerFeedbackDomain } from "./domains/feedback"
 import { register as registerFileShareDomain } from "./domains/file-share"
+import { register as registerShareDomain } from "./domains/share"
 import { register as registerSkillDomain } from "./domains/skill"
 import { register as registerProjectDomain } from "./domains/project"
 import { register as registerDesktopStateDomain } from "./domains/desktop-state"
-import { register as registerTerminalDomain } from "./domains/terminal"
+import { registerUserApiDomain } from "./domains/user-api"
+import { register as registerTerminalDomain, type TerminalDomainDeps } from "./domains/terminal"
+import { register as registerUiDomain } from "./domains/ui"
 import { register as registerFeatureFlagDomain } from "./domains/feature-flag"
 import { register as registerSubscriptionsDomain } from "./domains/subscriptions"
 import type { AgentWakeUpCallback, EventHandler } from "./event-handler"
@@ -69,6 +81,10 @@ import type { PubSubService } from "../services/pubsub-service"
 import type { MCAEventSubscriptionService } from "../services/mca-event-subscription-service"
 import type { LatitudeScoreEmitter } from "../services/latitude-score-emitter"
 import type { PtyManager } from "../services/pty-manager"
+import { UiStateManager } from "../services/ui-state-manager"
+import type { TerminalStreamServer } from "../services/terminal/stream-server"
+import type { McaStreamRelay } from "../services/mca-stream-relay"
+import { register as registerStreamDomain } from "./domains/stream"
 
 const log = createLogger('WebSocketHandler')
 
@@ -79,12 +95,18 @@ export interface WebSocketHandlerOptions {
   mcaManager?: McaManager | null
   llmClient?: ILLMClient
   toolExecutor?: any // Mock tool executor for tests
+  flowWebhookService?: import('../services/flow-webhook-service').FlowWebhookService | null
+  /** Flow Event Service — for registering/cancelling event triggers on flows (Phase 4) */
+  flowEventService?: import('../services/flow-event-service').FlowEventService | null
   secretsManager?: SecretsManager
   mcaOAuth?: McaOAuth | null
   authManager?: AuthManager | null
   workspaceService?: WorkspaceService | null
+  /** Navbar pins (NAV spec) — registered only when wired (needs workspaceService). */
+  navbarPinsService?: import('../services/navbar-pins-service').NavbarPinsService | null
   volumeService?: VolumeService | null
   boardService?: BoardService | null
+  automateRunner?: AutomateRunner | null
   boardSubscriptionService?: BoardSubscriptionService | null
   autoplayService?: AutoplayService | null
 
@@ -92,6 +114,12 @@ export interface WebSocketHandlerOptions {
   pubSubService?: PubSubService | null
   mcaEventSubscriptionService?: MCAEventSubscriptionService | null
   ptyManager?: PtyManager | null
+  /** /ws/terminal data plane (tickets, live viewers). Null when not wired. */
+  terminalStream?: TerminalStreamServer | null
+  /** MCA streams relay (spec MCS), resolved lazily: it is created after this handler. */
+  getStreamRelay?: () => McaStreamRelay | null
+  /** Coding-agent credentials for terminal sessions (default: the DB-backed store). Tests/smokes. */
+  terminalAgentCredentials?: TerminalDomainDeps["agentCredentials"]
   /** F4·C0 — Latitude score emitter for the 👎 feedback hook. Null when not wired. */
   latitudeScoreEmitter?: LatitudeScoreEmitter | null
 
@@ -122,6 +150,10 @@ export interface WebSocketHandlerOptions {
   latitudeSignalIndex?: import("../services/latitude-signal-index").LatitudeSignalIndex | null
   /** F4·C2 — reads Latitude's clustered signals for the admin dashboard. */
   latitudeReadClient?: import("../services/latitude-read-client").LatitudeReadClient | null
+  /** Voice Mode v2 F4 — lazy resolver for the native voice loop (it is
+   * constructed AFTER this handler in server-bootstrap): wires
+   * admin-api.voice-telemetry-* (health telemetry query surface, AC-9). */
+  getVoiceLoop?: () => import("../handlers/voice-loop").VoiceLoop | null
 }
 
 export class WebSocketHandler {
@@ -149,6 +181,18 @@ export class WebSocketHandler {
   // Map WebSocket to the raw auth token (needed by impersonation handlers)
   private wsToToken: WeakMap<WebSocket, string> = new WeakMap()
 
+  // Map WebSocket to the User-Agent header captured at handshake
+  private wsToUserAgent: WeakMap<WebSocket, string | null> = new WeakMap()
+  // Connections allowed to use the local-only dev auto-login (decided at upgrade
+  // from the raw socket + headers; see auth/dev-autologin.ts)
+  private wsDevAutologin: WeakMap<WebSocket, boolean> = new WeakMap()
+  // Session token carried by the httpOnly cookie on the WS upgrade request
+  // (F2). Web clients that just reloaded authenticate with method "cookie":
+  // the browser sends teros_session on the handshake, we resolve it here and
+  // validate it exactly like a token-auth frame. The frame itself carries no
+  // token, so a same-origin script can never learn the 30-day token from us.
+  private wsToCookieToken: WeakMap<WebSocket, string | null> = new WeakMap()
+
   // UserService for access control checks
   private userService: UserService
 
@@ -157,6 +201,9 @@ export class WebSocketHandler {
 
   // PubSubService — unified pub/sub (replaces SubscriptionManager for file-watcher)
   private pubSubService: PubSubService | null = null
+
+  // Live mirror of the user's desktop (ui.* domain, spec 20261022_ui-state-mca.md)
+  private uiStateManager: UiStateManager | null = null
 
   // FeedbackService — message-level and conversation-level feedback
   private feedbackService: FeedbackService | null = null
@@ -172,7 +219,7 @@ export class WebSocketHandler {
     sessionStore?: SessionStore,
     options?: WebSocketHandlerOptions,
   ) {
-    this.authHandler = options?.authHandler ?? new AuthHandler(sessionManager)
+    this.authHandler = options?.authHandler ?? new AuthHandler(sessionManager, db)
     this.userService = options?.userService ?? new UserService(db)
     this.providerService = options?.providerService ?? new ProviderService(db)
     this.messageHandler = new MessageHandler(
@@ -267,9 +314,13 @@ export class WebSocketHandler {
       registerWorkspaceDomain(this.wsRouter, {
         db,
         workspaceService: options.workspaceService,
+        userService: this.userService,
         mcaService: this.mcaService,
         pubSubService: this.pubSubService ?? null,
       })
+    }
+    if (options?.navbarPinsService) {
+      registerNavbarDomain(this.wsRouter, { navbarPinsService: options.navbarPinsService })
     }
     registerProviderDomain(this.wsRouter, {
       db,
@@ -284,6 +335,7 @@ export class WebSocketHandler {
       workspaceService: options?.workspaceService ?? null,
       db,
       getSessionId: (ws) => this.wsToSession.get(ws),
+      letterService: new LetterService(db, new InternalLLMService(db, this.providerService)),
     })
     registerAppDomain(this.wsRouter, {
       db,
@@ -302,6 +354,10 @@ export class WebSocketHandler {
       mcaService: this.mcaService,
     })
     if (options?.boardService && options?.workspaceService && options?.autoplayService && this.pubSubService) {
+      // Workflow Action Bridge — connects board task completion to workflow
+      // engine advancement. Lazily creates per-project engines on first use.
+      const actionBridgeManager = new ActionBridgeManager(db, options.boardService, this.pubSubService, options.toolExecutor)
+
       registerBoardDomain(this.wsRouter, {
         boardService: options.boardService,
         boardSubscriptionService: options.boardSubscriptionService ?? undefined,
@@ -313,6 +369,9 @@ export class WebSocketHandler {
         eventHandler: options.eventHandler ?? undefined,
         autoplayService: options.autoplayService,
         db,
+        actionBridgeManager,
+        flowWebhookService: options.flowWebhookService ?? undefined,
+        flowEventService: options.flowEventService ?? undefined,
       })
     }
     registerAdminDomain(this.wsRouter, {
@@ -327,14 +386,25 @@ export class WebSocketHandler {
       pubSubService: this.pubSubService,
     })
     registerAdminApiDomain(this.wsRouter, {
+      sessionManager: this.sessionManager,
       db,
       mcaService: this.mcaService,
       mcaManager: options?.mcaManager,
       workspaceService: options?.workspaceService,
+      // User management (admin-api.users-*) — same UserService instance the
+      // admin UI domain uses (tn_h3KIMygPUs0nvl5F).
+      userService: options?.userService ?? null,
+      // copy-app-auth admin replica (tn_aGVdSrVwIJi9mfvc): credential store access
+      authManager: options?.authManager ?? null,
       featureFlagService: options?.featureFlagService ?? null,
       agentUsageHealthDeps: options?.agentUsageHealthDeps ?? null,
       latitudeSignalIndex: options?.latitudeSignalIndex ?? null,
       latitudeReadClient: options?.latitudeReadClient ?? null,
+      getVoiceLoop: options?.getVoiceLoop ?? null,
+      pubSubService: this.pubSubService ?? null,
+      // Token usage per conversation (admin-api.channel-token-budget). Built
+      // directly from db — same instance shape MessageHandler falls back to.
+      usageService: new UsageService(db),
     })
     // billing domain: billing.* (user-facing payment-method vaulting). Only
     // registered when Stripe is wired — otherwise the actions stay absent.
@@ -375,17 +445,47 @@ export class WebSocketHandler {
       desktopStateService: options?.desktopStateService ?? null,
     })
 
-    // scheduler domain: scheduler.* — paths paralelos al MCA mca.teros.scheduler (criterio 22)
-    registerSchedulerDomain(this.wsRouter, { db })
+    // automate domain: automate.* — starters (scheduler/webhook/event × actions)
+    if (options?.workspaceService) {
+      registerAutomateDomain(this.wsRouter, {
+        db,
+        workspaceService: options.workspaceService,
+        runner: options.automateRunner ?? null,
+      })
+      // Artifact catalog (docs/specs/tasks/artifacts.md) — read-only, same deps
+      registerArtifactDomain(this.wsRouter, { db, workspaceService: options.workspaceService })
+    }
 
-    // terminal domain: PTY-based interactive terminal
-    registerTerminalDomain(this.wsRouter, {
-      pubSubService: options?.pubSubService!,
-      ptyManager: options?.ptyManager!,
-      mcaService: this.mcaService,
-      mcaManager: options?.mcaManager!,
+    // terminal domain: PTY-based interactive terminal. Only with a PtyManager:
+    // register() subscribes to ptyManager.onChange at once, so without one
+    // (TestServer, e2e:ws) the whole handler used to throw on construction.
+    if (options?.ptyManager) {
+      registerTerminalDomain(this.wsRouter, {
+        pubSubService: options.pubSubService!,
+        ptyManager: options.ptyManager,
+        mcaService: this.mcaService,
+        mcaManager: options.mcaManager!,
+        db,
+        stream: options.terminalStream ?? null,
+        providerService: this.providerService,
+        agentCredentials: options?.terminalAgentCredentials,
+      })
+    }
+
+    // ui domain: live mirror of the user's desktop + window commands
+    // (spec 20261022_ui-state-mca.md). The manager is handler-owned so the
+    // whole stack shares one mirror, and the WS-close hook below feeds it
+    // session lifecycle (REQ-2 offline marking).
+    this.uiStateManager = new UiStateManager()
+    registerUiDomain(this.wsRouter, {
       db,
+      pubSubService: this.pubSubService,
+      uiStateManager: this.uiStateManager,
+      ptyManager: options?.ptyManager ?? null,
     })
+
+    // stream domain: stream.ticket — the MCA streams data plane (spec MCS-REQ-7)
+    registerStreamDomain(this.wsRouter, { getRelay: options?.getStreamRelay ?? (() => null) })
 
     // fs-browser domain: fs.list (requires both volumeService and workspaceService)
     if (options?.volumeService && options?.workspaceService) {
@@ -403,6 +503,13 @@ export class WebSocketHandler {
         shareService: options?.shareService ?? new ShareService(db),
       })
     }
+
+    // share domain: share.create / share.get / share.revoke — WS replacement for
+    // the REST /api/share endpoints (public share links, UI + MCA tools alike)
+    registerShareDomain(this.wsRouter, {
+      db,
+      shareService: options?.shareService ?? new ShareService(db),
+    })
 
     // feature-flag domain: featureFlags.* (always available)
     registerFeatureFlagDomain(this.wsRouter, {
@@ -431,6 +538,12 @@ export class WebSocketHandler {
         latitudeScoreEmitter: options?.latitudeScoreEmitter ?? null,
       })
     }
+
+    // user-api domain: user-api.my-usage-* (self-service usage queries).
+    // The domain existed since #82ac0c6c3 but was never wired into the router —
+    // its actions were unreachable. Registered unconditionally: it only needs
+    // `db` and every handler forces userId = ctx.userId (self-scope by design).
+    registerUserApiDomain(this.wsRouter, db)
 
     // Handle new connections
     this.wss.on("connection", (ws, request) => this.handleConnection(ws, request as IncomingMessage))
@@ -532,6 +645,14 @@ export class WebSocketHandler {
   private handleConnection(ws: WebSocket, request: IncomingMessage): void {
     const ip = this.resolveIp(request)
     this.wsToIp.set(ws, ip)
+    // Capture User-Agent at handshake (null when absent — e.g. raw WS clients)
+    const rawUa = request.headers["user-agent"]
+    this.wsToUserAgent.set(ws, Array.isArray(rawUa) ? rawUa[0] : (rawUa ?? null))
+    this.wsDevAutologin.set(ws, isDevAutologinRequestAllowed(request))
+    // Capture the httpOnly session cookie at handshake (F2): a web client
+    // reloading the page has no in-memory token and authenticates with
+    // method "cookie". Null when absent — native/raw clients never use it.
+    this.wsToCookieToken.set(ws, parseCookies(request)[SESSION_COOKIE_NAME] ?? null)
     log.info({ ip }, "New WebSocket connection")
 
     // Connection must authenticate within 30 seconds
@@ -588,6 +709,9 @@ export class WebSocketHandler {
 
     // Ping messages - respond immediately with pong (no auth required for keepalive)
     if (message.type === "ping") {
+      // Track keepalive liveness separately from real activity (TER-564)
+      const pingSessionId = this.wsToSession.get(ws)
+      if (pingSessionId) this.sessionManager.updatePing(pingSessionId)
       this.sendMessage(ws, {
         type: "pong",
         clientTime: (message as any).clientTime,
@@ -658,7 +782,22 @@ export class WebSocketHandler {
     const inputBytes = jsonBytes(message)
 
     try {
-      const result = await this.authHandler.authenticate(message)
+      const rawUa = this.wsToUserAgent.get(ws)
+      // F2 cookie auth: the frame carries no token — resolve it from the
+      // teros_session cookie captured at the WS upgrade request. Same
+      // validation path as method "token" (AuthHandler → session-service).
+      // A frame claiming method "cookie" on a connection whose handshake
+      // carried no cookie is rejected like any invalid token.
+      const authMessage: AuthMessage =
+        message.method === "cookie"
+          ? (({ type: "auth", method: "token", sessionToken: this.wsToCookieToken.get(ws) ?? "" }) as AuthMessage)
+          : message
+      const result = await this.authHandler.authenticate(authMessage, {
+        ipAddress: ip,
+        userAgent: rawUa ?? undefined,
+        devAutologin: this.wsDevAutologin.get(ws) === true,
+      })
+      const cookieAuth = message.method === "cookie"
 
       // Handle Google OAuth init - returns URL instead of session
       if (result.url && result.state) {
@@ -685,6 +824,9 @@ export class WebSocketHandler {
         this.sendMessage(ws, {
           type: "auth_error",
           error: result.error || "Authentication failed",
+          ...(result.errorCode ? { errorCode: result.errorCode } : {}),
+          ...(result.emailVerification ? { emailVerification: result.emailVerification } : {}),
+          ...(result.passwordReset ? { passwordReset: result.passwordReset } : {}),
         })
         logger.write({
           ts: new Date().toISOString(),
@@ -699,27 +841,44 @@ export class WebSocketHandler {
           errorCode: "AUTH_FAILED",
           errorMsg: result.error ?? "Authentication failed",
         })
-        ws.close()
+        // A pending email verification or password reset keeps the socket so the
+        // client can send the code (or retry a mistyped one) and the next step
+        // without reconnecting; the auth timeout still applies. (PWR-REQ-6)
+        if (
+          !result.errorCode?.startsWith("email_verification") &&
+          !result.errorCode?.startsWith("password_reset")
+        ) {
+          ws.close()
+        }
         return
       }
 
-      // Create session
-      const session = this.sessionManager.createSession(result.userId!, ws)
+      // Create session (handshake metadata: ip + user-agent)
+      const session = this.sessionManager.createSession(result.userId!, ws, {
+        ip,
+        userAgent: this.wsToUserAgent.get(ws) ?? null,
+      })
       this.wsToSession.set(ws, session.sessionId)
       // Store raw token so impersonation handlers can hash it
       this.wsToToken.set(ws, result.sessionToken!)
 
       // Send success
+      // F2: on cookie auth the sessionToken is deliberately omitted — the
+      // client that couldn't read the token from the httpOnly cookie must not
+      // receive it here either (a same-origin script can open a WS and send
+      // method "cookie" just as easily as it can fetch /auth/session).
       this.sendMessage(ws, {
         type: "auth_success",
         userId: result.userId!,
-        sessionToken: result.sessionToken!,
+        ...(cookieAuth ? {} : { sessionToken: result.sessionToken! }),
         role: (result.user?.role || "user") as "user" | "admin" | "super",
         user: result.user ? {
           profile: result.user.profile,
           termsAcceptedAt: result.user.termsAcceptedAt,
           onboardingCompletedAt: result.user.onboardingCompletedAt,
           accessGranted: result.user.accessGranted,
+          // ONB-REQ-1: the app needs the edition before its first post-login screen.
+          edition: TEROS_EDITION,
         } : undefined,
         ...(result.impersonation ? { impersonation: result.impersonation } : {}),
       })
@@ -788,6 +947,9 @@ export class WebSocketHandler {
       // it and handleResponse resolves the ORIGINAL promise — the live agent
       // turn continues instead of being denied out from under the user.
       this.sessionManager.removeSession(sessionId)
+      // ui.* domain: unbind the session from the desktop mirror so its devices
+      // start the offline countdown (REQ-2 — grace, then eviction by the sweep).
+      this.uiStateManager?.dropSession(sessionId)
     }
     this.wsToToken.delete(ws)
     // Clean up any file watchers for this connection

@@ -36,6 +36,7 @@ import { decInflight, incInflight } from "./inflight-gauge"
 import { populateRateLimitContext } from "./rate-limit-context"
 import { extractReasoningDelta } from "./reasoningDelta"
 import { uncachedInputTokens } from "./usage-normalize"
+import { countTokensForProvider } from "./token-counter"
 
 export interface OpenAICompatibleConfig {
   /** Base URL of the OpenAI-compatible endpoint (e.g., 'https://tower.romerolabs.dev') */
@@ -56,6 +57,21 @@ export interface OpenAICompatibleConfig {
    * for generic endpoints (Tower, LM Studio, vLLM). Resolves gap C1.
    */
   actualProvider?: string
+  /**
+   * Thinking-model reasoning budget forwarded as `reasoning_effort` on the
+   * upstream request ('none' | 'low' | 'medium' | 'high'). Ignored by
+   * endpoints that don't support it... except Fireworks GLM-5.x, which
+   * accepts 'low' but rejects 'none' (thinking-only models). 'none' is the
+   * voice fast leg's default (F5a — deepseek/kimi accept it: zero reasoning
+   * tokens, fastest TTFT).
+   */
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
+  /**
+   * Whether the model accepts images. When set it overrides the name-pattern
+   * guess of the ImagePipeline (upstream catalogues know; names like `glm5.3`
+   * or `deepseek-v4-flash` do not match any pattern). TPROV-REQ-7.
+   */
+  supportsVision?: boolean
 }
 
 /**
@@ -65,6 +81,18 @@ export interface OpenAICompatibleConfig {
  * When no apiKey is provided, uses a dummy value so the OpenAI SDK does not throw.
  * Custom headers (e.g., Cloudflare Access tokens) are injected via defaultHeaders.
  */
+/** Most recent tool-result images re-sent with the history (older ones become a note).
+ *  Matches file-processor pdf-to-images (max 10 pages per call): a whole batch is always seen. */
+const MAX_TOOL_IMAGES_IN_HISTORY = 10
+
+/** Image attachments of a completed tool part (`state.attachments`), in order. */
+function toolResultImages(state: any): import("../session/types").FilePart[] {
+  return ((state?.attachments ?? []) as any[]).filter(
+    (a): a is import("../session/types").FilePart =>
+      a?.type === "file" && typeof a.mime === "string" && a.mime.startsWith("image/"),
+  )
+}
+
 export class OpenAICompatibleLLMAdapter implements ILLMClient {
   private client: OpenAI
   private defaultModel: string
@@ -72,8 +100,15 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
   private baseUrl: string
   /** Real upstream provider label for the `actualProvider` telemetry dimension. */
   private actualProvider: string
+  /** Optional thinking-model reasoning budget (`reasoning_effort` upstream). */
+  private reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   private logger = createLogger("OpenAICompatibleLLM")
   private imagePipeline = new ImagePipeline()
+  private supportsVision: boolean | undefined
+  /** Catalogue says, else the pipeline's name patterns (TPROV-REQ-7). */
+  private modelSeesImages(): boolean {
+    return this.supportsVision ?? this.imagePipeline.supportsVision(this.defaultModel)
+  }
   private documentExtractor = new DocumentExtractor()
 
   constructor(config: OpenAICompatibleConfig) {
@@ -99,6 +134,8 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
     this.defaultModel = config.model
     this.defaultMaxTokens = config.defaultMaxTokens || 32768
     this.actualProvider = config.actualProvider || "openai-compatible"
+    this.reasoningEffort = config.reasoningEffort
+    this.supportsVision = config.supportsVision
 
     log.info("OpenAICompatibleLLM", "Initialized adapter", {
       baseUrl: apiBaseUrl,
@@ -161,6 +198,8 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
         // the flag; the reader below already guards on `chunk.usage` presence.
         stream_options: { include_usage: true },
         max_tokens: maxTokens || this.defaultMaxTokens,
+        // Thinking-model budget (only sent when configured; ignored otherwise)
+        ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {}),
       }
 
       // `.withResponse()` exposes the raw HTTP Response alongside the stream so
@@ -198,6 +237,10 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
       // `max_tokens` so callers can surface/retry it meaningfully.
       let reasoningCharCount = 0
       let contentCharCount = 0
+      // Accumulated output text for fallback token estimation when the provider
+      // returns no `chunk.usage` (some error/timeout paths on Together/Fireworks).
+      // Without this, the turn records 0 tokens → $0 cost → billing blind spot.
+      let outputTextAccumulator = ""
 
       for await (const chunk of stream) {
         // Usage arrives in the FINAL chunk, which per the OpenAI streaming spec
@@ -239,6 +282,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
 
         if (delta.content) {
           contentCharCount += delta.content.length
+          outputTextAccumulator += delta.content
           await callbacks?.onText?.(delta.content)
         }
 
@@ -312,6 +356,16 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
         stopReason = "tool_calls"
       } else if (finishReason === "length") {
         stopReason = "max_tokens"
+      } else if (signal?.aborted) {
+        // User Stop mid-stream (2026-09-30 incident): the stream was cut while
+        // the model was still reasoning (reasoningChars > 0, contentChars 0,
+        // no tool calls) — the exact shape the masquerade heuristic below
+        // matches. Without this check a user abort was promoted to max_tokens,
+        // the TurnDriver's silent-turn guard retried the prompt, and the retry
+        // (instantly empty, signal already aborted) surfaced the budget-error
+        // text as a normal assistant message. An aborted stream is an abort,
+        // never a budget overflow.
+        stopReason = "error"
       } else if (reasoningCharCount > 0 && contentCharCount === 0 && !hasToolCalls) {
         // Budget-overflow masquerading as a clean stop: the model produced
         // reasoning but never wrote any content, and no tool was called. The
@@ -322,6 +376,55 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
         stopReason = "max_tokens"
       }
 
+      // Fallback token estimation: when the provider returns no `chunk.usage`
+      // (some error/timeout/degraded paths on Together/Fireworks), the stream
+      // completes successfully but totalInputTokens/totalOutputTokens stay at 0.
+      // This was Mode 2 of the billing blind spot — the session.delta was emitted
+      // but with 0 tokens, so costUsd was 0 and the session appeared unused.
+      // Estimate output tokens from the accumulated text, and input tokens from
+      // the prompt messages. Marked as estimated via a flag so downstream can
+      // distinguish real provider counts from our estimates.
+      let usageEstimated = false
+      if (totalInputTokens === 0 && totalOutputTokens === 0) {
+        // Estimate output tokens from streamed content + tool call arguments
+        let outputTextForEstimation = outputTextAccumulator
+        for (const [, tc] of toolCalls) {
+          outputTextForEstimation += tc.arguments || ""
+        }
+        const estimatedOutput = countTokensForProvider(
+          outputTextForEstimation || "",
+          this.actualProvider,
+        )
+        // Estimate input tokens from the prompt messages
+        let inputTextForEstimation = systemPrompt || ""
+        for (const msg of openaiMessages) {
+          const content = typeof msg.content === "string"
+            ? msg.content
+            : Array.isArray(msg.content)
+              ? msg.content.map((c: any) => c.text || "").join("")
+              : ""
+          inputTextForEstimation += " " + content
+        }
+        const estimatedInput = countTokensForProvider(
+          inputTextForEstimation,
+          this.actualProvider,
+        )
+        if (estimatedInput > 0 || estimatedOutput > 0) {
+          totalInputTokens = estimatedInput
+          totalOutputTokens = estimatedOutput
+          usageEstimated = true
+          log.warn("OpenAICompatibleLLM", "Provider returned no usage — estimated tokens from prompt/output text", {
+            estimatedInput,
+            estimatedOutput,
+            actualProvider: this.actualProvider,
+            model: model || this.defaultModel,
+            finishReason,
+            contentChars: contentCharCount,
+            reasoningChars: reasoningCharCount,
+          })
+        }
+      }
+
       const usage: LLMUsageInfo = {
         // `prompt_tokens` includes `cached_tokens` (OpenAI-compatible spec) —
         // normalize to the canonical non-cached shape (A2.1). This is the
@@ -330,6 +433,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
         outputTokens: totalOutputTokens,
         ...(cachedReadTokens > 0 ? { cacheReadInputTokens: cachedReadTokens } : {}),
         ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
+        ...(usageEstimated ? { usageEstimated: true } : {}),
       }
 
       const latencyMs = Math.round(performance.now() - startedAt)
@@ -347,8 +451,16 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
         actualProvider: this.actualProvider,
       })
 
-      log.info("OpenAICompatibleLLM", "Response complete", {
+      // maxTokensSent (2026-09-24 silent-turn incident): the final value of
+      // createParams.max_tokens — the authoritative answer to "who truncated
+      // the output?". rawFinishReason: the provider's finish_reason BEFORE the
+      // stopReason mapping/promotion above, so a real server-side "length" cut
+      // is distinguishable from our own reasoning-only "stop" → max_tokens
+      // promotion. Without these two fields the log cannot attribute the cut.
+      log.debug("OpenAICompatibleLLM", "Response complete", {
         stopReason,
+        maxTokensSent: maxTokens || this.defaultMaxTokens,
+        rawFinishReason: finishReason,
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         cachedReadTokens,
@@ -430,6 +542,23 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
       openaiMessages.push({ role: "system", content: systemPrompt })
     }
 
+    // The whole history is re-sent on every request, so a long browser session
+    // with dozens of screenshots would re-send all of them each turn (cost,
+    // latency, provider image limits). Only the most recent tool-result images
+    // are sent; older ones become a note in their tool text.
+    const recentToolImages = new Set<import("../session/types").FilePart>()
+    for (let m = messages.length - 1; m >= 0 && recentToolImages.size < MAX_TOOL_IMAGES_IN_HISTORY; m--) {
+      const parts = messages[m].parts
+      for (let p = parts.length - 1; p >= 0 && recentToolImages.size < MAX_TOOL_IMAGES_IN_HISTORY; p--) {
+        const part = parts[p]
+        if (part.type !== "tool" || part.state.status !== "completed") continue
+        const images = toolResultImages(part.state)
+        for (let i = images.length - 1; i >= 0 && recentToolImages.size < MAX_TOOL_IMAGES_IN_HISTORY; i--) {
+          recentToolImages.add(images[i])
+        }
+      }
+    }
+
     for (const msg of messages) {
       const role = msg.info.role === "user" ? "user" : "assistant"
 
@@ -444,7 +573,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
       )
       let processedImages: Map<string, ProcessedImage> = new Map()
       if (imageParts.length > 0) {
-        if (!this.imagePipeline.supportsVision(this.defaultModel)) {
+        if (!this.modelSeesImages()) {
           log.warn(
             "OpenAICompatibleLLM",
             `Model ${this.defaultModel} does not support vision — skipping ${imageParts.length} image(s)`,
@@ -477,7 +606,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
           // Pass embedded images through ImagePipeline (resize/reformat) only if the
           // model supports vision; otherwise skip silently (text already captures content).
           const flat = collectEmbeddedImages(extracted)
-          if (flat.length > 0 && this.imagePipeline.supportsVision(this.defaultModel)) {
+          if (flat.length > 0 && this.modelSeesImages()) {
             for (const img of flat) {
               const processed = await this.imagePipeline.processBuffer(
                 img.buffer,
@@ -497,6 +626,28 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
             reason: error.message,
           })
         }
+      }
+
+      // Images returned BY TOOLS (tool-result `attachments`: browser-screenshot,
+      // playwright screenshots, pdf-to-images, view-image…). They used to be
+      // dropped here — only the text `output` was sent — so models on this adapter
+      // (Teros routes, Fireworks, Together…) never saw an image a tool produced,
+      // even with vision. They are sent after the tool messages (see
+      // toolImagesMessage); a model without vision gets a note in the tool text.
+      const toolResultImageParts: import("../session/types").FilePart[] = []
+      const toolOutputWithImages = (state: any): string => {
+        const output: string = state.output || ""
+        const images = toolResultImages(state)
+        if (images.length === 0) return output
+        if (!this.modelSeesImages()) {
+          return `${output}\n[${images.length} image(s) returned by this tool were not shown: the current model (${this.defaultModel}) has no vision]`
+        }
+        const kept = images.filter((img) => recentToolImages.has(img))
+        toolResultImageParts.push(...kept)
+        const dropped = images.length - kept.length
+        return dropped > 0
+          ? `${output}\n[${dropped} earlier image(s) from this tool are no longer shown, to save context — call the tool again to see them]`
+          : output
       }
 
       for (const part of msg.parts) {
@@ -520,12 +671,12 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
               tool_call_id: part.callID,
               content:
                 part.state.status === "completed"
-                  ? part.state.output || ""
+                  ? toolOutputWithImages(part.state)
                   : `Error: ${part.state.error || "Unknown error"}`,
             })
           } else if (role === "user") {
             if (part.state.status === "completed") {
-              toolResults.push({ tool_call_id: part.callID, content: part.state.output || "" })
+              toolResults.push({ tool_call_id: part.callID, content: toolOutputWithImages(part.state) })
             } else if (part.state.status === "error") {
               toolResults.push({
                 tool_call_id: part.callID,
@@ -535,6 +686,39 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
           }
         }
         // Image file parts are handled separately below
+      }
+
+      // One user message carrying every tool-result image of this turn, placed
+      // AFTER all the tool messages: a user message between two tool messages of
+      // the same assistant turn breaks the tool_call → tool sequence the API expects.
+      let toolImagesMessage: OpenAI.ChatCompletionMessageParam | null = null
+      if (toolResultImageParts.length > 0) {
+        try {
+          const processed = await this.imagePipeline.processImages(toolResultImageParts, "openai")
+          const imageContent = toolResultImageParts
+            .map((img) => processed.get(img.url))
+            .filter((p): p is ProcessedImage => !!p)
+            .map((p) => ({
+              type: "image_url" as const,
+              image_url: { url: `data:${p.mimeType};base64,${p.base64}` },
+            }))
+          if (imageContent.length > 0) {
+            toolImagesMessage = {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `[${imageContent.length} image(s) returned by the tool call(s) above]`,
+                },
+                ...imageContent,
+              ],
+            }
+          }
+        } catch (error: any) {
+          log.error("OpenAICompatibleLLM", "Failed to process tool-result images", undefined, {
+            reason: error.message,
+          })
+        }
       }
 
       if (role === "assistant") {
@@ -551,6 +735,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
               content: result.content,
             })
           }
+          if (toolImagesMessage) openaiMessages.push(toolImagesMessage)
         } else if (textParts.length > 0) {
           openaiMessages.push({ role: "assistant", content: textParts.join("\n") })
         }
@@ -565,6 +750,7 @@ export class OpenAICompatibleLLMAdapter implements ILLMClient {
               content: result.content,
             })
           }
+          if (toolImagesMessage) openaiMessages.push(toolImagesMessage)
         }
 
         // Build content array with text and images

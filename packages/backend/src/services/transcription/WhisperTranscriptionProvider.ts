@@ -70,6 +70,15 @@ export class WhisperTranscriptionProvider implements ITranscriptionProvider {
       formData.append('timestamp_granularities[]', 'word');
     }
 
+    // Pass custom vocabulary as the prompt parameter.
+    // Whisper uses the prompt to bias toward domain-specific terms, product names,
+    // acronyms, etc. The terms should be comma-separated and match the audio language.
+    if (options?.vocabulary && options.vocabulary.length > 0) {
+      const vocabularyPrompt = options.vocabulary.join(', ');
+      // Whisper prompt is limited to 224 tokens — keep the vocabulary focused.
+      formData.append('prompt', vocabularyPrompt);
+    }
+
     // Call OpenAI Whisper API
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',

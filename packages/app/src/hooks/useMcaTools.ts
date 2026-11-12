@@ -14,7 +14,7 @@
  * ```
  */
 
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { getTerosClient } from '../services/terosClientSingleton';
 
 interface UseMcaToolsOptions {
@@ -56,16 +56,25 @@ export function useMcaTools(appId: string, options?: UseMcaToolsOptions): UseMca
 
   const client = getTerosClient();
 
+  // @fixme nira - 2026.09.18 : Stabilize options with a ref so executeTool's useCallback
+  // identity doesn't change when callers pass inline objects. Without this, any consumer
+  // that passes `options={{ onExecuteStart: ... }}` as an inline object would cause
+  // executeTool to get a new reference every render, cascading into useEffect re-runs.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   const executeTool = useCallback(
     async <T = any>(
       tool: string,
       input: Record<string, any> = {},
     ): Promise<{ success: boolean; result: T; mcaId: string }> => {
+      const opts = optionsRef.current;
+
       setLoading(true);
       setExecutingTool(tool);
       setError(null);
 
-      options?.onExecuteStart?.(tool);
+      opts?.onExecuteStart?.(tool);
 
       try {
         console.log('[useMcaTools] Executing tool:', tool, 'on appId:', appId, 'with input:', input);
@@ -74,28 +83,55 @@ export function useMcaTools(appId: string, options?: UseMcaToolsOptions): UseMca
 
         if (!result.success) {
           // Tool returned an error in its result
-          const errorMessage =
-            typeof result.result === 'object' && result.result !== null
-              ? (result.result as any).error || (result.result as any).message || 'Tool execution failed'
-              : 'Tool execution failed';
+          // Try to extract a structured error message; fall back to raw string
+          let errorMessage = 'Tool execution failed';
+          if (typeof result.result === 'string') {
+            // The MCA may have thrown a JSON error string like:
+            // "Error: {"error":true,"code":"FLOW_NOT_FOUND","message":"...","suggestion":"..."}"
+            // Try to parse it for a cleaner message
+            let cleaned = result.result as string;
+            if (cleaned.startsWith('Error: ')) cleaned = cleaned.slice(7);
+            try {
+              const parsed = JSON.parse(cleaned);
+              if (parsed && typeof parsed === 'object' && parsed.message) {
+                errorMessage = parsed.suggestion
+                  ? `${parsed.message} — ${parsed.suggestion}`
+                  : parsed.message;
+              } else {
+                errorMessage = result.result as string;
+              }
+            } catch {
+              errorMessage = result.result as string;
+            }
+          } else if (typeof result.result === 'object' && result.result !== null) {
+            const obj = result.result as any;
+            // Check for structured error object
+            if (obj.error === true && obj.message) {
+              errorMessage = obj.suggestion ? `${obj.message} — ${obj.suggestion}` : obj.message;
+            } else {
+              errorMessage = obj.error || obj.message || 'Tool execution failed';
+            }
+          }
           console.error('[useMcaTools] Tool execution failed:', errorMessage, 'result:', result);
           throw new Error(errorMessage);
         }
 
-        options?.onExecuteSuccess?.(tool, result.result);
+        opts?.onExecuteSuccess?.(tool, result.result);
         return result;
       } catch (err) {
         console.error('[useMcaTools] Exception during tool execution:', err);
         const error = err instanceof Error ? err : new Error(String(err));
         setError(error);
-        options?.onExecuteError?.(tool, error);
+        opts?.onExecuteError?.(tool, error);
         throw error;
       } finally {
         setLoading(false);
         setExecutingTool(null);
       }
     },
-    [appId, client, options],
+    // options intentionally excluded — read from optionsRef.current at call time.
+    // client is a singleton (getTerosClient returns the same instance), so it's stable.
+    [appId, client],
   );
 
   const clearError = useCallback(() => {

@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -64,7 +67,7 @@
     },
     {
       "name": "create-booking",
-      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Creates a booking with task details, start time, and estimated duration. Returns payment instructions.",
+      "description": "Book a human for a physical-world task. Requires a RENTAHUMAN_API_KEY. Returns booking details and payment instructions.",
       "inputSchema": {
         "type": "object",
         "properties": {

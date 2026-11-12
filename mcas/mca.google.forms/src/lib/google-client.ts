@@ -2,6 +2,12 @@
  * Google API Client Manager
  *
  * Manages OAuth2 authentication and Google API clients for Forms and Drive.
+ *
+ * TER-388: the backend is the only owner of the refresh_token and serves a
+ * fresh access_token from `GET /secrets/user` (lazy refresh, rotation-safe).
+ * The container authenticates with that access_token only and never refreshes
+ * on its own: doing so would reintroduce the double-owner antipattern that
+ * invalidated Google's refresh_token when it rotated.
  */
 
 import type { HttpToolContext as ToolContext } from '@teros/mca-sdk';
@@ -31,9 +37,15 @@ let cachedSystemSecrets: Record<string, string> | null = null;
 let cachedUserSecrets: Record<string, string> | null = null;
 
 /**
- * Initialize Google clients with credentials from context
+ * Initialize Google clients with credentials from context.
+ *
+ * `force` bypasses the cache so an expired access_token can be replaced with
+ * the fresh one served by the backend.
  */
-export async function initializeGoogleClients(context: ToolContext): Promise<GoogleClients> {
+export async function initializeGoogleClients(
+  context: ToolContext,
+  options: { force?: boolean } = {},
+): Promise<GoogleClients> {
   // Get secrets from context
   const systemSecrets = await context.getSystemSecrets();
   const userSecrets = await context.getUserSecrets();
@@ -43,7 +55,7 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
     JSON.stringify(systemSecrets) !== JSON.stringify(cachedSystemSecrets) ||
     JSON.stringify(userSecrets) !== JSON.stringify(cachedUserSecrets);
 
-  if (googleClients && !secretsChanged) {
+  if (googleClients && !options.force && !secretsChanged) {
     return googleClients;
   }
 
@@ -64,6 +76,11 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
     );
   }
 
+  const accessToken = userSecrets.ACCESS_TOKEN;
+  if (!accessToken) {
+    throw new Error('Google account not connected. Please connect your Google account.');
+  }
+
   // Parse redirect URI
   let redirectUri = 'https://be.teros.ai/auth/callback';
   if (redirectUrisRaw) {
@@ -75,17 +92,10 @@ export async function initializeGoogleClients(context: ToolContext): Promise<Goo
     }
   }
 
-  // Create OAuth2 client
+  // Create OAuth2 client. Only the access_token is set: googleapis will not
+  // auto-refresh, and a 401 means "ask the backend for a fresh token".
   const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
-
-  // Set user credentials if available
-  if (userSecrets.ACCESS_TOKEN) {
-    oauth2Client.setCredentials({
-      access_token: userSecrets.ACCESS_TOKEN,
-      refresh_token: userSecrets.REFRESH_TOKEN,
-      expiry_date: userSecrets.EXPIRY_DATE ? parseInt(userSecrets.EXPIRY_DATE) : undefined,
-    });
-  }
+  oauth2Client.setCredentials({ access_token: accessToken });
 
   // Create API clients
   googleClients = {
@@ -105,36 +115,39 @@ export function getGoogleClients(): GoogleClients | null {
 }
 
 /**
- * Ensure user is authenticated, refresh token if needed
+ * Detect a 401 from googleapis (gaxios shapes differ by version).
  */
-export async function ensureAuthenticated(context: ToolContext): Promise<void> {
-  const clients = await initializeGoogleClients(context);
-  const { oauth2Client } = clients;
-
-  try {
-    // Check if current token is valid
-    await oauth2Client.getTokenInfo(oauth2Client.credentials.access_token || '');
-  } catch {
-    // Token is invalid, try to refresh
-    if (oauth2Client.credentials.refresh_token) {
-      try {
-        const { credentials } = await oauth2Client.refreshAccessToken();
-        oauth2Client.setCredentials(credentials);
-
-        if (context.backend && credentials.access_token) {
-          console.error('[GoogleClient] Token refreshed successfully');
-        }
-      } catch (refreshError) {
-        throw new Error('Authentication expired. Please re-authorize the app.');
-      }
-    } else {
-      throw new Error('Not authenticated. Please authorize the app first.');
-    }
-  }
+export function isAuthError(error: any): boolean {
+  return (
+    error?.code === 401 ||
+    error?.status === 401 ||
+    error?.response?.status === 401 ||
+    error?.message?.includes('401') ||
+    error?.message?.toLowerCase().includes('invalid credentials') ||
+    error?.message?.toLowerCase().includes('token has been expired')
+  );
 }
 
 /**
- * Wrapper that handles 401 errors by attempting token refresh
+ * Re-fetch the user's access token from the backend and apply it to the
+ * existing client. Tools keep a reference to the clients returned by
+ * `initializeGoogleClients`, so updating it in place keeps that reference
+ * valid without rebuilding every handler.
+ */
+export async function refreshGoogleCredentials(context: ToolContext): Promise<GoogleClients> {
+  const previous = googleClients;
+  const next = await initializeGoogleClients(context, { force: true });
+
+  if (previous && previous !== next) {
+    previous.oauth2Client.setCredentials(next.oauth2Client.credentials);
+  }
+
+  return next;
+}
+
+/**
+ * Wrapper that handles 401 errors: re-fetch secrets once from the backend and
+ * retry. Never refreshes the token in the container (TER-388).
  */
 export async function withAuthRetry<T>(
   context: ToolContext,
@@ -144,23 +157,12 @@ export async function withAuthRetry<T>(
   try {
     return await operation();
   } catch (error: any) {
-    // Check if it's a 401 error
-    const is401 =
-      error?.code === 401 ||
-      error?.status === 401 ||
-      error?.response?.status === 401 ||
-      error?.message?.includes('401') ||
-      error?.message?.toLowerCase().includes('invalid credentials') ||
-      error?.message?.toLowerCase().includes('token has been expired');
-
-    if (!is401) {
+    if (!isAuthError(error)) {
       throw error;
     }
 
-    console.error(`[GoogleClient] 401 error in ${operationName}, attempting token refresh...`);
-
-    // Try to refresh and retry
-    await ensureAuthenticated(context);
+    console.error(`[GoogleClient] 401 error in ${operationName}, re-fetching credentials...`);
+    await refreshGoogleCredentials(context);
     return await operation();
   }
 }

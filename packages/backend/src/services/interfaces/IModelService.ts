@@ -17,7 +17,8 @@ export type LLMProvider =
   | 'google'
   | 'groq'
   | 'zhipu'
-  | 'zhipu-coding';
+  | 'zhipu-coding'
+  | 'helmcode';
 
 /**
  * Interface for Model Service

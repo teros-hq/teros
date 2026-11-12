@@ -16,7 +16,7 @@
     "enabled": true,
     "multi": false,
     "system": true,
-    "hidden": false,
+    "hidden": true,
     "role": "user"
   },
   "runtime": {

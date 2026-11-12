@@ -39,6 +39,17 @@ export const MCAAvailabilitySchema = z.object({
   system: z.boolean(),
   /** Whether to hide from the App Store catalog */
   hidden: z.boolean().default(false),
+  /**
+   * System-capability default (v1.4.4): for system MCAs, whether the
+   * capability is ON for every agent unless the agent opts out
+   * (agent.disabledSystemApps) — the default for ambient + toggleable
+   * capabilities (memory, tasks, boards, automate, workflows…).
+   * When false, the capability is OFF unless the agent opts IN
+   * (agent.enabledSystemApps) — used by the power capabilities
+   * (terminal, filesystem, browser, ui). Absent = true (default ON),
+   * so existing manifests are unaffected.
+   */
+  defaultEnabled: z.boolean().default(true),
   /** Minimum role required to use this MCA */
   role: MCARoleSchema,
 });
@@ -58,6 +69,36 @@ const MCAAuthBaseSchema = z.object({
   systemSecrets: z.array(z.string()).optional(),
   /** User-level secrets (OAuth tokens, personal API keys) */
   userSecrets: z.array(z.string()).optional(),
+  /**
+   * Alternative system-secret groups — api-key only (enforced in
+   * superRefine). For MCAs with more than one valid credential combination
+   * (transport modes), e.g. mca.teros.email: Stalwart Lab proxy
+   * (STALWART_LAB_URL/USER/PASS) vs direct admin token
+   * (STALWART_BASE_URL/ADMIN_TOKEN). Each group is one complete,
+   * self-sufficient combination: the MCA is 'configured' when ALL
+   * non-grouped systemSecrets are present AND at least one group is
+   * complete. Every grouped secret must also appear in `systemSecrets` —
+   * the flat list remains the complete inventory (secret injection, admin
+   * UI) — enforced in superRefine.
+   */
+  systemSecretsAny: z.array(z.array(z.string().min(1)).min(1)).min(1).optional(),
+  /**
+   * Default (absent/true): for api-key MCAs with system secrets, userSecrets
+   * are an optional override of the shared credential (hybrid model,
+   * 2026-10-26). `false` makes them complementary: mandatory even when the
+   * system secrets are complete — e.g. mca.teros.email needs MAIL_ACCOUNT
+   * (the mailbox identity) regardless of the transport mode.
+   */
+  userSecretsOptional: z.boolean().optional(),
+  /**
+   * Subset of userSecrets that are individually required (api-key only,
+   * enforced in superRefine). Absent = all of them (the historic rule).
+   * Use with userSecretsOptional:false when some declared user secrets are
+   * optional overrides of a derived value — e.g. mca.teros.email declares
+   * MAIL_PASSWORD (overrides the derived password) and MAIL_FROM_NAME
+   * (cosmetic) but only requires MAIL_ACCOUNT.
+   */
+  userSecretsRequired: z.array(z.string().min(1)).min(1).optional(),
 });
 
 // Extra field schema for OAuth apps (e.g., TEAM_ID in Figma)
@@ -138,25 +179,25 @@ const MCAAuthAgentSchema = MCAAuthBaseSchema.extend({
 
 // GitHub App. Two modes:
 //
-//   1. Server-to-server (default — `userOAuth: false`): Teros owns the App;
-//      identity is `Teros[bot]`. Tokens are 1h installation tokens generated
-//      server-side from the private key + JWT. User secrets only hold
-//      `INSTALLATION_ID`.
+//   1. Server-to-server (legacy — `userOAuth: false`): Teros owns the App;
+//      identity is `Teros[bot]`. The install callback persists
+//      `INSTALLATION_ID` in user secrets (backend `handleInstallation`).
+//      No manifest uses this mode today.
 //
 //   2. User-to-server (`userOAuth: true`): GitHub App with "Request user
 //      authorization (OAuth) during installation" enabled. Each user obtains
 //      their own `user_access_token` (8h) + `refresh_token` (6 months).
 //      Acciones aparecen firmadas por el user humano. Cada user mantiene
-//      INSTALLATION_ID + USER_ACCESS_TOKEN + USER_REFRESH_TOKEN +
-//      USER_TOKEN_EXPIRES_AT + USER_LOGIN.
+//      USER_ACCESS_TOKEN + USER_REFRESH_TOKEN + USER_TOKEN_EXPIRES_AT +
+//      USER_LOGIN. (`installation_id` is still captured best-effort from the
+//      callback by the backend for the frontend "manage installation" link,
+//      but the MCA neither declares nor reads it — task_16d9e3d1ee40658d.)
 const MCAAuthGitHubAppSchemaBase = MCAAuthBaseSchema.extend({
   type: z.literal('github-app'),
   /** Provider — fixed to 'github' for now. */
   provider: z.literal('github'),
   /** Public slug of the App on github.com (`https://github.com/apps/<slug>`). */
   appSlug: z.string().min(1, 'appSlug is required'),
-  /** Setup URL configured in the App settings — used by frontend to validate redirect. */
-  setupUrl: z.string().url('Invalid setupUrl'),
   /**
    * If true, the GitHub App has "Request user authorization (OAuth) during
    * installation" enabled. The callback returns `code + installation_id +
@@ -189,13 +230,16 @@ const MCAAuthGitHubAppSchemaBase = MCAAuthBaseSchema.extend({
         s.includes('GITHUB_APP_WEBHOOK_SECRET'),
       'github-app requires GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_WEBHOOK_SECRET in systemSecrets',
     ),
-  /** Per-user secret stored after installation callback. */
-  userSecrets: z
-    .array(z.string())
-    .refine(
-      (s) => s.includes('INSTALLATION_ID'),
-      'github-app requires INSTALLATION_ID in userSecrets',
-    ),
+  /**
+   * Per-user secrets stored after the OAuth/install callback. Requirements
+   * are mode-dependent and enforced at the union level (superRefine):
+   * `userOAuth: true` requires USER_ACCESS_TOKEN; the legacy server-to-server
+   * mode (`userOAuth: false`) requires INSTALLATION_ID. INSTALLATION_ID is
+   * NOT required in userOAuth mode — the backend captures `installation_id`
+   * best-effort for the frontend manage link, but the MCA neither declares
+   * nor reads it (task_16d9e3d1ee40658d).
+   */
+  userSecrets: z.array(z.string()),
 });
 
 // Combined auth schema with discriminated union (uses the base schema for
@@ -220,6 +264,55 @@ export const MCAAuthSchema = MCAAuthSchemaBase.superRefine((auth, ctx) => {
         message: 'api-key auth requires at least one secret (systemSecrets or userSecrets)',
       });
     }
+    // Alternative system-secret groups: membership + non-empty validation.
+    // systemSecrets stays the complete inventory — every grouped secret must
+    // be declared there too, so secret injection and the admin UI keep
+    // working off the flat list alone.
+    if (auth.systemSecretsAny && auth.systemSecretsAny.length > 0) {
+      const declared = new Set(auth.systemSecrets ?? []);
+      auth.systemSecretsAny.forEach((group, i) => {
+        const missing = group.filter((s) => !declared.has(s));
+        if (missing.length > 0) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `systemSecretsAny[${i}] has secrets not declared in systemSecrets: ${missing.join(', ')}`,
+            path: ['systemSecretsAny'],
+          });
+        }
+      });
+    }
+    // userSecretsRequired must be a subset of userSecrets (api-key only).
+    // Absent = all declared userSecrets are required (the historic rule).
+    if (auth.type === 'api-key' && auth.userSecretsRequired && auth.userSecretsRequired.length > 0) {
+      const declared = new Set(auth.userSecrets ?? []);
+      const notDeclared = auth.userSecretsRequired.filter((s) => !declared.has(s));
+      if (notDeclared.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `userSecretsRequired has secrets not declared in userSecrets: ${notDeclared.join(', ')}`,
+          path: ['userSecretsRequired'],
+        });
+      }
+    }
+  }
+  // userSecretsRequired is api-key only — oauth2/github-app have their own
+  // mandatory user secrets (ACCESS_TOKEN, USER_ACCESS_TOKEN) refined above.
+  if (auth.type !== 'api-key' && auth.userSecretsRequired && auth.userSecretsRequired.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `userSecretsRequired is only valid for api-key auth (found type '${auth.type}')`,
+      path: ['userSecretsRequired'],
+    });
+  }
+  // systemSecretsAny is api-key only — other auth types have their own
+  // completeness rules (oauth2 client credentials, github-app private key)
+  // where 'any group' semantics would be meaningless.
+  if (auth.type !== 'api-key' && auth.systemSecretsAny && auth.systemSecretsAny.length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `systemSecretsAny is only valid for api-key auth (found type '${auth.type}')`,
+      path: ['systemSecretsAny'],
+    });
   }
   // github-app userOAuth=true requires extra secrets + tokenUrl
   if (auth.type === 'github-app' && auth.userOAuth) {
@@ -252,6 +345,18 @@ export const MCAAuthSchema = MCAAuthSchemaBase.superRefine((auth, ctx) => {
       });
     }
   }
+  // github-app legacy (userOAuth=false): server-to-server — the MCA acts as
+  // Teros[bot] on the installed repos, so the install callback must persist
+  // INSTALLATION_ID for it.
+  if (auth.type === 'github-app' && auth.userOAuth === false) {
+    if (!auth.userSecrets?.includes('INSTALLATION_ID')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'github-app userOAuth=false (server-to-server) requires INSTALLATION_ID in userSecrets',
+        path: ['userSecrets'],
+      });
+    }
+  }
 });
 export type MCAAuth = z.infer<typeof MCAAuthSchema>;
 
@@ -272,6 +377,8 @@ export const MCALayersSchema = z.object({
   auth: z.union([z.literal(false), MCAAuthSchema]),
   /** Whether this MCA is an agent (can create conversations) */
   agent: z.boolean().default(false),
+  /** Whether this MCA may open MCA streams — live frames to a person, input back (spec MCS-REQ-1) */
+  streams: z.boolean().default(false),
 });
 export type MCALayers = z.infer<typeof MCALayersSchema>;
 
@@ -374,6 +481,7 @@ export const MCACategorySchema = z.enum([
   'utility',
   'other',
   'google',
+  'microsoft',
 ]);
 export type MCACategory = z.infer<typeof MCACategorySchema>;
 
@@ -387,13 +495,53 @@ export type MCACategory = z.infer<typeof MCACategorySchema>;
  * - mca.canva (single level)
  * - mca.teros.bash (vendor + name)
  * - mca.google.gmail (vendor + name)
- * - mca.teros.admin.filesystem (nested)
+ * - mca.teros.remote.exec (nested)
  */
 export const MCA_ID_REGEX = /^mca\.[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)*$/;
 
 // ============================================================================
 // FULL MANIFEST SCHEMA
 // ============================================================================
+
+/** One event topic an MCA declares it emits. */
+export const MCAEventDeclarationSchema = z.object({
+  /** Topic, namespaced by the app: `telegram.message.received`, `board.task_moved`. */
+  topic: z
+    .string()
+    .regex(/^[a-z0-9]+(?:[._:][a-z0-9_]+)+$/, 'Topic must be namespaced, e.g. telegram.message.received'),
+  /** What it means, for the UI and the agents. */
+  description: z.string().max(300).optional(),
+  /** Payload fields (name → JSON type or short description) usable in filters. */
+  payload: z.record(z.string()).optional(),
+})
+export type MCAEventDeclaration = z.infer<typeof MCAEventDeclarationSchema>
+
+/**
+ * Context prehook (Fase 2 — app context in the prompt): declares how this MCA
+ * contributes environment context to the agents that have it installed.
+ * The harness (model-service) owns the injection slot and the cache rules;
+ * each app only declares WHAT it contributes, not where it goes.
+ *
+ * - `tool`: a tool of this MCA to execute before the first turn. The tool's
+ *   output (truncated to `maxTokens`, heuristic 4 chars/token) is injected
+ *   as a volatile `<environment>` contribution — recomputed per request, so
+ *   it never poisons the cached prefix.
+ * - `static`: a stable text contribution, injected into the cacheable
+ *   prefix next to <app_instructions> (MUW-REQ-12's computed sibling).
+ */
+export const MCAContextPrehookSchema = z.object({
+  /** Short label for the contribution header (e.g. 'Project tree'). */
+  label: z.string().min(1).max(60),
+  /** Tool of this MCA to execute (required for kind 'tool'). */
+  tool: z.string().optional(),
+  /** Static text to inject (required for kind 'static'). */
+  text: z.string().max(4000).optional(),
+  /** Arguments for the prehook tool call. */
+  args: z.record(z.unknown()).optional(),
+  /** Token budget for the tool output (default 1500). */
+  maxTokens: z.number().int().min(50).max(8000).optional(),
+})
+export type MCAContextPrehook = z.infer<typeof MCAContextPrehookSchema>
 
 export const MCAManifestSchema = z.object({
   /** JSON Schema reference (optional, for editor support) */
@@ -449,6 +597,42 @@ export const MCAManifestSchema = z.object({
 
   /** Search keywords */
   keywords: z.array(z.string()).optional(),
+
+  /**
+   * Events this MCA emits (through `context.backend.emitEvent` / the WS
+   * `event` message). The catalog is what Automate and the agents' tools
+   * offer when registering an event trigger: topic, what it means and the
+   * payload fields that can be filtered on. Topics are namespaced by the
+   * app (`<app>.<entity>.<verb>`) and stable: a payload change is a new topic.
+   */
+  events: z.array(MCAEventDeclarationSchema).optional(),
+
+  /**
+   * Backend domain actions this MCA may invoke through the WS bridge
+   * (`domain_request` / `admin_request`): exact names or `<domain>.*`.
+   * Platform-internal MCAs only. Anything not listed is refused.
+   */
+  backend: z
+    .object({
+      actions: z.array(z.string().regex(/^[a-z0-9-]+\.(\*|[a-z0-9-]+)$/, 'Use <domain>.<action> or <domain>.*')),
+    })
+    .optional(),
+
+  /**
+   * Context prehook (Fase 2): how this app contributes environment context
+   * to the system prompt of agents that have it installed. Absent = the app
+   * contributes no context (prompt unchanged). See MCAContextPrehookSchema.
+   */
+  contextPrehook: MCAContextPrehookSchema.optional(),
+
+  /**
+   * Other catalog MCAs this MCA functionally depends on (e.g. Terminal needs
+   * mca.teros.bash in the workspace to host its PTY sessions). Informational
+   * today: the catalog sync propagates it and the install UI warns when a
+   * dependency is not installed in the workspace. Auto-installation is a
+   * product decision still pending (audit 2026-10-18, T-002).
+   */
+  dependencies: z.array(z.string().regex(MCA_ID_REGEX, 'Dependency must be a valid MCA ID')).optional(),
 
   /** Theme color (hex) */
   color: z

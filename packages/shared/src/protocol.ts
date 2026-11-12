@@ -36,6 +36,12 @@ export const ChannelMetadataSchema = z.object({
   chatId: z.number().optional(),
   name: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  /**
+   * Contextual follow-up prompts for the composer (replaces the tools row in
+   * conversations with ≥1 message). Regenerated after every agent response by
+   * SuggestedPromptsService (cheap internal LLM). Absent/empty = show nothing.
+   */
+  suggestedPrompts: z.array(z.string()).optional(),
 });
 export type ChannelMetadata = z.infer<typeof ChannelMetadataSchema>;
 
@@ -47,6 +53,8 @@ export const ChannelSchema = z.object({
   metadata: ChannelMetadataSchema,
   createdAt: z.string(), // ISO 8601 datetime string
   updatedAt: z.string(),
+  /** Timestamp of the last message in this channel (used for sorting conversation lists) */
+  lastMessageAt: z.string().optional(),
   closedAt: z.string().optional(),
   /** Last time user read messages in this channel */
   lastReadAt: z.string().optional(),
@@ -70,8 +78,6 @@ export const ChannelSchema = z.object({
   modelName: z.string().optional(),
   /** Provider display name (e.g., 'OpenRouter', 'Claude Max') (computed field, not stored) */
   providerName: z.string().optional(),
-  /** Private channel - hidden from lists/search, deleted on close or after 15 days inactivity */
-  isPrivate: z.boolean().optional(),
   /** Workspace ID — required, all channels must belong to a workspace */
   workspaceId: z.string(),
   /** Headless mode - no user is watching. Tools with 'ask' permission are auto-denied. */
@@ -84,6 +90,8 @@ export const ChannelSchema = z.object({
   running: z.boolean().optional(),
   /** ISO timestamp when the current turn started (set when running=true) */
   runningAt: z.string().optional(),
+  /** Scope — 'personal' = solo el creador; 'shared' = visible para miembros del workspace. Default: 'personal' */
+  scope: z.enum(['personal', 'shared']).optional(),
 });
 export type Channel = z.infer<typeof ChannelSchema>;
 
@@ -165,6 +173,7 @@ export const MessageContentTypeSchema = z.enum([
   'browser_live_view',
   'tool_execution',
   'event',
+  'form_response',
   'error',
 ]);
 export type MessageContentType = z.infer<typeof MessageContentTypeSchema>;
@@ -226,6 +235,15 @@ export const VoiceMessageContentSchema = z
   });
 
 // File message content (generic file)
+//
+// FVU (File Viewer Universal, spec v1.2.0): `filePath` + `workspaceId` are
+// optional additions — backward compatible. Old `file` messages (url only)
+// keep validating and render from the snapshot URL. Delivery rule:
+//   - filePath present → the file lives on the workspace volume; the viewer
+//     watches it live (file.watch / file_changed auto-refresh).
+//   - url only → uploaded snapshot, no watching.
+// `url` is ALWAYS populated (even in live mode) so Download keeps working
+// if the volume file is later deleted.
 export const FileMessageContentSchema = z.object({
   type: z.literal('file'),
   url: z.string(),
@@ -233,7 +251,12 @@ export const FileMessageContentSchema = z.object({
   caption: z.string().optional(),
   mimeType: z.string().optional(),
   size: z.number().optional(), // bytes
+  /** Absolute path inside the workspace volume (e.g. '/workspace/report.md') — live mode. */
+  filePath: z.string().optional(),
+  /** Owner workspace ID — embedded at message creation so path resolution needs no channel→workspace lookup. */
+  workspaceId: z.string().optional(),
 });
+export type FileMessageContent = z.infer<typeof FileMessageContentSchema>;
 
 // HTML widget content (rendered HTML/CSS in chat)
 export const HtmlMessageContentSchema = z.object({
@@ -280,7 +303,7 @@ export const ToolExecutionMessageContentSchema = z.object({
    * - 'pending': Tool call received, waiting for permission check
    * - 'pending_permission': Waiting for user approval (ask mode)
    * - 'pending_user_input': Waiting for the user to fill an inline form
-
+   *   (request-user-input tool — docs/specs/20260705_inline-user-forms.md)
    * - 'running': Tool is executing
    * - 'completed': Tool finished successfully
    * - 'failed': Tool execution failed
@@ -330,6 +353,24 @@ export const EventMessageContentSchema = z.object({
   description: z.string().optional(),
 });
 
+// Form response content (v2 non-blocking interactions —
+// docs/specs/20261024_non-blocking-user-interactions.md). The user's answer
+// to an inline form (request-user-input) submitted via the form widget. Saved
+// as a synthetic user message in the channel; the agent reads the values on
+// its next (woken) turn.
+export const FormResponseMessageContentSchema = z.object({
+  type: z.literal('form_response'),
+  /** The pending form this answers (form_<uuid>). */
+  formRequestId: z.string(),
+  /** Submitted values keyed by field id (validated server-side). Absent on dismiss. */
+  values: z.record(z.string(), z.any()).optional(),
+  /** Free-text notes the user can always add. */
+  notes: z.string().optional(),
+  /** True when the user dismissed the form without submitting. */
+  dismissed: z.boolean().optional(),
+});
+export type FormResponseMessageContent = z.infer<typeof FormResponseMessageContentSchema>;
+
 // Error message content (for displaying errors to users)
 export const ErrorMessageContentSchema = z.object({
   type: z.literal('error'),
@@ -351,6 +392,7 @@ export const MessageContentSchema = z.union([
   BrowserLiveViewMessageContentSchema,
   ToolExecutionMessageContentSchema,
   EventMessageContentSchema,
+  FormResponseMessageContentSchema,
   ErrorMessageContentSchema,
 ]);
 export type MessageContent = z.infer<typeof MessageContentSchema>;
@@ -359,11 +401,11 @@ export type MessageContent = z.infer<typeof MessageContentSchema>;
  * Message sender - identifies who sent the message
  * Works for both user messages and assistant responses
  */
-export const MessageSenderTypeSchema = z.enum(['user', 'agent']);
+export const MessageSenderTypeSchema = z.enum(['user', 'agent', 'system']);
 export type MessageSenderType = z.infer<typeof MessageSenderTypeSchema>;
 
 export const MessageSenderSchema = z.object({
-  /** Type of sender: 'user' for humans, 'agent' for AI agents */
+  /** Type of sender: 'user' for humans, 'agent' for AI agents, 'system' for platform-generated messages */
   type: MessageSenderTypeSchema,
   /** ID of the sender (userId or agentId) */
   id: z.string(),
@@ -391,6 +433,21 @@ export const MessageSchema = z.object({
   timestamp: z.string(),
   replyToId: MessageIdSchema.optional(),
   metadata: z.record(z.string(), z.any()).optional(),
+  /** True = content is protected from non-owners (backend-enforced redaction, REQ-4/REQ-5) */
+  redacted: z.boolean().optional(),
+  /** userId who marked this message as redacted */
+  redactedBy: z.string().optional(),
+  /** ISO timestamp when the message was redacted */
+  redactedAt: z.string().optional(),
+  /** MUW-F1: turn ID linking all bubbles of a single assistant turn for redaction linkage. */
+  turnId: z.string().optional(),
+  /**
+   * v2 non-blocking interactions: the pending form this text message answers
+   * (form_<uuid>). Auto-attached by the backend when the user types a free
+   * message while a form is pending — the message itself resolves the form as
+   * `answered_in_chat` and wakes the agent.
+   */
+  respondsTo: z.string().optional(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 
@@ -413,6 +470,17 @@ export const AuthTokenMessageSchema = z.object({
   sessionToken: z.string(),
 });
 
+// Auth with the httpOnly session cookie sent on the WebSocket upgrade request.
+// Web (post-reload) path: the token is not readable by JS (F2), so the client
+// asks the server to authenticate the socket with the cookie it already
+// carries. The server resolves the token from the upgrade request headers —
+// the frame itself never carries a token. strict() so a frame that tries to
+// smuggle a sessionToken is rejected outright, not silently stripped.
+export const AuthCookieMessageSchema = z.strictObject({
+  type: z.literal('auth'),
+  method: z.literal('cookie'),
+});
+
 // Register a new user (email + password + displayName)
 export const AuthRegisterMessageSchema = z.object({
   type: z.literal('auth'),
@@ -428,11 +496,82 @@ export const AuthGoogleInitMessageSchema = z.object({
   method: z.literal('google_init'),
 });
 
+// Finish a password login/registration with the 6-digit code emailed to the user
+export const AuthVerifyEmailMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('verify_email'),
+  challengeToken: z.string(),
+  code: z.string(),
+});
+
+// Ask for a fresh email verification code
+export const AuthResendEmailVerificationMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('resend_email_verification'),
+  challengeToken: z.string(),
+});
+
+// Auth with API token (for external services like G2 glasses, CLI tools, etc.)
+export const AuthApiTokenMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('api_token'),
+  apiToken: z.string(),
+});
+
+// Dev auto-login: credential-less, honoured ONLY by a local backend running with
+// TEROS_DEV_AUTOLOGIN=1 (see docs/specs/client/dev-autologin.md). Any other
+// backend answers it like an unknown method.
+export const AuthDevMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('dev'),
+});
+
+// Password reset: request a code by email (auth-handler -> requestPasswordReset)
+export const AuthForgotPasswordMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('forgot_password'),
+  email: z.string(),
+});
+
+// Password reset: submit the emailed code + new password (auth-handler -> completePasswordReset)
+export const AuthResetPasswordMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('reset_password'),
+  challengeToken: z.string(),
+  code: z.string(),
+  newPassword: z.string().min(1),
+});
+
+// Password reset: check the emailed code before asking for the new password
+// (auth-handler -> verifyPasswordResetCode). @spec PWR-REQ-2
+export const AuthVerifyPasswordResetMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('verify_password_reset'),
+  challengeToken: z.string(),
+  code: z.string(),
+});
+
+// Password reset: ask for a fresh code for a pending challenge (auth-handler -> resendPasswordReset)
+export const AuthResendPasswordResetMessageSchema = z.object({
+  type: z.literal('auth'),
+  method: z.literal('resend_password_reset'),
+  challengeToken: z.string(),
+});
+
 export const AuthMessageSchema = z.union([
   AuthCredentialsMessageSchema,
   AuthTokenMessageSchema,
+  AuthCookieMessageSchema,
   AuthRegisterMessageSchema,
   AuthGoogleInitMessageSchema,
+  AuthApiTokenMessageSchema,
+  AuthVerifyEmailMessageSchema,
+  AuthResendEmailVerificationMessageSchema,
+  AuthDevMessageSchema,
+  AuthForgotPasswordMessageSchema,
+  AuthResetPasswordMessageSchema,
+  AuthVerifyPasswordResetMessageSchema,
+  AuthResendPasswordResetMessageSchema,
 ]);
 export type AuthMessage = z.infer<typeof AuthMessageSchema>;
 
@@ -552,12 +691,12 @@ export const ReopenChannelMessageSchema = z.object({
 });
 export type ReopenChannelMessage = z.infer<typeof ReopenChannelMessageSchema>;
 
-export const SetChannelPrivateMessageSchema = z.object({
-  type: z.literal('set_channel_private'),
+export const SetChannelScopeMessageSchema = z.object({
+  type: z.literal('set_channel_scope'),
   channelId: ChannelIdSchema,
-  isPrivate: z.boolean(),
+  scope: z.enum(['personal', 'shared']),
 });
-export type SetChannelPrivateMessage = z.infer<typeof SetChannelPrivateMessageSchema>;
+export type SetChannelScopeMessage = z.infer<typeof SetChannelScopeMessageSchema>;
 
 export const RenameChannelMessageSchema = z.object({
   type: z.literal('rename_channel'),
@@ -577,6 +716,7 @@ export const SendMessageRequestSchema = z.object({
   channelId: ChannelIdSchema,
   content: MessageContentSchema,
   wakeUpAgent: z.boolean().optional(),
+  skillIds: z.array(z.string()).optional(),
 });
 export type SendMessageRequest = z.infer<typeof SendMessageRequestSchema>;
 
@@ -1027,7 +1167,11 @@ export type ListAgentProvidersMessage = z.infer<typeof ListAgentProvidersMessage
 export const SetAgentProvidersMessageSchema = z.object({
   type: z.literal('set_agent_providers'),
   agentId: z.string(),
-  availableProviders: z.array(z.string()),
+  // Legacy field, accepted for backward compat but IGNORED (2026-10-21):
+  // the availableProviders list no longer exists as a concept.
+  availableProviders: z.array(z.string()).optional(),
+  selectedProviderId: z.string().nullable().optional(),
+  selectedModelId: z.string().nullable().optional(),
 });
 export type SetAgentProvidersMessage = z.infer<typeof SetAgentProvidersMessageSchema>;
 
@@ -1114,6 +1258,7 @@ export const CreateTaskMessageSchema = z.object({
   projectId: z.string(),
   title: z.string(),
   description: z.string().optional(),
+  instructions: z.string().min(1, 'instructions is required — provide detailed task instructions so the assigned agent can work autonomously'),
   priority: z.enum(['urgent', 'high', 'medium', 'low']).optional(),
   tags: z.array(z.string()).optional(),
   assignedAgentId: z.string().optional(),
@@ -1129,6 +1274,7 @@ export const BatchCreateTasksMessageSchema = z.object({
   tasks: z.array(z.object({
     title: z.string(),
     description: z.string().optional(),
+    instructions: z.string().min(1, 'instructions is required — provide detailed task instructions so the assigned agent can work autonomously'),
     priority: z.enum(['urgent', 'high', 'medium', 'low']).optional(),
     tags: z.array(z.string()).optional(),
     assignedAgentId: z.string().optional(),
@@ -1271,6 +1417,20 @@ export const UnsubscribeBoardMessageSchema = z.object({
 export type UnsubscribeBoardMessage = z.infer<typeof UnsubscribeBoardMessageSchema>;
 
 // ============================================================================
+// TODO LIST MESSAGES (Client → Server)
+// ============================================================================
+
+export const SubscribeTodoMessageSchema = z.object({
+  type: z.literal('subscribe_todo'),
+});
+export type SubscribeTodoMessage = z.infer<typeof SubscribeTodoMessageSchema>;
+
+export const UnsubscribeTodoMessageSchema = z.object({
+  type: z.literal('unsubscribe_todo'),
+});
+export type UnsubscribeTodoMessage = z.infer<typeof UnsubscribeTodoMessageSchema>;
+
+// ============================================================================
 // FILE WATCHER MESSAGES (Client → Server)
 // ============================================================================
 
@@ -1337,7 +1497,7 @@ export const ClientMessageSchema = z.union([
   GetChannelMessageSchema,
   CloseChannelMessageSchema,
   ReopenChannelMessageSchema,
-  SetChannelPrivateMessageSchema,
+  SetChannelScopeMessageSchema,
   RenameChannelMessageSchema,
   AutonameChannelMessageSchema,
   SendMessageRequestSchema,
@@ -1429,6 +1589,9 @@ export const ClientMessageSchema = z.union([
   GetTaskByChannelMessageSchema,
   SubscribeBoardMessageSchema,
   UnsubscribeBoardMessageSchema,
+  // Todo list messages
+  SubscribeTodoMessageSchema,
+  UnsubscribeTodoMessageSchema,
   // File watcher messages
   WatchFileMessageSchema,
   UnwatchFileMessageSchema,
@@ -1444,7 +1607,13 @@ export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 export const AuthSuccessMessageSchema = z.object({
   type: z.literal('auth_success'),
   userId: UserIdSchema,
-  sessionToken: z.string(),
+  /**
+   * Only present when the client authenticated with an explicit token
+   * (login / OAuth / impersonation / native apps). Omitted for cookie-auth
+   * connections (F2): the server must never hand the 30-day session token
+   * back to JS that couldn't read it from the httpOnly cookie.
+   */
+  sessionToken: z.string().optional(),
   role: z.enum(['user', 'admin', 'super']).optional(),
   user: z.object({
     profile: z.object({
@@ -1460,6 +1629,8 @@ export const AuthSuccessMessageSchema = z.object({
     termsAcceptedAt: z.string().nullish(),
     onboardingCompletedAt: z.string().nullish(),
     accessGranted: z.boolean().nullish(),
+    /** Deployment edition (ONB-REQ-1). */
+    edition: z.enum(['self-hosted', 'cloud']).nullish(),
   }).optional(),
   /** Present when this auth_success is for an impersonation session */
   impersonation: z.object({
@@ -1473,6 +1644,30 @@ export type AuthSuccessMessage = z.infer<typeof AuthSuccessMessageSchema>;
 export const AuthErrorMessageSchema = z.object({
   type: z.literal('auth_error'),
   error: z.string(),
+  errorCode: z.string().optional(),
+  /**
+   * Present when the login waits for the 6-digit code emailed to the user.
+   * The client answers with `{ type: 'auth', method: 'verify_email' }`.
+   */
+  emailVerification: z.object({
+    challengeToken: z.string(),
+    email: z.string(),
+  }).optional(),
+  /**
+   * Present when a password reset code has been sent (forgot_password /
+   * resend_password_reset). The client answers with
+   * `{ type: 'auth', method: 'reset_password', challengeToken, code, newPassword }`.
+   * The transport turns this into a `password_reset_required` event so the
+   * auth screens can move to the code prompt. Without it in the schema,
+   * isAuthError() still passes (the field is unknown-but-allowed) — this
+   * pins the contract so the client can rely on it.
+   */
+  passwordReset: z.object({
+    challengeToken: z.string(),
+    email: z.string(),
+    /** True in the answer to `verify_password_reset` when the code is right (PWR-REQ-2). */
+    codeVerified: z.boolean().optional(),
+  }).optional(),
 });
 export type AuthErrorMessage = z.infer<typeof AuthErrorMessageSchema>;
 
@@ -1523,13 +1718,6 @@ export const ChannelRenamedMessageSchema = z.object({
   name: z.string(),
 });
 export type ChannelRenamedMessage = z.infer<typeof ChannelRenamedMessageSchema>;
-
-export const ChannelPrivateUpdatedMessageSchema = z.object({
-  type: z.literal('channel_private_updated'),
-  channelId: ChannelIdSchema,
-  isPrivate: z.boolean(),
-});
-export type ChannelPrivateUpdatedMessage = z.infer<typeof ChannelPrivateUpdatedMessageSchema>;
 
 export const MessageSentMessageSchema = z.object({
   type: z.literal('message_sent'),
@@ -2111,3 +2299,57 @@ export function isConnectionAck(data: unknown): data is ConnectionAckMessage {
 export function isMessageAck(data: unknown): data is MessageAck {
   return MessageAckSchema.safeParse(data).success;
 }
+
+// ============================================================================
+// MUW-14: Invitations & pending membership — protocol types (REQ-12..18)
+// ============================================================================
+
+/**
+ * Result of workspace.add_member — distinguishes active vs pending.
+ * The resolved userId is NEVER included (Guard 1).
+ */
+export const AddMemberResultSchema = z.object({
+  email: z.string().email(),
+  status: z.enum(['active', 'pending']),
+  invitationEmailSent: z.boolean(),
+});
+export type AddMemberResult = z.infer<typeof AddMemberResultSchema>;
+
+/**
+ * workspace.revoke_member — input data
+ */
+export const RevokeMemberDataSchema = z.object({
+  workspaceId: z.string(),
+  email: z.string().email(),
+});
+export type RevokeMemberData = z.infer<typeof RevokeMemberDataSchema>;
+
+/**
+ * workspace.resend_invitation — input data
+ */
+export const ResendInvitationDataSchema = z.object({
+  workspaceId: z.string(),
+  email: z.string().email(),
+});
+export type ResendInvitationData = z.infer<typeof ResendInvitationDataSchema>;
+
+/**
+ * workspace.revoke_member — result
+ */
+export const RevokeMemberResultSchema = z.object({
+  success: z.boolean(),
+  workspaceId: z.string(),
+  email: z.string(),
+});
+export type RevokeMemberResult = z.infer<typeof RevokeMemberResultSchema>;
+
+/**
+ * workspace.resend_invitation — result
+ */
+export const ResendInvitationResultSchema = z.object({
+  success: z.boolean(),
+  workspaceId: z.string(),
+  email: z.string(),
+  emailSent: z.boolean(),
+});
+export type ResendInvitationResult = z.infer<typeof ResendInvitationResultSchema>;

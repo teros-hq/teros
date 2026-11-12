@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -138,6 +141,185 @@
       },
       "annotations": {
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-phone-numbers",
+      "description": "List phone numbers connected to ElevenLabs with their assigned agent and capabilities.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "import-twilio-number",
+      "description": "Import a Twilio phone number into ElevenLabs for inbound and outbound agent calls.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "phoneNumber": {
+            "type": "string",
+            "description": "E.164 phone number, e.g. +15551234567"
+          },
+          "label": {
+            "type": "string",
+            "description": "Descriptive label"
+          },
+          "twilioSid": {
+            "type": "string",
+            "description": "Twilio Account SID (AC...) or API Key SID (SK...)"
+          },
+          "twilioToken": {
+            "type": "string",
+            "description": "Twilio Auth Token or API Key Secret"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Optional agent ID to assign"
+          }
+        },
+        "required": [
+          "phoneNumber",
+          "label",
+          "twilioSid",
+          "twilioToken"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "outbound-call",
+      "description": "Make an outbound phone call from a connected ElevenLabs number using an agent. The agent starts the conversation when the recipient answers.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "toNumber": {
+            "type": "string",
+            "description": "Destination phone number in E.164 format (e.g. +34600123456)"
+          },
+          "agentId": {
+            "type": "string",
+            "description": "Optional agent ID. Defaults to Teros Voice Agent"
+          },
+          "phoneNumberId": {
+            "type": "string",
+            "description": "Optional phone_number_id of the caller number. Defaults to the first connected number"
+          },
+          "firstMessage": {
+            "type": "string",
+            "description": "Optional first message override for this call"
+          },
+          "dynamicVariables": {
+            "type": "object",
+            "description": "Optional dynamic variables passed to the agent"
+          },
+          "notifyChannel": {
+            "type": "boolean",
+            "description": "Notify the initiating channel when the call ends (one-time post-call subscription). Default: true. Set false for fire-and-forget calls."
+          }
+        },
+        "required": [
+          "toNumber"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-conversation",
+      "description": "Get details of an ElevenLabs conversation (transcript, analysis, status) by its ID.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "description": "The conversation ID"
+          }
+        },
+        "required": [
+          "conversationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "list-agents",
+      "description": "List the ConvAI agents in the ElevenLabs account (id, name, phone numbers assigned). Use this to discover agent IDs for get-agent / update-agent instead of reading secrets manually.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "search": {
+            "type": "string",
+            "description": "Search term to filter agents by name (case-insensitive, optional)"
+          },
+          "limit": {
+            "type": "number",
+            "description": "Maximum number of agents to return (optional, default: all)"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-agent",
+      "description": "Get the full configuration of an ElevenLabs ConvAI agent (name, first message, system prompt, ASR keywords, tools, phone numbers, metadata). If agentId is omitted, resolves user-first: the AGENT_ID user secret, then the AGENT_ID system secret, then the default Teros Voice Agent.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Optional ElevenLabs agent ID (e.g. agent_8101kb0xa4jje0s963kw6nhfmdh7). Defaults to the AGENT_ID secret resolved user-first (user secret, then system secret, then the default Teros Voice Agent)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "update-agent",
+      "description": "Update an ElevenLabs ConvAI agent configuration. Partial merge: only the fields you pass are modified — tools, TTS, phone numbers, and the rest of the conversation_config stay intact. Use get-agent first to inspect the current state. If agentId is omitted, resolves the AGENT_ID secret user-first (user secret, then system secret).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "Optional ElevenLabs agent ID. Defaults to the AGENT_ID secret resolved user-first (user secret, then system secret, then the default Teros Voice Agent)."
+          },
+          "name": {
+            "type": "string",
+            "description": "New display name for the agent."
+          },
+          "firstMessage": {
+            "type": "string",
+            "description": "New first message (the opening line the agent speaks when the call connects). Maps to conversation_config.agent.first_message."
+          },
+          "systemPrompt": {
+            "type": "string",
+            "description": "New system prompt. Maps to conversation_config.agent.prompt.prompt. Keep the {{call_context}} placeholder if you want per-call context to keep working."
+          },
+          "asrKeywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "New ASR keyword list (replaces the existing one). Maps to conversation_config.asr.keywords. Pass an empty array to clear."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
       }
     }
   ]

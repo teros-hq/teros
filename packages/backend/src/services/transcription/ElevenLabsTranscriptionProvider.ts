@@ -97,6 +97,18 @@ export class ElevenLabsTranscriptionProvider implements ITranscriptionProvider {
       formData.append('timestamps_granularity', 'none');
     }
 
+    // Pass custom vocabulary as keyterms.
+    // Scribe uses keyterms to bias transcription toward domain-specific terms,
+    // product names, proper nouns, etc. Each term is appended as a separate entry.
+    // Scribe v2 supports up to 1,000 keyterms (max 50 chars each, max 5 words per term).
+    if (options?.vocabulary && options.vocabulary.length > 0) {
+      for (const term of options.vocabulary) {
+        if (term.trim().length > 0 && term.length <= 50) {
+          formData.append('keyterms', term.trim());
+        }
+      }
+    }
+
     // Call ElevenLabs Scribe API
     const response = await fetch('https://api.elevenlabs.io/v1/speech-to-text', {
       method: 'POST',

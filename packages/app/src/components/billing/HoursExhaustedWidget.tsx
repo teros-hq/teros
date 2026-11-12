@@ -12,17 +12,13 @@
  * users and requests from the admin for team members).
  */
 
-import { AlertTriangle } from "@tamagui/lucide-icons"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, Text, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import { getDateLocale } from "../../i18n"
 import { useTilingStore } from "../../store/tilingStore"
-import { useColors } from "../mca/primitives/useColors"
-import { colors as semanticColors, indicators } from "../mca/primitives/colors"
+import { Btn, Card, T, Tile } from "../ui/ds"
 import { BoostModal } from "./BoostModal"
-
-const ACCENT = "#06B6D4"
 
 export interface HoursExhaustedWidgetProps {
   used?: number
@@ -36,7 +32,6 @@ export interface HoursExhaustedWidgetProps {
 
 export function HoursExhaustedWidget({ planName, periodEnd }: HoursExhaustedWidgetProps) {
   const { t } = useTranslation()
-  const c = useColors()
   const openWindow = useTilingStore((s) => s.openWindow)
   const [boostOpen, setBoostOpen] = useState(false)
 
@@ -54,65 +49,47 @@ export function HoursExhaustedWidget({ planName, periodEnd }: HoursExhaustedWidg
   }
 
   return (
-    <YStack
+    <View
       testID="hours-exhausted-widget"
-      backgroundColor={c.bgInner}
-      borderColor={indicators.irreversible.border}
-      borderWidth={1}
-      borderRadius="$3"
-      padding="$3"
-      marginVertical="$2"
-      marginHorizontal="$2"
-      maxWidth={400}
-      alignSelf="flex-start"
-      gap="$3"
+      style={{ marginVertical: 8, marginHorizontal: 8, maxWidth: 400, alignSelf: "flex-start" }}
     >
-      <XStack alignItems="center" gap="$2">
-        <AlertTriangle size={16} color={semanticColors.red} />
-        <Text color={c.text} fontWeight="600" fontSize="$3">
-          {t("billing.exhausted.title")}
-        </Text>
-      </XStack>
+      <Card pad>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <Tile tone="amber" size="sm" icon="warning" />
+          <T step="base" style={{ flex: 1 }}>
+            {t("billing.exhausted.title")}
+          </T>
+        </View>
 
-      <Text
-        testID="hours-exhausted-body"
-        color={c.text2}
-        fontSize="$2"
-        lineHeight="$4"
-      >
-        {body}
-      </Text>
+        <T testID="hours-exhausted-body" step="sm" tone="text2" style={{ marginTop: 10 }}>
+          {body}
+        </T>
 
-      <XStack gap="$2" flexWrap="wrap">
-        <Button
-          testID="exhausted-upgrade"
-          size="$3"
-          backgroundColor="rgba(6,182,212,0.15)"
-          borderWidth={1}
-          borderColor="rgba(6,182,212,0.4)"
-          pressStyle={{ backgroundColor: "rgba(6,182,212,0.25)" }}
-          onPress={() => openWindow("profile", { initialMode: "plan" })}
-        >
-          <Text color={ACCENT} fontSize="$2" fontWeight="600">
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 14 }}>
+          {/* Upgrade is the primary path out of exhaustion. */}
+          <Btn
+            testID="exhausted-upgrade"
+            variant="primary"
+            size="sm"
+            icon="arrow-up"
+            onPress={() => openWindow("profile", { initialMode: "plan" })}
+          >
             {t("billing.exhausted.ctaUpgrade")}
-          </Text>
-        </Button>
-        <Button
-          testID="exhausted-boost"
-          size="$3"
-          backgroundColor={c.bgCardHover}
-          borderWidth={1}
-          borderColor={c.borderStrong}
-          pressStyle={{ backgroundColor: c.bgCardHover }}
-          onPress={() => setBoostOpen(true)}
-        >
-          <Text color={c.text} fontSize="$2" fontWeight="600">
+          </Btn>
+          {/* Secondary, outlined: an alternative path. */}
+          <Btn
+            testID="exhausted-boost"
+            variant="sec"
+            size="sm"
+            icon="lightning"
+            onPress={() => setBoostOpen(true)}
+          >
             {t("billing.exhausted.ctaBoost")}
-          </Text>
-        </Button>
-      </XStack>
+          </Btn>
+        </View>
+      </Card>
 
       <BoostModal open={boostOpen} onClose={() => setBoostOpen(false)} />
-    </YStack>
+    </View>
   )
 }

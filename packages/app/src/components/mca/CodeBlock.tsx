@@ -1,14 +1,18 @@
 /**
  * CodeBlock - Syntax highlighted code display
  *
- * Cross-platform component for displaying code with syntax highlighting.
- * Works on both React Native and Web via react-native-code-highlighter.
+ * Web: the same Prism registry the Markdown renderer uses (MD-UNIFY), so a
+ * code block looks the same in a tool result and in a message. It replaces
+ * react-native-code-highlighter, whose highlight.js + full Prism language sets
+ * were ~2 MB of the bundle. Languages outside the registry render unhighlighted.
+ * Native: plain monospace text.
+ *
+ * @spec LOADP-REQ-2
  */
 
 import React from 'react';
-import { ScrollView } from 'react-native';
-import CodeHighlighter from 'react-native-code-highlighter';
-import { vs2015 } from 'react-syntax-highlighter/dist/esm/styles/hljs';
+import { Platform, ScrollView, Text } from 'react-native';
+import { SyntaxHighlighter, prismStyle } from '../markdown/highlight';
 import { surface } from './primitives/colors';
 import { useColors } from './primitives/useColors';
 
@@ -154,22 +158,28 @@ export function CodeBlock({ code, language, filename, maxHeight }: CodeBlockProp
       horizontal={false}
       nestedScrollEnabled
     >
-      <CodeHighlighter
-        hljsStyle={vs2015}
-        language={detectedLanguage}
-        textStyle={{
-          fontSize: 10,
-          fontFamily: '$mono',
-          fontWeight: '400',
-          lineHeight: 14,
-          color: isDark ? undefined : c.text,
-        }}
-        scrollViewProps={{
-          style: { backgroundColor: codeBg },
-        }}
-      >
-        {code}
-      </CodeHighlighter>
+      {Platform.OS === 'web' ? (
+        <SyntaxHighlighter
+          language={detectedLanguage}
+          style={prismStyle(isDark)}
+          customStyle={{
+            margin: 0,
+            padding: 0,
+            background: 'transparent',
+            fontSize: 10,
+            lineHeight: '14px',
+          }}
+          codeTagProps={{ style: { fontFamily: 'inherit' } }}
+          PreTag="div"
+          showLineNumbers={false}
+        >
+          {code}
+        </SyntaxHighlighter>
+      ) : (
+        <Text style={{ fontSize: 10, lineHeight: 14, fontWeight: '400', color: isDark ? '#D4D4D4' : c.text }}>
+          {code}
+        </Text>
+      )}
     </ScrollView>
   );
 }

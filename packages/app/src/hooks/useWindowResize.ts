@@ -1,8 +1,17 @@
 /**
  * useWindowResize - Hook to resize floating windows
+ *
+ * Unified Pointer Events + `setPointerCapture`: while a resize drag is active,
+ * every subsequent pointer event routes to the handle element even when the
+ * pointer passes over an iframe (Terminal, Code Editor, HTML previews) — those
+ * used to swallow the document-level mousemove/mouseup and freeze the resize.
+ * `beginResizeDrag()` additionally disables pointer events on all iframes for
+ * the duration of the drag (belt-and-suspenders for lost capture).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import { beginResizeDrag, endResizeDrag } from '../lib/resizeGuard';
 
 export type ResizeDirection = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
@@ -20,8 +29,7 @@ interface UseWindowResizeOptions {
 }
 
 interface ResizeHandleProps {
-  onMouseDown: (e: React.MouseEvent) => void;
-  onTouchStart: (e: React.TouchEvent) => void;
+  onPointerDown: (e: ReactPointerEvent) => void;
   style: React.CSSProperties;
 }
 
@@ -56,39 +64,50 @@ export function useWindowResize({
   const [resizeDirection, setResizeDirection] = useState<ResizeDirection | null>(null);
 
   const startRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+  const pointerIdRef = useRef<number | null>(null);
 
   const handleStart = useCallback(
-    (direction: ResizeDirection, clientX: number, clientY: number) => {
+    (direction: ResizeDirection, e: ReactPointerEvent) => {
       if (!enabled) return;
+      // Primary button / single contact only — ignore right-click and extra fingers.
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
 
+      e.preventDefault();
+      e.stopPropagation();
+
+      pointerIdRef.current = e.pointerId;
       setIsResizing(true);
       setResizeDirection(direction);
       startRef.current = {
-        x: clientX,
-        y: clientY,
+        x: e.clientX,
+        y: e.clientY,
         width: currentSize.width,
         height: currentSize.height,
       };
+
+      // Route ALL subsequent pointer events to this handle — even when the
+      // pointer moves over an iframe, which would otherwise swallow them.
+      // (Capture must be taken synchronously inside the handler.)
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        // jsdom / browsers without capture support: the document-level
+        // fallback listeners below still track the pointer, and the
+        // resizeGuard's pointer-events:none shield keeps iframes from
+        // eating the events.
+      }
     },
     [enabled, currentSize],
   );
 
-  const handleMouseDown = useCallback(
-    (direction: ResizeDirection) => (e: React.MouseEvent) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      handleStart(direction, e.clientX, e.clientY);
-    },
-    [handleStart],
-  );
-
-  const handleTouchStart = useCallback(
-    (direction: ResizeDirection) => (e: React.TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      handleStart(direction, touch.clientX, touch.clientY);
-    },
+  const getResizeHandleProps = useCallback(
+    (direction: ResizeDirection): ResizeHandleProps => ({
+      onPointerDown: (e) => handleStart(direction, e),
+      style: {
+        cursor: CURSOR_MAP[direction],
+        touchAction: 'none',
+      },
+    }),
     [handleStart],
   );
 
@@ -142,54 +161,40 @@ export function useWindowResize({
       onResize(newWidth, newHeight, positionDeltaX, positionDeltaY);
     };
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
+      if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) return;
       handleMove(e.clientX, e.clientY);
     };
 
-    const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const touch = e.touches[0];
-      handleMove(touch.clientX, touch.clientY);
-    };
-
-    const handleEnd = () => {
+    const handleEnd = (e: PointerEvent) => {
+      if (pointerIdRef.current !== null && e.pointerId !== pointerIdRef.current) return;
+      pointerIdRef.current = null;
       setIsResizing(false);
       setResizeDirection(null);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleEnd);
-    document.addEventListener('touchmove', handleTouchMove, { passive: false });
-    document.addEventListener('touchend', handleEnd);
-    document.addEventListener('touchcancel', handleEnd);
+    // Fallback listeners on document — with pointer capture the events still
+    // bubble here from the handle; without capture (or if it is lost) they
+    // keep the drag alive as long as no iframe sits under the pointer, which
+    // the resizeGuard shield covers.
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handleEnd);
+    document.addEventListener('pointercancel', handleEnd);
 
     document.body.style.userSelect = 'none';
     document.body.style.cursor = CURSOR_MAP[resizeDirection];
+    beginResizeDrag();
 
     return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleEnd);
-      document.removeEventListener('touchmove', handleTouchMove);
-      document.removeEventListener('touchend', handleEnd);
-      document.removeEventListener('touchcancel', handleEnd);
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handleEnd);
+      document.removeEventListener('pointercancel', handleEnd);
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
+      endResizeDrag();
+      pointerIdRef.current = null;
     };
   }, [isResizing, resizeDirection, minSize, maxSize, onResize]);
-
-  const getResizeHandleProps = useCallback(
-    (direction: ResizeDirection): ResizeHandleProps => {
-      return {
-        onMouseDown: handleMouseDown(direction),
-        onTouchStart: handleTouchStart(direction),
-        style: {
-          cursor: CURSOR_MAP[direction],
-          touchAction: 'none',
-        },
-      };
-    },
-    [handleMouseDown, handleTouchStart],
-  );
 
   return {
     getResizeHandleProps,

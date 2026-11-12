@@ -10,6 +10,7 @@ export { createLabel } from './create-label';
 export { createProject } from './create-project';
 export { deleteIssue } from './delete-issue';
 export { deleteLabel } from './delete-label';
+export { deleteProject } from './delete-project';
 export { getIssue } from './get-issue';
 export { listIssues } from './list-issues';
 export { listLabels } from './list-labels';

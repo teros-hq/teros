@@ -589,3 +589,221 @@ describe("OpenAICompatibleLLMAdapter — TER-707/CTX-016 request-shape after pro
     expect(toolResultMsg.tool_call_id).toBe("call_a")
   })
 })
+
+describe("OpenAICompatibleLLMAdapter — fallback token estimation (usage-tracking fix)", () => {
+  it("estimates tokens when provider returns no chunk.usage and marks usageEstimated=true", async () => {
+    const adapter = makeAdapter("fireworks")
+    // Stream with content but NO usage chunk — simulates a provider error/timeout
+    // path where the stream completes but no usage data is returned.
+    stubStream(adapter, [
+      { id: "c1", choices: [{ delta: { content: "Hello world, this is a test response." }, finish_reason: null }] },
+      { id: "c1", choices: [{ delta: {}, finish_reason: "stop" }] },
+      // Final chunk with empty choices and NO usage — the provider just didn't send it
+      { id: "c1", choices: [], usage: null },
+    ])
+
+    const result = await adapter.streamMessage({
+      messages: [userMessage("What is 2+2?")],
+      systemPrompt: "You are a helpful assistant.",
+      callbacks: {},
+    })
+
+    // Tokens should be estimated (non-zero) even though provider returned no usage
+    expect(result.usage.inputTokens).toBeGreaterThan(0)
+    expect(result.usage.outputTokens).toBeGreaterThan(0)
+    expect(result.usage.usageEstimated).toBe(true)
+  })
+
+  it("does NOT estimate when provider returns real usage (usageEstimated absent/false)", async () => {
+    const adapter = makeAdapter("fireworks")
+    stubStream(adapter, [
+      { id: "c1", choices: [{ delta: { content: "The answer is 4." }, finish_reason: null }] },
+      { id: "c1", choices: [{ delta: {}, finish_reason: "stop" }] },
+      { id: "c1", choices: [], usage: { prompt_tokens: 100, completion_tokens: 10 } },
+    ])
+
+    const result = await adapter.streamMessage({
+      messages: [userMessage("What is 2+2?")],
+      systemPrompt: "You are a helpful assistant.",
+      callbacks: {},
+    })
+
+    // Real provider usage should be used as-is
+    expect(result.usage.inputTokens).toBe(100)
+    expect(result.usage.outputTokens).toBe(10)
+    expect(result.usage.usageEstimated).toBeFalsy()
+  })
+})
+
+describe("OpenAICompatibleLLMAdapter — images returned by tools reach the model", () => {
+  // Tool results carry images as `state.attachments` (browser-screenshot,
+  // playwright screenshots, pdf-to-images…). This adapter used to send only the
+  // tool's text output, so Teros/Fireworks/Together models never saw them.
+  const IMG_URL = "https://files.teros.test/objects/obj_1"
+
+  function capture(adapter: OpenAICompatibleLLMAdapter): { req: any } {
+    const box: { req: any } = { req: null }
+    ;(adapter as any).client.chat.completions.create = (req: any) => {
+      box.req = req
+      return {
+        withResponse: async () => ({
+          data: streamOf([{ id: "c1", choices: [{ delta: {}, finish_reason: "stop" }], usage: null }]),
+          response: { headers: new Headers() },
+          request_id: "req_test",
+        }),
+      }
+    }
+    ;(adapter as any).imagePipeline.processImages = async (parts: any[]) =>
+      new Map(parts.map((p) => [p.url, { mimeType: "image/jpeg", base64: "QUJD" }]))
+    return box
+  }
+
+  function turnWithTwoTools(): MessageWithParts {
+    return {
+      info: { role: "assistant" },
+      parts: [
+        {
+          type: "tool",
+          tool: "file-processor_pdf-to-images",
+          callID: "call_img",
+          state: {
+            status: "completed",
+            input: { filePath: "/workspace/acta.pdf" },
+            output: "2 pages attached",
+            attachments: [{ type: "file", mime: "image/jpeg", url: IMG_URL, filename: "acta-p1.jpg" }],
+          },
+        },
+        {
+          type: "tool",
+          tool: "datetime_now",
+          callID: "call_txt",
+          state: { status: "completed", input: {}, output: "2026-11-03" },
+        },
+      ],
+    } as unknown as MessageWithParts
+  }
+
+  function makeVisionAdapter(supportsVision: boolean): OpenAICompatibleLLMAdapter {
+    return new OpenAICompatibleLLMAdapter({
+      baseUrl: "https://api.fireworks.ai/inference/v1",
+      model: "accounts/fireworks/models/glm-5p3",
+      apiKey: "test-key",
+      supportsVision,
+    })
+  }
+
+  it("sends tool-result images after ALL the tool messages of the turn, as one user message", async () => {
+    const adapter = makeVisionAdapter(true)
+    const box = capture(adapter)
+    await adapter.streamMessage({ messages: [turnWithTwoTools()], callbacks: {} })
+
+    const roles = box.req.messages.map((m: any) => m.role)
+    expect(roles).toEqual(["assistant", "tool", "tool", "user"])
+    const imagesMsg = box.req.messages[3]
+    expect(imagesMsg.content[0].type).toBe("text")
+    expect(imagesMsg.content[1]).toEqual({
+      type: "image_url",
+      image_url: { url: "data:image/jpeg;base64,QUJD" },
+    })
+  })
+
+  it("without vision: no image is sent and the tool text says why", async () => {
+    const adapter = makeVisionAdapter(false)
+    const box = capture(adapter)
+    await adapter.streamMessage({ messages: [turnWithTwoTools()], callbacks: {} })
+
+    expect(box.req.messages.map((m: any) => m.role)).toEqual(["assistant", "tool", "tool"])
+    const imgTool = box.req.messages.find((m: any) => m.tool_call_id === "call_img")
+    expect(imgTool.content).toContain("2 pages attached")
+    expect(imgTool.content).toContain("not shown")
+  })
+})
+
+describe("OpenAICompatibleLLMAdapter — tool-result images: history cap and no-image parity", () => {
+  function captureReq(adapter: OpenAICompatibleLLMAdapter): { req: any } {
+    const box: { req: any } = { req: null }
+    ;(adapter as any).client.chat.completions.create = (req: any) => {
+      box.req = req
+      return {
+        withResponse: async () => ({
+          data: streamOf([{ id: "c1", choices: [{ delta: {}, finish_reason: "stop" }], usage: null }]),
+          response: { headers: new Headers() },
+          request_id: "req_test",
+        }),
+      }
+    }
+    ;(adapter as any).imagePipeline.processImages = async (parts: any[]) =>
+      new Map(parts.map((p) => [p.url, { mimeType: "image/jpeg", base64: "QUJD" }]))
+    return box
+  }
+
+  function screenshotTurn(n: number): MessageWithParts {
+    return {
+      info: { role: "assistant" },
+      parts: [
+        {
+          type: "tool",
+          tool: "playwright_browser-take-screenshot",
+          callID: `call_${n}`,
+          state: {
+            status: "completed",
+            input: {},
+            output: `shot ${n}`,
+            attachments: [{ type: "file", mime: "image/jpeg", url: `https://files.teros.test/objects/shot_${n}`, filename: `shot-${n}.jpg` }],
+          },
+        },
+      ],
+    } as unknown as MessageWithParts
+  }
+
+  const visionAdapter = () =>
+    new OpenAICompatibleLLMAdapter({
+      baseUrl: "https://api.fireworks.ai/inference/v1",
+      model: "accounts/fireworks/models/glm-5p3",
+      apiKey: "test-key",
+      supportsVision: true,
+    })
+
+  it("re-sends only the 10 most recent tool images of the history; older ones become a note", async () => {
+    const adapter = visionAdapter()
+    const box = captureReq(adapter)
+    const history = Array.from({ length: 12 }, (_, i) => screenshotTurn(i + 1))
+    await adapter.streamMessage({ messages: history, callbacks: {} })
+
+    const sentImages = box.req.messages
+      .filter((m: any) => m.role === "user" && Array.isArray(m.content))
+      .flatMap((m: any) => m.content.filter((c: any) => c.type === "image_url"))
+    expect(sentImages).toHaveLength(10)
+
+    const oldest = box.req.messages.find((m: any) => m.tool_call_id === "call_1")
+    expect(oldest.content).toContain("no longer shown")
+    const newest = box.req.messages.find((m: any) => m.tool_call_id === "call_12")
+    expect(newest.content).toBe("shot 12")
+  })
+
+  it("a conversation without tool images produces exactly the same messages as before", async () => {
+    const adapter = visionAdapter()
+    const box = captureReq(adapter)
+    const history: MessageWithParts[] = [
+      { info: { role: "user" }, parts: [{ type: "text", text: "what time is it?" }] } as unknown as MessageWithParts,
+      {
+        info: { role: "assistant" },
+        parts: [
+          { type: "text", text: "checking" },
+          { type: "tool", tool: "datetime_now", callID: "call_t", state: { status: "completed", input: {}, output: "13:00" } },
+        ],
+      } as unknown as MessageWithParts,
+    ]
+    await adapter.streamMessage({ messages: history, callbacks: {} })
+
+    expect(box.req.messages).toEqual([
+      { role: "user", content: "what time is it?" },
+      {
+        role: "assistant",
+        content: "checking",
+        tool_calls: [{ id: "call_t", type: "function", function: { name: "datetime_now", arguments: "{}" } }],
+      },
+      { role: "tool", tool_call_id: "call_t", content: "13:00" },
+    ])
+  })
+})

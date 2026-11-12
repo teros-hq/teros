@@ -59,6 +59,29 @@ export function resolveAllowedOrigin(
 }
 
 /**
+ * Add the app's own origin (from `APP_URL`) to a CORS allowlist.
+ *
+ * A compose install serves the web and the backend on different ports; the
+ * credentialed session-cookie calls need the web origin reflected, and
+ * `APP_URL` already says where the web lives. Appended, never substituted;
+ * untouched when the list is `*` or the URL is missing or malformed.
+ *
+ * @spec CORSAPP-REQ-1 CORSAPP-REQ-2 CORSAPP-REQ-3
+ */
+export function withAppOrigin(allowlist: readonly string[], appUrl: string | undefined): string[] {
+  const list = [...allowlist]
+  if (list.includes("*") || !appUrl) return list
+  let origin: string
+  try {
+    origin = new URL(appUrl).origin
+  } catch {
+    return list
+  }
+  if (origin === "null" || list.includes(origin)) return list
+  return [...list, origin]
+}
+
+/**
  * Strip the IPv4-mapped IPv6 prefix so `::ffff:127.0.0.1` matches `127.0.0.1`.
  */
 function normalizeIp(ip: string): string {
@@ -110,11 +133,147 @@ function ipv4InCidr(ip: string, cidr: string): boolean {
 }
 
 /**
+ * Extract the origin (scheme://host[:port]) from a URL string.
+ * Returns null for malformed input.
+ *
+ * @example "https://os.teros.ai/dashboard" → "https://os.teros.ai"
+ */
+function extractOriginFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url)
+    // Origin = scheme + host + port (URL.origin handles port normalization)
+    return parsed.origin
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Validate the Origin/Referer of a state-changing request against the CORS
+ * allowlist (Req 3.1.5 — anti-CSRF defense-in-depth).
+ *
+ * Checks the `Origin` header first (sent by browsers on all cross-origin and
+ * same-origin POST/PUT/DELETE/PATCH requests). If `Origin` is absent, falls
+ * back to the `Referer` header and extracts its origin portion.
+ *
+ * Returns `true` when:
+ * - The allowlist contains `"*"` (CORS is fully open — CSRF check is moot).
+ * - The `Origin` header is present and matches an allowlisted origin exactly.
+ * - The `Origin` header is absent but the `Referer` header's origin matches.
+ *
+ * Returns `false` when:
+ * - Neither `Origin` nor `Referer` is present (state-changing requests must
+ *   carry an origin signal; non-browser clients use token/signature auth and
+ *   are exempt at the call site).
+ * - The origin is present but not in the allowlist.
+ *
+ * @param origin  The raw `Origin` header value (or undefined).
+ * @param referer The raw `Referer` header value (or undefined).
+ * @param allowlist  The same allowlist used by `resolveAllowedOrigin`.
+ */
+export function isOriginAllowed(
+  origin: string | undefined,
+  referer: string | undefined,
+  allowlist: readonly string[],
+): boolean {
+  if (allowlist.includes("*")) return true
+
+  // Prefer the Origin header — it's the precise, browser-sent origin.
+  if (origin) {
+    return allowlist.includes(origin)
+  }
+
+  // Fall back to Referer: extract the origin portion and compare.
+  if (referer) {
+    const refererOrigin = extractOriginFromUrl(referer)
+    if (refererOrigin) {
+      return allowlist.includes(refererOrigin)
+    }
+  }
+
+  // No origin signal at all — reject for state-changing requests.
+  return false
+}
+
+/**
+ * Build the Strict-Transport-Security (HSTS) header value (Req 4.1.1).
+ *
+ * HSTS tells browsers to always use HTTPS for the site for the given max-age,
+ * preventing SSL-stripping and protocol-downgrade attacks. The header is only
+ * honored by browsers over HTTPS (RFC 6797 §8.1) — `shouldSetHsts` gates it.
+ *
+ * @param maxAgeSeconds  The duration (seconds) the browser should enforce HTTPS.
+ * @param includeSubDomains  When true, the policy applies to all subdomains.
+ * @param preload  When true, signals willingness to be included in browser
+ *   HSTS preload lists. Only enable after meeting preload requirements
+ *   (https://hstspreload.org).
+ */
+export function buildHstsHeader(
+  maxAgeSeconds: number,
+  includeSubDomains: boolean,
+  preload: boolean,
+): string {
+  let value = `max-age=${maxAgeSeconds}`
+  if (includeSubDomains) value += '; includeSubDomains'
+  if (preload) value += '; preload'
+  return value
+}
+
+/**
+ * Determine whether the HSTS header should be set on the response (Req 4.1.1).
+ *
+ * HSTS is only meaningful over HTTPS. This backend runs behind a TLS-terminating
+ * reverse proxy (nginx/Traefik) in production, so the app itself receives plain
+ * HTTP. When `trustProxy` is true, we inspect `X-Forwarded-Proto` to see if the
+ * original client→proxy connection was HTTPS. When `trustProxy` is false (local
+ * dev, no proxy), we never set HSTS — the server listens on plain HTTP and
+ * browsers ignore HSTS over HTTP anyway (RFC 6797 §8.1).
+ *
+ * @param req  The incoming HTTP request.
+ * @param trustProxy  Whether to trust X-Forwarded-Proto (true behind a proxy).
+ * @returns true if the HSTS header should be set on the response.
+ */
+export function shouldSetHsts(req: IncomingMessage, trustProxy: boolean): boolean {
+  if (!trustProxy) return false
+  const proto = req.headers['x-forwarded-proto']
+  const raw = Array.isArray(proto) ? proto[0] : proto
+  return raw?.trim().toLowerCase() === 'https'
+}
+
+/**
  * Match an IP against an allowlist of exact IPs and IPv4 CIDR ranges.
  *
  * Exact entries match by normalized string (covers IPv6 such as `::1`); entries
  * containing `/` are treated as IPv4 CIDR. A malformed entry never matches.
  */
+/**
+ * Decide whether a `/metrics` request may be served.
+ *
+ * Two independent ways in:
+ *   - a bearer token (`METRICS_TOKEN`) — works from anywhere, meant for the
+ *     canary / a scraper outside the host;
+ *   - the IP allowlist — but ONLY when the IP is meaningful: in production the
+ *     backend sits behind a reverse proxy, so without TRUST_PROXY the socket
+ *     address is the proxy's own (private, always allowlisted) and the gate was
+ *     letting the whole internet in (found 2026-10-15: be.teros.ai/metrics was
+ *     public). Production therefore requires TRUST_PROXY=true for the IP path.
+ */
+export function isMetricsRequestAllowed(input: {
+  clientIp: string
+  allowlist: readonly string[]
+  trustProxy: boolean
+  production: boolean
+  authorization: string | string[] | undefined
+  token: string | null
+}): boolean {
+  if (input.token) {
+    const raw = Array.isArray(input.authorization) ? input.authorization[0] : input.authorization
+    if (raw && timingSafeStringEqual(raw, `Bearer ${input.token}`)) return true
+  }
+  if (input.production && !input.trustProxy) return false
+  return isIpAllowed(input.clientIp, input.allowlist)
+}
+
 export function isIpAllowed(ip: string, allowlist: readonly string[]): boolean {
   const norm = normalizeIp(ip)
   if (!norm) return false

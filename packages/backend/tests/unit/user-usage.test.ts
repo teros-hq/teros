@@ -167,7 +167,7 @@ function seedDb() {
   const db = new InMemoryDb()
   db.seed("billing_plans", [
     plan("plan_growth", 50),
-    plan("plan_unlimited", -1),
+    plan("plan_enterprise", -1),
     plan("plan_byok", 0, false),
   ])
   db.seed("billing_subscriptions", [
@@ -175,7 +175,7 @@ function seedDb() {
     sub("u_exhausted", "plan_growth", 50), // 50/50 = 1.0 exhausted
     sub("u_low", "plan_growth", 5), // 0.1 none
     sub("u_boost", "plan_growth", 60), // 60/50 exhausted UNTIL boost → 60/70 = 0.857 near
-    sub("u_unmetered", "plan_unlimited", 500),
+    sub("u_unmetered", "plan_enterprise", 500),
   ])
   db.seed("billing_hour_boosts", [boost("u_boost", 20)])
   return db
@@ -215,7 +215,7 @@ describe("buildUsageIndex", () => {
     expect((index.planUserIds.get("plan_growth") ?? []).sort()).toEqual(
       ["u_near", "u_exhausted", "u_low", "u_boost"].sort(),
     )
-    expect(index.planUserIds.get("plan_unlimited")).toEqual(["u_unmetered"])
+    expect(index.planUserIds.get("plan_enterprise")).toEqual(["u_unmetered"])
   })
 
   it("ignores boosts whose window does not contain `now`", async () => {

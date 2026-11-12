@@ -15,18 +15,29 @@
         "includeRaw": "Return raw Google response. Default false."
       }
     },
+    "calendar-get-settings": {
+      "name": "calendar-get-settings",
+      "description": "Read the user Calendar preferences (timezone, locale, weekStart, dateFieldOrder, autoAddHangouts, useKeyboardShortcuts, ...). If `setting` is passed returns that single value; otherwise returns the full map keyed by setting id. Settings have global scope across the user's Calendar.",
+      "params": {
+        "setting": "Optional id of a single setting (e.g. \"timezone\", \"locale\", \"weekStart\"). Omit to fetch all."
+      }
+    },
+    "calendar-get-colors": {
+      "name": "calendar-get-colors",
+      "description": "Return the official Google Calendar color palette: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. Use this to validate event colorIds (1..11) at runtime instead of hardcoding hex values."
+    },
     "calendar-list-events": {
       "name": "calendar-list-events",
-      "description": "List events in a date range. Returns curated rows with attendee responseStatus, organizer, colorId, htmlLink, hangoutLink, recurrence. Params: startDate, endDate, calendarId?, limit (1-2500, def 25), cursor, timeZone?, fields?, includeRaw.",
+      "description": "List events in a date range. Returns curated rows with attendee responseStatus, organizer, colorId, htmlLink, hangoutLink, recurrence, eventType, and Sprint-4 specialized properties when applicable. Supports filtering by `eventTypes` (default | focusTime | outOfOffice | workingLocation | birthday | fromGmail) and incremental sync via `syncToken`. NOTE: when `syncToken` is passed, startDate/endDate/eventTypes are exclusive — they will trigger an error from Google.",
       "params": {
-        "startDate": "Lower bound (inclusive) ISO 8601, e.g. \"2026-04-28T00:00:00Z\".",
-        "endDate": "Upper bound (exclusive) ISO 8601, e.g. \"2026-04-29T00:00:00Z\".",
+        "startDate": "Lower bound (inclusive) ISO 8601, e.g. \"2026-04-28T00:00:00Z\". Required unless using `syncToken`.",
+        "endDate": "Upper bound (exclusive) ISO 8601, e.g. \"2026-04-29T00:00:00Z\". Required unless using `syncToken`.",
         "calendarId": "Calendar ID. Defaults to \"primary\".",
         "limit": "Max events per page. Min 1, max 2500, default 25.",
         "cursor": "Pagination cursor (Google events nextPageToken).",
         "timeZone": "IANA timezone (e.g. \"Europe/Madrid\"). Default: calendar timezone.",
-        "fields": "Override default whitelist per row.",
-        "includeRaw": "Return raw Google response. Default false."
+        "eventTypes": "Filter by event type. E.g. [\"outOfOffice\"] to list only OOO. Mutually exclusive with `syncToken`.",
+        "syncToken": "Token returned as `nextSyncToken` from a previous call. When passed, only events that changed since are returned (incremental sync). EXCLUSIVE with startDate/endDate/eventTypes."
       }
     },
     "calendar-get-event": {
@@ -49,8 +60,21 @@
         "endDate": "Optional upper bound (exclusive) ISO 8601.",
         "limit": "Max events per page. Min 1, max 2500, default 25.",
         "cursor": "Pagination cursor (Google events nextPageToken).",
+        "eventTypes": "Optional filter by event type.",
         "fields": "Override default whitelist per row.",
         "includeRaw": "Return raw Google response. Default false."
+      }
+    },
+    "calendar-list-instances": {
+      "name": "calendar-list-instances",
+      "description": "List instances of a recurring event with their override metadata. Returns rows with `originalStartTime` so the renderer can flag instances that were moved/modified vs. the recurring rule. Cursor pagination via `pageToken`.",
+      "params": {
+        "eventId": "ID of the recurring (master) event whose instances to list.",
+        "calendarId": "Defaults to \"primary\".",
+        "timeMin": "Optional ISO 8601 lower bound (inclusive).",
+        "timeMax": "Optional ISO 8601 upper bound (exclusive).",
+        "limit": "Max instances per page. Default 25, max 2500.",
+        "cursor": "Pagination cursor (Google nextPageToken)."
       }
     },
     "calendar-create-event": {
@@ -100,15 +124,74 @@
         "sendUpdates": "Send cancellation notice to attendees. Default \"none\"."
       }
     },
-    "calendar-get-free-busy": {
-      "name": "calendar-get-free-busy",
-      "description": "Check free/busy across one or more calendars. Returns curated rows [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}] — never the raw Google envelope. Params: startDate, endDate, calendarIds[], fields?, includeRaw.",
+    "calendar-quick-add-event": {
+      "name": "calendar-quick-add-event",
+      "description": "Create an event from natural language (\"Café con Antonio mañana 10am\"). Google parses the text into title + date/time. Returns the curated event including the parsed start/end. Useful for low-effort scheduling. Note: only the title and time are inferred — for attendees, recurrence, location or Meet, use create-event instead.",
       "params": {
-        "startDate": "Lower bound (inclusive) ISO 8601.",
-        "endDate": "Upper bound (exclusive) ISO 8601.",
-        "calendarIds": "Calendar IDs to query. Defaults to [\"primary\"].",
-        "timeZone": "IANA timezone for response slots. Default: caller calendar timezone.",
+        "text": "Free-form description (e.g. \"lunch with Ana tomorrow 1pm\").",
+        "calendarId": "Defaults to \"primary\".",
+        "sendUpdates": "Notify potential attendees parsed from the text. Default \"none\".",
+        "fields": "Override default whitelist on the returned event.",
         "includeRaw": "Return raw Google response. Default false."
+      }
+    },
+    "calendar-import-event": {
+      "name": "calendar-import-event",
+      "description": "Import an external event (with iCalUID) into a calendar. Creates a private copy — distinct from create-event because it preserves the original UID for cross-system reconciliation. Use when the agent receives a `.ics` file or an event reference from another system. Only events with eventType='default' may be imported.",
+      "params": {
+        "iCalUID": "External UID from the original event (e.g. from a .ics file).",
+        "start": "ISO 8601 start with timezone offset.",
+        "end": "ISO 8601 end with timezone offset.",
+        "calendarId": "Defaults to \"primary\".",
+        "sendUpdates": "Default \"none\"."
+      }
+    },
+    "calendar-move-event": {
+      "name": "calendar-move-event",
+      "description": "Move an event from one calendar to another. RESTRICTION: only `eventType: \"default\"` is movable — birthday/focusTime/outOfOffice/workingLocation/fromGmail events return an error. Returns the moved event in the destination calendar shape.",
+      "params": {
+        "sourceCalendarId": "Calendar where the event currently lives.",
+        "destinationCalendarId": "Target calendar ID.",
+        "sendUpdates": "Notify attendees of the move. Default \"none\"."
+      }
+    },
+    "calendar-create-focus-time": {
+      "name": "calendar-create-focus-time",
+      "description": "Block focus time on the user calendar. Created with eventType: \"focusTime\" + transparency: \"opaque\" so the slot is not all-day. Optionally auto-declines conflicting invitations and sets Chat status to \"doNotDisturb\". Returns the curated event.",
+      "params": {
+        "start": "ISO 8601 start with timezone offset (e.g. \"2026-04-29T09:00:00+02:00\").",
+        "end": "ISO 8601 end with timezone offset.",
+        "summary": "Title. Defaults to \"Focus time\".",
+        "autoDeclineMode": "How to handle conflicting invitations during the focus time. Default \"declineNone\".",
+        "declineMessage": "Message sent automatically when an invitation is declined.",
+        "chatStatus": "Chat presence during focus time. Default \"doNotDisturb\".",
+        "calendarId": "Defaults to \"primary\".",
+        "sendUpdates": "Notify attendees if any are added. Default \"none\"."
+      }
+    },
+    "calendar-create-out-of-office": {
+      "name": "calendar-create-out-of-office",
+      "description": "Mark the user as Out of Office. Created with eventType: \"outOfOffice\" + transparency: \"opaque\". By default declines all conflicting invitations with the provided message. NOT all-day; requires full ISO timestamps.",
+      "params": {
+        "start": "ISO 8601 start with timezone offset.",
+        "end": "ISO 8601 end with timezone offset.",
+        "summary": "Title. Defaults to \"Out of office\".",
+        "autoDeclineMode": "Default \"declineAllConflictingInvitations\".",
+        "declineMessage": "Auto-reply sent when an invitation is declined while OOO.",
+        "calendarId": "Defaults to \"primary\".",
+        "sendUpdates": "Notify attendees of attached invitations. Default \"none\"."
+      }
+    },
+    "calendar-set-working-location": {
+      "name": "calendar-set-working-location",
+      "description": "Mark the user working location for a date range. Created with eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\" so it does not block free/busy. May be all-day (single day only) or timed.",
+      "params": {
+        "start": "ISO 8601 start. Use \"YYYY-MM-DD\" for an all-day single-day entry.",
+        "end": "ISO 8601 end. For all-day, the day AFTER (Google convention — exclusive). For timed, full ISO with offset.",
+        "type": "Required. Drives which sub-properties are honored.",
+        "officeLocation": "When type=officeLocation: { buildingId?, deskId?, floorId?, floorSectionId?, label? }. label is the human display name.",
+        "customLocation": "When type=customLocation: { label? } — free-text location like \"Beach office\".",
+        "calendarId": "Defaults to \"primary\"."
       }
     },
     "calendar-respond-to-event": {
@@ -121,70 +204,16 @@
         "sendUpdates": "Notify the organizer + other attendees of the RSVP. Default \"none\"."
       }
     },
-    "calendar-quick-add-event": {
-      "name": "calendar-quick-add-event",
-      "description": "Create an event from natural language (\"Café con Antonio mañana 10am\"). Google parses the text into title + date/time. Returns the curated event including the parsed start/end. Useful for low-effort scheduling. Note: only the title and time are inferred — for attendees, recurrence, location or Meet, use create-event instead.",
+    "calendar-get-free-busy": {
+      "name": "calendar-get-free-busy",
+      "description": "Check free/busy across one or more calendars. Returns curated rows [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}] — never the raw Google envelope. Params: startDate, endDate, calendarIds[], fields?, includeRaw.",
       "params": {
-        "text": "Free-form description (e.g. \"lunch with Ana tomorrow 1pm\").",
-        "calendarId": "Defaults to \"primary\".",
-        "sendUpdates": "Notify potential attendees parsed from the text. Default \"none\".",
-        "fields": "Override default whitelist on the returned event.",
+        "startDate": "Lower bound (inclusive) ISO 8601.",
+        "endDate": "Upper bound (exclusive) ISO 8601.",
+        "calendarIds": "Calendar IDs to query. Defaults to [\"primary\"].",
+        "timeZone": "IANA timezone for response slots. Default: caller calendar timezone.",
         "includeRaw": "Return raw Google response. Default false."
       }
-    },
-    "calendar-create-focus-time": {
-      "name": "calendar-create-focus-time",
-      "description": "Block focus time on the user calendar. Created with eventType: \"focusTime\" + transparency: \"opaque\" so the slot is not all-day. Optionally auto-declines conflicting invitations and sets Chat status to \"doNotDisturb\". Returns the curated event.",
-      "params": {
-        "start": "ISO 8601 start with timezone offset.",
-        "end": "ISO 8601 end with timezone offset.",
-        "summary": "Title. Defaults to \"Focus time\".",
-        "autoDeclineMode": "How to handle conflicting invitations during the focus time. Default \"declineNone\".",
-        "chatStatus": "Chat presence during focus time. Default \"doNotDisturb\".",
-        "calendarId": "Defaults to \"primary\"."
-      }
-    },
-    "calendar-create-out-of-office": {
-      "name": "calendar-create-out-of-office",
-      "description": "Mark the user as Out of Office. Created with eventType: \"outOfOffice\" + transparency: \"opaque\". By default declines all conflicting invitations with the provided message. NOT all-day; requires full ISO timestamps.",
-      "params": {
-        "start": "ISO 8601 start with timezone offset.",
-        "end": "ISO 8601 end with timezone offset.",
-        "summary": "Title. Defaults to \"Out of office\".",
-        "autoDeclineMode": "Default \"declineAllConflictingInvitations\"."
-      }
-    },
-    "calendar-set-working-location": {
-      "name": "calendar-set-working-location",
-      "description": "Mark the user working location for a date range. Created with eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\" so it does not block free/busy. May be all-day (single day only) or timed.",
-      "params": {
-        "type": "Drives which sub-properties are honored.",
-        "officeLocation": "When type=officeLocation: { buildingId?, deskId?, floorId?, floorSectionId?, label? }.",
-        "customLocation": "When type=customLocation: { label? } — free-text location."
-      }
-    },
-    "calendar-get-settings": {
-      "name": "calendar-get-settings",
-      "description": "Read the user Calendar preferences (timezone, locale, weekStart, dateFieldOrder, autoAddHangouts, useKeyboardShortcuts, ...). If `setting` is passed returns that single value; otherwise returns the full map keyed by setting id. Settings have global scope across the user's Calendar.",
-      "params": {
-        "setting": "Optional id of a single setting (e.g. \"timezone\", \"locale\", \"weekStart\")."
-      }
-    },
-    "calendar-get-colors": {
-      "name": "calendar-get-colors",
-      "description": "Return the official Google Calendar color palette: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. Use this to validate event colorIds (1..11) at runtime instead of hardcoding hex values."
-    },
-    "calendar-move-event": {
-      "name": "calendar-move-event",
-      "description": "Move an event from one calendar to another. RESTRICTION: only `eventType: \"default\"` is movable — birthday/focusTime/outOfOffice/workingLocation/fromGmail events return an error. Returns the moved event in the destination calendar shape."
-    },
-    "calendar-import-event": {
-      "name": "calendar-import-event",
-      "description": "Import an external event (with iCalUID) into a calendar. Creates a private copy — distinct from create-event because it preserves the original UID for cross-system reconciliation. Use when the agent receives a `.ics` file or an event reference from another system."
-    },
-    "calendar-list-instances": {
-      "name": "calendar-list-instances",
-      "description": "List instances of a recurring event with their override metadata. Returns rows with `originalStartTime` so the renderer can flag instances that were moved/modified vs. the recurring rule. Cursor pagination via `pageToken`."
     }
   },
   "name": "Google Calendar",

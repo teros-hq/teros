@@ -31,6 +31,7 @@ import type { IncomingMessage, ServerResponse } from 'http';
 import type { McaService } from '../services/mca-service';
 import type { MCAEventSubscriptionService } from '../services/mca-event-subscription-service';
 import type { SecretsManager } from '../secrets/secrets-manager';
+import { flattenElevenLabsPostCallPayload, isElevenLabsPostCallEvent } from '../lib/flatten-elevenlabs-payload';
 
 const WEBHOOK_SECRET_KEY = 'WEBHOOK_SECRET';
 
@@ -76,22 +77,34 @@ export class AppWebhookHandler {
     const secrets = this.secretsManager.mca(mcaId);
     const webhookSecret = secrets?.[WEBHOOK_SECRET_KEY];
     if (webhookSecret) {
-      const signature =
-        req.headers['x-hub-signature-256'] ??
-        req.headers['x-webhook-signature'] ??
-        req.headers['stripe-signature'];
+      // ElevenLabs uses a dedicated header with its own format: `t={unix},v0={hmac}`
+      // where the HMAC-SHA256 is computed over `${t}.${rawBody}` (not the raw body alone).
+      const elevenLabsSig = this.getHeader(req, 'elevenlabs-signature');
 
-      if (!signature) {
-        console.warn(`[AppWebhookHandler] Missing signature header for app ${appId} (mca=${mcaId})`);
-        this.sendJson(res, 401, { error: 'Missing signature header' });
-        return;
-      }
+      if (elevenLabsSig) {
+        if (!this.verifyElevenLabsSignature(rawBody, elevenLabsSig, webhookSecret)) {
+          console.warn(`[AppWebhookHandler] Invalid ElevenLabs signature for app ${appId} (mca=${mcaId})`);
+          this.sendJson(res, 401, { error: 'Invalid signature' });
+          return;
+        }
+      } else {
+        const signature =
+          req.headers['x-hub-signature-256'] ??
+          req.headers['x-webhook-signature'] ??
+          req.headers['stripe-signature'];
 
-      const sig = Array.isArray(signature) ? signature[0] : signature;
-      if (!this.verifyHmacSha256(rawBody, sig, webhookSecret)) {
-        console.warn(`[AppWebhookHandler] Invalid signature for app ${appId} (mca=${mcaId})`);
-        this.sendJson(res, 401, { error: 'Invalid signature' });
-        return;
+        if (!signature) {
+          console.warn(`[AppWebhookHandler] Missing signature header for app ${appId} (mca=${mcaId})`);
+          this.sendJson(res, 401, { error: 'Missing signature header' });
+          return;
+        }
+
+        const sig = Array.isArray(signature) ? signature[0] : signature;
+        if (!this.verifyHmacSha256(rawBody, sig, webhookSecret)) {
+          console.warn(`[AppWebhookHandler] Invalid signature for app ${appId} (mca=${mcaId})`);
+          this.sendJson(res, 401, { error: 'Invalid signature' });
+          return;
+        }
       }
     }
 
@@ -124,12 +137,24 @@ export class AppWebhookHandler {
     this.sendJson(res, 200, { ok: true, topic, appId, mcaId });
 
     // 8. Dispatch async (don't block the HTTP response)
+    // workspaceId lets Automate/Flows match starters of the right tenant —
+    // without it the event is dropped by resolveEventWorkspace.
+    const workspaceId = (app as { ownerId?: string }).ownerId ?? undefined;
     setImmediate(async () => {
       try {
+        // Voice events (P2, docs/specs/20261018_voice-events.md): project the
+        // nested ElevenLabs post_call payload onto flat top-level aliases
+        // (conversationId, transcriptSummary, ...) so subscription rules and
+        // Automate filters can match on them. Additive: the nested data.*
+        // shape is preserved for existing templates.
+        const flatPayload = isElevenLabsPostCallEvent(mcaId, eventType)
+          ? flattenElevenLabsPostCallPayload(payload)
+          : payload;
         await this.mcaEventSubscriptionService.dispatch({
           topic,
           payload: {
-            ...payload,
+            ...flatPayload,
+            ...(workspaceId ? { workspaceId } : {}),
             _webhook: {
               appId,
               mcaId,
@@ -148,6 +173,49 @@ export class AppWebhookHandler {
   // ---------------------------------------------------------------------------
   // Signature verification
   // ---------------------------------------------------------------------------
+
+  /**
+   * Verify an ElevenLabs webhook signature.
+   *
+   * Header format: `ElevenLabs-Signature: t={unix_ts},v0={hex_hmac}`
+   * Signed payload: `${t}.${rawBody}` (timestamp + dot + raw body)
+   * Algorithm: HMAC-SHA256 with the workspace webhook secret.
+   *
+   * Also rejects timestamps older than 10 minutes to limit replay.
+   */
+  private verifyElevenLabsSignature(rawBody: Buffer, header: string, secret: string): boolean {
+    // Parse `t=...,v0=...` (order is fixed but we parse defensively)
+    const parts = header.split(',');
+    let ts: string | undefined;
+    let v0: string | undefined;
+    for (const p of parts) {
+      const eq = p.indexOf('=');
+      if (eq === -1) continue;
+      const k = p.slice(0, eq).trim();
+      const v = p.slice(eq + 1).trim();
+      if (k === 't') ts = v;
+      else if (k === 'v0') v0 = v;
+    }
+    if (!ts || !v0) return false;
+
+    // Replay protection: 10-minute window
+    const tsNum = Number(ts);
+    if (!Number.isFinite(tsNum)) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (Math.abs(nowSec - tsNum) > 10 * 60) return false;
+
+    const signed = Buffer.concat([Buffer.from(`${ts}.`, 'utf8'), rawBody]);
+    const expected = createHmac('sha256', secret).update(signed).digest('hex');
+
+    try {
+      const sigBuf = Buffer.from(v0, 'utf8');
+      const expectedBuf = Buffer.from(expected, 'utf8');
+      if (sigBuf.length !== expectedBuf.length) return false;
+      return timingSafeEqual(sigBuf, expectedBuf);
+    } catch {
+      return false;
+    }
+  }
 
   private verifyHmacSha256(rawBody: Buffer, signature: string, secret: string): boolean {
     // Support "sha256=<hex>" format (GitHub, Intercom) and raw hex

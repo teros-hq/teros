@@ -12,11 +12,12 @@
  */
 
 import { formatValidationResult, type MCAManifest, validateMCAManifest } from "@teros/shared"
+import { syncEventArtifactTypes } from '../services/event-artifact-types'
 import { existsSync, readFileSync, statSync } from "fs"
 import { readdir, readFile } from "fs/promises"
 import * as fs from 'fs'
 import * as path from 'path'
-import { MongoClient } from "mongodb"
+import { type Db, MongoClient } from "mongodb"
 import { dirname, join } from "path"
 import { PNG } from "pngjs"
 import {
@@ -27,6 +28,7 @@ import {
 } from "../lib/mca-presentation"
 import { fileURLToPath } from "url"
 import { config } from "../config"
+import { applyMcaIdRenames } from "../migrations/20261104_001_rename_browser_mca"
 import { secrets } from "../secrets/secrets-manager"
 import { McaService } from "../services/mca-service"
 import type { McpCatalogEntry } from "../types/database"
@@ -237,7 +239,6 @@ function extractAuthConfig(manifest: MCAManifest): McpCatalogEntry["auth"] {
       type: "github-app",
       provider: auth.provider,
       appSlug: auth.appSlug,
-      setupUrl: auth.setupUrl,
       permissions: auth.permissions,
       events: auth.events,
       ...(auth.userOAuth ? { userOAuth: true } : {}),
@@ -251,7 +252,13 @@ function extractAuthConfig(manifest: MCAManifest): McpCatalogEntry["auth"] {
 /**
  * Extract secrets from layers for database storage
  */
-function extractSecrets(manifest: MCAManifest): { systemSecrets: string[]; userSecrets: string[] } {
+function extractSecrets(manifest: MCAManifest): {
+  systemSecrets: string[];
+  userSecrets: string[];
+  systemSecretsAny?: string[][];
+  userSecretsOptional?: boolean;
+  userSecretsRequired?: string[];
+} {
   const auth = manifest.layers.auth
   if (auth === false) {
     return { systemSecrets: [], userSecrets: [] }
@@ -259,6 +266,18 @@ function extractSecrets(manifest: MCAManifest): { systemSecrets: string[]; userS
   return {
     systemSecrets: auth.systemSecrets || [],
     userSecrets: auth.userSecrets || [],
+    // Alternative groups + override semantics (api-key only, validated by
+    // the manifest schema): only persisted when declared, so existing
+    // catalog entries are byte-identical after re-sync.
+    ...(auth.type === "api-key" && auth.systemSecretsAny && auth.systemSecretsAny.length > 0
+      ? { systemSecretsAny: auth.systemSecretsAny }
+      : {}),
+    ...(auth.type === "api-key" && auth.userSecretsOptional === false
+      ? { userSecretsOptional: false }
+      : {}),
+    ...(auth.type === "api-key" && auth.userSecretsRequired && auth.userSecretsRequired.length > 0
+      ? { userSecretsRequired: auth.userSecretsRequired }
+      : {}),
   }
 }
 
@@ -291,6 +310,30 @@ function loadMcaI18n(mcaDir: string): Record<string, any> | undefined {
 /**
  * Convert manifest to catalog entry
  */
+/**
+ * Load the MCA's event declarations. events.json (v1.4.4) is the preferred
+ * source when present — it carries the full declaration including the
+ * declarative `filters` block the unified _subscribe tools validate against.
+ * Falls back to the manifest `events` array (no filters) for MCAs that have
+ * not migrated yet. Same pattern as tools.json: split from the manifest when
+ * the declaration grows.
+ */
+function loadDeclaredEvents(mcaDir: string, manifest: MCAManifest): NonNullable<McpCatalogEntry["events"]> {
+  const eventsJsonPath = join(MCAS_DIR, mcaDir, "events.json")
+  try {
+    if (existsSync(eventsJsonPath)) {
+      const raw = JSON.parse(readFileSync(eventsJsonPath, "utf-8"))
+      const events = Array.isArray(raw?.events) ? raw.events : []
+      if (events.length > 0 || Array.isArray(manifest.events)) {
+        return events
+      }
+    }
+  } catch (err) {
+    console.warn(`  ⚠️  WARNING: ${mcaDir}: invalid events.json — falling back to manifest.events`, err)
+  }
+  return manifest.events ?? []
+}
+
 function manifestToCatalogEntry(
   manifest: MCAManifest,
   mcaDir: string,
@@ -318,11 +361,15 @@ function manifestToCatalogEntry(
     multi: manifest.availability.multi,
     system: manifest.availability.system,
     hidden: manifest.availability.hidden ?? false,
+    // System-capability default (v1.4.4): default ON unless the manifest
+    // explicitly opts out (power capabilities: terminal, filesystem,
+    // browser, ui). Absent = true, so existing manifests are unaffected.
+    defaultEnabled: manifest.availability.defaultEnabled ?? true,
     role: manifest.availability.role,
   }
 
   // Extract auth and secrets from layers
-  const { systemSecrets, userSecrets } = extractSecrets(manifest)
+  const { systemSecrets, userSecrets, systemSecretsAny, userSecretsOptional, userSecretsRequired } = extractSecrets(manifest)
   const auth = extractAuthConfig(manifest)
 
   return {
@@ -338,6 +385,9 @@ function manifestToCatalogEntry(
     // Auth configuration extracted from layers
     systemSecrets,
     userSecrets,
+    ...(systemSecretsAny ? { systemSecretsAny } : {}),
+    ...(userSecretsOptional === false ? { userSecretsOptional: false } : {}),
+    ...(userSecretsRequired ? { userSecretsRequired } : {}),
     auth,
     // Legacy schemas (deprecated)
     secretsSchema: undefined,
@@ -355,6 +405,18 @@ function manifestToCatalogEntry(
     version: manifest.version,
     author: manifest.author,
     keywords: manifest.keywords,
+    // Event catalog (topics the MCA emits) — served by app.list-event-topics.
+    // events.json wins when present (full declaration incl. filters); manifest.events is the fallback.
+    events: loadDeclaredEvents(mcaDir, manifest),
+    // WS bridge allowlist (manifest `backend.actions`).
+    backendActions: manifest.backend?.actions ?? [],
+    // Context prehook (Fase 2 — app context in the prompt): declared in the
+    // manifest, consumed by model-service when building the system prompt.
+    ...(manifest.contextPrehook ? { contextPrehook: manifest.contextPrehook } : {}),
+    // MCA streams (spec MCS-REQ-1): the relay refuses streams from MCAs without it.
+    streams: manifest.layers?.streams === true,
+    // Functional dependencies on other catalog MCAs (manifest `dependencies`).
+    dependencies: manifest.dependencies ?? [],
     image: manifest.image,
     backgroundImage: manifest.backgroundImage,
     tagline: manifest.tagline,
@@ -494,9 +556,14 @@ async function readManifests(): Promise<
 }
 
 /**
- * Sync manifests with database
+ * Sync manifests with database.
+ *
+ * `targetDb` syncs into an already-open database (the dev seed does this at
+ * boot); without it the script opens its own client (MONGODB_URI /
+ * MONGODB_DATABASE, else the `database` secret). Note readManifests exits the
+ * process on an invalid manifest.
  */
-async function syncMcas(dryRun: boolean = false) {
+async function syncMcas(dryRun: boolean = false, targetDb?: Db) {
   console.log("🔄 Syncing MCAs with database...\n")
   console.log(`MCAs directory: ${MCAS_DIR}\n`)
 
@@ -510,20 +577,26 @@ async function syncMcas(dryRun: boolean = false) {
     return
   }
 
-  // Load secrets and connect to MongoDB
-  const secretsPath = join(__dirname, "../../../../.secrets")
-  ;(secrets as any).basePath = secretsPath
-  await secrets.load()
+  let mongoClient: MongoClient | null = null
+  let db: Db
+  if (targetDb) {
+    db = targetDb
+  } else {
+    // Load secrets and connect to MongoDB
+    const secretsPath = join(__dirname, "../../../../.secrets")
+    ;(secrets as any).basePath = secretsPath
+    await secrets.load()
 
-  const dbSecret = secrets.system("database")
-  const mongoUri = process.env.MONGODB_URI || dbSecret?.uri || "mongodb://localhost:27017"
-  const mongoDatabase = process.env.MONGODB_DATABASE || dbSecret?.database || "teros"
+    const dbSecret = secrets.system("database")
+    const mongoUri = process.env.MONGODB_URI || dbSecret?.uri || "mongodb://localhost:27017"
+    const mongoDatabase = process.env.MONGODB_DATABASE || dbSecret?.database || "teros"
 
-  const mongoClient = new MongoClient(mongoUri)
+    mongoClient = new MongoClient(mongoUri)
+    await mongoClient.connect()
+    db = mongoClient.db(mongoDatabase)
+  }
 
   try {
-    await mongoClient.connect()
-    const db = mongoClient.db(mongoDatabase)
     const catalogCollection = db.collection<McpCatalogEntry>("mca_catalog")
 
     // Get existing entries
@@ -549,6 +622,11 @@ async function syncMcas(dryRun: boolean = false) {
         toUpdate.push(catalogEntry)
       }
     }
+
+    // MCA id renames (BRN-REQ-2): an app still carrying an old id would be
+    // deleted below as an orphan — this script runs before the backend's
+    // migrations at start. Idempotent; the migration applies the same list.
+    await applyMcaIdRenames(db)
 
     // Find entries in DB that no longer have manifests (orphans)
     const manifestIds = new Set(manifests.keys())
@@ -588,6 +666,29 @@ async function syncMcas(dryRun: boolean = false) {
       for (const entry of toUpdate) {
         await catalogCollection.updateOne({ mcaId: entry.mcaId }, { $set: entry })
       }
+
+      // Event-catalog guard (2026-10-30): a manifest that declares `events`
+      // must produce a catalog entry that still carries them. A stale
+      // @teros/shared dist (the script resolves it to dist/, whose zod schema
+      // may predate the `events` field) silently strips the key and the $set
+      // above would WIPE the catalog's events — exactly what happened to
+      // mca.teros.todo-list on 2026-10-30. Fail the sync instead: rebuild
+      // packages/shared (yarn build) and re-run.
+      for (const [mcaId, { manifest }] of manifests) {
+        const declared = (manifest as { events?: unknown[] }).events
+        if (!Array.isArray(declared) || declared.length === 0) continue
+        const entry = toUpdate.find((e) => e.mcaId === mcaId) ?? toInsert.find((e) => e.mcaId === mcaId)
+        const produced = (entry as { events?: unknown[] } | undefined)?.events
+        if (!Array.isArray(produced) || produced.length !== declared.length) {
+          console.error(
+            `  ❌ ${mcaId}: manifest declares ${declared.length} events but the catalog entry carries ${Array.isArray(produced) ? produced.length : 0}. ` +
+              'The @teros/shared build this script resolved is stale (its manifest schema strips the events field). ' +
+              'Rebuild packages/shared and re-run sync-mcas — continuing would wipe the event catalog.',
+          )
+          process.exitCode = 1
+          return
+        }
+      }
       if (toUpdate.length > 0) {
         console.log(`  Updated ${toUpdate.length} entries`)
       }
@@ -598,6 +699,10 @@ async function syncMcas(dryRun: boolean = false) {
         await catalogCollection.deleteMany({ mcaId: { $in: orphanIds } })
         console.log(`  Deleted ${orphans.length} orphaned catalog entries`)
       }
+
+      // Event topics → global artifact types (docs/specs/tasks/artifacts.md)
+      const eventTypes = await syncEventArtifactTypes(db)
+      console.log(`  Event artifact types: ${eventTypes}`)
 
       console.log("\n✅ Sync complete!\n")
 
@@ -628,7 +733,7 @@ async function syncMcas(dryRun: boolean = false) {
     console.error("Error syncing MCAs:", error)
     throw error
   } finally {
-    await mongoClient.close()
+    await mongoClient?.close()
   }
 }
 

@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Binary search to find the commit that introduced a regression.
@@ -13,7 +14,7 @@ import { throwClassifiedGitError } from './_git-error';
  * Returns the current bisect head and a summary in every step. `reset`
  * cleanly aborts a bisect session.
  */
-export const gitBisect: ToolConfig = {
+export const gitBisect: ToolConfig = lockedGitTool('git-bisect', {
   annotations: { readOnlyHint: false },
   description:
     'Binary search for the commit that introduced a bug. Workflow: start → mark each step good/bad → done. Use `reset` to abort.',
@@ -48,14 +49,24 @@ export const gitBisect: ToolConfig = {
     switch (action) {
       case 'start':
         if (!a.bad) throw new Error('[GIT_INVALID_INPUT] `bad` is required for `action: start`.');
+        // Ref validation only — `--` cannot be used before the revs here (git
+        // bisect records it as a literal rev), so the charset check is the
+        // defense against git-option injection (audit 2026-10-01).
+        assertSafeRef(a.bad, 'bad');
         argv = ['bisect', 'start', a.bad];
-        if (a.good) argv.push(a.good);
+        if (a.good) {
+          assertSafeRef(a.good, 'good');
+          argv.push(a.good);
+        }
         break;
       case 'good':
       case 'bad':
       case 'skip':
         argv = ['bisect', action];
-        if (a.ref) argv.push(a.ref);
+        if (a.ref) {
+          assertSafeRef(a.ref, 'ref');
+          argv.push(a.ref);
+        }
         break;
       case 'reset':
         argv = ['bisect', 'reset'];
@@ -69,10 +80,10 @@ export const gitBisect: ToolConfig = {
         break;
     }
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const headResult = runGit(repoPath, ['rev-parse', 'HEAD']);
+    const headResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
     return {
       repoPath,
       action,
@@ -80,4 +91,4 @@ export const gitBisect: ToolConfig = {
       details: result.stdout.trim() || result.stderr.trim(),
     };
   },
-};
+});

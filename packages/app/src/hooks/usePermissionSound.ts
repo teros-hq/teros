@@ -11,13 +11,27 @@
 import { useCallback, useRef } from "react"
 import { Platform } from "react-native"
 
+/**
+ * A batch of permission requests (every ask of one step, PERMB-REQ-1) arrives
+ * as N `tool_permission_request` events within a couple of seconds. The chime
+ * announces "something waits for you", not each row — so a second play inside
+ * this window is dropped (PERMB-REQ-4: one chime per batch).
+ */
+export const PERMISSION_CHIME_WINDOW_MS = 2000
+
+/** @spec PERMB-REQ-4 */
 export function usePermissionSound() {
   // Keep a reference to the AudioContext so we reuse it across calls
   const audioCtxRef = useRef<AudioContext | null>(null)
+  const lastPlayedAtRef = useRef(0)
 
   const playPermissionSound = useCallback(() => {
     // Only available on web
     if (Platform.OS !== "web") return
+
+    const nowMs = Date.now()
+    if (nowMs - lastPlayedAtRef.current < PERMISSION_CHIME_WINDOW_MS) return
+    lastPlayedAtRef.current = nowMs
 
     try {
       // Lazily create the AudioContext (browsers require user gesture first,

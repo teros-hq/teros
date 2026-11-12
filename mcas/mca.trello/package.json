@@ -6,7 +6,5 @@
   "scripts": {
     "start": "tsx src/index.ts"
   },
-  "dependencies": {
-    "marked": "^15.0.6"
-  }
+  "dependencies": {}
 }

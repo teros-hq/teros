@@ -74,7 +74,7 @@ check(/agents/.test(badText), 'error lists the valid topics (fail-loud)');
 // 4) -health-check
 const health = structured(await client.callTool({ name: '-health-check', arguments: {} }));
 check(health?.status === 'ready', `-health-check → status=${health?.status}`);
-check(health?.version === '1.0.0' && typeof health?.uptime === 'number', 'health has version+uptime');
+check(health?.version === '1.1.0' && typeof health?.uptime === 'number', 'health has version+uptime');
 
 await client.close();
 console.log(failures === 0 ? '\n✅ SMOKE PASS' : `\n❌ SMOKE FAIL (${failures})`);

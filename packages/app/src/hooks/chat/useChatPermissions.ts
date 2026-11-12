@@ -10,7 +10,6 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react"
 import { getTerosClient } from "../../services/terosClientSingleton"
-import { track } from "../../lib/analytics"
 import { useChatStore } from "../../store/chatStore"
 import type { Message } from "../../store/chatStore"
 import { extractPendingFromMessages } from "./pending-extraction"
@@ -275,7 +274,6 @@ export function useChatPermissions(channelId: string | undefined): PermissionCon
       console.log("🔐 Permission granted:", requestId)
       client.respondToToolPermission(requestId, true)
       resolvePendingLocally(requestId, { status: 'running' })
-      track("tool_permission_granted", { requestId, permanent: false })
     },
     [client, resolvePendingLocally],
   )
@@ -285,7 +283,6 @@ export function useChatPermissions(channelId: string | undefined): PermissionCon
       console.log("🔐 Permission granted always:", requestId, appId, toolName)
       client.respondToToolPermission(requestId, true)
       resolvePendingLocally(requestId, { status: 'running' })
-      track("tool_permission_granted", { requestId, appId, toolName, permanent: true })
 
       try {
         await client.app.updateToolPermission(appId, toolName, "allow")
@@ -302,7 +299,6 @@ export function useChatPermissions(channelId: string | undefined): PermissionCon
       console.log("🔐 Permission denied:", requestId)
       client.respondToToolPermission(requestId, false)
       resolvePendingLocally(requestId, { status: 'failed', error: 'Permiso denegado por el usuario' })
-      track("tool_permission_denied", { requestId, permanent: false })
     },
     [client, resolvePendingLocally],
   )
@@ -312,7 +308,6 @@ export function useChatPermissions(channelId: string | undefined): PermissionCon
       console.log("🔐 Permission denied always:", requestId, appId, toolName)
       client.respondToToolPermission(requestId, false)
       resolvePendingLocally(requestId, { status: 'failed', error: 'Permiso denegado permanentemente' })
-      track("tool_permission_denied", { requestId, appId, toolName, permanent: true })
 
       try {
         await client.app.updateToolPermission(appId, toolName, "forbid")

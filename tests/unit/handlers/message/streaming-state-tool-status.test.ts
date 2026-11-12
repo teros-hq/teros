@@ -5,11 +5,8 @@
  * ControlsBar/permission widget reads, so the payload is asserted byte-exact via
  * the pure builders. `updateToolStatus` carries the TER-369 fix: when the tool is
  * absent from the per-turn streamState (reload/resume isolation) it falls back to
- * `options.messageId` and STILL broadcasts (so the widget appears). It must NOT do
- * a full-content persist (a desynced map lacks toolName/input and would clobber
- * the record) — instead it writes only the status fields via
- * `persistToolStatusFields`, so the DB doesn't stay on 'pending' forever after a
- * reload (the old skip-persist behavior broke restart restore).
+ * `options.messageId` and STILL broadcasts (so the widget appears) but does NOT
+ * persist (a desynced map lacks toolName/input and would clobber the record).
  */
 
 import { describe, expect, it, mock } from 'bun:test';
@@ -103,11 +100,10 @@ describe('updateToolStatus — TER-369 messageId fallback + persist guard', () =
   function setup() {
     const state = createStreamingState();
     const updateMessageContent = mock(async () => undefined);
-    const updateMessageContentFields = mock(async () => undefined);
     const broadcastToChannel = mock(() => undefined);
-    const channelManager = { updateMessageContent, updateMessageContentFields, saveMessage: mock(async () => undefined), createMessageId: () => 'msg_new', getChannel: async () => null } as any;
+    const channelManager = { updateMessageContent, saveMessage: mock(async () => undefined), createMessageId: () => 'msg_new', getChannel: async () => null } as any;
     const helpers = createStreamingHelpers(state, { channelManager, channelId: 'ch_1', agentId: 'a_1', broadcastToChannel });
-    return { state, helpers, updateMessageContent, updateMessageContentFields, broadcastToChannel };
+    return { state, helpers, updateMessageContent, broadcastToChannel };
   }
 
   it('does nothing without a toolCallId', async () => {
@@ -132,8 +128,8 @@ describe('updateToolStatus — TER-369 messageId fallback + persist guard', () =
     expect(chunk.permissionRequestId).toBe('perm_1');
   });
 
-  it('TER-369: tool absent from streamState but options.messageId given → broadcasts, persists ONLY status fields', async () => {
-    const { helpers, updateMessageContent, updateMessageContentFields, broadcastToChannel } = setup();
+  it('TER-369: tool absent from streamState but options.messageId given → broadcasts, does NOT persist', async () => {
+    const { helpers, updateMessageContent, broadcastToChannel } = setup();
     // No startToolMessage → tc_1 is not in activeToolCalls (reload/resume isolation).
     await helpers.updateToolStatus('pending_permission', {
       toolCallId: 'tc_1',
@@ -144,20 +140,8 @@ describe('updateToolStatus — TER-369 messageId fallback + persist guard', () =
     // Widget must still appear → broadcast happens with the bypass messageId.
     expect(broadcastToChannel).toHaveBeenCalledTimes(1);
     expect(broadcastToChannel.mock.calls[0][1].messageId).toBe('msg_bypass');
-    // The full-content persist is still skipped — a desynced map lacks
-    // toolName/input and a full write would clobber the record…
+    // But persist is skipped — a desynced map would clobber toolName/input.
     expect(updateMessageContent).not.toHaveBeenCalled();
-    // …but the status transition IS persisted field-level, so the DB doesn't
-    // stay on 'pending' forever (permission widget must survive a reload).
-    expect(updateMessageContentFields).toHaveBeenCalledTimes(1);
-    const [msgId, fields] = updateMessageContentFields.mock.calls[0] as unknown as [string, Record<string, unknown>];
-    expect(msgId).toBe('msg_bypass');
-    expect(fields.status).toBe('pending_permission');
-    expect(fields.permissionRequestId).toBe('perm_1');
-    expect(fields.appId).toBe('app_1');
-    // Never part of a field-level write:
-    expect(fields).not.toHaveProperty('toolName');
-    expect(fields).not.toHaveProperty('input');
   });
 
   it('drops silently when the tool is untracked AND no options.messageId', async () => {

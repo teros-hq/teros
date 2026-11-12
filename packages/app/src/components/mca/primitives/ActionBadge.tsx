@@ -12,11 +12,9 @@ import {
   Trash2,
   UserMinus,
   UserPlus,
-} from './icons';
-import type React from 'react';
-import { Text, XStack } from 'tamagui';
-import type { BadgePalette } from './colors';
-import { useColors } from './useColors';
+} from "./icons"
+import type React from "react"
+import { Badge, type BadgeVariant, useBadgeColor } from "./Badge"
 
 /**
  * Verbos canónicos de acción soportados. Cubren el catálogo de operaciones
@@ -25,55 +23,53 @@ import { useColors } from './useColors';
  * de la tabla se pinta como 'gray' con el texto literal.
  */
 export type ActionVerb =
-  | 'created'
-  | 'updated'
-  | 'deleted'
-  | 'archived'
-  | 'renamed'
-  | 'installed'
-  | 'uninstalled'
-  | 'granted'
-  | 'revoked'
-  | 'added'
-  | 'removed'
-  | 'enabled'
-  | 'disabled';
+  | "created"
+  | "updated"
+  | "deleted"
+  | "archived"
+  | "renamed"
+  | "installed"
+  | "uninstalled"
+  | "granted"
+  | "revoked"
+  | "added"
+  | "removed"
+  | "enabled"
+  | "disabled"
 
 interface ActionBadgeProps {
-  verb: ActionVerb;
-  size?: 'sm' | 'md';
+  verb: ActionVerb
+  size?: "sm" | "md"
 }
 
-type PaletteKey = 'ok' | 'err' | 'warn' | 'info' | 'gray';
-
 interface VerbStyle {
-  text: string;
-  paletteKey: PaletteKey;
-  Icon: React.ComponentType<{ size?: number; color?: string }>;
+  text: string
+  variant: BadgeVariant
+  Icon: React.ComponentType<{ size?: number; color?: string }>
 }
 
 const VERB_STYLE: Record<ActionVerb, VerbStyle> = {
   // positive (creation / link / enablement)
-  created: { text: 'created', paletteKey: 'ok', Icon: Check },
-  installed: { text: 'installed', paletteKey: 'ok', Icon: ArrowDownToLine },
-  granted: { text: 'granted', paletteKey: 'ok', Icon: Link2 },
-  added: { text: 'added', paletteKey: 'ok', Icon: UserPlus },
-  enabled: { text: 'enabled', paletteKey: 'info', Icon: Power },
+  created: { text: "created", variant: "success", Icon: Check },
+  installed: { text: "installed", variant: "success", Icon: ArrowDownToLine },
+  granted: { text: "granted", variant: "success", Icon: Link2 },
+  added: { text: "added", variant: "success", Icon: UserPlus },
+  enabled: { text: "enabled", variant: "info", Icon: Power },
 
   // mutation
-  updated: { text: 'updated', paletteKey: 'warn', Icon: Edit3 },
-  renamed: { text: 'renamed', paletteKey: 'warn', Icon: Pencil },
+  updated: { text: "updated", variant: "warning", Icon: Edit3 },
+  renamed: { text: "renamed", variant: "warning", Icon: Pencil },
 
   // destructive
-  deleted: { text: 'deleted', paletteKey: 'err', Icon: Trash2 },
-  uninstalled: { text: 'uninstalled', paletteKey: 'err', Icon: Ban },
-  revoked: { text: 'revoked', paletteKey: 'err', Icon: Link2Off },
-  removed: { text: 'removed', paletteKey: 'err', Icon: UserMinus },
+  deleted: { text: "deleted", variant: "error", Icon: Trash2 },
+  uninstalled: { text: "uninstalled", variant: "error", Icon: Ban },
+  revoked: { text: "revoked", variant: "error", Icon: Link2Off },
+  removed: { text: "removed", variant: "error", Icon: UserMinus },
 
   // inert / paused
-  archived: { text: 'archived', paletteKey: 'gray', Icon: Archive },
-  disabled: { text: 'disabled', paletteKey: 'gray', Icon: PowerOff },
-};
+  archived: { text: "archived", variant: "gray", Icon: Archive },
+  disabled: { text: "disabled", variant: "gray", Icon: PowerOff },
+}
 
 /**
  * Badge semántica para el verbo de una acción ejecutada (create/update/
@@ -87,29 +83,16 @@ const VERB_STYLE: Record<ActionVerb, VerbStyle> = {
  *   <ActionBadge verb="created" />
  *   <ActionBadge verb="archived" size="md" />
  */
-export function ActionBadge({ verb, size = 'sm' }: ActionBadgeProps) {
-  const c = useColors();
-  const style = VERB_STYLE[verb];
-  const palette: BadgePalette[PaletteKey] = c.badges[style.paletteKey];
-  const fontSize = size === 'md' ? 10 : 9;
-  const padY = size === 'md' ? 2 : 1;
-  const padX = size === 'md' ? 6 : 5;
-  const iconSize = size === 'md' ? 11 : 9;
-  const { Icon } = style;
-
+export function ActionBadge({ verb, size = "sm" }: ActionBadgeProps) {
+  const style = VERB_STYLE[verb]
+  const fg = useBadgeColor(style.variant)
+  const { Icon } = style
   return (
-    <XStack
-      backgroundColor={palette.bg}
-      paddingHorizontal={padX}
-      paddingVertical={padY}
-      borderRadius={3}
-      alignItems="center"
-      gap={4}
-    >
-      <Icon size={iconSize} color={palette.text} />
-      <Text color={palette.text} fontSize={fontSize} fontFamily="$mono" textTransform="uppercase">
-        {style.text}
-      </Text>
-    </XStack>
-  );
+    <Badge
+      text={style.text}
+      variant={style.variant}
+      cap
+      icon={<Icon size={size === "md" ? 12 : 10} color={fg} />}
+    />
+  )
 }

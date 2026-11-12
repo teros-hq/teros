@@ -251,6 +251,10 @@ export function AppPermissions({
 }: AppPermissionsProps) {
   const c = useColors();
   const [expanded, setExpanded] = useState(false);
+  // Hook call hoisted above the `if (loading)` early-return below: hooks must
+  // run unconditionally, or a loading→loaded transition changes the hook count
+  // and throws "Rendered more hooks than during the previous render".
+  const theme = useAppTheme();
 
   if (loading) {
     return (
@@ -299,7 +303,7 @@ export function AppPermissions({
               width: 36,
               height: 36,
               borderRadius: 8,
-              backgroundColor: surface[useAppTheme()].bgInner,
+              backgroundColor: surface[theme].bgInner,
               justifyContent: 'center',
               alignItems: 'center',
             }}

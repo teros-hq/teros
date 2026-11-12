@@ -6,7 +6,7 @@ import type { Db } from 'mongodb'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { ProjectService } from '../../../services/project-service'
-import { canAccessWorkspace } from '../../../auth/workspace-access'
+import { canWriteWorkspace } from '../../../auth/workspace-access'
 
 interface CreateProjectData {
   workspaceId: string
@@ -31,7 +31,7 @@ export function createCreateProjectHandler(projectService: ProjectService, db: D
       throw new HandlerError('MISSING_BOARD_ID', 'boardId is required')
     }
 
-    if (!(await canAccessWorkspace(db, ctx.userId, workspaceId))) {
+    if (!(await canWriteWorkspace(db, ctx.userId, workspaceId))) {
       throw new HandlerError('FORBIDDEN', 'No access to this workspace')
     }
 

@@ -48,6 +48,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool("-health-check", {
+  annotations: { readOnlyHint: true },
   description: "Internal health check tool. Verifies OAuth credentials and connectivity to Figma.",
   parameters: { type: "object", properties: {} },
   handler: async (_args, context) => {

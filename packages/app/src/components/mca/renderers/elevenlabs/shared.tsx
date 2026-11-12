@@ -21,7 +21,7 @@ function getBackendUrl(): string {
 
 // ElevenLabs icon from backend static — lazy to avoid module-scope initialization error
 export function getElevenLabsIcon(): string {
-  return `${getBackendUrl()}/static/elevenlabs-icon.png`;
+  return `${getBackendUrl()}/static/mcas/mca.elevenlabs/icon.svg`;
 }
 
 // ============================================================================

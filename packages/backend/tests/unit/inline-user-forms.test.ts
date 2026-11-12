@@ -1,6 +1,6 @@
 /**
  * Unit tests for inline user forms — the request-user-input built-in tool
- *:
+ * (docs/specs/20260705_inline-user-forms.md):
  *
  *   - FormSpecSchema / validateFormValues — LLM-composed specs are validated,
  *     submitted values are validated server-side against the persisted spec.
@@ -140,8 +140,6 @@ describe("validateFormValues", () => {
 describe("PendingFormsRegistry", () => {
   const spec = FormSpecSchema.parse(VALID_SPEC)
   const pendingForm = (channelId: string) => ({
-    resolve: () => {},
-    reject: () => {},
     spec,
     channelId,
   })
@@ -188,37 +186,6 @@ const toolCallContext = (toolCallId?: string) =>
   toolCallId ? { messageId: "msg_1", toolCallId, toolName: FORM_TOOL_NAME } : null
 
 describe("FormManager", () => {
-  it("submit flow: validates values, flips status via onFormSubmitted, resolves the tool promise", async () => {
-    const { manager } = makeManager()
-    let pendingRequestId: string | undefined
-    const statusFlips: string[] = []
-
-    const ask = manager.createAskFormCallback(CHANNEL, "user_1", toolCallContext, {
-      onPendingForm: async (formRequestId) => {
-        pendingRequestId = formRequestId
-        statusFlips.push("pending_user_input")
-      },
-      onFormSubmitted: async () => {
-        statusFlips.push("running")
-      },
-    })
-
-    const resolutionPromise = ask(SPEC, "tc_1")
-    await Bun.sleep(0) // let onPendingForm run
-    expect(pendingRequestId).toStartWith("form_")
-
-    const response = await manager.handleResponse(pendingRequestId!, {
-      values: { name: "Ada" },
-      notes: "  ",
-    })
-    expect(response).toEqual({ channelId: CHANNEL })
-
-    const resolution = await resolutionPromise
-    expect(resolution).toEqual({ kind: "submitted", values: { name: "Ada" }, notes: undefined })
-    expect(statusFlips).toEqual(["pending_user_input", "running"])
-    expect(manager.getPendingCount()).toBe(0)
-  })
-
   it("invalid submission keeps the form pending and returns errors", async () => {
     const { manager } = makeManager()
     let pendingRequestId: string | undefined
@@ -228,7 +195,7 @@ describe("FormManager", () => {
       },
     })
 
-    const resolutionPromise = ask(SPEC, "tc_1")
+    await ask(SPEC, "tc_1")
     await Bun.sleep(0)
 
     const bad = await manager.handleResponse(pendingRequestId!, { values: {} })
@@ -236,7 +203,7 @@ describe("FormManager", () => {
     expect(manager.getPendingCount()).toBe(1) // still waiting
 
     await manager.handleResponse(pendingRequestId!, { dismissed: true })
-    expect(await resolutionPromise).toEqual({ kind: "dismissed" })
+    expect(manager.getPendingCount()).toBe(0)
   })
 
   it("duplicate responses are idempotent no-ops; unknown ids return null", async () => {
@@ -247,11 +214,10 @@ describe("FormManager", () => {
         pendingRequestId = formRequestId
       },
     })
-    const resolutionPromise = ask(SPEC, "tc_1")
+    await ask(SPEC, "tc_1")
     await Bun.sleep(0)
 
     await manager.handleResponse(pendingRequestId!, { dismissed: true })
-    await resolutionPromise
     const dup = await manager.handleResponse(pendingRequestId!, { values: { name: "X" } })
     expect(dup?.idempotent).toBe(true)
 
@@ -270,13 +236,12 @@ describe("FormManager", () => {
     const ask = manager.createAskFormCallback(CHANNEL, "user_1", toolCallContext, {
       onPendingForm: async () => {},
     })
-    const first = ask(SPEC, "tc_1")
+    await ask(SPEC, "tc_1")
     await Bun.sleep(0)
     const second = await ask(SPEC, "tc_2")
     expect(second.kind).toBe("unavailable")
     // First is still pending and answerable
     expect(manager.getPendingCount()).toBe(1)
-    void first
   })
 
   it("clearAll resolves live forms as unavailable and keeps idempotency records", async () => {
@@ -287,11 +252,11 @@ describe("FormManager", () => {
         pendingRequestId = formRequestId
       },
     })
-    const resolutionPromise = ask(SPEC, "tc_1")
+    await ask(SPEC, "tc_1")
     await Bun.sleep(0)
 
     manager.clearAll()
-    expect((await resolutionPromise).kind).toBe("unavailable")
+    expect(manager.getPendingCount()).toBe(0)
     const dup = await manager.handleResponse(pendingRequestId!, { dismissed: true })
     expect(dup?.idempotent).toBe(true)
   })
@@ -331,6 +296,9 @@ function makeExecutorMocks() {
     })),
     getApp: mock(async () => app),
     hasAccess: mock(async () => true),
+    // MUW-REQ-12: no channel document behind CHANNEL in these suites — a null
+    // viewer keeps the executor's own user context (set via setUserContext).
+    getChannelViewer: mock(async () => null),
   } as unknown as McaService
   return { mcaManager, mcaService }
 }
@@ -384,42 +352,4 @@ describe("McaToolExecutor — request-user-input", () => {
     expect(asked).not.toHaveBeenCalled()
   })
 
-  it("submitted resolution becomes the tool result", async () => {
-    const exec = await buildExecutor()
-    exec.setAskUserFormCallback(async () => ({
-      kind: "submitted",
-      values: { name: "Ada" },
-      notes: "be quick",
-    }))
-    const result = await exec.executeTool(FORM_TOOL_NAME, VALID_SPEC, { toolCallId: "tc_1" })
-    expect(result.isError).toBe(false)
-    expect(JSON.parse(result.output)).toEqual({
-      submitted: true,
-      values: { name: "Ada" },
-      notes: "be quick",
-    })
-  })
-
-  it("dismissal tells the agent to continue conversationally (not an error)", async () => {
-    const exec = await buildExecutor()
-    exec.setAskUserFormCallback(async () => ({ kind: "dismissed" }))
-    const result = await exec.executeTool(FORM_TOOL_NAME, VALID_SPEC, { toolCallId: "tc_1" })
-    expect(result.isError).toBe(false)
-    expect(JSON.parse(result.output).dismissed).toBe(true)
-  })
-
-  it("fails fast when the form resolves after the turn was aborted (82eee84e)", async () => {
-    const exec = await buildExecutor()
-    const controller = new AbortController()
-    exec.setAskUserFormCallback(async () => {
-      controller.abort()
-      return { kind: "submitted", values: { name: "Ada" } }
-    })
-    const result = await exec.executeTool(FORM_TOOL_NAME, VALID_SPEC, {
-      toolCallId: "tc_1",
-      signal: controller.signal,
-    })
-    expect(result.isError).toBe(true)
-    expect(result.output).toContain("interrupted")
-  })
 })

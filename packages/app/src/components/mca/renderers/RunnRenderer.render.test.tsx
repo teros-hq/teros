@@ -1,13 +1,10 @@
 /**
  * Render test for the Runn renderer (TER-635).
  *
- * Mordedura: the header text is composed from the imperative TOOL_LABELS via
- * `inferTenseForms`/`tenseByStatus`. If a label regresses to a noun (e.g.
- * "Projects"), the composer produces "Projectsed" and these asserts fail — that
- * is the exact bug class this test guards. We also assert the health verdict is
- * parsed into the header badge, and that the defensive `{ structuredContent }`
- * wrapper is tolerated. The expanded body (EntityRows / DualEntity) is validated
- * by the live smoke — it is collapsed by default here.
+ * Mordedura: the header text is the static TOOL_LABELS string. We also assert
+ * the health verdict is parsed into the header badge, and that the defensive
+ * `{ structuredContent }` wrapper is tolerated. The expanded body (EntityRows /
+ * DualEntity) is validated by the live smoke — it is collapsed by default here.
  */
 
 import { describe, expect, it } from "vitest"
@@ -51,7 +48,7 @@ describe("RunnRenderer — header tense composition", () => {
         nextCursor: null,
       }),
     })
-    expect(getByText("Listed projects")).toBeTruthy()
+    expect(getByText("List projects")).toBeTruthy()
   })
 
   it("list-projects tolerates the legacy { structuredContent } wrapper", () => {
@@ -60,7 +57,7 @@ describe("RunnRenderer — header tense composition", () => {
       status: "completed",
       output: wrapped({ items: [{ id: 1, name: "Apollo" }], total: 1 }),
     })
-    expect(getByText("Listed projects")).toBeTruthy()
+    expect(getByText("List projects")).toBeTruthy()
   })
 
   it("list-projects with a clientId filter shows the contextual description", () => {
@@ -73,26 +70,26 @@ describe("RunnRenderer — header tense composition", () => {
     expect(getByText("Projects (client #5)")).toBeTruthy()
   })
 
-  it('create-project composes "Created project"', () => {
+  it('create-project shows the static label', () => {
     const { getByText } = renderTool({
       toolName: "runn-create-project",
       status: "completed",
       output: out({ id: 9, name: "Apollo", clientId: 5 }),
     })
-    expect(getByText("Created project")).toBeTruthy()
+    expect(getByText("Create project")).toBeTruthy()
   })
 
-  it('update-project composes "Updated project"', () => {
+  it('update-project shows the static label', () => {
     const { getByText } = renderTool({
       toolName: "runn-update-project",
       status: "completed",
       input: { projectId: 9, name: "Apollo 2" },
       output: out({ id: 9, name: "Apollo 2" }),
     })
-    expect(getByText("Updated project")).toBeTruthy()
+    expect(getByText("Update project")).toBeTruthy()
   })
 
-  it('create-assignment composes "Created assignment"', () => {
+  it('create-assignment shows the static label', () => {
     const { getByText } = renderTool({
       toolName: "runn-create-assignment",
       status: "completed",
@@ -113,41 +110,41 @@ describe("RunnRenderer — header tense composition", () => {
         isBillable: true,
       }),
     })
-    expect(getByText("Created assignment")).toBeTruthy()
+    expect(getByText("Create assignment")).toBeTruthy()
   })
 
-  it('delete-assignment composes "Deleted assignment"', () => {
+  it('delete-assignment shows the static label', () => {
     const { getByText } = renderTool({
       toolName: "runn-delete-assignment",
       status: "completed",
       input: { assignmentId: 77 },
       output: out({ success: true, assignmentId: 77 }),
     })
-    expect(getByText("Deleted assignment")).toBeTruthy()
+    expect(getByText("Delete assignment")).toBeTruthy()
   })
 
-  it("get-project running shows present tense, no crash without output", () => {
+  it("get-project running shows the static label, no crash without output", () => {
     const { getByText } = renderTool({ toolName: "runn-get-project", status: "running" })
-    expect(getByText(/Getting project/)).toBeTruthy()
+    expect(getByText(/Get project/)).toBeTruthy()
   })
 
-  it("get-project failed composes the failure tense", () => {
+  it("get-project failed shows the static label", () => {
     const { getByText } = renderTool({
       toolName: "runn-get-project",
       status: "failed",
       input: { projectId: 9 },
       error: "boom",
     })
-    expect(getByText(/Failed to get project/)).toBeTruthy()
+    expect(getByText(/Get project/)).toBeTruthy()
   })
 
-  it('get-project pending_permission composes "Wants to get project"', () => {
+  it('get-project pending_permission shows the static label', () => {
     const { getByText } = renderTool({
       toolName: "runn-get-project",
       status: "pending_permission",
       input: { projectId: 9 },
     })
-    expect(getByText(/Wants to get project/)).toBeTruthy()
+    expect(getByText(/Get project/)).toBeTruthy()
   })
 })
 

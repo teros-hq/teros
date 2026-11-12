@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react"
 
 /**
  * Stub for `react-native-render-html` in render tests (TER-461).
@@ -20,3 +20,23 @@ const RenderHtml = (props: { source?: { html?: string }; children?: ReactNode })
 }
 
 export default RenderHtml
+
+/** Mirrors the library export so components can register brand fonts. */
+export const defaultSystemFonts: string[] = []
+
+/**
+ * Minimal TNodeRenderer seam (type-in renderers import it to render the
+ * settled prefix through the library's default path). Recursively renders
+ * text data; the marker node (data '') renders as nothing.
+ */
+export const TNodeRenderer = ({ tnode }: any) => {
+  if (!tnode) return null
+  if (tnode.type === "text") return <>{tnode.data ?? ""}</>
+  return (
+    <>
+      {(tnode.children ?? []).map((c: any, i: number) => (
+        <TNodeRenderer key={i} tnode={c} />
+      ))}
+    </>
+  )
+}

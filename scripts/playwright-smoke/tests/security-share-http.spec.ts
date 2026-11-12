@@ -1,23 +1,25 @@
 /**
- * Negative authz — HTTP POST /api/share (FileShareApi, fetch + Bearer token).
+ * Negative authz — share.create over the WS `share` domain (FileShareApi).
  *
  * TER-480 / #172 added the workspace gate to the WS path (file.share →
- * resolveAuthorizedWorkspace) but NOT to this HTTP path, which is the one the frontend
- * actually uses (FileShareApi.share). A stranger could publish a file from a FOREIGN
- * workspace by passing someone else's channelId → cross-workspace exfiltration (IDOR).
- * TER-551 mirrors the gate in http-share-handler.ts:handleCreate.
+ * resolveAuthorizedWorkspace). 2026-10-21: the REST /api/share endpoints were
+ * REMOVED (WS-first architecture rule) and share management moved to the WS
+ * `share` domain (share.create/get/revoke), which keeps the same gate —
+ * resolveAuthorizedWorkspace → canAccessWorkspace.
  *
- * fileShare.share uses fetch()+Bearer (no WebSocket), so this exercises the HTTP path —
- * NOT the WS one already covered by security-authz.spec. Strong shape: owner-OK rules out
- * a not-found denial; user2's denial is unambiguously the authz gate.
+ * A stranger could otherwise publish a file from a FOREIGN workspace by passing
+ * someone else's channelId → cross-workspace exfiltration (IDOR). This spec
+ * now exercises the only remaining share path (the WS domain the UI uses).
+ * Strong shape: owner-OK rules out a not-found denial; user2's denial is
+ * unambiguously the authz gate.
  *
- * Mutation check: remove the `canAccessWorkspace` gate in handleCreate → user2's share
- * resolves (200) → the `stranger.ok === false` assertion goes red.
+ * Mutation check: remove the `canAccessWorkspace` gate in share/index.ts →
+ * user2's share resolves → the `stranger.ok === false` assertion goes red.
  */
 import { expect, test } from "../fixtures"
 import { evalTeros, getPrimaryIds } from "../helpers/teros"
 
-/** POST /api/share via the real client; captures success vs rejection. */
+/** share.create via the real client (WS); captures success vs rejection. */
 function attemptShare(
   page: import("@playwright/test").Page,
   filePath: string,
@@ -37,8 +39,8 @@ function attemptShare(
   )
 }
 
-test.describe("security — HTTP /api/share cross-workspace @security", () => {
-  test("user2 no puede publicar un archivo del workspace de user1 vía POST /api/share", async ({
+test.describe("security — share.create (WS) cross-workspace @security", () => {
+  test("user2 no puede publicar un archivo del workspace de user1 vía share.create", async ({
     terosPage,
     user2Page,
   }) => {
@@ -62,7 +64,7 @@ test.describe("security — HTTP /api/share cross-workspace @security", () => {
       const stranger = await attemptShare(user2Page, `/intruso-${Date.now()}.html`, channelId)
       expect(
         stranger.ok,
-        `user2 NO debe poder publicar en el workspace de user1 (IDOR /api/share). err=${stranger.err}`,
+        `user2 NO debe poder publicar en el workspace de user1 (IDOR share.create). err=${stranger.err}`,
       ).toBe(false)
     } finally {
       await evalTeros(

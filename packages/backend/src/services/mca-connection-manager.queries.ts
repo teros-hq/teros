@@ -49,7 +49,12 @@ export async function handleQueryConversations(
 ): Promise<void> {
   console.log(`[McaConnectionManager] query_conversations (${action}) from ${appId}`);
 
-  const agentIdHint = (params as any)?.agentId as string | undefined;
+  // Extract agentId hint from params. Board-manager tools pass the calling
+  // agent's ID as `callerAgentId` (since `agentId` may refer to a different
+  // agent — e.g. the target of an assignment). Board-runner tools pass it
+  // directly as `agentId`. Check both.
+  const agentIdHint = (params as any)?.agentId as string | undefined
+    ?? (params as any)?.callerAgentId as string | undefined;
   const effectiveAgentId = await ctx.resolveEffectiveAgentId(connection, agentIdHint);
   console.log(`[McaConnectionManager] query_conversations effectiveAgentId=${effectiveAgentId} agentIdHint=${agentIdHint} (currentAgentId=${connection.currentAgentId})`);
 

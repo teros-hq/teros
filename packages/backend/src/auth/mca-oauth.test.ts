@@ -248,3 +248,53 @@ describe('OAUTH_PROVIDERS.google (regression — url-based path still works)', (
     expect(google.extraCredentials).toBeUndefined();
   });
 });
+
+describe('OAUTH_PROVIDERS.microsoft (admin-consent friendly)', () => {
+  const microsoft = OAUTH_PROVIDERS.microsoft;
+  if (!microsoft || microsoft.kind !== 'url-based') {
+    throw new Error('test setup: microsoft provider must be url-based');
+  }
+
+  test('declares email + name fields with UPN fallback', () => {
+    expect(microsoft.userInfoFields.email).toBe('mail');
+    expect(microsoft.userInfoFields.name).toBe('displayName');
+    expect(microsoft.emailFallbackFields).toEqual(['userPrincipalName']);
+  });
+
+  test('does NOT request Google-style offline access (prompt=consent breaks admin consent)', () => {
+    // Microsoft issues refresh tokens via the `offline_access` scope, already
+    // present in every Microsoft MCA manifest. `requestRefreshToken: true`
+    // would append `prompt=consent`, which forces an interactive user-consent
+    // screen on every login and ignores org-wide admin consent — blocking
+    // users in tenants where user consent is disabled.
+    expect(microsoft.requestRefreshToken).toBe(false);
+  });
+
+  test('customizeAuthorizeParams forces prompt=select_account (account picker)', () => {
+    const params = new URLSearchParams({
+      client_id: 'cid',
+      redirect_uri: 'https://example.com/callback',
+      response_type: 'code',
+      scope: 'openid profile email offline_access User.Read',
+      state: 'state-123',
+    });
+
+    microsoft.customizeAuthorizeParams?.(params);
+
+    // Single value, not appended twice
+    expect(params.get('prompt')).toBe('select_account');
+    expect(params.getAll('prompt')).toEqual(['select_account']);
+  });
+
+  test('customizeAuthorizeParams overwrites a pre-existing prompt value', () => {
+    const params = new URLSearchParams({ prompt: 'consent' });
+
+    microsoft.customizeAuthorizeParams?.(params);
+
+    expect(params.getAll('prompt')).toEqual(['select_account']);
+  });
+
+  test('does not declare slack-style extraCredentials', () => {
+    expect(microsoft.extraCredentials).toBeUndefined();
+  });
+});

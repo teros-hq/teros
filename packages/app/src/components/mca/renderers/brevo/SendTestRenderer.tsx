@@ -25,7 +25,7 @@ export function SendTestRenderer({ input, status, output, error, appIcon }: Tool
   return (
     <ToolCallCard
       status={status}
-      verb="Send test"
+      description="Send test"
       iconUri={appIcon}
       animateExpand
       defaultExpanded={status === 'completed'}

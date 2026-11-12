@@ -1,29 +1,23 @@
 {
   "$schema": "https://teros.ai/schemas/mca-tools.json",
   "mcaId": "mca.google.calendar",
-  "version": "2.0.0",
-  "generated": "2026-04-27T00:00:00Z",
   "tools": [
     {
       "name": "-health-check",
       "description": "Internal health check. Verifies Google OAuth credentials and Calendar API connectivity.",
-      "annotations": {
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-list-calendars",
       "description": "List the user calendars (primary, secondary, shared). Returns curated rows { id, summary, timeZone, primary, accessRole, backgroundColor, ... }. Params: limit (1-250, def 100), cursor, fields?, includeRaw.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -51,26 +45,76 @@
             "description": "Return raw Google response. Default false."
           }
         }
-      }
-    },
-    {
-      "name": "calendar-list-events",
-      "description": "List events in a date range. Returns curated rows with attendee responseStatus, organizer, colorId, htmlLink, hangoutLink, recurrence. Params: startDate, endDate, calendarId?, limit (1-2500, def 25), cursor, timeZone?, fields?, includeRaw.",
+      },
       "annotations": {
         "readOnlyHint": true,
         "version": "2.0.0",
         "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-get-settings",
+      "description": "Read the user Calendar preferences (timezone, locale, weekStart, dateFieldOrder, autoAddHangouts, useKeyboardShortcuts, ...). If `setting` is passed returns that single value; otherwise returns the full map keyed by setting id. Settings have global scope across the user's Calendar.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "setting": {
+            "type": "string",
+            "description": "Optional id of a single setting (e.g. \"timezone\", \"locale\", \"weekStart\"). Omit to fetch all."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
       },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-get-colors",
+      "description": "Return the official Google Calendar color palette: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. Use this to validate event colorIds (1..11) at runtime instead of hardcoding hex values.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-list-events",
+      "description": "List events in a date range. Returns curated rows with attendee responseStatus, organizer, colorId, htmlLink, hangoutLink, recurrence, eventType, and Sprint-4 specialized properties when applicable. Supports filtering by `eventTypes` (default | focusTime | outOfOffice | workingLocation | birthday | fromGmail) and incremental sync via `syncToken`. NOTE: when `syncToken` is passed, startDate/endDate/eventTypes are exclusive — they will trigger an error from Google.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "startDate": {
             "type": "string",
-            "description": "Lower bound (inclusive) ISO 8601, e.g. \"2026-04-28T00:00:00Z\"."
+            "description": "Lower bound (inclusive) ISO 8601, e.g. \"2026-04-28T00:00:00Z\". Required unless using `syncToken`."
           },
           "endDate": {
             "type": "string",
-            "description": "Upper bound (exclusive) ISO 8601, e.g. \"2026-04-29T00:00:00Z\"."
+            "description": "Upper bound (exclusive) ISO 8601, e.g. \"2026-04-29T00:00:00Z\". Required unless using `syncToken`."
           },
           "calendarId": {
             "type": "string",
@@ -88,32 +132,45 @@
             "type": "string",
             "description": "IANA timezone (e.g. \"Europe/Madrid\"). Default: calendar timezone."
           },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "default",
+                "focusTime",
+                "outOfOffice",
+                "workingLocation",
+                "birthday",
+                "fromGmail"
+              ]
+            },
+            "description": "Filter by event type. E.g. [\"outOfOffice\"] to list only OOO. Mutually exclusive with `syncToken`."
+          },
+          "syncToken": {
+            "type": "string",
+            "description": "Token returned as `nextSyncToken` from a previous call. When passed, only events that changed since are returned (incremental sync). EXCLUSIVE with startDate/endDate/eventTypes."
+          },
           "fields": {
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Override default whitelist per row."
+            }
           },
           "includeRaw": {
-            "type": "boolean",
-            "description": "Return raw Google response. Default false."
+            "type": "boolean"
           }
-        },
-        "required": [
-          "startDate",
-          "endDate"
-        ]
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-get-event",
       "description": "Retrieve a single event by ID with full details (organizer, attendees with responseStatus, recurrence rule + parsed phrase, conferenceData, hangoutLink, htmlLink). Params: eventId, calendarId?, fields?, includeRaw.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -140,16 +197,16 @@
         "required": [
           "eventId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-search-events",
       "description": "Search events by free-text query (matches title, description, location, attendees). Returns curated rows with full attendee/organizer/recurrence/Meet details. Params: query, calendarId?, startDate?, endDate?, limit (1-2500, def 25), cursor, fields?, includeRaw.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -177,6 +234,21 @@
             "type": "string",
             "description": "Pagination cursor (Google events nextPageToken)."
           },
+          "eventTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "default",
+                "focusTime",
+                "outOfOffice",
+                "workingLocation",
+                "birthday",
+                "fromGmail"
+              ]
+            },
+            "description": "Optional filter by event type."
+          },
           "fields": {
             "type": "array",
             "items": {
@@ -192,16 +264,66 @@
         "required": [
           "query"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-list-instances",
+      "description": "List instances of a recurring event with their override metadata. Returns rows with `originalStartTime` so the renderer can flag instances that were moved/modified vs. the recurring rule. Cursor pagination via `pageToken`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string",
+            "description": "ID of the recurring (master) event whose instances to list."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Defaults to \"primary\"."
+          },
+          "timeMin": {
+            "type": "string",
+            "description": "Optional ISO 8601 lower bound (inclusive)."
+          },
+          "timeMax": {
+            "type": "string",
+            "description": "Optional ISO 8601 upper bound (exclusive)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max instances per page. Default 25, max 2500."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pagination cursor (Google nextPageToken)."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-create-event",
       "description": "Create a calendar event. Supports recurrence (RRULE), Google Meet via addConference, attendee notifications via sendUpdates, custom reminders, and per-event color. Returns curated event with hangoutLink + htmlLink. Params: summary, start, end, plus optional calendarId, description, location, attendees, recurrence, addConference, sendUpdates, reminders, colorId.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -311,16 +433,16 @@
           "start",
           "end"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-update-event",
       "description": "Patch an existing event. Attendee changes are explicit: addAttendees / removeAttendees merge with existing list, replaceAttendees overwrites everything (destructive). Supports updating recurrence, reminders, color, sendUpdates. Params: eventId required; all other fields optional. The handler issues at most ONE patch (events.get only runs when attendee merge is requested).",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -437,17 +559,16 @@
         "required": [
           "eventId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-delete-event",
       "description": "Delete an event by ID. Optional sendUpdates controls whether attendees receive a cancellation notice. Returns the structured operation result — the renderer composes any user-facing message.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable",
-        "irreversible": true
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -471,37 +592,104 @@
         "required": [
           "eventId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "irreversible": true,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
-      "name": "calendar-get-free-busy",
-      "description": "Check free/busy across one or more calendars. Returns curated rows [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}] — never the raw Google envelope. Params: startDate, endDate, calendarIds[], fields?, includeRaw.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
+      "name": "calendar-quick-add-event",
+      "description": "Create an event from natural language (\"Café con Antonio mañana 10am\"). Google parses the text into title + date/time. Returns the curated event including the parsed start/end. Useful for low-effort scheduling. Note: only the title and time are inferred — for attendees, recurrence, location or Meet, use create-event instead.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "startDate": {
+          "text": {
             "type": "string",
-            "description": "Lower bound (inclusive) ISO 8601."
+            "description": "Free-form description (e.g. \"lunch with Ana tomorrow 1pm\")."
           },
-          "endDate": {
+          "calendarId": {
             "type": "string",
-            "description": "Upper bound (exclusive) ISO 8601."
+            "description": "Defaults to \"primary\"."
           },
-          "calendarIds": {
+          "sendUpdates": {
+            "type": "string",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "description": "Notify potential attendees parsed from the text. Default \"none\"."
+          },
+          "fields": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Calendar IDs to query. Defaults to [\"primary\"]."
+            "description": "Override default whitelist on the returned event."
           },
-          "timeZone": {
+          "includeRaw": {
+            "type": "boolean",
+            "description": "Return raw Google response. Default false."
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-import-event",
+      "description": "Import an external event (with iCalUID) into a calendar. Creates a private copy — distinct from create-event because it preserves the original UID for cross-system reconciliation. Use when the agent receives a `.ics` file or an event reference from another system. Only events with eventType='default' may be imported.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "iCalUID": {
             "type": "string",
-            "description": "IANA timezone for response slots. Default: caller calendar timezone."
+            "description": "External UID from the original event (e.g. from a .ics file)."
+          },
+          "summary": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 start with timezone offset."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 end with timezone offset."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Defaults to \"primary\"."
+          },
+          "attendees": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "location": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "sendUpdates": {
+            "type": "string",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "description": "Default \"none\"."
           },
           "fields": {
             "type": "array",
@@ -510,24 +698,268 @@
             }
           },
           "includeRaw": {
-            "type": "boolean",
-            "description": "Return raw Google response. Default false."
+            "type": "boolean"
           }
         },
         "required": [
-          "startDate",
-          "endDate"
+          "iCalUID",
+          "summary",
+          "start",
+          "end"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-move-event",
+      "description": "Move an event from one calendar to another. RESTRICTION: only `eventType: \"default\"` is movable — birthday/focusTime/outOfOffice/workingLocation/fromGmail events return an error. Returns the moved event in the destination calendar shape.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "eventId": {
+            "type": "string"
+          },
+          "sourceCalendarId": {
+            "type": "string",
+            "description": "Calendar where the event currently lives."
+          },
+          "destinationCalendarId": {
+            "type": "string",
+            "description": "Target calendar ID."
+          },
+          "sendUpdates": {
+            "type": "string",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "description": "Notify attendees of the move. Default \"none\"."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "eventId",
+          "sourceCalendarId",
+          "destinationCalendarId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-create-focus-time",
+      "description": "Block focus time on the user calendar. Created with eventType: \"focusTime\" + transparency: \"opaque\" so the slot is not all-day. Optionally auto-declines conflicting invitations and sets Chat status to \"doNotDisturb\". Returns the curated event.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 start with timezone offset (e.g. \"2026-04-29T09:00:00+02:00\")."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 end with timezone offset."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Title. Defaults to \"Focus time\"."
+          },
+          "autoDeclineMode": {
+            "type": "string",
+            "enum": [
+              "declineNone",
+              "declineAllConflictingInvitations",
+              "declineOnlyNewConflictingInvitations"
+            ],
+            "description": "How to handle conflicting invitations during the focus time. Default \"declineNone\"."
+          },
+          "declineMessage": {
+            "type": "string",
+            "description": "Message sent automatically when an invitation is declined."
+          },
+          "chatStatus": {
+            "type": "string",
+            "enum": [
+              "available",
+              "doNotDisturb"
+            ],
+            "description": "Chat presence during focus time. Default \"doNotDisturb\"."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Defaults to \"primary\"."
+          },
+          "sendUpdates": {
+            "type": "string",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "description": "Notify attendees if any are added. Default \"none\"."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-create-out-of-office",
+      "description": "Mark the user as Out of Office. Created with eventType: \"outOfOffice\" + transparency: \"opaque\". By default declines all conflicting invitations with the provided message. NOT all-day; requires full ISO timestamps.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 start with timezone offset."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 end with timezone offset."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Title. Defaults to \"Out of office\"."
+          },
+          "autoDeclineMode": {
+            "type": "string",
+            "enum": [
+              "declineNone",
+              "declineAllConflictingInvitations",
+              "declineOnlyNewConflictingInvitations"
+            ],
+            "description": "Default \"declineAllConflictingInvitations\"."
+          },
+          "declineMessage": {
+            "type": "string",
+            "description": "Auto-reply sent when an invitation is declined while OOO."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Defaults to \"primary\"."
+          },
+          "sendUpdates": {
+            "type": "string",
+            "enum": [
+              "all",
+              "externalOnly",
+              "none"
+            ],
+            "description": "Notify attendees of attached invitations. Default \"none\"."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "end"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "calendar-set-working-location",
+      "description": "Mark the user working location for a date range. Created with eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\" so it does not block free/busy. May be all-day (single day only) or timed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "ISO 8601 start. Use \"YYYY-MM-DD\" for an all-day single-day entry."
+          },
+          "end": {
+            "type": "string",
+            "description": "ISO 8601 end. For all-day, the day AFTER (Google convention — exclusive). For timed, full ISO with offset."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "homeOffice",
+              "officeLocation",
+              "customLocation"
+            ],
+            "description": "Required. Drives which sub-properties are honored."
+          },
+          "officeLocation": {
+            "type": "object",
+            "description": "When type=officeLocation: { buildingId?, deskId?, floorId?, floorSectionId?, label? }. label is the human display name."
+          },
+          "customLocation": {
+            "type": "object",
+            "description": "When type=customLocation: { label? } — free-text location like \"Beach office\"."
+          },
+          "calendarId": {
+            "type": "string",
+            "description": "Defaults to \"primary\"."
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "includeRaw": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "end",
+          "type"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "2.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "calendar-respond-to-event",
       "description": "RSVP to a calendar event as the connected user. Reads the event's attendee list, locates the user (self), and patches their responseStatus to \"accepted\" / \"declined\" / \"tentative\" (optionally with a comment). If the user is not currently in the attendee list, they are added so the patch creates the entry. Returns {success, account, eventId, response, eventSummary}.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -565,42 +997,43 @@
           "eventId",
           "response"
         ]
-      }
-    },
-    {
-      "name": "calendar-quick-add-event",
-      "description": "Create an event from natural language (\"Café con Antonio mañana 10am\"). Google parses the text into title + date/time. Returns the curated event including the parsed start/end. Useful for low-effort scheduling. Note: only the title and time are inferred — for attendees, recurrence, location or Meet, use create-event instead.",
+      },
       "annotations": {
         "readOnlyHint": false,
         "version": "2.0.0",
         "stability": "stable"
-      },
+      }
+    },
+    {
+      "name": "calendar-get-free-busy",
+      "description": "Check free/busy across one or more calendars. Returns curated rows [{calendarId, busy: [{startISO, endISO, durationMinutes}], errors?}] — never the raw Google envelope. Params: startDate, endDate, calendarIds[], fields?, includeRaw.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "text": {
+          "startDate": {
             "type": "string",
-            "description": "Free-form description (e.g. \"lunch with Ana tomorrow 1pm\")."
+            "description": "Lower bound (inclusive) ISO 8601."
           },
-          "calendarId": {
+          "endDate": {
             "type": "string",
-            "description": "Defaults to \"primary\"."
+            "description": "Upper bound (exclusive) ISO 8601."
           },
-          "sendUpdates": {
+          "calendarIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Calendar IDs to query. Defaults to [\"primary\"]."
+          },
+          "timeZone": {
             "type": "string",
-            "enum": [
-              "all",
-              "externalOnly",
-              "none"
-            ],
-            "description": "Notify potential attendees parsed from the text. Default \"none\"."
+            "description": "IANA timezone for response slots. Default: caller calendar timezone."
           },
           "fields": {
             "type": "array",
             "items": {
               "type": "string"
-            },
-            "description": "Override default whitelist on the returned event."
+            }
           },
           "includeRaw": {
             "type": "boolean",
@@ -608,398 +1041,14 @@
           }
         },
         "required": [
-          "text"
+          "startDate",
+          "endDate"
         ]
-      }
-    },
-    {
-      "name": "calendar-create-focus-time",
-      "description": "Block focus time on the user calendar. Created with eventType: \"focusTime\" + transparency: \"opaque\" so the slot is not all-day. Optionally auto-declines conflicting invitations and sets Chat status to \"doNotDisturb\". Returns the curated event.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
       },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string",
-            "description": "ISO 8601 start with timezone offset."
-          },
-          "end": {
-            "type": "string",
-            "description": "ISO 8601 end with timezone offset."
-          },
-          "summary": {
-            "type": "string",
-            "description": "Title. Defaults to \"Focus time\"."
-          },
-          "autoDeclineMode": {
-            "type": "string",
-            "enum": [
-              "declineNone",
-              "declineAllConflictingInvitations",
-              "declineOnlyNewConflictingInvitations"
-            ],
-            "description": "How to handle conflicting invitations during the focus time. Default \"declineNone\"."
-          },
-          "declineMessage": {
-            "type": "string"
-          },
-          "chatStatus": {
-            "type": "string",
-            "enum": [
-              "available",
-              "doNotDisturb"
-            ],
-            "description": "Chat presence during focus time. Default \"doNotDisturb\"."
-          },
-          "calendarId": {
-            "type": "string",
-            "description": "Defaults to \"primary\"."
-          },
-          "sendUpdates": {
-            "type": "string",
-            "enum": [
-              "all",
-              "externalOnly",
-              "none"
-            ]
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "start",
-          "end"
-        ]
-      }
-    },
-    {
-      "name": "calendar-create-out-of-office",
-      "description": "Mark the user as Out of Office. Created with eventType: \"outOfOffice\" + transparency: \"opaque\". By default declines all conflicting invitations with the provided message. NOT all-day; requires full ISO timestamps.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string",
-            "description": "ISO 8601 start with timezone offset."
-          },
-          "end": {
-            "type": "string",
-            "description": "ISO 8601 end with timezone offset."
-          },
-          "summary": {
-            "type": "string",
-            "description": "Title. Defaults to \"Out of office\"."
-          },
-          "autoDeclineMode": {
-            "type": "string",
-            "enum": [
-              "declineNone",
-              "declineAllConflictingInvitations",
-              "declineOnlyNewConflictingInvitations"
-            ],
-            "description": "Default \"declineAllConflictingInvitations\"."
-          },
-          "declineMessage": {
-            "type": "string"
-          },
-          "calendarId": {
-            "type": "string"
-          },
-          "sendUpdates": {
-            "type": "string",
-            "enum": [
-              "all",
-              "externalOnly",
-              "none"
-            ]
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "start",
-          "end"
-        ]
-      }
-    },
-    {
-      "name": "calendar-set-working-location",
-      "description": "Mark the user working location for a date range. Created with eventType: \"workingLocation\" + visibility: \"public\" + transparency: \"transparent\" so it does not block free/busy. May be all-day (single day only) or timed.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "start": {
-            "type": "string"
-          },
-          "end": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "enum": [
-              "homeOffice",
-              "officeLocation",
-              "customLocation"
-            ],
-            "description": "Drives which sub-properties are honored."
-          },
-          "officeLocation": {
-            "type": "object",
-            "description": "When type=officeLocation: { buildingId?, deskId?, floorId?, floorSectionId?, label? }."
-          },
-          "customLocation": {
-            "type": "object",
-            "description": "When type=customLocation: { label? } — free-text location."
-          },
-          "calendarId": {
-            "type": "string"
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "start",
-          "end",
-          "type"
-        ]
-      }
-    },
-    {
-      "name": "calendar-get-settings",
-      "description": "Read the user Calendar preferences (timezone, locale, weekStart, dateFieldOrder, autoAddHangouts, useKeyboardShortcuts, ...). If `setting` is passed returns that single value; otherwise returns the full map keyed by setting id. Settings have global scope across the user's Calendar.",
       "annotations": {
         "readOnlyHint": true,
         "version": "2.0.0",
         "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "setting": {
-            "type": "string",
-            "description": "Optional id of a single setting (e.g. \"timezone\", \"locale\", \"weekStart\")."
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        }
-      }
-    },
-    {
-      "name": "calendar-get-colors",
-      "description": "Return the official Google Calendar color palette: { event: {colorId: {background, foreground}}, calendar: {colorId: {background, foreground}}, updated }. Use this to validate event colorIds (1..11) at runtime instead of hardcoding hex values.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        }
-      }
-    },
-    {
-      "name": "calendar-move-event",
-      "description": "Move an event from one calendar to another. RESTRICTION: only `eventType: \"default\"` is movable — birthday/focusTime/outOfOffice/workingLocation/fromGmail events return an error. Returns the moved event in the destination calendar shape.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "eventId": {
-            "type": "string"
-          },
-          "sourceCalendarId": {
-            "type": "string"
-          },
-          "destinationCalendarId": {
-            "type": "string"
-          },
-          "sendUpdates": {
-            "type": "string",
-            "enum": [
-              "all",
-              "externalOnly",
-              "none"
-            ]
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "eventId",
-          "sourceCalendarId",
-          "destinationCalendarId"
-        ]
-      }
-    },
-    {
-      "name": "calendar-import-event",
-      "description": "Import an external event (with iCalUID) into a calendar. Creates a private copy — distinct from create-event because it preserves the original UID for cross-system reconciliation. Use when the agent receives a `.ics` file or an event reference from another system.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "iCalUID": {
-            "type": "string"
-          },
-          "summary": {
-            "type": "string"
-          },
-          "start": {
-            "type": "string"
-          },
-          "end": {
-            "type": "string"
-          },
-          "calendarId": {
-            "type": "string"
-          },
-          "attendees": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "location": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "sendUpdates": {
-            "type": "string",
-            "enum": [
-              "all",
-              "externalOnly",
-              "none"
-            ]
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "iCalUID",
-          "summary",
-          "start",
-          "end"
-        ]
-      }
-    },
-    {
-      "name": "calendar-list-instances",
-      "description": "List instances of a recurring event with their override metadata. Returns rows with `originalStartTime` so the renderer can flag instances that were moved/modified vs. the recurring rule. Cursor pagination via `pageToken`.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "2.0.0",
-        "stability": "stable"
-      },
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "eventId": {
-            "type": "string"
-          },
-          "calendarId": {
-            "type": "string"
-          },
-          "timeMin": {
-            "type": "string"
-          },
-          "timeMax": {
-            "type": "string"
-          },
-          "limit": {
-            "type": "number"
-          },
-          "cursor": {
-            "type": "string"
-          },
-          "fields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "includeRaw": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "eventId"
-        ]
       }
     }
   ]

@@ -5,6 +5,7 @@
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { BoardService } from '../../../services/board-service'
+import { TASK_LIST_PROJECTION } from '../../../services/board-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
 import { enrichTasksWithColumns } from './_helpers'
 
@@ -38,7 +39,12 @@ export function createListTasksHandler(
       throw new HandlerError('FORBIDDEN', 'No access')
     }
 
-    const tasks = await boardService.listTasks(project.boardId, filters as any)
+    // TASK_LIST_PROJECTION strips detail-only fields (activity, progressNotes,
+    // instructions, input/output, workflow data) — same rationale as board.get.
+    const tasks = await boardService.listTasks(project.boardId, {
+      ...(filters as any),
+      projection: TASK_LIST_PROJECTION,
+    })
     const board = await boardService.getBoard(project.boardId)
     const enriched = enrichTasksWithColumns(tasks, board)
 

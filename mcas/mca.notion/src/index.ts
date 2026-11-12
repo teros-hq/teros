@@ -134,6 +134,7 @@ async function getUserSecretsOrEmpty(context: {
 }
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies OAuth credentials and connectivity.',
   parameters: {
     type: 'object',

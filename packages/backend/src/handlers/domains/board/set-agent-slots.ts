@@ -60,7 +60,7 @@ export function createSetAgentSlotsHandler(
 
     // Emit board.agent_slots_changed to subscribers
     if (boardSubscriptionService) {
-      const payload = { agentId, slots, playEnabled: rel.playEnabled }
+      const payload = { agentId, slots, playEnabled: rel.playEnabled, actorUserId: ctx.userId }
       boardSubscriptionService.notifySubscribers(project.boardId, {
         eventType: 'board.agent_slots_changed',
         boardId: project.boardId,

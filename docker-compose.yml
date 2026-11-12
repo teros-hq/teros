@@ -1,8 +1,16 @@
 services:
   # Qdrant Vector Database
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:latest@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
     restart: unless-stopped
+    # Same file-descriptor ceiling as mongodb. Qdrant keeps several files open
+    # per collection (segments, WAL); with ~1000 collections (agent_*_{type})
+    # Docker's default nofile=1024 is exhausted → "Too many open files
+    # (os error 24)" on collection creation and on full snapshots.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     ports:
       - "127.0.0.1:6333:6333"
     volumes:
@@ -12,7 +20,7 @@ services:
 
   # MongoDB Database (no auth for development)
   mongodb:
-    image: mongo:7.0
+    image: mongo:7.0@sha256:be3d6353f3ea3fd3d22e016d19da20fcd6937eda0739eb6d2aeed335baa60f90
     restart: unless-stopped
     ulimits:
       nofile:
@@ -35,7 +43,14 @@ services:
       start_period: 10s
 
   # Backend WebSocket Server
+  #
+  # Images: every release publishes ghcr.io/teros-hq/teros-backend and
+  # teros-frontend (multi-arch) from the public repo. `docker compose pull`
+  # fetches them and `up -d` runs them; TEROS_IMAGE_TAG pins a version
+  # (default: latest). The `build:` blocks stay for development: `up --build`
+  # rebuilds the same names from the working tree.
   backend:
+    image: ghcr.io/teros-hq/teros-backend:${TEROS_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: packages/backend/Dockerfile
@@ -59,7 +74,13 @@ services:
       VOLUMES_BASE_PATH: ${PWD}/data/volumes
       MONGODB_URI: mongodb://mongodb:27017
       MONGODB_DATABASE: teros
+      # Invalid writes to schema'd collections: warn (default) | error
+      DB_SCHEMA_WRITES: ${DB_SCHEMA_WRITES:-warn}
       STATIC_BASE_URL: http://localhost:10001/static
+      # Where the web app lives: OAuth redirects and, through it, the CORS
+      # allowlist (CORSAPP-REQ-4). Extra origins go in CORS_ALLOWED_ORIGINS.
+      APP_URL: ${APP_URL:-http://localhost:10002}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
       # All container operations go to the container-agent over HTTP (the backend
       # keeps its own docker.sock only for the terminal window's docker exec).
       CONTAINER_AGENT_URL: http://container-agent:10011
@@ -84,6 +105,8 @@ services:
   # the docker.sock and runs the MCA containers on the host daemon. No published
   # port: only the backend reaches it, over the compose network (container-agent:10011).
   container-agent:
+    # Same image as the backend, different entrypoint.
+    image: ghcr.io/teros-hq/teros-backend:${TEROS_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: packages/backend/Dockerfile
@@ -121,14 +144,19 @@ services:
       - teros-network
 
   # Frontend Web App
+  # The image is built once with no backend URL inside (WEBCFG-REQ-9/10): the
+  # URLs are container environment, written to /config.js at start by
+  # packages/app/docker/20-runtime-config.sh. They take the values of the same
+  # .env variables as before; with neither set, the web talks to its own origin.
   frontend:
+    image: ghcr.io/teros-hq/teros-frontend:${TEROS_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: packages/app/Dockerfile
-      args:
-        EXPO_PUBLIC_WS_URL: ${EXPO_PUBLIC_WS_URL:?EXPO_PUBLIC_WS_URL is required}
-        EXPO_PUBLIC_BACKEND_URL: ${EXPO_PUBLIC_BACKEND_URL:?EXPO_PUBLIC_BACKEND_URL is required}
     restart: unless-stopped
+    environment:
+      TEROS_BACKEND_URL: ${EXPO_PUBLIC_BACKEND_URL:-}
+      TEROS_WS_URL: ${EXPO_PUBLIC_WS_URL:-}
     ports:
       - "127.0.0.1:10002:80"
     depends_on:

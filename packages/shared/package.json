@@ -41,6 +41,20 @@
       "bun": "./src/memory/types.ts",
       "import": "./dist/memory/types.js",
       "types": "./dist/memory/types.d.ts"
+    },
+    "./evaluator": {
+      "bun": "./src/evaluator/index.ts",
+      "import": "./dist/evaluator/index.js",
+      "types": "./dist/evaluator/index.d.ts"
+    },
+    "./markdown": {
+      "types": "./src/markdown/index.ts",
+      "bun": "./src/markdown/index.ts",
+      "browser": "./src/markdown/index.ts",
+      "react-native": "./src/markdown/index.ts",
+      "import": "./dist/markdown/index.js",
+      "require": "./dist/markdown/index.js",
+      "default": "./dist/markdown/index.js"
     }
   },
   "scripts": {
@@ -50,6 +64,7 @@
   },
   "dependencies": {
     "@qdrant/js-client-rest": "^1.12.0",
+    "marked": "^17.0.1",
     "openai": "^4.0.0",
     "uuid": "^10.0.0",
     "zod": "^3.24.1"

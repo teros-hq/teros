@@ -74,6 +74,7 @@ function makeDb() {
   return {
     collection: () => ({
       countDocuments: async () => 0,
+      distinct: async () => [],
       aggregate: () => ({ toArray: async () => [] }),
       find: () => cursor([]),
       // list-users now enriches each user with billing (getActiveSubscription →
@@ -216,6 +217,28 @@ describe('admin.get-user', () => {
     expect(res.user.userId).toBe('t');
     expect(res.stats).toEqual({ apps: 0, sessions: 0, credentials: 0 });
   });
+
+  it("counts the apps of the workspaces the user owns (apps.ownerId is a workspaceId — MOD-1)", async () => {
+    const svc = makeUserService({ a: makeUser('a', 'admin'), t: makeUser('t', 'user') });
+    const appFilters: any[] = [];
+    const base = makeDb();
+    const db = {
+      collection: (name: string) => ({
+        ...base.collection(name),
+        distinct: async (_field: string, filter: any) =>
+          name === 'workspaces' && filter.ownerId === 't' ? ['work_t'] : [],
+        countDocuments: async (filter: any) => {
+          if (name === 'apps') appFilters.push(filter);
+          return name === 'apps' ? 2 : 0;
+        },
+      }),
+    } as any;
+
+    const res: any = await createGetUserHandler(svc, db)(ctx('a'), { targetUserId: 't' });
+
+    expect(appFilters).toEqual([{ ownerId: { $in: ['work_t'] } }]);
+    expect(res.stats.apps).toBe(2);
+  });
 });
 
 // ===========================================================================
@@ -224,38 +247,39 @@ describe('admin.get-user', () => {
 
 describe('admin.update-user-role', () => {
   const superSvc = () => makeUserService({ s: makeUser('s', 'super'), t: makeUser('t', 'user') });
+  const sess = () => makeSessionService();
 
   it('MISSING_FIELDS sin targetUserId o role', async () => {
-    await expect(createUpdateUserRoleHandler(superSvc())(ctx('s'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
-    await expect(createUpdateUserRoleHandler(superSvc())(ctx('s'), { role: 'admin' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
+    await expect(createUpdateUserRoleHandler(superSvc(), sess())(ctx('s'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
+    await expect(createUpdateUserRoleHandler(superSvc(), sess())(ctx('s'), { role: 'admin' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
   });
 
   it('INVALID_ROLE para un role fuera de user|admin|super', async () => {
     await expect(
-      createUpdateUserRoleHandler(superSvc())(ctx('s'), { targetUserId: 't', role: 'root' }),
+      createUpdateUserRoleHandler(superSvc(), sess())(ctx('s'), { targetUserId: 't', role: 'root' }),
     ).rejects.toMatchObject({ code: 'INVALID_ROLE' });
   });
 
   it('SELF_DEMOTION si el super se baja a sí mismo', async () => {
     await expect(
-      createUpdateUserRoleHandler(superSvc())(ctx('s'), { targetUserId: 's', role: 'admin' }),
+      createUpdateUserRoleHandler(superSvc(), sess())(ctx('s'), { targetUserId: 's', role: 'admin' }),
     ).rejects.toMatchObject({ code: 'SELF_DEMOTION' });
   });
 
   it('permite mantenerse super a sí mismo (boundary: self + role super OK)', async () => {
-    const res: any = await createUpdateUserRoleHandler(superSvc())(ctx('s'), { targetUserId: 's', role: 'super' });
+    const res: any = await createUpdateUserRoleHandler(superSvc(), sess())(ctx('s', { sessionToken: 'tok' }), { targetUserId: 's', role: 'super' });
     expect(res.user).toEqual({ userId: 's', role: 'super' });
   });
 
   it('USER_NOT_FOUND si updateRole devuelve null', async () => {
     const svc = makeUserService({ s: makeUser('s', 'super') }, { updateRole: mock(async () => null) });
     await expect(
-      createUpdateUserRoleHandler(svc)(ctx('s'), { targetUserId: 'ghost', role: 'admin' }),
+      createUpdateUserRoleHandler(svc, sess())(ctx('s', { sessionToken: 'tok' }), { targetUserId: 'ghost', role: 'admin' }),
     ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
   });
 
   it('happy: devuelve {user:{userId, role}}', async () => {
-    const res: any = await createUpdateUserRoleHandler(superSvc())(ctx('s'), { targetUserId: 't', role: 'admin' });
+    const res: any = await createUpdateUserRoleHandler(superSvc(), sess())(ctx('s', { sessionToken: 'tok' }), { targetUserId: 't', role: 'admin' });
     expect(res.user).toEqual({ userId: 't', role: 'admin' });
   });
 });
@@ -265,50 +289,52 @@ describe('admin.update-user-role', () => {
 // ===========================================================================
 
 describe('admin.update-user-status', () => {
+  const sess = () => makeSessionService();
+
   it('MISSING_FIELDS sin targetUserId o status', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
-    await expect(createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
-    await expect(createUpdateUserStatusHandler(svc)(ctx('a'), { status: 'active' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
+    await expect(createUpdateUserStatusHandler(svc, sess())(ctx('a'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
+    await expect(createUpdateUserStatusHandler(svc, sess())(ctx('a'), { status: 'active' })).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
   });
 
   it('INVALID_STATUS', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
     await expect(
-      createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 't', status: 'banned' }),
+      createUpdateUserStatusHandler(svc, sess())(ctx('a'), { targetUserId: 't', status: 'banned' }),
     ).rejects.toMatchObject({ code: 'INVALID_STATUS' });
   });
 
   it('SELF_SUSPENSION si un admin se suspende a sí mismo', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
     await expect(
-      createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 'a', status: 'suspended' }),
+      createUpdateUserStatusHandler(svc, sess())(ctx('a'), { targetUserId: 'a', status: 'suspended' }),
     ).rejects.toMatchObject({ code: 'SELF_SUSPENSION' });
   });
 
   it('USER_NOT_FOUND si el target no existe', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
     await expect(
-      createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 'ghost', status: 'active' }),
+      createUpdateUserStatusHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 'ghost', status: 'active' }),
     ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
   });
 
   it('FORBIDDEN: un admin no puede modificar a un super', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin'), s: makeUser('s', 'super') });
     await expect(
-      createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 's', status: 'suspended' }),
+      createUpdateUserStatusHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 's', status: 'suspended' }),
     ).rejects.toMatchObject({ code: 'FORBIDDEN' });
   });
 
   it('happy: admin suspende a un user → {user:{userId, status}} y llama updateStatus', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin'), t: makeUser('t', 'user') });
-    const res: any = await createUpdateUserStatusHandler(svc)(ctx('a'), { targetUserId: 't', status: 'suspended' });
+    const res: any = await createUpdateUserStatusHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 't', status: 'suspended' });
     expect(res.user).toEqual({ userId: 't', status: 'suspended' });
     expect(svc.updateStatus).toHaveBeenCalledWith('t', 'suspended');
   });
 
   it('super SÍ puede modificar a otro super', async () => {
     const svc = makeUserService({ s: makeUser('s', 'super'), s2: makeUser('s2', 'super') });
-    const res: any = await createUpdateUserStatusHandler(svc)(ctx('s'), { targetUserId: 's2', status: 'suspended' });
+    const res: any = await createUpdateUserStatusHandler(svc, sess())(ctx('s', { sessionToken: 'tok' }), { targetUserId: 's2', status: 'suspended' });
     expect(res.user).toEqual({ userId: 's2', status: 'suspended' });
   });
 });
@@ -318,29 +344,31 @@ describe('admin.update-user-status', () => {
 // ===========================================================================
 
 describe('admin.grant-access', () => {
+  const sess = () => makeSessionService();
+
   it('MISSING_FIELDS sin targetUserId', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
-    await expect(createGrantAccessHandler(svc)(ctx('a'), {})).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
+    await expect(createGrantAccessHandler(svc, sess())(ctx('a'), {})).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
   });
 
   it('USER_NOT_FOUND si el target no existe', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin') });
     await expect(
-      createGrantAccessHandler(svc)(ctx('a'), { targetUserId: 'ghost' }),
+      createGrantAccessHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 'ghost' }),
     ).rejects.toMatchObject({ code: 'USER_NOT_FOUND' });
   });
 
   it('ALREADY_GRANTED si ya tiene acceso (no llama grantAccess)', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin'), t: makeUser('t', 'user', { accessGranted: true }) });
     await expect(
-      createGrantAccessHandler(svc)(ctx('a'), { targetUserId: 't' }),
+      createGrantAccessHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 't' }),
     ).rejects.toMatchObject({ code: 'ALREADY_GRANTED' });
     expect(svc.grantAccess).not.toHaveBeenCalled();
   });
 
   it('happy: concede acceso → {user:{userId, accessGranted:true}}', async () => {
     const svc = makeUserService({ a: makeUser('a', 'admin'), t: makeUser('t', 'user') });
-    const res: any = await createGrantAccessHandler(svc)(ctx('a'), { targetUserId: 't' });
+    const res: any = await createGrantAccessHandler(svc, sess())(ctx('a', { sessionToken: 'tok' }), { targetUserId: 't' });
     expect(res.user).toEqual({ userId: 't', accessGranted: true });
   });
 });
@@ -362,6 +390,7 @@ function makeSessionService(over: any = {}) {
       session: { _id: { toHexString: () => 'imp_hex' }, expiresAt: new Date('2026-01-01T02:00:00Z') },
       token: 'imp_token',
     })),
+    hasValidStepUp: mock(() => true),
     revokeSession: mock(async () => {}),
     refreshSessionByHash: mock(async () => ({ token: 'restored_token' })),
     ...over,
@@ -376,15 +405,15 @@ describe('admin.impersonate', () => {
     await expect(h(ctx('s', { sessionToken: 'tok' }), {})).rejects.toMatchObject({ code: 'MISSING_FIELDS' });
   });
 
-  it('INTERNAL_ERROR si no hay sessionToken en el contexto', async () => {
+  it('STEP_UP_REQUIRED si no hay sessionToken en el contexto', async () => {
     const h = createImpersonateHandler(makeUserService(superUsers()), {} as any, makeSessionService());
-    await expect(h(ctx('s'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'INTERNAL_ERROR' });
+    await expect(h(ctx('s'), { targetUserId: 't' })).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
   });
 
-  it('SESSION_NOT_FOUND si la sesión del caller no existe', async () => {
+  it('STEP_UP_REQUIRED si la sesión del caller no existe', async () => {
     const sess = makeSessionService({ getByTokenHash: mock(async () => null) });
     const h = createImpersonateHandler(makeUserService(superUsers()), {} as any, sess);
-    await expect(h(ctx('s', { sessionToken: 'tok' }), { targetUserId: 't' })).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+    await expect(h(ctx('s', { sessionToken: 'tok' }), { targetUserId: 't' })).rejects.toMatchObject({ code: 'STEP_UP_REQUIRED' });
   });
 
   it('NESTED_IMPERSONATION si la sesión actual ya es de impersonación', async () => {

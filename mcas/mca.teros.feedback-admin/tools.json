@@ -4,10 +4,21 @@
   "tools": [
     {
       "name": "list-feedback",
-      "description": "List all feedback reports from users. Supports filtering by type, status, priority, and user.",
+      "description": "List all feedback reports from users. Filter by lifecycle view (tracking/future/dismissed/completed/all) or by exact type, status, priority, and user.",
       "inputSchema": {
         "type": "object",
         "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "all",
+              "tracking",
+              "future",
+              "dismissed",
+              "completed"
+            ],
+            "description": "Lifecycle view (optional): tracking = open/in_review/in_progress, future = postponed, dismissed, completed = resolved. Wins over status."
+          },
           "type": {
             "type": "string",
             "enum": [
@@ -22,10 +33,11 @@
               "open",
               "in_review",
               "in_progress",
+              "postponed",
               "resolved",
               "dismissed"
             ],
-            "description": "Filter by status (optional)"
+            "description": "Filter by exact status (optional)"
           },
           "priority": {
             "type": "string",
@@ -71,8 +83,70 @@
       }
     },
     {
+      "name": "create-feedback",
+      "description": "Register a bug report or suggestion that arrived OUTSIDE the feedback tool — e.g. mentioned in a conversation, an email, or word of mouth — so that triage has ONE inbox. Use source to record where it came from.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "bug",
+              "suggestion"
+            ],
+            "description": "Report type"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short summary"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed description, steps to reproduce, context"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "description": "Severity (optional)"
+          },
+          "reportedBy": {
+            "type": "string",
+            "description": "User ID of the person who reported it (or a placeholder like user_external)"
+          },
+          "reportedByName": {
+            "type": "string",
+            "description": "Display name of the reporter (e.g. \"Álvaro\")"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "conversation",
+              "email",
+              "manual"
+            ],
+            "description": "Where the report came from (default: manual)"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "description",
+          "reportedBy"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true
+      }
+    },
+    {
       "name": "update-status",
-      "description": "Update the status of a feedback report",
+      "description": "Update the status of a feedback report. Dismissing REQUIRES a dismissReason ('wont_fix' = valid but we won't do it, 'invalid' = not a real bug). Resolving emails the reporter unless notifyReporter is false.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -86,10 +160,23 @@
               "open",
               "in_review",
               "in_progress",
+              "postponed",
               "resolved",
               "dismissed"
             ],
-            "description": "New status"
+            "description": "New status. postponed parks it on the Future list; resolved marks it Completed and emails the reporter."
+          },
+          "dismissReason": {
+            "type": "string",
+            "enum": [
+              "wont_fix",
+              "invalid"
+            ],
+            "description": "Required when status is 'dismissed': wont_fix (product decision) or invalid (not a real bug)"
+          },
+          "notifyReporter": {
+            "type": "boolean",
+            "description": "When resolving: email the reporter that their item is done (default true)"
           },
           "message": {
             "type": "string",

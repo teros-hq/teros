@@ -25,9 +25,9 @@
     },
     "admin-infra-mca-kill": {
       "name": "admin-infra-mca-kill",
-      "description": "Kill a running MCA process by ID. Super admin only. DESTRUCTIVE — use with caution.",
+      "description": "Kill a running MCA process by appId. Super admin only. DESTRUCTIVE — use with caution.",
       "params": {
-        "id": "MCA process ID to kill",
+        "appId": "The appId of the MCA process to kill (e.g., 'app_51a87881c58035ce', from admin-infra-mca-status)",
         "confirm": "Must be true to confirm"
       }
     },
@@ -40,7 +40,10 @@
     },
     "admin-infra-mca-health": {
       "name": "admin-infra-mca-health",
-      "description": "Run health checks on all MCA processes. Super admin only."
+      "description": "Run health checks on all MCA processes. Super admin only. By default force-spawns dormant MCAs (standby) so the check is real — set forceSpawn:false for a cheap read-only snapshot of already-running MCAs.",
+      "params": {
+        "forceSpawn": "Spawn dormant (standby) MCAs before checking them. Default true. With false, dormant MCAs are reported as unknown and are NOT started."
+      }
     }
   },
   "name": "Teros Admin Infra",

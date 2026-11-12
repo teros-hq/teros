@@ -8,16 +8,14 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "get-my-tasks",
       "description": "List tasks assigned to this agent across all projects in the workspace. Returns: { agentId, tasks: [{ taskId, title, columnName, columnSlug, priority, projectName, running, stopRequested }], nextCursor? }. Paginated: default 50, max 200. Use get-my-task for the active task in the current conversation.",
-      "annotations": {
-        "readOnlyHint": true,
-        "version": "1.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -52,16 +50,16 @@
             "description": "Pagination cursor"
           }
         }
-      }
-    },
-    {
-      "name": "get-my-task",
-      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, columnName, columnSlug, running, stopRequested, projectName, progressNotes } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
+      },
       "annotations": {
         "readOnlyHint": true,
         "version": "1.0.0",
         "stability": "stable"
-      },
+      }
+    },
+    {
+      "name": "get-my-task",
+      "description": "Get the task linked to the current conversation (fast path). Returns: { channelId, task: { taskId, title, description, instructions, columnName, columnSlug, running, stopRequested, projectName, progressNotes, input, output } | null }. Check stopRequested at every turn; if true, finish current step, add a progress note, call block-my-task, and stop.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -77,22 +75,26 @@
             "description": "Return full task document"
           }
         }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "complete-my-task",
-      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "1.0.0",
-        "stability": "stable"
-      },
+      "description": "Mark your assigned task complete. Moves it to Review (ready for manager review). Works from any column including Blocked. Clears the running flag. Returns: { task: { ...TASK_FIELDS, columnSlug: \"review\" } }. If the task was created by a workflow, pass outputData with the artifact data produced by the task — it will be saved to workflowOutputData before the workflow engine advances.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "taskId": {
             "type": "string",
             "description": "Task ID"
+          },
+          "outputData": {
+            "type": "object",
+            "description": "Optional output data produced by the task (the deliverable). When the task is linked to a workflow execution, this data is validated against the output gate artifact schema before the workflow advances. Omit for non-workflow tasks."
           },
           "includeRaw": {
             "type": "boolean",
@@ -102,16 +104,17 @@
         "required": [
           "taskId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
       }
     },
     {
       "name": "block-my-task",
       "description": "Mark your assigned task blocked. Moves it to Blocked + adds a progress note with the reason. Clears running. Use for dependencies, missing info, or external blockers. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, columnSlug: \"blocked\" } }.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "1.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -132,17 +135,17 @@
           "taskId",
           "reason"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "cancel-my-task",
       "description": "Cancel your assigned task. Archives in-place (does not move column) + adds a progress note with the reason. Clears running. Use when the task is no longer needed, is a duplicate, or cannot be completed. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "1.0.0",
-        "stability": "stable",
-        "irreversible": true
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -163,16 +166,18 @@
           "taskId",
           "reason"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "irreversible": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {
       "name": "add-progress-note",
       "description": "Add a progress note to one of your assigned tasks. Notes are visible on the task detail and the board. Prefix with \"PROPUESTA: \" to suggest new tasks to the manager. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS } }.",
-      "annotations": {
-        "readOnlyHint": false,
-        "version": "1.0.0",
-        "stability": "stable"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -187,12 +192,22 @@
           "includeRaw": {
             "type": "boolean",
             "description": "Return full task document"
+          },
+          "reviewAction": {
+            "type": "boolean",
+            "description": "Set true ONLY when this note is a review verdict posted while reacting to a task_moved→Review event. Enables the single-flight claim so concurrent sessions of yours post at most one review note. Leave unset for normal progress reporting."
           }
         },
         "required": [
           "taskId",
           "text"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     }
   ]

@@ -23,3 +23,4 @@ export { MODELS_CLOUDFLARE } from './cloudflare';
 export { MODELS_FIREWORKS } from './fireworks';
 export { MODELS_TOGETHER } from './together';
 
+export { MODELS_HELMCODE } from './helmcode';

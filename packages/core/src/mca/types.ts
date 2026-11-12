@@ -38,6 +38,25 @@ export interface GitHubAppInfo {
   repositoryCount?: number;
   /** URL de gestión en github.com (revoke / change repos / change permissions). */
   manageUrl?: string;
+  installUrl?: string;
+  installations?: GitHubInstallationSummary[];
+  savedBranches?: GitHubSavedBranch[];
+}
+
+export interface GitHubSavedBranch {
+  repo: string;
+  branch: string;
+  savedAt: string;
+  url: string;
+}
+
+export interface GitHubInstallationSummary {
+  id: string;
+  account: string;
+  accountType?: string;
+  manageUrl?: string;
+  suspended?: boolean;
+  pendingPermissions?: string[];
 }
 
 /**
@@ -58,6 +77,12 @@ export interface ApiKeyField {
   hint?: string;
   /** Valor actual del campo (solo en extraFields de OAuth, poblado desde credenciales) */
   value?: string;
+  /**
+   * Si el user ya tiene este secret seteado (solo apikey fields). Nunca
+   * expone el valor — solo presencia — para que la UI (widget in-chat,
+   * panel de config) muestre "seteada / vacía" por variable.
+   */
+  isSet?: boolean;
 }
 
 /**

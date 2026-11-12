@@ -21,7 +21,6 @@ interface Agent {
   avatarUrl?: string
   maxSteps?: number
   context?: string
-  availableProviders?: string[]
   selectedProviderId?: string | null
   selectedModelId?: string | null
   appearance?: { color?: string; icon?: string }
@@ -61,19 +60,22 @@ export function createListAgentsHandler(
 
     let agentList: Agent[]
     if (workspaceId) {
-      // Fetch workspace owner to also include their superagents
-      const workspacesCol = db.collection('workspaces')
-      const workspace = await workspacesCol.findOne({ workspaceId } as any)
-      const workspaceOwnerId = (workspace as any)?.ownerId
-      console.log(`[agent.list] ctx.userId=${ctx.userId}, workspaceOwnerId=${workspaceOwnerId}`)
-
-      // Return workspace agents + the caller's / workspace owner's superagents.
+      // Return workspace agents + the caller's own superagents.
       // Shared predicate with channel-creation authz (services/channel-authz.ts)
       // so "agents you can list" and "agents you can start a channel with" can
       // never drift apart — a drift would silently re-open the SEC-2 A2 hole.
       agentList = await agents
-        .find(usableAgentFilter(ctx.userId, workspaceId, workspaceOwnerId) as Filter<Agent>)
+        .find(usableAgentFilter(ctx.userId, workspaceId) as Filter<Agent>)
         .toArray()
+
+      // Superagents first (no workspaceId), then workspace agents.
+      agentList.sort((a, b) => {
+        const aIsSuper = !a.workspaceId
+        const bIsSuper = !b.workspaceId
+        if (aIsSuper && !bIsSuper) return -1
+        if (!aIsSuper && bIsSuper) return 1
+        return 0
+      })
     } else {
       // No workspaceId: return only superagents (global agents)
       agentList = await agents.find({ ownerId: ctx.userId, workspaceId: { $in: [null, undefined] } } as any).toArray()
@@ -99,10 +101,14 @@ export function createListAgentsHandler(
           avatarUrl: buildAvatarUrl(avatarUrl),
           coreId: a.coreId,
           workspaceId: a.workspaceId,
-          availableProviders: a.availableProviders || [],
           selectedProviderId: a.selectedProviderId || null,
           selectedModelId: a.selectedModelId || null,
           appearance: a.appearance,
+          // System-capability toggles (v1.4.4) — same fields agent.update
+          // accepts and the agent.updated event echoes, so the UI can render
+          // the "System capabilities" section straight from agent.list.
+          disabledSystemApps: a.disabledSystemApps ?? [],
+          enabledSystemApps: a.enabledSystemApps ?? [],
         }
       }),
     }

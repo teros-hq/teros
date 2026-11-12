@@ -1,0 +1,396 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies QuickBooks OAuth credentials and connectivity by querying the CompanyInfo endpoint."
+    },
+    "get-company-info": {
+      "name": "get-company-info",
+      "description": "Retrieve QuickBooks Online company information — company name, legal name, country, currency, fiscal year start, tax form, address, email, phone, and website."
+    },
+    "list-customers": {
+      "name": "list-customers",
+      "description": "List QuickBooks Online customers with optional filters. Search by name/email, filter by active status, and paginate with limit/offset. Returns key customer fields (Id, DisplayName, Active, Email, Balance, TotalRevenue).",
+      "params": {
+        "query": "Optional search term to filter customers by DisplayName (LIKE match). Case-insensitive.",
+        "active": "Filter by active status. true = active only, false = inactive only, omit = all.",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-customer": {
+      "name": "get-customer",
+      "description": "Retrieve a single QuickBooks Online customer by ID. Returns the full customer object with all fields including SyncToken (needed for updates).",
+      "params": {
+        "customerId": "The QuickBooks customer ID."
+      }
+    },
+    "create-customer": {
+      "name": "create-customer",
+      "description": "Create a new QuickBooks Online customer. Returns the created customer with Id and SyncToken. At minimum, a DisplayName is required.",
+      "params": {
+        "displayName": "Customer display name (required). Must be unique across all customers.",
+        "email": "Primary email address for the customer.",
+        "phone": "Primary phone number (free-form).",
+        "companyName": "Company or organization name.",
+        "givenName": "Given (first) name — use for individual customers.",
+        "familyName": "Family (last) name — use for individual customers.",
+        "billAddr": "Billing address.",
+        "notes": "Free-form notes about this customer."
+      }
+    },
+    "update-customer": {
+      "name": "update-customer",
+      "description": "Update an existing QuickBooks Online customer. Requires customerId and syncToken (obtain syncToken via get-customer first). Only provided fields are updated; omitted fields remain unchanged. To deactivate a customer, set active=false.",
+      "params": {
+        "customerId": "The QuickBooks customer ID to update.",
+        "syncToken": "The current SyncToken of the customer. Required for optimistic concurrency. Get it via get-customer.",
+        "displayName": "Updated display name.",
+        "email": "Updated primary email address.",
+        "phone": "Updated primary phone number.",
+        "companyName": "Updated company name.",
+        "givenName": "Updated given (first) name.",
+        "familyName": "Updated family (last) name.",
+        "billAddr": "Updated billing address.",
+        "notes": "Updated notes.",
+        "active": "Set to false to deactivate (make inactive) the customer. QuickBooks prefers deactivation over deletion."
+      }
+    },
+    "list-vendors": {
+      "name": "list-vendors",
+      "description": "List QuickBooks Online vendors with optional filters. Search by name, filter by active status, and paginate with limit/offset. Returns key vendor fields (Id, DisplayName, Active, Email, Balance).",
+      "params": {
+        "query": "Optional search term to filter vendors by DisplayName (LIKE match). Case-insensitive.",
+        "active": "Filter by active status. true = active only, false = inactive only, omit = all.",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-vendor": {
+      "name": "get-vendor",
+      "description": "Retrieve a single QuickBooks Online vendor by ID. Returns the full vendor object with all fields including SyncToken (needed for updates).",
+      "params": {
+        "vendorId": "The QuickBooks vendor ID."
+      }
+    },
+    "create-vendor": {
+      "name": "create-vendor",
+      "description": "Create a new QuickBooks Online vendor. Returns the created vendor with Id and SyncToken. At minimum, a DisplayName is required.",
+      "params": {
+        "displayName": "Vendor display name (required). Must be unique across all vendors.",
+        "email": "Primary email address for the vendor.",
+        "phone": "Primary phone number (free-form).",
+        "companyName": "Company or organization name.",
+        "givenName": "Given (first) name.",
+        "familyName": "Family (last) name.",
+        "billAddr": "Billing address.",
+        "webAddr": "Vendor website URL.",
+        "notes": "Free-form notes about this vendor."
+      }
+    },
+    "update-vendor": {
+      "name": "update-vendor",
+      "description": "Update an existing QuickBooks Online vendor. Requires vendorId and syncToken (obtain syncToken via get-vendor first). Only provided fields are updated; omitted fields remain unchanged. To deactivate a vendor, set active=false.",
+      "params": {
+        "vendorId": "The QuickBooks vendor ID to update.",
+        "syncToken": "The current SyncToken of the vendor. Required for optimistic concurrency. Get it via get-vendor.",
+        "displayName": "Updated display name.",
+        "email": "Updated primary email address.",
+        "phone": "Updated primary phone number.",
+        "companyName": "Updated company name.",
+        "givenName": "Updated given (first) name.",
+        "familyName": "Updated family (last) name.",
+        "billAddr": "Updated billing address.",
+        "webAddr": "Updated website URL.",
+        "notes": "Updated notes.",
+        "active": "Set to false to deactivate (make inactive) the vendor. QuickBooks prefers deactivation over deletion."
+      }
+    },
+    "list-invoices": {
+      "name": "list-invoices",
+      "description": "List QuickBooks Online invoices with optional filters. Filter by customer, status (open/paid/void/all), and date range. Returns key invoice fields (Id, DocNumber, TxnDate, CustomerRef, TotalAmt, Balance, DueDate).",
+      "params": {
+        "customerId": "Filter invoices by customer ID.",
+        "status": "Filter by invoice status: \"open\" (Balance > 0), \"paid\" (Balance = 0), \"void\" (voided), \"all\" (no status filter). Default: \"all\".",
+        "dateFrom": "Filter invoices from this date (ISO format, e.g. \"2026-01-01\").",
+        "dateTo": "Filter invoices up to this date (ISO format, e.g. \"2026-12-31\").",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-invoice": {
+      "name": "get-invoice",
+      "description": "Retrieve a single QuickBooks Online invoice by ID. Returns the full invoice object with line items, customer reference, totals, and SyncToken (needed for updates/void).",
+      "params": {
+        "invoiceId": "The QuickBooks invoice ID."
+      }
+    },
+    "create-invoice": {
+      "name": "create-invoice",
+      "description": "Create a new QuickBooks Online invoice with line items. Returns the created invoice with Id, DocNumber, TotalAmt, and Balance. Each line item requires an itemId (ItemRef), quantity, and unitPrice.",
+      "params": {
+        "customerId": "The QuickBooks customer ID to bill.",
+        "txnDate": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today.",
+        "lineItems": "Line items for the invoice. Each item requires itemId, quantity, and unitPrice.",
+        "billEmail": "Billing email address for the invoice.",
+        "customerMemo": "Memo visible to the customer on the invoice."
+      }
+    },
+    "update-invoice": {
+      "name": "update-invoice",
+      "description": "Update an existing QuickBooks Online invoice. Requires invoiceId and syncToken (obtain syncToken via get-invoice first). Only provided fields are updated; omitted fields remain unchanged.",
+      "params": {
+        "invoiceId": "The QuickBooks invoice ID to update.",
+        "syncToken": "The current SyncToken of the invoice. Required for optimistic concurrency. Get it via get-invoice.",
+        "txnDate": "Updated transaction date (ISO format).",
+        "dueDate": "Updated due date (ISO format).",
+        "billEmail": "Updated billing email address.",
+        "customerMemo": "Updated memo visible to the customer.",
+        "privateNote": "Updated private note (not visible to customer).",
+        "lineItems": "Updated line items. Replaces all existing line items."
+      }
+    },
+    "void-invoice": {
+      "name": "void-invoice",
+      "description": "Void a QuickBooks Online invoice. The invoice record is preserved but marked as voided (Balance and TotalAmt set to 0). Requires invoiceId and syncToken. Use get-invoice to obtain the current syncToken.",
+      "params": {
+        "invoiceId": "The QuickBooks invoice ID to void.",
+        "syncToken": "The current SyncToken of the invoice. Get it via get-invoice."
+      }
+    },
+    "send-invoice": {
+      "name": "send-invoice",
+      "description": "Send a QuickBooks Online invoice to the customer via email. If no email address is provided, uses the BillEmail stored on the invoice. Returns the delivery status.",
+      "params": {
+        "invoiceId": "The QuickBooks invoice ID to send.",
+        "email": "Email address to send the invoice to. If omitted, uses the invoice BillEmail."
+      }
+    },
+    "list-payments": {
+      "name": "list-payments",
+      "description": "List QuickBooks Online payments with optional filters. Filter by customer and date range. Returns key payment fields (Id, TxnDate, CustomerRef, TotalAmt, PaymentMethod).",
+      "params": {
+        "customerId": "Filter payments by customer ID.",
+        "dateFrom": "Filter payments from this date (ISO format, e.g. \"2026-01-01\").",
+        "dateTo": "Filter payments up to this date (ISO format, e.g. \"2026-12-31\").",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-payment": {
+      "name": "get-payment",
+      "description": "Retrieve a single QuickBooks Online payment by ID. Returns the full payment object with line items (linked transactions), customer reference, and SyncToken (needed for deletes).",
+      "params": {
+        "paymentId": "The QuickBooks payment ID."
+      }
+    },
+    "create-payment": {
+      "name": "create-payment",
+      "description": "Create a new QuickBooks Online payment. If invoiceId is provided, the payment is linked to that invoice via LinkedTxn. Returns the created payment with Id. Supports payment methods: cash, check, credit_card, bank_transfer.",
+      "params": {
+        "customerId": "The QuickBooks customer ID making the payment.",
+        "totalAmt": "Total payment amount.",
+        "invoiceId": "Optional invoice ID to link this payment to. Creates a LinkedTxn on the payment line.",
+        "txnDate": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today.",
+        "paymentMethod": "Payment method. Maps to QuickBooks PaymentMethodRef."
+      }
+    },
+    "delete-payment": {
+      "name": "delete-payment",
+      "description": "Delete a QuickBooks Online payment. This permanently removes the payment record. Requires paymentId and syncToken. Use get-payment to obtain the current syncToken.",
+      "params": {
+        "paymentId": "The QuickBooks payment ID to delete.",
+        "syncToken": "The current SyncToken of the payment. Get it via get-payment."
+      }
+    },
+    "list-bills": {
+      "name": "list-bills",
+      "description": "List QuickBooks Online bills with optional filters. Filter by vendor, status (open/paid), and date range. Returns key bill fields (Id, TxnDate, DueDate, VendorRef, TotalAmt, Balance).",
+      "params": {
+        "vendorId": "Filter bills by vendor ID.",
+        "status": "Filter by bill status: \"open\" (Balance > 0), \"paid\" (Balance = 0), or \"all\" (default).",
+        "dateFrom": "Filter bills from this date (ISO format, e.g. \"2026-01-01\").",
+        "dateTo": "Filter bills up to this date (ISO format, e.g. \"2026-12-31\").",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-bill": {
+      "name": "get-bill",
+      "description": "Retrieve a single QuickBooks Online bill by ID. Returns the full bill object with line items, vendor reference, and SyncToken (needed for updates and deletes).",
+      "params": {
+        "billId": "The QuickBooks bill ID."
+      }
+    },
+    "create-bill": {
+      "name": "create-bill",
+      "description": "Create a new QuickBooks Online bill (vendor invoice). Requires a vendor ID and at least one line item with an expense account. Line items use AccountBasedExpenseLineDetail. Returns the created bill with Id and TotalAmt.",
+      "params": {
+        "vendorId": "The QuickBooks vendor ID for this bill.",
+        "txnDate": "Transaction date (ISO format, e.g. \"2026-09-20\"). Defaults to today.",
+        "dueDate": "Due date for the bill (ISO format, e.g. \"2026-10-20\").",
+        "lineItems": "Array of expense line items. Each item must have an accountId and amount."
+      }
+    },
+    "update-bill": {
+      "name": "update-bill",
+      "description": "Update an existing QuickBooks Online bill. Requires billId and syncToken (obtain syncToken via get-bill first). Only provided fields are updated; omitted fields remain unchanged.",
+      "params": {
+        "billId": "The QuickBooks bill ID to update.",
+        "syncToken": "The current SyncToken of the bill. Required for optimistic concurrency. Get it via get-bill.",
+        "vendorId": "Update the vendor reference for this bill.",
+        "txnDate": "Update the transaction date (ISO format).",
+        "dueDate": "Update the due date (ISO format).",
+        "lineItems": "Replace the bill line items. Each item must have an accountId and amount.",
+        "privateNote": "Update the private note on the bill."
+      }
+    },
+    "delete-bill": {
+      "name": "delete-bill",
+      "description": "Delete a QuickBooks Online bill. This permanently removes the bill record. Requires billId and syncToken. Use get-bill to obtain the current syncToken.",
+      "params": {
+        "billId": "The QuickBooks bill ID to delete.",
+        "syncToken": "The current SyncToken of the bill. Get it via get-bill."
+      }
+    },
+    "list-accounts": {
+      "name": "list-accounts",
+      "description": "List QuickBooks Online accounts (chart of accounts) with optional filters. Filter by account type (Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting) or by classification (Asset, Liability, Equity, Revenue, Expense) and active status. Returns key account fields (Id, Name, AccountType, AccountSubType, CurrentBalance).",
+      "params": {
+        "accountType": "Filter by account type. Valid values: Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting.",
+        "classification": "Filter by account classification (broad category). Useful when you want all asset, liability, or equity accounts regardless of specific type.",
+        "active": "Filter by active status. true = active only, false = inactive only.",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-account": {
+      "name": "get-account",
+      "description": "Retrieve a single QuickBooks Online account by ID. Returns the full account object with type, subtype, balance, and SyncToken.",
+      "params": {
+        "accountId": "The QuickBooks account ID."
+      }
+    },
+    "create-account": {
+      "name": "create-account",
+      "description": "Create a new QuickBooks Online account in the chart of accounts. Requires a name and account type (Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting). Optionally specify an account subtype and currency. Returns the created account with Id.",
+      "params": {
+        "name": "The name of the account (e.g. \"Office Supplies\").",
+        "accountType": "The type of account. Valid values: Bank, Accounts Receivable, Other Current Asset, Fixed Asset, Other Asset, Accounts Payable, Credit Card, Other Current Liability, Long Term Liability, Equity, Income, Cost of Goods Sold, Expense, Other Income, Other Expense, Non Posting.",
+        "accountSubType": "The account subtype (e.g. \"SuppliesMaterialsCogs\", \"AccountsPayable\", \"AccountsReceivable\").",
+        "currency": "Currency code for the account (e.g. \"USD\", \"EUR\"). Defaults to the company currency.",
+        "description": "Optional description for the account."
+      }
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "List QuickBooks Online items (products and services) with optional filters. Filter by type (Service, Inventory, NonInventory) and active status. Returns key item fields (Id, Name, Type, UnitPrice, IncomeAccountRef).",
+      "params": {
+        "type": "Filter by item type.",
+        "active": "Filter by active status. true = active only, false = inactive only.",
+        "limit": "Maximum number of results to return (default: 50, max: 100).",
+        "offset": "Starting position for pagination (1-based, default: 1)."
+      }
+    },
+    "get-item": {
+      "name": "get-item",
+      "description": "Retrieve a single QuickBooks Online item (product or service) by ID. Returns the full item object with type, price, account references, and SyncToken.",
+      "params": {
+        "itemId": "The QuickBooks item ID."
+      }
+    },
+    "create-item": {
+      "name": "create-item",
+      "description": "Create a new QuickBooks Online item (product or service). Requires a name, type (Service, Inventory, NonInventory), and an income account reference. Optionally specify unit price and expense account. Returns the created item with Id.",
+      "params": {
+        "name": "The name of the item (e.g. \"Consulting Service\").",
+        "type": "The type of item.",
+        "incomeAccountRef": "The income account ID for this item (sales revenue account).",
+        "unitPrice": "The unit price (sales price) for this item.",
+        "expenseAccountRef": "The expense account ID for this item (cost of goods sold account).",
+        "description": "Optional description for the item.",
+        "sku": "Optional SKU (stock keeping unit) for the item.",
+        "taxable": "Whether this item is taxable. Default: false."
+      }
+    },
+    "report-profit-loss": {
+      "name": "report-profit-loss",
+      "description": "Generate a QuickBooks Online Profit & Loss (Income Statement) report for a date range. Returns the full report (Header, Columns, Rows) plus a simplified summary with total income, total expenses, and net income. Supports cash or accrual accounting method.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\").",
+        "accountingMethod": "Accounting method: \"cash\" or \"accrual\". Default: \"accrual\"."
+      }
+    },
+    "report-balance-sheet": {
+      "name": "report-balance-sheet",
+      "description": "Generate a QuickBooks Online Balance Sheet report as of a specific date. Shows assets, liabilities, and equity. Supports cash or accrual accounting method.",
+      "params": {
+        "date": "As-of date for the report (ISO format, e.g. \"2026-09-30\").",
+        "accountingMethod": "Accounting method: \"cash\" or \"accrual\". Default: \"accrual\"."
+      }
+    },
+    "report-cash-flow": {
+      "name": "report-cash-flow",
+      "description": "Generate a QuickBooks Online Cash Flow report for a date range. Shows operating, investing, and financing activities and the net change in cash.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+      }
+    },
+    "report-aged-receivables": {
+      "name": "report-aged-receivables",
+      "description": "Generate a QuickBooks Online Aged Receivables report as of a specific date. Shows outstanding customer balances grouped by aging buckets (Current, 1-30, 31-60, 61-90, 91+ days). Returns the full report plus a simplified aging summary with bucket totals.",
+      "params": {
+        "date": "As-of date for the report (ISO format, e.g. \"2026-09-30\")."
+      }
+    },
+    "report-aged-payables": {
+      "name": "report-aged-payables",
+      "description": "Generate a QuickBooks Online Aged Payables report as of a specific date. Shows outstanding vendor balances grouped by aging buckets (Current, 1-30, 31-60, 61-90, 91+ days). Returns the full report plus a simplified aging summary with bucket totals.",
+      "params": {
+        "date": "As-of date for the report (ISO format, e.g. \"2026-09-30\")."
+      }
+    },
+    "report-trial-balance": {
+      "name": "report-trial-balance",
+      "description": "Generate a QuickBooks Online Trial Balance report for a date range. Lists all accounts with their debit and credit balances, showing that total debits equal total credits.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+      }
+    },
+    "report-general-ledger": {
+      "name": "report-general-ledger",
+      "description": "Generate a QuickBooks Online General Ledger report for a date range. Shows all transactions posted to each account, with debit and credit amounts. Optionally filter by account type.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\").",
+        "accountType": "Optional account type filter. Valid values: Bank, AccountsReceivable, OtherCurrentAsset, FixedAsset, OtherAsset, AccountsPayable, CreditCard, OtherCurrentLiability, LongTermLiability, Equity, Income, CostOfGoodsSold, Expense, OtherIncome, OtherExpense, NonPosting."
+      }
+    },
+    "report-customer-balance": {
+      "name": "report-customer-balance",
+      "description": "Generate a QuickBooks Online Customer Balance report for a date range. Shows outstanding balances for each customer, including total amount owed and aging information.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+      }
+    },
+    "report-sales-by-customer": {
+      "name": "report-sales-by-customer",
+      "description": "Generate a QuickBooks Online Sales by Customer report for a date range. Shows total sales revenue broken down by customer, with subtotals and grand total.",
+      "params": {
+        "startDate": "Start date for the report period (ISO format, e.g. \"2026-01-01\").",
+        "endDate": "End date for the report period (ISO format, e.g. \"2026-09-30\")."
+      }
+    }
+  },
+  "name": "QuickBooks Online",
+  "description": "QuickBooks Online Accounting API — manage customers, invoices, payments, vendors, bills, accounts, items, and financial reports.",
+  "changelog": [
+    {
+      "notes": "Initial scaffold — OAuth 2.0 with Intuit, health check, and company info retrieval"
+    }
+  ]
+}

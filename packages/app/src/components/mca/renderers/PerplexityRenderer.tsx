@@ -441,6 +441,14 @@ function PerplexityRendererBase(props: ToolCallRendererProps) {
       return <SearchRenderer {...props} />;
     case 'perplexity-chat':
       return <ChatRenderer {...props} />;
+    case '-health-check':
+      return (
+        <ToolCallCard
+          status={props.status}
+          description="Perplexity health check"
+          iconUri={props.appIcon}
+        />
+      );
     default:
       return <SearchRenderer {...props} />;
   }

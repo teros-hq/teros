@@ -5,6 +5,7 @@
  */
 
 import { randomBytes } from 'crypto';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { type Collection, type Db, ObjectId } from 'mongodb';
 import type { OAuthState } from './types';
 
@@ -57,10 +58,9 @@ export class GoogleAuth {
    * Initialize indexes
    */
   async ensureIndexes(): Promise<void> {
-    // Unique state token
-    await this.oauthStates.createIndex({ state: 1 }, { unique: true });
-    // TTL: auto-delete expired states
-    await this.oauthStates.createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.oauthStates, COLLECTIONS.oauthStates);
   }
 
   /**

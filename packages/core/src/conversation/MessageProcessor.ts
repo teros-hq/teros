@@ -90,6 +90,10 @@ export class MessageProcessor {
         reasoning: 0,
         cache: { read: 0, write: 0 },
       },
+      // MUW-F1: cross-reference for redaction propagation (channel_messages.messageId).
+      // Always set when seedId is provided, even if the seed was already consumed
+      // (multi-step turns) — the channelMessageId is the same across steps.
+      ...(seedId ? { channelMessageId: seedId } : {}),
     };
 
     await this.sessionStore.writeMessage(msg);
@@ -303,6 +307,7 @@ export class MessageProcessor {
         result.isError ? result.output : undefined,
         toolPart.state.time?.end ? toolPart.state.time.end - toolPart.state.time.start : undefined,
         result.attachments,
+        toolPart.tool,
       );
     }
 

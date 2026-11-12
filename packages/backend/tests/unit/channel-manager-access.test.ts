@@ -2,7 +2,7 @@
  * ChannelManager tests (TER-456) — authz workspace-sovereign + lifecycle.
  *
  * Cubre el scope del ticket: canAccessChannel (las 4 ramas de acceso),
- * cleanupExpiredPrivateChannels (ventana de 15 días + borrado completo) y
+ * setChannelScope (personal ↔ shared) y
  * setRunning (shape exacto del update). 0 tests directos previos.
  *
  * Db mockeada en memoria con filtros EVALUADOS fielmente (patrón
@@ -20,6 +20,7 @@ import { ChannelManager } from '../../src/services/channel-manager';
 interface Fixture {
   channels?: any[];
   workspaces?: any[];
+  members?: any[];
   messages?: any[];
   agentConfigs?: any[];
   users?: any[];
@@ -89,6 +90,7 @@ function makeManager(fixture: Fixture) {
   const stores: Record<string, any[]> = {
     channels: fixture.channels ?? [],
     workspaces: fixture.workspaces ?? [],
+    workspace_members: fixture.members ?? [],
     channel_messages: fixture.messages ?? [],
     agent_configs: fixture.agentConfigs ?? [],
     users: fixture.users ?? [],
@@ -115,9 +117,11 @@ function makeManager(fixture: Fixture) {
 const WORKSPACE = {
   workspaceId: 'work_1',
   ownerId: 'user_owner',
-  members: [{ userId: 'user_member', role: 'member' }],
   status: 'active',
 };
+
+// Membership lives in workspace_members (single source of truth since 20260915_002)
+const MEMBERS = [{ workspaceId: 'work_1', userId: 'user_member', role: 'write', status: 'active' }];
 
 const CHANNEL = {
   channelId: 'ch_1',
@@ -154,14 +158,55 @@ describe('ChannelManager.canAccessChannel', () => {
     ).toBe(false);
   });
 
-  it('grants access to the workspace OWNER', async () => {
-    const { manager } = makeManager({ channels: [CHANNEL], workspaces: [WORKSPACE] });
+  it('grants access to the workspace OWNER on a shared channel', async () => {
+    const shared = { ...CHANNEL, scope: 'shared' };
+    const { manager } = makeManager({ channels: [shared], workspaces: [WORKSPACE] });
     expect(await manager.canAccessChannel('ch_1' as any, 'user_owner' as any)).toBe(true);
   });
 
-  it('grants access to a workspace MEMBER (dot-notation members.userId)', async () => {
-    const { manager } = makeManager({ channels: [CHANNEL], workspaces: [WORKSPACE] });
+  it('grants access to a workspace MEMBER (workspace_members) on a shared channel', async () => {
+    const shared = { ...CHANNEL, scope: 'shared' };
+    const { manager } = makeManager({ channels: [shared], workspaces: [WORKSPACE], members: MEMBERS });
     expect(await manager.canAccessChannel('ch_1' as any, 'user_member' as any)).toBe(true);
+  });
+
+  it('denies a member whose membership is still pending', async () => {
+    const pending = [{ ...MEMBERS[0], status: 'pending' }];
+    const shared = { ...CHANNEL, scope: 'shared' };
+    const { manager } = makeManager({ channels: [shared], workspaces: [WORKSPACE], members: pending });
+    expect(await manager.canAccessChannel('ch_1' as any, 'user_member' as any)).toBe(false);
+  });
+
+  // SEC-3 / MUW-REQ-4: personal channels stay with their creator
+  describe('scope', () => {
+    const personal = { ...CHANNEL, scope: 'personal' };
+    const shared = { ...CHANNEL, scope: 'shared' };
+    const legacy = { ...CHANNEL }; // no scope → personal (NFR-3)
+
+    it("denies a member another member's personal channel", async () => {
+      const { manager } = makeManager(
+        { channels: [personal], workspaces: [WORKSPACE], members: MEMBERS });
+      expect(await manager.canAccessChannel('ch_1' as any, 'user_member' as any)).toBe(false);
+      expect(await manager.canAccessChannel('ch_1' as any, 'user_owner' as any)).toBe(false);
+    });
+
+    it('treats a channel without scope as personal', async () => {
+      const { manager } = makeManager(
+        { channels: [legacy], workspaces: [WORKSPACE], members: MEMBERS });
+      expect(await manager.canAccessChannel('ch_1' as any, 'user_member' as any)).toBe(false);
+    });
+
+    it('grants a member a shared channel', async () => {
+      const { manager } = makeManager(
+        { channels: [shared], workspaces: [WORKSPACE], members: MEMBERS });
+      expect(await manager.canAccessChannel('ch_1' as any, 'user_member' as any)).toBe(true);
+    });
+
+    it('still grants the creator their own personal channel', async () => {
+      const { manager } = makeManager(
+        { channels: [personal], workspaces: [WORKSPACE], members: MEMBERS });
+      expect(await manager.canAccessChannel('ch_1' as any, 'user_creator' as any)).toBe(true);
+    });
   });
 
   it('denies access to a stranger (workspace-sovereign)', async () => {
@@ -238,79 +283,14 @@ describe('ChannelManager.canAccessChannel', () => {
     const otherWorkspace = {
       workspaceId: 'work_2',
       ownerId: 'user_other',
-      members: [{ userId: 'user_member2', role: 'member' }],
       status: 'active',
     };
     const { manager } = makeManager({
       channels: [CHANNEL],
       workspaces: [WORKSPACE, otherWorkspace],
+      members: [{ workspaceId: 'work_2', userId: 'user_member2', role: 'write', status: 'active' }],
     });
     expect(await manager.canAccessChannel('ch_1' as any, 'user_member2' as any)).toBe(false);
-  });
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// cleanupExpiredPrivateChannels
-// ─────────────────────────────────────────────────────────────────────────────
-
-function isoAgo(days: number): string {
-  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-}
-
-describe('ChannelManager.cleanupExpiredPrivateChannels', () => {
-  it('deletes private channels inactive for >15 days, with their messages and config', async () => {
-    const expired = {
-      ...CHANNEL,
-      channelId: 'ch_old',
-      isPrivate: true,
-      updatedAt: isoAgo(16),
-    };
-    const { manager, stores } = makeManager({
-      channels: [expired],
-      messages: [
-        { messageId: 'm1', channelId: 'ch_old' },
-        { messageId: 'm2', channelId: 'ch_old' },
-        { messageId: 'm3', channelId: 'ch_other' },
-      ],
-      agentConfigs: [{ channelId: 'ch_old' }, { channelId: 'ch_other' }],
-    });
-
-    const deleted = await manager.cleanupExpiredPrivateChannels();
-
-    expect(deleted).toBe(1);
-    expect(stores.channels).toEqual([]);
-    // Borrado en cascada: solo lo del canal expirado
-    expect(stores.channel_messages.map((m) => m.messageId)).toEqual(['m3']);
-    expect(stores.agent_configs).toEqual([{ channelId: 'ch_other' }]);
-  });
-
-  it('keeps private channels still inside the 15-day window', async () => {
-    const fresh = { ...CHANNEL, channelId: 'ch_fresh', isPrivate: true, updatedAt: isoAgo(14) };
-    const { manager, stores } = makeManager({ channels: [fresh] });
-
-    expect(await manager.cleanupExpiredPrivateChannels()).toBe(0);
-    expect(stores.channels.length).toBe(1);
-  });
-
-  it('NEVER touches non-private channels, no matter how old', async () => {
-    const ancientPublic = { ...CHANNEL, channelId: 'ch_pub', updatedAt: isoAgo(100) };
-    const { manager, stores } = makeManager({ channels: [ancientPublic] });
-
-    expect(await manager.cleanupExpiredPrivateChannels()).toBe(0);
-    expect(stores.channels.length).toBe(1);
-  });
-
-  it('deletes multiple expired channels and reports the exact count', async () => {
-    const { manager, stores } = makeManager({
-      channels: [
-        { ...CHANNEL, channelId: 'ch_a', isPrivate: true, updatedAt: isoAgo(20) },
-        { ...CHANNEL, channelId: 'ch_b', isPrivate: true, updatedAt: isoAgo(30) },
-        { ...CHANNEL, channelId: 'ch_c', isPrivate: true, updatedAt: isoAgo(5) },
-      ],
-    });
-
-    expect(await manager.cleanupExpiredPrivateChannels()).toBe(2);
-    expect(stores.channels.map((c) => c.channelId)).toEqual(['ch_c']);
   });
 });
 

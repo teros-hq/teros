@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 
 /**
- * GitHub MCA v5.1.0 — GitHub REST API (user-to-server OAuth) + local git ops.
+ * GitHub MCA v5.4.0 — GitHub REST API (user-to-server OAuth) + local git ops.
  *
- * 71 tools (incl. health-check) across:
+ * 69 tools (incl. health-check) across:
  * - Repos:     list-repos, get-repo, create-repo, search-repos
  * - Issues:    list-issues, get-issue, create-issue, update-issue,
  *              add-issue-comment, add-labels-to-issue, search-issues
@@ -18,9 +18,8 @@
  * - Releases:  list-releases, create-release
  * - Files:     get-file-content, create-or-update-file
  * - Search:    search-code
- * - Checks:    create-check-run, update-check-run
  * - Misc:      get-rate-limit, dispatch-event, get-installation-context,
- *              get-user (deprecated alias)
+ *              get-user (real token identity via GET /user)
  * - Clone:     clone-repo
  * - Local git: git-status, git-add, git-commit, git-push, git-checkout,
  *              git-rm, git-mv, git-read-file, git-write-file, git-list-files,
@@ -37,31 +36,8 @@
 import { HealthCheckBuilder, McaServer } from '@teros/mca-sdk';
 import { githubRequest } from './lib';
 import {
-  addIssueComment,
-  addLabelsToIssue,
-  cancelWorkflowRun,
   cloneRepo,
   classifyGitHubError,
-  compareCommits,
-  createBranch,
-  createCheckRun,
-  createIssue,
-  createOrUpdateFile,
-  createPrReview,
-  createPull,
-  createRelease,
-  createRepo,
-  dispatchEvent,
-  getBranch,
-  getCommit,
-  getFileContent,
-  getInstallationContext,
-  getIssue,
-  getPull,
-  getRateLimit,
-  getRepo,
-  getUser,
-  getWorkflowRun,
   gitAdd,
   gitBatchCommit,
   gitBisect,
@@ -72,6 +48,7 @@ import {
   gitConfig,
   gitDiff,
   gitFetch,
+  gitCleanup,
   gitListFiles,
   gitLog,
   gitMerge,
@@ -87,28 +64,9 @@ import {
   gitStatus,
   gitTag,
   gitWriteFile,
-  listBranches,
-  listCommits,
-  listIssues,
-  listPrCommits,
-  listPrFiles,
-  listPrReviewComments,
-  listPulls,
-  listReleases,
-  listRepos,
-  listWorkflowRunJobs,
-  listWorkflowRuns,
-  listWorkflows,
-  mergePull,
-  rerunWorkflowRun,
-  requestReviewers,
-  searchCode,
-  searchIssues,
-  searchRepos,
-  triggerWorkflow,
-  updateCheckRun,
-  updateIssue,
 } from './tools';
+import { REST_TOOLS } from './tools/rest-tools';
+import { runAgentCleanup, sweepClones } from './lib/clone-cleanup';
 
 // =============================================================================
 // MCA SERVER
@@ -117,7 +75,7 @@ import {
 const server = new McaServer({
   id: 'mca.github',
   name: 'GitHub',
-  version: '5.1.0',
+  version: '5.4.0',
 });
 
 // =============================================================================
@@ -125,11 +83,12 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies GitHub OAuth credentials and connectivity.',
   parameters: { type: 'object', properties: {} },
   handler: async (_args, context) => {
     const builder = new HealthCheckBuilder()
-      .setVersion('5.1.0')
+      .setVersion('5.4.0')
       .setUptime(Math.floor(process.uptime()));
 
     try {
@@ -146,15 +105,15 @@ server.tool('-health-check', {
       }
 
       // v5.0.0: user-to-server. The relevant credential is USER_ACCESS_TOKEN
-      // (issued by the OAuth authorize flow). INSTALLATION_ID is captured at
-      // the same time but is not what determines authentication health.
+      // (issued by the OAuth authorize flow). The backend may also have
+      // captured `installation_id` from the callback (used by the frontend
+      // manage link), but the MCA does not read it and it does not determine
+      // authentication health.
       if (!userSecrets.USER_ACCESS_TOKEN) {
-        const slug = systemSecrets.GITHUB_APP_SLUG ?? 'teros';
         builder.addIssue('USER_NOT_AUTHENTICATED', 'GitHub account not connected for this user', {
           type: 'user_action',
           description:
-            'Conecta tu cuenta de GitHub en el panel de auth del MCA para que las acciones aparezcan firmadas con tu identidad.',
-          url: `https://github.com/apps/${slug}/installations/new`,
+            'Connect GitHub in Teros (Apps → GitHub → Connect) so actions are signed with your own GitHub account.',
         });
         return builder.build();
       }
@@ -164,7 +123,8 @@ server.tool('-health-check', {
       // health check surface stale tokens (401) clearly via classifyGitHubError.
       await githubRequest(context, '/user');
     } catch (error) {
-      const classified = classifyGitHubError(error);
+      const sys = (await context.getSystemSecrets().catch(() => ({}))) as Record<string, string>;
+      const classified = classifyGitHubError(error, { appSlug: sys.GITHUB_APP_SLUG });
       builder.addIssue(classified.code, classified.message, classified.action);
     }
 
@@ -173,109 +133,10 @@ server.tool('-health-check', {
 });
 
 // =============================================================================
-// REPOSITORIES
+// REST TOOLS
 // =============================================================================
 
-server.tool('list-repos', listRepos);
-server.tool('get-repo', getRepo);
-server.tool('create-repo', createRepo);
-
-// =============================================================================
-// ISSUES
-// =============================================================================
-
-server.tool('list-issues', listIssues);
-server.tool('get-issue', getIssue);
-server.tool('create-issue', createIssue);
-server.tool('update-issue', updateIssue);
-server.tool('add-issue-comment', addIssueComment);
-server.tool('add-labels-to-issue', addLabelsToIssue);
-server.tool('search-issues', searchIssues);
-
-// =============================================================================
-// PULL REQUESTS
-// =============================================================================
-
-server.tool('list-pulls', listPulls);
-server.tool('get-pull', getPull);
-server.tool('create-pull', createPull);
-server.tool('merge-pull', mergePull);
-server.tool('list-pr-files', listPrFiles);
-server.tool('list-pr-commits', listPrCommits);
-server.tool('list-pr-review-comments', listPrReviewComments);
-server.tool('request-reviewers', requestReviewers);
-server.tool('create-pr-review', createPrReview);
-
-// =============================================================================
-// BRANCHES
-// =============================================================================
-
-server.tool('list-branches', listBranches);
-server.tool('get-branch', getBranch);
-server.tool('create-branch', createBranch);
-
-// =============================================================================
-// COMMITS
-// =============================================================================
-
-server.tool('list-commits', listCommits);
-server.tool('get-commit', getCommit);
-server.tool('compare-commits', compareCommits);
-
-// =============================================================================
-// ACTIONS / WORKFLOWS
-// =============================================================================
-
-server.tool('list-workflows', listWorkflows);
-server.tool('list-workflow-runs', listWorkflowRuns);
-server.tool('get-workflow-run', getWorkflowRun);
-server.tool('list-workflow-run-jobs', listWorkflowRunJobs);
-server.tool('trigger-workflow', triggerWorkflow);
-server.tool('rerun-workflow-run', rerunWorkflowRun);
-server.tool('cancel-workflow-run', cancelWorkflowRun);
-
-// =============================================================================
-// RELEASES
-// =============================================================================
-
-server.tool('list-releases', listReleases);
-server.tool('create-release', createRelease);
-
-// =============================================================================
-// FILE CONTENTS
-// =============================================================================
-
-server.tool('get-file-content', getFileContent);
-server.tool('create-or-update-file', createOrUpdateFile);
-
-// =============================================================================
-// SEARCH
-// =============================================================================
-
-server.tool('search-repos', searchRepos);
-server.tool('search-code', searchCode);
-
-// =============================================================================
-// INSTALLATION CONTEXT
-// =============================================================================
-
-server.tool('get-installation-context', getInstallationContext);
-// Deprecated alias — kept for one major version. Returns the same shape.
-server.tool('get-user', getUser);
-
-// =============================================================================
-// CHECK RUNS (GitHub App exclusive)
-// =============================================================================
-
-server.tool('create-check-run', createCheckRun);
-server.tool('update-check-run', updateCheckRun);
-
-// =============================================================================
-// MISC APP UTILITIES
-// =============================================================================
-
-server.tool('get-rate-limit', getRateLimit);
-server.tool('dispatch-event', dispatchEvent);
+for (const [name, tool] of Object.entries(REST_TOOLS)) server.tool(name, tool);
 
 // =============================================================================
 // GIT OPERATIONS — remote clone
@@ -327,6 +188,24 @@ server.tool('git-bisect', gitBisect);
 
 // Extra — sync without merge (covers `gh pr checkout` via custom refspec)
 server.tool('git-fetch', gitFetch);
+server.tool('git-cleanup', gitCleanup);
+
+server.tool('-cleanup-agent-clones', {
+  annotations: { readOnlyHint: false },
+  description:
+    'Internal: called by Teros when an agent is deleted or loses the GitHub grant. Removes that agent\'s clones; unsaved work is first pushed to teros/saved/... branches, and clones that cannot be saved are kept.',
+  parameters: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] },
+  handler: async (args, context) => {
+    const { agentId } = args as { agentId: string };
+    return { results: await runAgentCleanup(context, { agentId, all: true }) };
+  },
+});
+
+const SWEEP_EVERY_MS = 60 * 60 * 1000;
+const sweep = () =>
+  sweepClones().catch((e) => console.log(`[clone-cleanup] sweep failed: ${e instanceof Error ? e.message : e}`));
+setTimeout(sweep, 5 * 60 * 1000).unref?.();
+setInterval(sweep, SWEEP_EVERY_MS).unref?.();
 
 // =============================================================================
 // START

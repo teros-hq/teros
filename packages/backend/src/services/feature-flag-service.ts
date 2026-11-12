@@ -19,6 +19,7 @@
  */
 
 import { generateId } from '@teros/core';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import {
   FEATURE_FLAG_KEYS,
   FEATURE_FLAG_REGISTRY,
@@ -109,26 +110,11 @@ export class FeatureFlagService {
   // ==========================================================================
 
   async ensureIndexes(): Promise<void> {
-    // feature_flags indexes
-    await this.flagsCol.createIndex({ key: 1 }, { unique: true, name: 'flag_key_unique' });
-
-    // feature_flag_overrides indexes
-    await this.overridesCol.createIndex(
-      { key: 1, targetType: 1, targetId: 1 },
-      { unique: true, name: 'override_unique' },
-    );
-    await this.overridesCol.createIndex({ key: 1 }, { name: 'override_key_lookup' });
-    await this.overridesCol.createIndex(
-      { targetType: 1, targetId: 1 },
-      { name: 'override_target_lookup' },
-    );
-
-    // feature_flag_audit_log indexes
-    await this.auditCol.createIndex({ key: 1, timestamp: -1 }, { name: 'audit_key_time' });
-    await this.auditCol.createIndex({ actor: 1, timestamp: -1 }, { name: 'audit_actor_time' });
-    await this.auditCol.createIndex({ timestamp: -1 }, { name: 'audit_time' });
-
-    console.log('[FeatureFlagService] Indexes ensured');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.flagsCol, COLLECTIONS.featureFlags);
+    await ensureCollectionIndexes(this.overridesCol, COLLECTIONS.featureFlagOverrides);
+    await ensureCollectionIndexes(this.auditCol, COLLECTIONS.featureFlagAuditLog);
   }
 
   // ==========================================================================

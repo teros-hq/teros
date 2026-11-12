@@ -7,56 +7,70 @@
  * - Auto-test connection (runs on card expand — no manual button)
  * - Delete provider
  *
- * Migrated to the Design System:
- * - Uses `useColors()` for theme-adaptive surface/border/text tokens.
- * - Uses `semanticColors` for brand accents (indigo, green, red).
- * - Uses `c.badges.*` for status badge palettes (ok/err/gray/info).
- * - Uses `isDark` to switch dark-only rgba values to light equivalents.
- * - Uses Tamagui font tokens (`$mono`) for technical identifiers (model IDs).
+ * OS prototype vocabulary (design-testing): a Page on the sheet with a
+ * PageHead (eyebrow · serif title · lead · violet "add" pill), one LGroup of
+ * provider rows (logo tile · name · status Badge · meta · caret) that expand
+ * to a nested panel (retention notice, default-model OptionRows, actions).
  */
 
+import React, { useEffect, useRef, useState } from "react"
+import { Platform, Pressable, View } from "react-native"
+import { getTerosClient } from "../../services/terosClientSingleton"
+import { FullscreenLoader } from "../../components/ui"
+import { useTranslation } from "react-i18next"
 import {
-  AlertCircle,
-  CheckCircle,
-  ChevronDown,
-  ChevronUp,
-  Key,
-  Loader2,
-  Plus,
-  Trash2,
-  X,
-  Zap,
-} from '@tamagui/lucide-icons';
-import React, { useEffect, useRef, useState } from 'react';
-import {
-  Button,
-  ScrollView,
-  Separator,
-  Text,
-  XStack,
-  YStack,
-} from 'tamagui';
-import { getTerosClient } from '../../services/terosClientSingleton';
-import { FullscreenLoader } from '../../components/ui';
-import { useTranslation } from 'react-i18next';
-import { AddProviderForm, PROVIDER_TYPES, type OAuthState } from '../../components/onboarding/AddProviderForm';
-import { ProviderIcon } from '../../components/providers/ProviderIcons';
-import { resolveRetention } from '@teros/shared';
+  AddProviderForm,
+  PROVIDER_TYPES,
+  type OAuthState,
+} from "../../components/onboarding/AddProviderForm"
+import { ProviderIcon } from "../../components/providers/ProviderIcons"
+import { resolveRetention } from "@teros/shared"
 import {
   RetentionBadge,
   RetentionConfirmModal,
   RetentionNotice,
   useRetentionGuard,
-} from '../../components/dataRetention';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, surface } from '../../components/mca/primitives/colors';
+} from "../../components/dataRetention"
+import { useColors } from "../../components/mca/primitives/useColors"
+import {
+  Badge,
+  Btn,
+  Card,
+  EmptyState,
+  FieldLabel,
+  IconBtn,
+  LGroup,
+  OptionRow,
+  Page,
+  PageHead,
+  Ph,
+  SectionLabel,
+  T,
+  type BadgeTone,
+} from "../../components/ui/ds"
 
-/** Renders the provider's branded icon, or falls back to a generic Key icon. */
-function ProviderIconOrKey({ providerType, color }: { providerType: string; color: string }) {
-  const icon = <ProviderIcon providerType={providerType} size={20} color={color} />
-  // ProviderIcon returns null for unknown types — fall back to Key
-  if (!icon) return <Key size={20} color={color} />
-  return icon
+/** The 44px logo tile of a provider row (`.prov-logo`): brand glyph on a
+ *  tint of the brand colour, a Phosphor key when the type is unknown. */
+function ProviderLogo({ providerType, color }: { providerType: string; color?: string }) {
+  const c = useColors()
+  const tint = color || c.accent
+  const icon = <ProviderIcon providerType={providerType} size={20} color={tint} />
+  return (
+    <View
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        backgroundColor: `${tint}1F`,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {/* ProviderIcon returns null for unknown types — fall back to a key */}
+      {icon ?? <Ph name="key" size={20} color={tint} />}
+    </View>
+  )
 }
 
 interface UserProvider {
@@ -86,21 +100,14 @@ interface UserProvider {
 
 // ── StatusBadge ───────────────────────────────────────────────────────────────
 
+const STATUS_TONE: Record<string, BadgeTone> = { active: "g", error: "r", disabled: "muted" }
+
 function StatusBadge({ status }: { status: string }) {
-  const { t } = useTranslation();
-  const c = useColors();
-  const colors = {
-    active: { bg: c.badges.ok.bg, text: semanticColors.green },
-    error: { bg: c.badges.err.bg, text: semanticColors.red },
-    disabled: { bg: c.badges.gray.bg, text: c.badges.gray.text },
-  }
-  const sc = colors[status as keyof typeof colors] || colors.disabled
+  const { t } = useTranslation()
   return (
-    <XStack paddingHorizontal="$2" paddingVertical="$1" backgroundColor={sc.bg} borderRadius="$2" alignItems="center" gap="$1">
-      {status === 'active' && <CheckCircle size={12} color={sc.text} />}
-      {status === 'error' && <AlertCircle size={12} color={sc.text} />}
-      <Text fontSize="$1" color={sc.text}>{t(`providers.status.${status}`, { defaultValue: status })}</Text>
-    </XStack>
+    <Badge tone={STATUS_TONE[status] ?? "muted"} dot>
+      {t(`providers.status.${status}`, { defaultValue: status })}
+    </Badge>
   )
 }
 
@@ -123,11 +130,11 @@ export function ProviderCard({
   testing: boolean
   settingDefault: boolean
 }) {
-  const { t } = useTranslation();
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
+  const { t } = useTranslation()
+  const c = useColors()
   const [expanded, setExpanded] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [hover, setHover] = useState(false)
   const { guard, modalProps } = useRetentionGuard()
   const typeInfo = PROVIDER_TYPES.find((pt) => pt.id === provider.providerType)
   const retention = resolveRetention(provider.providerType, provider.config)
@@ -151,157 +158,199 @@ export function ProviderCard({
     }
   }, [expanded])
 
-  // Theme-adaptive hover/inner background — dark keeps the original rgba, light
-  // uses the design system's bgInner/bgCardHover tokens.
-  const hoverBg = isDark ? 'rgba(39,39,42,0.3)' : c.bgCardHover;
-  const innerBg = isDark ? 'rgba(39,39,42,0.3)' : c.bgInner;
-  const innerBgStrong = isDark ? 'rgba(39,39,42,0.5)' : c.bgCardHover;
+  const meta = [
+    typeInfo?.name || provider.providerType,
+    t("providers.modelCount", { count: provider.models.length }),
+    provider.defaultModelId || null,
+  ]
+    .filter(Boolean)
+    .join(" · ")
 
   return (
-    <YStack
-      backgroundColor={c.bgCard}
-      borderRadius="$3"
-      borderWidth={1}
-      borderColor={
-        provider.isDefault
-          ? c.badges.info.border
-          : provider.status === 'error'
-            ? c.badges.err.border
-            : provider.status === 'active'
-              ? c.badges.ok.border
-              : c.border
-      }
-      overflow="hidden"
-    >
-      {/* Header */}
-      <XStack
+    <View>
+      {/* Header row */}
+      <Pressable
         testID="provider-card-header"
-        padding="$3" alignItems="center" gap="$3"
-        cursor="pointer"
-        hoverStyle={{ backgroundColor: hoverBg }}
-        pressStyle={{ opacity: 0.8 }}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
         onPress={() => setExpanded(!expanded)}
+        {...(Platform.OS === "web"
+          ? ({ onHoverIn: () => setHover(true), onHoverOut: () => setHover(false) } as any)
+          : {})}
+        style={[
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            backgroundColor: hover || expanded ? c.nestHover : "transparent",
+          },
+          Platform.OS === "web"
+            ? ({ cursor: "pointer", transition: "background 0.25s" } as any)
+            : null,
+        ]}
       >
-        <YStack width={40} height={40} borderRadius={8} backgroundColor={`${typeInfo?.color || c.text3}15`} justifyContent="center" alignItems="center">
-          <ProviderIconOrKey providerType={provider.providerType} color={typeInfo?.color || c.text3} />
-        </YStack>
-        <YStack flex={1}>
-          <XStack alignItems="center" gap="$2" flexWrap="wrap">
-            <Text fontSize="$4" fontWeight="600" color={c.text}>{provider.displayName}</Text>
+        <ProviderLogo providerType={provider.providerType} color={typeInfo?.color} />
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <T step="base" ellipsis style={{ flexShrink: 1 }}>
+              {provider.displayName}
+            </T>
             <StatusBadge status={provider.status} />
             <RetentionBadge info={retention} compact />
             {provider.isDefault && (
-              <XStack paddingHorizontal="$2" paddingVertical="$1" backgroundColor={c.badges.info.bg} borderRadius="$2" alignItems="center" gap="$1">
-                <Zap size={10} color={semanticColors.indigo} />
-                <Text fontSize="$1" color={semanticColors.indigo} fontWeight="600">{t('providers.defaultBadge')}</Text>
-              </XStack>
+              <Badge tone="i" icon="lightning" cap>
+                {t("providers.defaultBadge")}
+              </Badge>
             )}
-          </XStack>
-          <Text fontSize="$2" color={c.text2}>
-            {typeInfo?.name || provider.providerType} • {t('providers.modelCount', { count: provider.models.length })}
-            {provider.defaultModelId ? ` • ${provider.defaultModelId}` : ''}
-          </Text>
-        </YStack>
-        {expanded ? <ChevronUp size={18} color={c.text3} /> : <ChevronDown size={18} color={c.text3} />}
-      </XStack>
+          </View>
+          <T step="12" tone="text3" ellipsis>
+            {meta}
+          </T>
+        </View>
+        <Ph name={expanded ? "caret-up" : "caret-down"} size={14} color={c.text3} />
+      </Pressable>
 
       {/* Expanded Content */}
       {expanded && (
-        <YStack padding="$3" paddingTop={0} gap="$3">
-          <Separator backgroundColor={c.border} />
-          <RetentionNotice info={retention} />
-          {provider.status === 'error' && provider.errorMessage && (
-            <XStack backgroundColor={c.badges.err.bg} padding="$2" borderRadius="$2" gap="$2" alignItems="center">
-              <AlertCircle size={14} color={semanticColors.red} />
-              <Text fontSize="$2" color={semanticColors.red} flex={1}>{provider.errorMessage}</Text>
-            </XStack>
+        <View
+          style={{
+            paddingHorizontal: 16,
+            paddingBottom: 16,
+            paddingTop: 4,
+            gap: 12,
+            borderTopWidth: 1,
+            borderTopColor: c.border,
+          }}
+        >
+          <View style={{ marginTop: 8 }}>
+            <RetentionNotice info={retention} />
+          </View>
+          {provider.status === "error" && provider.errorMessage && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                padding: 10,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                backgroundColor: c.tint.r.bg,
+                borderWidth: 1,
+                borderColor: c.tint.r.bd,
+              }}
+            >
+              <Ph name="warning-circle" size={14} color={c.tint.r.tx} />
+              <T step="12" color={c.tint.r.tx} style={{ flex: 1 }}>
+                {provider.errorMessage}
+              </T>
+            </View>
           )}
           {provider.isDefault && (
-            <XStack backgroundColor={semanticColors.indigoGlow} padding="$2" borderRadius="$2" gap="$2" alignItems="center">
-              <Zap size={13} color={semanticColors.indigo} />
-              <Text fontSize="$2" color={semanticColors.indigo} flex={1}>
-                {t('providers.defaultDescription')}
-              </Text>
-            </XStack>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                padding: 10,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                backgroundColor: c.tint.i.bg,
+                borderWidth: 1,
+                borderColor: c.tint.i.bd,
+              }}
+            >
+              <Ph name="lightning" size={13} color={c.tint.i.tx} />
+              <T step="12" color={c.tint.i.tx} style={{ flex: 1 }}>
+                {t("providers.defaultDescription")}
+              </T>
+            </View>
           )}
           {/* Default model selector */}
           {provider.models.length > 0 && (
-            <YStack gap="$2">
-              <Text fontSize="$2" fontWeight="500" color={c.text2}>{t('providers.defaultModel')}</Text>
-              <YStack gap="$1">
-                <XStack
-                  alignItems="center" gap="$2" padding="$2" borderRadius="$2"
-                  backgroundColor={!provider.defaultModelId ? c.badges.info.bg : innerBg}
-                  borderWidth={1} borderColor={!provider.defaultModelId ? c.badges.info.border : 'transparent'}
-                  cursor="pointer" hoverStyle={{ backgroundColor: innerBgStrong }} pressStyle={{ opacity: 0.8 }}
+            <View>
+              <FieldLabel>{t("providers.defaultModel")}</FieldLabel>
+              <Card nested pad={4}>
+                <OptionRow
+                  on={!provider.defaultModelId}
+                  title={t("providers.noDefaultModel")}
                   onPress={() => onSetDefaultModel(null)}
-                >
-                  {!provider.defaultModelId
-                    ? <CheckCircle size={14} color={semanticColors.indigo} />
-                    : <YStack width={14} height={14} borderRadius={7} borderWidth={1} borderColor={c.borderStrong} />}
-                  <Text fontSize="$2" color={!provider.defaultModelId ? semanticColors.indigo : c.text2} flex={1} fontStyle="italic">
-                    {t('providers.noDefaultModel')}
-                  </Text>
-                </XStack>
+                />
                 {provider.models.map((model) => (
-                  <XStack
+                  <OptionRow
                     key={model.modelId}
-                    alignItems="center" gap="$2" padding="$2" borderRadius="$2"
-                    backgroundColor={provider.defaultModelId === model.modelId ? c.badges.info.bg : innerBg}
-                    borderWidth={1} borderColor={provider.defaultModelId === model.modelId ? c.badges.info.border : 'transparent'}
-                    cursor="pointer" hoverStyle={{ backgroundColor: innerBgStrong }} pressStyle={{ opacity: 0.8 }}
-                    onPress={() => guard(retention, model.modelId, model.modelId, () => onSetDefaultModel(model.modelId))}
-                  >
-                    {provider.defaultModelId === model.modelId
-                      ? <CheckCircle size={14} color={semanticColors.indigo} />
-                      : <YStack width={14} height={14} borderRadius={7} borderWidth={1} borderColor={c.borderStrong} />}
-                    <Text fontSize="$2" fontFamily="$mono" color={provider.defaultModelId === model.modelId ? semanticColors.indigo : c.text} flex={1}>
-                      {model.modelId}
-                    </Text>
-                  </XStack>
+                    on={provider.defaultModelId === model.modelId}
+                    title={model.modelId}
+                    sub={model.modelString !== model.modelId ? model.modelString : undefined}
+                    onPress={() =>
+                      guard(retention, model.modelId, model.modelId, () =>
+                        onSetDefaultModel(model.modelId),
+                      )
+                    }
+                  />
                 ))}
-              </YStack>
-            </YStack>
+              </Card>
+            </View>
           )}
           {testing ? (
-            <XStack alignItems="center" gap="$2">
-              <Loader2 size={13} color={c.text2} />
-              <Text fontSize="$1" color={c.text2}>{t('providers.testing')}</Text>
-            </XStack>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ph name="circle-notch" size={13} color={c.text3} />
+              <T step="12" tone="text3">
+                {t("providers.testing")}
+              </T>
+            </View>
           ) : (
             provider.lastTestedAt && (
-              <Text fontSize="$1" color={c.text2}>{t('providers.lastTested', { date: new Date(provider.lastTestedAt).toLocaleString() })}</Text>
+              <T step="12" tone="text3">
+                {t("providers.lastTested", {
+                  date: new Date(provider.lastTestedAt).toLocaleString(),
+                })}
+              </T>
             )
           )}
           {/* Actions */}
-          <XStack gap="$2" justifyContent="flex-end" flexWrap="wrap">
+          <View
+            style={{ flexDirection: "row", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}
+          >
             {confirmDelete ? (
               <>
-                <Button size="$2" backgroundColor={c.badges.err.bg} borderColor={c.badges.err.border} borderWidth={1} onPress={onDelete} icon={<Trash2 size={14} color={semanticColors.red} />}>
-                  <Text color={semanticColors.red} fontSize="$2">{t('providers.confirmDelete')}</Text>
-                </Button>
-                <Button size="$2" backgroundColor={innerBgStrong} onPress={() => setConfirmDelete(false)}>
-                  <Text color={c.text2} fontSize="$2">{t('common.cancel')}</Text>
-                </Button>
+                <Btn variant="ghost" size="sm" onPress={() => setConfirmDelete(false)}>
+                  {t("common.cancel")}
+                </Btn>
+                <Btn variant="danger" size="sm" icon="trash" onPress={onDelete}>
+                  {t("providers.confirmDelete")}
+                </Btn>
               </>
             ) : (
               <>
-                {!provider.isDefault && provider.status === 'active' && (
-                  <Button size="$2" backgroundColor={c.badges.info.bg} borderColor={c.badges.info.border} borderWidth={1} onPress={onSetDefault} disabled={settingDefault}
-                    icon={settingDefault ? <Loader2 size={14} color={semanticColors.indigo} /> : <Zap size={14} color={semanticColors.indigo} />}>
-                    <Text color={semanticColors.indigo} fontSize="$2">{t('providers.setAsDefault')}</Text>
-                  </Button>
+                {!provider.isDefault && provider.status === "active" && (
+                  <Btn
+                    variant="sec"
+                    size="sm"
+                    icon="lightning"
+                    onPress={onSetDefault}
+                    disabled={settingDefault}
+                    loading={settingDefault}
+                  >
+                    {t("providers.setAsDefault")}
+                  </Btn>
                 )}
-                <Button size="$2" backgroundColor={c.badges.err.bg} onPress={() => setConfirmDelete(true)} icon={<Trash2 size={14} color={semanticColors.red} />}>
-                  <Text color={semanticColors.red} fontSize="$2">{t('common.delete')}</Text>
-                </Button>
+                <Btn
+                  variant="dangerSoft"
+                  size="sm"
+                  icon="trash"
+                  onPress={() => setConfirmDelete(true)}
+                >
+                  {t("common.delete")}
+                </Btn>
               </>
             )}
-          </XStack>
-        </YStack>
+          </View>
+        </View>
       )}
       <RetentionConfirmModal {...modalProps} />
-    </YStack>
+    </View>
   )
 }
 
@@ -312,21 +361,21 @@ export interface ProvidersWindowContentProps {
 }
 
 export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps) {
-  const { t } = useTranslation();
-  const c = useColors();
+  const { t } = useTranslation()
+  const c = useColors()
   const client = getTerosClient()
 
-  const [providers, setProviders] = useState<UserProvider[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [adding, setAdding] = useState(false);
-  const [completing, setCompleting] = useState(false);
-  const [testingId, setTestingId] = useState<string | null>(null);
-  const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [providers, setProviders] = useState<UserProvider[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [completing, setCompleting] = useState(false)
+  const [testingId, setTestingId] = useState<string | null>(null)
+  const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null)
 
   // OAuth state (persisted across re-renders, cleared on success/cancel)
-  const [oauthState, setOauthState] = useState<OAuthState | null>(null);
+  const [oauthState, setOauthState] = useState<OAuthState | null>(null)
 
   // `silent` refreshes the list without toggling the fullscreen loader, which
   // would otherwise unmount every card and collapse the one the user just opened.
@@ -339,7 +388,7 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
       setError(null)
     } catch (err) {
       console.error("Failed to load providers:", err)
-      setError(err instanceof Error ? err.message : t('errors.providers.loadFailed'))
+      setError(err instanceof Error ? err.message : t("errors.providers.loadFailed"))
     } finally {
       if (!opts?.silent) setLoading(false)
     }
@@ -358,7 +407,7 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
         client.off("connected", onConnected)
       }
     }
-  }, [client]);
+  }, [client])
 
   const handleAddProvider = async (
     type: string,
@@ -384,7 +433,7 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
       await loadProviders()
     } catch (err) {
       console.error("Failed to add provider:", err)
-      setError(err instanceof Error ? err.message : t('errors.providers.addFailed'))
+      setError(err instanceof Error ? err.message : t("errors.providers.addFailed"))
     } finally {
       setAdding(false)
     }
@@ -410,7 +459,7 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
       await loadProviders()
     } catch (err) {
       console.error("Failed to delete provider:", err)
-      setError(err instanceof Error ? err.message : t('errors.providers.deleteFailed'))
+      setError(err instanceof Error ? err.message : t("errors.providers.deleteFailed"))
     }
   }
 
@@ -419,12 +468,10 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
       setSettingDefaultId(providerId)
       await client.provider.update(providerId, { isDefault: true })
       // Optimistic update: reflect immediately in UI
-      setProviders((prev) =>
-        prev.map((p) => ({ ...p, isDefault: p.providerId === providerId })),
-      )
+      setProviders((prev) => prev.map((p) => ({ ...p, isDefault: p.providerId === providerId })))
     } catch (err) {
       console.error("Failed to set default provider:", err)
-      setError(err instanceof Error ? err.message : t('errors.providers.setDefaultFailed'))
+      setError(err instanceof Error ? err.message : t("errors.providers.setDefaultFailed"))
       await loadProviders()
     } finally {
       setSettingDefaultId(null)
@@ -442,25 +489,25 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
       )
     } catch (err) {
       console.error("Failed to set default model:", err)
-      setError(err instanceof Error ? err.message : t('errors.providers.setDefaultModelFailed'))
+      setError(err instanceof Error ? err.message : t("errors.providers.setDefaultModelFailed"))
       await loadProviders()
     }
   }
 
   const handleStartOAuth = async (providerType: string) => {
     try {
-      setAdding(true);
-      const result = await client.provider.startOAuth(providerType);
+      setAdding(true)
+      const result = await client.provider.startOAuth(providerType)
       setOauthState({
         method: result.method,
         authUrl: result.authUrl,
         verifier: result.verifier,
         userCode: result.userCode,
         interval: result.interval,
-      });
+      })
     } catch (err) {
-      console.error('Failed to start OAuth:', err);
-      setError(err instanceof Error ? err.message : t('errors.providers.oauthStartFailed'));
+      console.error("Failed to start OAuth:", err)
+      setError(err instanceof Error ? err.message : t("errors.providers.oauthStartFailed"))
     } finally {
       setAdding(false)
     }
@@ -468,130 +515,134 @@ export function ProvidersWindowContent({ windowId }: ProvidersWindowContentProps
 
   const handleCompleteOAuth = async (verifier: string, callbackUrl?: string) => {
     try {
-      setCompleting(true);
-      const { providerId } = await client.provider.completeOAuth(verifier, callbackUrl);
+      setCompleting(true)
+      const { providerId } = await client.provider.completeOAuth(verifier, callbackUrl)
       try {
         await client.provider.test(providerId)
       } catch (testErr) {
-        console.warn('[ProvidersWindowContent] Auto-test failed:', testErr)
+        console.warn("[ProvidersWindowContent] Auto-test failed:", testErr)
       }
-      setShowAddForm(false);
-      setOauthState(null);
-      await loadProviders();
+      setShowAddForm(false)
+      setOauthState(null)
+      await loadProviders()
     } catch (err) {
-      console.error('Failed to complete OAuth:', err);
-      setError(err instanceof Error ? err.message : t('errors.providers.oauthCompleteFailed'));
+      console.error("Failed to complete OAuth:", err)
+      setError(err instanceof Error ? err.message : t("errors.providers.oauthCompleteFailed"))
     } finally {
-      setCompleting(false);
+      setCompleting(false)
     }
-  };
+  }
 
   const handleCancelForm = () => {
-    setShowAddForm(false);
-    setOauthState(null);
-  };
+    setShowAddForm(false)
+    setOauthState(null)
+  }
 
   if (loading) {
-    return <FullscreenLoader variant="default" label={t('common.loading')} />;
+    return <FullscreenLoader variant="default" label={t("common.loading")} />
   }
 
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      <ScrollView flex={1}>
-        <YStack padding="$4" gap="$4">
-          {/* Header */}
-          <XStack alignItems="center" justifyContent="space-between">
-            <Text fontSize="$6" fontWeight="700" color={c.text}>
-              {t('providers.myProviders')}
-            </Text>
-            {!showAddForm && providers.length > 0 && (
-              <Button
-                size="$3"
-                backgroundColor={c.badges.ok.bg}
-                borderColor={c.badges.ok.border}
-                borderWidth={1}
-                onPress={() => setShowAddForm(true)}
-                icon={<Plus size={16} color={semanticColors.green} />}
-              >
-                <Text color={semanticColors.green}>{t('providers.add')}</Text>
-              </Button>
-            )}
-          </XStack>
+    <Page>
+      <PageHead
+        eyebrow={t("nav.account", { defaultValue: "Account" })}
+        title={t("providers.myProviders")}
+        lead={t("windows.myProvidersSub")}
+        actions={
+          !showAddForm ? (
+            <Btn variant="primary" icon="plus" onPress={() => setShowAddForm(true)}>
+              {t("providers.add")}
+            </Btn>
+          ) : undefined
+        }
+      />
 
-          {/* Error */}
-          {error && (
-            <XStack
-              backgroundColor={c.badges.err.bg}
-              padding="$3"
-              borderRadius="$3"
-              gap="$2"
-              alignItems="center"
-            >
-              <AlertCircle size={16} color={semanticColors.red} />
-              <Text fontSize="$2" color={semanticColors.red} flex={1}>
-                {error}
-              </Text>
-              <Button
-                size="$1"
-                backgroundColor="transparent"
-                onPress={() => setError(null)}
-                icon={<X size={14} color={semanticColors.red} />}
+      {/* Error */}
+      {error && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 10,
+            padding: 12,
+            paddingHorizontal: 14,
+            borderRadius: 10,
+            backgroundColor: c.tint.r.bg,
+            borderWidth: 1,
+            borderColor: c.tint.r.bd,
+            marginBottom: 16,
+          }}
+        >
+          <Ph name="warning-circle" size={16} color={c.tint.r.tx} />
+          <T step="sm" color={c.tint.r.tx} style={{ flex: 1 }}>
+            {error}
+          </T>
+          <IconBtn
+            icon="x"
+            plain
+            sm
+            danger
+            onPress={() => setError(null)}
+            title={t("common.close")}
+          />
+        </View>
+      )}
+
+      {/* Add Form */}
+      {showAddForm && (
+        <View style={{ marginBottom: 20 }}>
+          <AddProviderForm
+            onAdd={handleAddProvider}
+            onStartOAuth={handleStartOAuth}
+            onCompleteOAuth={handleCompleteOAuth}
+            onCancel={handleCancelForm}
+            adding={adding}
+            completing={completing}
+            oauthState={oauthState}
+          />
+        </View>
+      )}
+
+      {/* Providers List */}
+      {providers.length > 0 ? (
+        <>
+          <SectionLabel
+            label={t("nav.providers", { defaultValue: "Providers" })}
+            count={providers.length}
+          />
+          <LGroup>
+            {providers.map((provider) => (
+              <ProviderCard
+                key={provider.providerId}
+                provider={provider}
+                onTest={() => handleTestProvider(provider.providerId)}
+                onDelete={() => handleDeleteProvider(provider.providerId)}
+                onSetDefault={() => handleSetDefault(provider.providerId)}
+                onSetDefaultModel={(modelId) =>
+                  handleSetDefaultModel(provider.providerId, modelId ?? null)
+                }
+                testing={testingId === provider.providerId}
+                settingDefault={settingDefaultId === provider.providerId}
               />
-            </XStack>
-          )}
-
-          {/* Add Form */}
-          {showAddForm && (
-            <AddProviderForm
-              onAdd={handleAddProvider}
-              onStartOAuth={handleStartOAuth}
-              onCompleteOAuth={handleCompleteOAuth}
-              onCancel={handleCancelForm}
-              adding={adding}
-              completing={completing}
-              oauthState={oauthState}
+            ))}
+          </LGroup>
+        </>
+      ) : (
+        !showAddForm && (
+          <Card>
+            <EmptyState
+              icon="key"
+              title={t("providers.empty")}
+              text={t("windows.myProvidersSub")}
+              action={
+                <Btn variant="primary" icon="plus" onPress={() => setShowAddForm(true)}>
+                  {t("providers.addProvider")}
+                </Btn>
+              }
             />
-          )}
-
-          {/* Providers List */}
-          {providers.length > 0 ? (
-            <YStack gap="$3">
-              {providers.map((provider) => (
-                <ProviderCard
-                  key={provider.providerId}
-                  provider={provider}
-                  onTest={() => handleTestProvider(provider.providerId)}
-                  onDelete={() => handleDeleteProvider(provider.providerId)}
-                  onSetDefault={() => handleSetDefault(provider.providerId)}
-                  onSetDefaultModel={(modelId) => handleSetDefaultModel(provider.providerId, modelId ?? null)}
-                  testing={testingId === provider.providerId}
-                  settingDefault={settingDefaultId === provider.providerId}
-                />
-              ))}
-            </YStack>
-          ) : (
-            !showAddForm && (
-              <YStack flex={1} alignItems="center" justifyContent="center" padding="$6">
-                <Key size={40} color={c.text3} />
-                <Text color={c.text3} marginTop="$3" textAlign="center" fontSize="$3">
-                  {t('providers.empty')}
-                </Text>
-                <Button
-                  size="$3"
-                  marginTop="$4"
-                  backgroundColor={c.badges.ok.bg}
-                  borderColor={c.badges.ok.border}
-                  borderWidth={1}
-                  onPress={() => setShowAddForm(true)}
-                  icon={<Plus size={16} color={semanticColors.green} />}
-                >
-                  <Text color={semanticColors.green}>{t('providers.addProvider')}</Text>
-                </Button>
-              </YStack>
-            )
-          )}
-        </YStack>
-      </ScrollView>
-    </YStack>
+          </Card>
+        )
+      )}
+    </Page>
   )
 }

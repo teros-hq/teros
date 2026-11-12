@@ -28,11 +28,20 @@
 # Tear down:
 #   docker compose -f docker-compose.test.yml down -v
 
+# Dedicated project name: without it this file shares the default project
+# ("teros", from the directory) with docker-compose.yml, so `up` replaces the
+# dev mongodb/qdrant containers with the ephemeral tmpfs ones and `down -v`
+# would delete the dev data volumes (incident 2026-10-22).
+name: teros-test
+
 services:
 
   # ── Ephemeral MongoDB ─────────────────────────────────────────────────────────
   mongodb:
-    image: mongo:7.0
+    image: mongo:7.0@sha256:be3d6353f3ea3fd3d22e016d19da20fcd6937eda0739eb6d2aeed335baa60f90
+    # Single-node replica set so tests exercise real multi-document transactions
+    # (INF-4). Every client is on this network and reaches it as mongodb:27017.
+    command: ["--replSet", "rs0", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: teros_test
     tmpfs:
@@ -41,7 +50,12 @@ services:
     networks:
       - teros-test-network
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      # Initiates the replica set on first run, then reports its status
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --eval \"try { rs.status().ok } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}).ok }\" | grep -q 1",
+        ]
       interval: 3s
       timeout: 3s
       retries: 15
@@ -49,7 +63,7 @@ services:
 
   # ── Ephemeral Qdrant ──────────────────────────────────────────────────────────
   qdrant:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:latest@sha256:057ee3a8da769fe7310dd3537b4dc7583bf87a95ce8ac43c0af5a46bc580d1fc
     tmpfs:
       - /qdrant/storage
     networks:
@@ -66,6 +80,7 @@ services:
     environment:
       MONGODB_URI: mongodb://mongodb:27017
       MONGODB_DATABASE: teros_test
+      DB_SCHEMA_WRITES: error
       SESSION_TOKEN_SECRET: test-secret-for-ci
       PORT: "3099"
       NODE_ENV: test

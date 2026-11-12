@@ -185,6 +185,17 @@
     "get-watcher-status": {
       "name": "get-watcher-status",
       "description": "Obtiene el estado actual del watcher de correo: si está activo, cuándo fue la última comprobación, cuántos IDs de mensaje se rastrean y el intervalo de sondeo."
+    },
+    "set-signature": {
+      "name": "set-signature",
+      "description": "Guarda la firma de correo (HTML) de la cuenta de Gmail conectada. Sobrescribe la firma de la cuenta (Gmail sendAs) para los correos enviados desde Teros. La firma se guarda por cuenta y se añade automáticamente a los correos salientes (send-message, reply-message, create-draft, update-draft) — nunca se inventa ni se reconstruye a partir de otros correos. Si el usuario quiere firma y no hay ninguna configurada, pídesela (preferiblemente en HTML) y guárdala con esta herramienta.",
+      "params": {
+        "signatureHtml": "La firma en HTML (p. ej. con logo <img>, nombre con estilo, puesto, empresa). Las imágenes deben usar URLs https absolutas."
+      }
+    },
+    "get-signature": {
+      "name": "get-signature",
+      "description": "Obtiene la firma de correo (HTML) de la cuenta de Gmail conectada, si existe. Comprueba la firma de la cuenta (Gmail sendAs) y la sobrescritura guardada en Teros. Úsala antes de redactar correos para saber si hay firma configurada."
     }
   }
 }

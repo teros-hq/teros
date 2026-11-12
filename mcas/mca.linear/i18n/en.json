@@ -20,10 +20,9 @@
     },
     "linear-get-issue": {
       "name": "linear-get-issue",
-      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, descriptionFormat ('full' | 'summary', default 'full'), fields?, includeRaw.",
+      "description": "Retrieve a Linear issue by UUID or identifier (e.g. \"TER-123\"). Returns curated { id, identifier, title, url, status, priority, assignee, team, project, cycle, labels, description, createdAt, updatedAt }. Params: issueId, fields?, includeRaw.",
       "params": {
         "issueId": "Issue UUID or human identifier (e.g. \"TER-123\").",
-        "descriptionFormat": "Control description size. 'full' (default) returns the complete markdown; 'summary' truncates to 500 chars and adds descriptionTruncated=true. Useful when scanning issues for context size.",
         "fields": "Override default whitelist.",
         "includeRaw": "Return raw Linear issue object. Default false."
       }
@@ -82,7 +81,7 @@
       "description": "Add a comment to a Linear issue. Returns curated { id, body, authorId, authorName, issueId, url, createdAt }. Not retryable. Params: issueId, body, fields?, includeRaw.",
       "params": {
         "issueId": "Issue UUID or identifier.",
-        "body": "Markdown comment body. Must not be empty.",
+        "body": "Markdown comment body.",
         "fields": "Override default whitelist.",
         "includeRaw": "Return raw Linear comment object. Default false."
       }

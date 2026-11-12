@@ -22,7 +22,7 @@ export const getColors: ToolConfig = {
   handler: async (args, context) => {
     const { calendar, email } = await getCalendarSession(context)
     const { includeRaw } = args as unknown as GetColorsArgs
-    const response = await wrapCalendarCall(() => calendar.colors.get({}))
+    const response = await wrapCalendarCall(context, () => calendar.colors.get({}))
     const curated = extractColorsShape(response.data)
     return {
       account: email,

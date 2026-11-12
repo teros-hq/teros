@@ -25,6 +25,7 @@
  */
 
 import type { Collection, Db } from 'mongodb';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import { nanoid } from 'nanoid';
 
 // ============================================================================
@@ -52,6 +53,18 @@ export interface ChannelEventSubscription {
   channelId: string;          // existing conversation to receive the event
   rules: Rules;               // empty = always match; non-empty = OR of rule objects
   mode: 'notify' | 'wake';   // notify: inject event only; wake: inject + force agent response
+  // One-time subscriptions auto-delete after the first matched dispatch.
+  // Optional + default false for backward compatibility with existing documents.
+  oneTime?: boolean;
+  // Unified filter (v1.4.4 reserved _subscribe tools): field → values, fields
+  // AND-ed, values OR-ed. Semantics come from the app's events.json filters
+  // declaration, snapshotted into filterSpec at subscribe time so dispatch is
+  // self-contained (the declaration can evolve without breaking live subs).
+  filter?: UnifiedFilter;
+  filterSpec?: DeclaredEventFilters;
+  // Event types (full topics, e.g. 'gmail.email.received') that wake the
+  // agent. Absent/empty = every matched event wakes (the historical default).
+  wakeUpOn?: string[];
   createdAt: Date;
   lastActivityAt: Date;       // updated on every matched dispatch; used for sliding TTL
 }
@@ -66,6 +79,9 @@ export interface AgentEventSubscription {
   agentId: string;            // agent that will handle the event
   rules: Rules;               // same semantics as ChannelEventSubscription
   correlationKey: string;     // field in the event payload to group events into the same conversation
+  // One-time subscriptions auto-delete after the first matched dispatch.
+  // Optional + default false for backward compatibility with existing documents.
+  oneTime?: boolean;
   createdAt: Date;
 }
 
@@ -102,26 +118,11 @@ export function getSubscriptionCorrelationsCollection(db: Db): Collection<Subscr
  * Call once at startup.
  */
 export async function ensureMcaEventSubscriptionIndexes(db: Db): Promise<void> {
-  // subscriptions_channel
-  const channelCol = getChannelEventSubscriptionsCollection(db);
-  await channelCol.createIndex({ topic: 1 }, { name: 'topic_lookup' });
-  await channelCol.createIndex({ channelId: 1 }, { name: 'channel_lookup' });
-  await channelCol.createIndex({ topic: 1, channelId: 1 }, { name: 'topic_channel_lookup' });
-  // Note: the TTL index on lastActivityAt is managed by migration
-  // 20260318_001_add_ttl_index_subscriptions_channel — do not recreate it here.
-
-  // subscriptions_agent
-  const agentCol = getAgentEventSubscriptionsCollection(db);
-  await agentCol.createIndex({ topic: 1 }, { name: 'topic_lookup' });
-  await agentCol.createIndex({ agentId: 1 }, { name: 'agent_lookup' });
-
-  // subscriptions_correlation
-  const corrCol = getSubscriptionCorrelationsCollection(db);
-  await corrCol.createIndex(
-    { subscriptionId: 1, correlationValue: 1 },
-    { unique: true, name: 'unique_correlation' },
-  );
-  await corrCol.createIndex({ channelId: 1 }, { name: 'channel_lookup' });
+  // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+  // ensureAllIndexes after migrations. Kept for tests and scripts.
+  await ensureCollectionIndexes(getChannelEventSubscriptionsCollection(db), COLLECTIONS.subscriptionsChannel);
+  await ensureCollectionIndexes(getAgentEventSubscriptionsCollection(db), COLLECTIONS.subscriptionsAgent);
+  await ensureCollectionIndexes(getSubscriptionCorrelationsCollection(db), COLLECTIONS.subscriptionsCorrelation);
 
   console.log('[MCAEventSubscriptions] MongoDB indexes ensured for subscriptions_channel/agent/correlation');
 }
@@ -159,4 +160,71 @@ export function topicMatches(pattern: string, topic: string): boolean {
     return topic.startsWith(prefix);
   }
   return false;
+}
+// ============================================================================
+// UNIFIED SUBSCRIPTION FILTERS (v1.4.4 — reserved _subscribe tools)
+//
+// The reserved per-MCA tools (`gmail__subscribe`, `board_manager__subscribe`…)
+// use ONE filter contract across every app: an object of field → values where
+// fields are AND-ed and values within a field are OR-ed. Each field's
+// semantics (which payload field it tests, which operator) are DECLARED by the
+// app in its events.json `filters` block — the backend evaluates them at
+// dispatch time against the event payload. Nothing is hardcoded per app, so a
+// new app gets filterable subscriptions by declaring, not by coding.
+// ============================================================================
+
+/**
+ * A declared filter field. `mapsTo` names the payload field the filter tests
+ * (defaults to the filter name); `operator` picks the comparison:
+ *   - anyOf (default): payload value is an array → membership; scalar → equality
+ *   - equals:          strict equality
+ *   - contains:        payload string contains the value (case-insensitive)
+ */
+export interface DeclaredFilterField {
+  type: 'string' | 'number' | 'boolean';
+  operator?: 'anyOf' | 'equals' | 'contains';
+  /** Payload field this filter maps to (defaults to the filter field name). */
+  mapsTo?: string;
+  description?: string;
+}
+
+/** filters block of a declared event: field name → declaration. */
+export type DeclaredEventFilters = Record<string, DeclaredFilterField>;
+
+/** The filter a subscriber sends: field → value or values (OR within field). */
+export type UnifiedFilter = Record<string, unknown>;
+
+/** Evaluate one declared field against a payload value. */
+function filterValueMatches(decl: DeclaredFilterField, filterValue: unknown, payloadValue: unknown): boolean {
+  const values = Array.isArray(filterValue) ? filterValue : [filterValue];
+  const op = decl.operator ?? 'anyOf';
+  if (op === 'contains') {
+    const hay = typeof payloadValue === 'string' ? payloadValue : String(payloadValue ?? '');
+    return values.some((v) => typeof v === 'string' && hay.toLowerCase().includes(v.toLowerCase()));
+  }
+  if (Array.isArray(payloadValue)) {
+    // anyOf/equals against an array payload: membership
+    return values.some((v) => payloadValue.includes(v as never));
+  }
+  return values.some((v) => payloadValue === v);
+}
+
+/**
+ * Evaluate a unified filter (AND across fields, OR within values) against an
+ * event payload using the app's declaration. Unknown filter fields are
+ * rejected at subscribe time, never here; an empty filter always matches.
+ */
+export function unifiedFilterMatches(
+  filter: UnifiedFilter | undefined,
+  filterSpec: DeclaredEventFilters | undefined,
+  payload: Record<string, unknown>,
+): boolean {
+  if (!filter || Object.keys(filter).length === 0) return true;
+  if (!filterSpec) return false; // declared without filters → only empty filters match
+  return Object.entries(filter).every(([field, value]) => {
+    const decl = filterSpec[field];
+    if (!decl) return false;
+    const target = decl.mapsTo ?? field;
+    return filterValueMatches(decl, value, payload[target]);
+  });
 }

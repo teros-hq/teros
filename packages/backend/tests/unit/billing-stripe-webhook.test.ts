@@ -198,3 +198,90 @@ describe('applyStripeWebhookEvent', () => {
     expect(res.handled).toBe(false)
   })
 })
+
+describe('applyStripeWebhookEvent — refunds, voids, detached cards, deleted customers', () => {
+  it('invoice.paid records amountCharged from amount_paid', async () => {
+    const db = new InMemoryDb()
+    await db.collection('billing_invoices').insertOne({ _id: 'inv_a', status: 'pending', amount: 19, externalReference: 'in_a' })
+    await applyStripeWebhookEvent(db as unknown as Db, event('invoice.paid', { id: 'in_a', amount_paid: 1900 }, 'evt_a1'), new Date())
+    expect(await db.collection('billing_invoices').findOne({ _id: 'inv_a' })).toMatchObject({ status: 'paid', amountCharged: 19 })
+  })
+
+  it('charge.refunded: a full refund flips the invoice to refunded, a partial one only records the amount', async () => {
+    const db = new InMemoryDb()
+    await db.collection('billing_invoices').insertOne({ _id: 'inv_r', userId: 'u1', status: 'paid', amount: 100, externalReference: 'in_r' })
+    await applyStripeWebhookEvent(db as unknown as Db, event('charge.refunded', { id: 'ch_1', invoice: 'in_r', amount: 10000, amount_refunded: 2500 }, 'evt_r1'), new Date())
+    expect(await db.collection('billing_invoices').findOne({ _id: 'inv_r' })).toMatchObject({ status: 'paid', refundedAmount: 25 })
+    await applyStripeWebhookEvent(db as unknown as Db, event('charge.refunded', { id: 'ch_1', invoice: 'in_r', amount: 10000, amount_refunded: 10000 }, 'evt_r2'), new Date())
+    expect(await db.collection('billing_invoices').findOne({ _id: 'inv_r' })).toMatchObject({ status: 'refunded', refundedAmount: 100 })
+  })
+
+  it('invoice.voided clears the Stripe reference of a pending/overdue invoice, leaves a paid one alone', async () => {
+    const db = new InMemoryDb()
+    await db.collection('billing_invoices').insertOne({ _id: 'inv_v', status: 'overdue', externalReference: 'in_v', invoiceNumber: 'X-1' })
+    await db.collection('billing_invoices').insertOne({ _id: 'inv_p', status: 'paid', externalReference: 'in_p' })
+    await applyStripeWebhookEvent(db as unknown as Db, event('invoice.voided', { id: 'in_v' }, 'evt_v1'), new Date())
+    await applyStripeWebhookEvent(db as unknown as Db, event('invoice.voided', { id: 'in_p' }, 'evt_v2'), new Date())
+    expect(await db.collection('billing_invoices').findOne({ _id: 'inv_v' })).toMatchObject({ status: 'overdue', externalReference: null, invoiceNumber: null, lastChargeError: 'STRIPE_VOIDED' })
+    expect(await db.collection('billing_invoices').findOne({ _id: 'inv_p' })).toMatchObject({ status: 'paid', externalReference: 'in_p' })
+  })
+
+  it('payment_method.detached forgets the default card; customer.deleted drops the mapping', async () => {
+    const db = new InMemoryDb()
+    await db.collection('billing_customers').insertOne({ _id: 'u1', userId: 'u1', stripeCustomerId: 'cus_1', defaultPaymentMethodId: 'pm_gone' })
+    await applyStripeWebhookEvent(db as unknown as Db, event('payment_method.detached', { id: 'pm_gone', customer: null }, 'evt_d1'), new Date())
+    expect(await db.collection('billing_customers').findOne({ _id: 'u1' })).toMatchObject({ defaultPaymentMethodId: null })
+    await applyStripeWebhookEvent(db as unknown as Db, event('customer.deleted', { id: 'cus_1', deleted: true }, 'evt_d2'), new Date())
+    expect(await db.collection('billing_customers').findOne({ _id: 'u1' })).toBeNull()
+  })
+})
+
+describe('BIL-6 — two-phase dedup and status guards', () => {
+  const NOW = new Date('2026-06-10T12:00:00Z')
+  const paid = () => event('invoice.paid', { id: 'in_stripe_1', number: 'TEROS-7', amount_paid: 8900, metadata: { terosInvoiceId: 'inv_1' } })
+
+  it('re-applies an event whose previous processing died mid-way (stale claim)', async () => {
+    const db = new InMemoryDb()
+    db.seed('billing_invoices', [invoiceDoc()])
+    db.seed('billing_webhook_events', [
+      { _id: 'evt_1', type: 'invoice.paid', receivedAt: NOW, status: 'processing', claimedAt: new Date(NOW.getTime() - 10 * 60_000) },
+    ])
+
+    const res = await applyStripeWebhookEvent(db as unknown as Db, paid(), NOW)
+
+    expect(res.status).toBe('paid')
+    expect((await db.collection('billing_invoices').findOne({ _id: 'inv_1' }))?.status).toBe('paid')
+    expect((await db.collection('billing_webhook_events').findOne({ _id: 'evt_1' }))?.status).toBe('applied')
+  })
+
+  it('refuses (→ 500, Stripe retries) while another delivery holds a fresh claim', async () => {
+    const db = new InMemoryDb()
+    db.seed('billing_invoices', [invoiceDoc()])
+    db.seed('billing_webhook_events', [
+      { _id: 'evt_1', type: 'invoice.paid', receivedAt: NOW, status: 'processing', claimedAt: new Date(NOW.getTime() - 5_000) },
+    ])
+
+    await expect(applyStripeWebhookEvent(db as unknown as Db, paid(), NOW)).rejects.toThrow('being processed')
+    expect((await db.collection('billing_invoices').findOne({ _id: 'inv_1' }))?.status).toBe('overdue')
+  })
+
+  it('treats rows from before the two-phase claim (no status) as applied', async () => {
+    const db = new InMemoryDb()
+    db.seed('billing_invoices', [invoiceDoc()])
+    db.seed('billing_webhook_events', [{ _id: 'evt_1', type: 'invoice.paid', receivedAt: NOW }])
+
+    expect(await applyStripeWebhookEvent(db as unknown as Db, paid(), NOW)).toEqual({ deduped: true, handled: false })
+  })
+
+  for (const status of ['waived', 'refunded', 'held']) {
+    it(`invoice.paid never flips a '${status}' invoice`, async () => {
+      const db = new InMemoryDb()
+      db.seed('billing_invoices', [invoiceDoc({ status })])
+
+      const res = await applyStripeWebhookEvent(db as unknown as Db, paid(), NOW)
+
+      expect(res.status).toBe(status)
+      expect((await db.collection('billing_invoices').findOne({ _id: 'inv_1' }))?.status).toBe(status)
+    })
+  }
+})

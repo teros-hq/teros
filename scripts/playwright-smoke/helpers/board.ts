@@ -82,7 +82,11 @@ export async function seedStuckTaskAtCap(
 ): Promise<string> {
   const taskId = await page.evaluate(
     async ({ pid, col }) => {
-      const r = await window.teros.board.createTask(pid, { title: "stuck task", columnId: col })
+      const r = await window.teros.board.createTask(pid, {
+        title: "stuck task",
+        instructions: "Stuck task for the auto-wake cap.",
+        columnId: col,
+      })
       return r.task.taskId
     },
     { pid: opts.projectId, col: opts.inProgressColumnId },

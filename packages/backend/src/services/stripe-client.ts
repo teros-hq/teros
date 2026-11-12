@@ -18,6 +18,7 @@ import type {
   CreateInvoiceItemParams,
   CreateInvoiceParams,
   CreateSetupIntentParams,
+  CreateTaxIdParams,
   ListInvoicesParams,
   StripeApi,
   StripeCardDetails,
@@ -26,6 +27,7 @@ import type {
   StripeInvoiceRef,
   StripePaymentMethodRef,
   StripeRequestOptions,
+  StripeSetupIntentDetails,
   StripeSetupIntentRef,
   UpdateCustomerParams,
 } from './stripe-api.js'
@@ -95,6 +97,31 @@ class StripeSdkAdapter implements StripeApi {
     return { id: si.id, client_secret: si.client_secret ?? null }
   }
 
+  async retrieveSetupIntent(id: string): Promise<StripeSetupIntentDetails> {
+    const si = await this.stripe.setupIntents.retrieve(id)
+    const pm = si.payment_method
+    const customer = si.customer
+    return {
+      id: si.id,
+      status: si.status,
+      payment_method: typeof pm === 'string' ? pm : (pm?.id ?? null),
+      customer: typeof customer === 'string' ? customer : (customer?.id ?? null),
+    }
+  }
+
+  async createCustomerTaxId(
+    customerId: string,
+    params: CreateTaxIdParams,
+    opts?: StripeRequestOptions,
+  ): Promise<{ id: string }> {
+    const taxId = await this.stripe.customers.createTaxId(
+      customerId,
+      { type: params.type as Stripe.TaxIdCreateParams.Type, value: params.value },
+      opts,
+    )
+    return { id: taxId.id }
+  }
+
   async attachPaymentMethod(
     paymentMethodId: string,
     customerId: string,
@@ -113,14 +140,22 @@ class StripeSdkAdapter implements StripeApi {
     opts?: StripeRequestOptions,
   ): Promise<StripeCardDetails | null> {
     const pm = await this.stripe.paymentMethods.retrieve(paymentMethodId, undefined, opts)
-    const card = pm.card
-    if (!card) return null
-    return {
-      brand: card.brand,
-      last4: card.last4,
-      expMonth: card.exp_month,
-      expYear: card.exp_year,
+    if (pm.card) {
+      return {
+        type: 'card',
+        brand: pm.card.brand,
+        last4: pm.card.last4,
+        expMonth: pm.card.exp_month,
+        expYear: pm.card.exp_year,
+      }
     }
+    if (pm.type === 'link') {
+      return { type: 'link', brand: 'link', last4: '', expMonth: 0, expYear: 0, email: pm.link?.email ?? null }
+    }
+    if (pm.sepa_debit) {
+      return { type: 'sepa_debit', brand: 'sepa', last4: pm.sepa_debit.last4 ?? '', expMonth: 0, expYear: 0 }
+    }
+    return null
   }
 
   async createInvoiceItem(

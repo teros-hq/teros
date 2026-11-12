@@ -9,14 +9,25 @@
  * The dashboard is a disposable read: when Latitude is unconfigured / unreachable /
  * rejects the token, the backend says so via `status` and this renders the matching
  * empty state — the rest of the product is unaffected.
+ *
+ * Drawn as the OS prototype's page: `Page` → `PageHead` (eyebrow + serif title +
+ * search / refresh actions) → lifecycle PTabs + sort chips → Stat tiles → the
+ * signals `LGroup`.
  */
 
-import { AlertTriangle, RefreshCw, Search, Shield, Zap } from "@tamagui/lucide-icons"
 import { useMemo, useState } from "react"
-import { Button, Input, Paragraph, ScrollView, Spinner, Text, XStack, YStack } from "tamagui"
+import { ActivityIndicator, View } from "react-native"
 import type { LatitudeSignalsListParams } from "../../services/AdminApi"
 import { getTerosClient } from "../../services/terosClientSingleton"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { Btn, ChipBtn, IconBtn } from "../../components/ui/ds/Buttons"
+import { Stat, Stats } from "../../components/ui/ds/Card"
+import { Field } from "../../components/ui/ds/Field"
+import { EmptyState, Page, PageHead } from "../../components/ui/ds/Page"
+import { PTabs } from "../../components/ui/ds/Tabs"
+import { T } from "../../components/ui/ds/Text"
 import { SignalsList } from "./components/SignalsList"
+import { formatCount, signalLevel } from "./format"
 import { type SignalsStatus, useLatitudeSignals } from "./hooks/useLatitudeSignals"
 
 type Lifecycle = "active" | "archived" | "all"
@@ -27,6 +38,12 @@ const SORT_LABELS: Record<Sort, string> = {
   occurrences: "Frequent",
   state: "Lifecycle",
 }
+
+const LIFECYCLE_TABS: { key: Lifecycle; label: string; icon: string }[] = [
+  { key: "active", label: "Active", icon: "pulse" },
+  { key: "archived", label: "Archived", icon: "archive" },
+  { key: "all", label: "All", icon: "list" },
+]
 
 const STATUS_EMPTY: Record<Exclude<SignalsStatus, "ok">, { title: string; hint: string }> = {
   unconfigured: {
@@ -43,122 +60,41 @@ const STATUS_EMPTY: Record<Exclude<SignalsStatus, "ok">, { title: string; hint: 
   },
 }
 
-function SegButton({
-  active,
-  label,
-  onPress,
-}: {
-  active: boolean
-  label: string
-  onPress: () => void
-}) {
-  return (
-    <Button
-      size="$2"
-      chromeless={!active}
-      theme={active ? "blue" : undefined}
-      onPress={onPress}
-      aria-label={label}
-    >
-      {label}
-    </Button>
-  )
-}
-
 interface ToolbarProps {
   lifecycle: Lifecycle
   onLifecycle: (l: Lifecycle) => void
   sort: Sort
   onSort: (s: Sort) => void
-  queryInput: string
-  onQueryInput: (v: string) => void
-  onSearch: () => void
-  onRefresh: () => void
-  loading: boolean
 }
 
-function SignalsToolbar(props: ToolbarProps) {
-  const {
-    lifecycle,
-    onLifecycle,
-    sort,
-    onSort,
-    queryInput,
-    onQueryInput,
-    onSearch,
-    onRefresh,
-    loading,
-  } = props
+function SignalsToolbar({ lifecycle, onLifecycle, sort, onSort }: ToolbarProps) {
   return (
-    <YStack
-      gap={10}
-      paddingHorizontal={16}
-      paddingVertical={12}
-      borderBottomColor="rgba(255,255,255,0.08)"
-      borderBottomWidth={1}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 14,
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+      }}
     >
-      <XStack ai="center" gap={10} flexWrap="wrap">
-        <Zap size={18} color="$yellow10" />
-        <Text fontSize={16} fontWeight="700" color="$gray12">
-          Latitude Signals
-        </Text>
-        <XStack flex={1} minWidth={200} ai="center" gap={6}>
-          <Input
-            flex={1}
-            size="$3"
-            value={queryInput}
-            onChangeText={onQueryInput}
-            onSubmitEditing={onSearch}
-            placeholder="Search signals…"
-            aria-label="Search signals"
-          />
-          <Button size="$3" icon={Search} onPress={onSearch}>
-            Search
-          </Button>
-          <Button
-            size="$3"
-            icon={RefreshCw}
-            disabled={loading}
-            onPress={onRefresh}
-            aria-label="Refresh"
-          />
-        </XStack>
-      </XStack>
-
-      <XStack ai="center" gap={14} flexWrap="wrap">
-        <XStack ai="center" gap={4}>
-          <SegButton
-            active={lifecycle === "active"}
-            label="Active"
-            onPress={() => onLifecycle("active")}
-          />
-          <SegButton
-            active={lifecycle === "archived"}
-            label="Archived"
-            onPress={() => onLifecycle("archived")}
-          />
-          <SegButton active={lifecycle === "all"} label="All" onPress={() => onLifecycle("all")} />
-        </XStack>
-        <XStack ai="center" gap={4}>
-          {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
-            <SegButton
-              key={s}
-              active={sort === s}
-              label={SORT_LABELS[s]}
-              onPress={() => onSort(s)}
-            />
-          ))}
-        </XStack>
-      </XStack>
-    </YStack>
-  )
-}
-
-function CenteredState({ children }: { children: React.ReactNode }) {
-  return (
-    <YStack flex={1} ai="center" jc="center" gap={10} padding={32}>
-      {children}
-    </YStack>
+      <PTabs items={LIFECYCLE_TABS} value={lifecycle} onChange={onLifecycle} />
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <T step="codenote" tone="text3" style={{ marginRight: 4 }}>
+          Sort
+        </T>
+        {(Object.keys(SORT_LABELS) as Sort[]).map((s) => (
+          <ChipBtn
+            key={s}
+            on={sort === s}
+            onPress={() => onSort(s)}
+            {...({ "aria-label": SORT_LABELS[s] } as any)}
+          >
+            {SORT_LABELS[s]}
+          </ChipBtn>
+        ))}
+      </View>
+    </View>
   )
 }
 
@@ -173,71 +109,86 @@ function SignalsBody({
   hasMore,
   loadMore,
 }: BodyProps) {
+  const c = useColors()
+  const stats = useMemo(() => {
+    const escalating = signals.filter((s) => signalLevel(s.states, s.muted) === "bad").length
+    const fresh = signals.filter((s) => !s.muted && s.states.includes("new")).length
+    const occurrences = signals.reduce((a, s) => a + (s.occurrences ?? 0), 0)
+    return { escalating, fresh, occurrences }
+  }, [signals])
+
   if (loading) {
     return (
-      <YStack flex={1} ai="center" jc="center" padding={32}>
-        <Spinner size="large" color="$blue10" />
-      </YStack>
+      <View style={{ alignItems: "center", justifyContent: "center", padding: 48 }}>
+        <ActivityIndicator size="large" color={c.accent} />
+      </View>
     )
   }
   if (error) {
+    const forbidden = error === "Admin privileges required"
     return (
-      <CenteredState>
-        {error === "Admin privileges required" ? (
-          <Shield size={40} color="$orange10" />
-        ) : (
-          <AlertTriangle size={40} color="$red10" />
-        )}
-        <Text fontSize={15} fontWeight="600" color="$gray12">
-          {error}
-        </Text>
-      </CenteredState>
+      <EmptyState
+        icon={forbidden ? "shield-check" : "warning"}
+        title={error}
+        text={
+          forbidden
+            ? "This window is restricted to system admins (role ∈ admin | super)."
+            : undefined
+        }
+      />
     )
   }
   if (status && status !== "ok") {
     return (
-      <CenteredState>
-        <AlertTriangle size={36} color="$gray8" />
-        <Text fontSize={15} fontWeight="600" color="$gray12">
-          {STATUS_EMPTY[status].title}
-        </Text>
-        <Paragraph fontSize={12} color="$gray9" textAlign="center" maxWidth={440}>
-          {STATUS_EMPTY[status].hint}
-        </Paragraph>
-      </CenteredState>
+      <EmptyState
+        icon="plugs"
+        title={STATUS_EMPTY[status].title}
+        text={STATUS_EMPTY[status].hint}
+      />
     )
   }
   if (signals.length === 0) {
     return (
-      <CenteredState>
-        <Zap size={36} color="$gray8" />
-        <Text fontSize={14} color="$gray10">
-          No signals in this window.
-        </Text>
-        <Paragraph fontSize={12} color="$gray9" textAlign="center" maxWidth={420}>
-          Latitude clusters failures from exported traces and 👎 / tool-error scores. None have
-          surfaced for the current filters.
-        </Paragraph>
-      </CenteredState>
+      <EmptyState
+        icon="broadcast"
+        title="No signals in this window."
+        text="Latitude clusters failures from exported traces and 👎 / tool-error scores. None have surfaced for the current filters."
+      />
     )
   }
   return (
-    <ScrollView flex={1}>
-      <YStack padding={16} gap={12}>
-        <SignalsList signals={signals} />
-        {hasMore ? (
-          <Button
-            size="$3"
-            chromeless
+    <View style={{ gap: 16 }}>
+      <Stats cols={4}>
+        <Stat
+          label="Signals"
+          v={formatCount(signals.length)}
+          sub={hasMore ? "loaded · more available" : "loaded"}
+        />
+        <Stat
+          label="Escalating"
+          v={formatCount(stats.escalating)}
+          sub="getting worse"
+          accent={stats.escalating > 0}
+        />
+        <Stat label="New" v={formatCount(stats.fresh)} sub="first seen recently" />
+        <Stat label="Occurrences" v={formatCount(stats.occurrences)} sub="across loaded signals" />
+      </Stats>
+      <SignalsList signals={signals} />
+      {hasMore ? (
+        <View style={{ flexDirection: "row", justifyContent: "center" }}>
+          <Btn
+            variant="sec"
+            size="md"
+            loading={loadingMore}
             disabled={loadingMore}
             onPress={loadMore}
-            aria-label="Load more signals"
+            {...({ "aria-label": "Load more signals" } as any)}
           >
             {loadingMore ? "Loading…" : "Load more"}
-          </Button>
-        ) : null}
-      </YStack>
-    </ScrollView>
+          </Btn>
+        </View>
+      ) : null}
+    </View>
   )
 }
 
@@ -260,21 +211,47 @@ export function LatitudeSignalsWindowContent() {
   )
 
   const state = useLatitudeSignals(client, params)
+  const search = () => setQuery(queryInput.trim())
 
   return (
-    <YStack flex={1} backgroundColor="$background">
-      <SignalsToolbar
-        lifecycle={lifecycle}
-        onLifecycle={setLifecycle}
-        sort={sort}
-        onSort={setSort}
-        queryInput={queryInput}
-        onQueryInput={setQueryInput}
-        onSearch={() => setQuery(queryInput.trim())}
-        onRefresh={state.reload}
-        loading={state.loading}
+    <Page>
+      <PageHead
+        eyebrow="Monitorización"
+        title="Latitude Signals"
+        lead="Clustered failures Latitude derives from exported traces — each row opens in Latitude."
+        actions={
+          <>
+            <Field
+              icon="magnifying-glass"
+              value={queryInput}
+              onChangeText={setQueryInput}
+              onSubmitEditing={search}
+              placeholder="Search signals…"
+              containerStyle={{ minWidth: 220 }}
+              {...({ "aria-label": "Search signals" } as any)}
+            />
+            <Btn variant="primary" size="md" icon="magnifying-glass" onPress={search}>
+              Search
+            </Btn>
+            <IconBtn
+              icon="arrows-clockwise"
+              disabled={state.loading}
+              onPress={state.reload}
+              title="Refresh"
+              {...({ "aria-label": "Refresh" } as any)}
+            />
+          </>
+        }
       />
-      <SignalsBody {...state} />
-    </YStack>
+      <View style={{ gap: 16 }}>
+        <SignalsToolbar
+          lifecycle={lifecycle}
+          onLifecycle={setLifecycle}
+          sort={sort}
+          onSort={setSort}
+        />
+        <SignalsBody {...state} />
+      </View>
+    </Page>
   )
 }

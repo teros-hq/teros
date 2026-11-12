@@ -80,7 +80,7 @@ export function ListFilesRenderer({ toolName, status, output, appIcon }: ToolCal
   }
 
   return (
-    <ToolCallCard status={status} verb="List files" badge={badge} iconUri={appIcon}>
+    <ToolCallCard status={status} description="List files" badge={badge} iconUri={appIcon}>
         {status === 'failed' && output && <ErrorBlock error={output} />}
 
         {status === 'completed' && files.length === 0 && (
@@ -213,7 +213,8 @@ export function GetFileRenderer({
 interface DownloadResult {
   success: boolean;
   path?: string;
-  fileName?: string;
+  /** download-file returns `filename`. */
+  filename?: string;
   size?: number;
   error?: string;
 }
@@ -242,8 +243,8 @@ export function DownloadFileRenderer({
   const description =
     status === 'running'
       ? 'Download file'
-      : result?.fileName
-        ? `Download: ${truncate(result.fileName, 20)}`
+      : result?.filename
+        ? `Download: ${truncate(result.filename, 20)}`
         : 'Download file';
 
 
@@ -255,7 +256,7 @@ export function DownloadFileRenderer({
 
         {status === 'completed' && result?.success && (
           <YStack gap={4}>
-            <SuccessBlock message={`Downloaded: ${result.fileName || 'file'}`} />
+            <SuccessBlock message={`Downloaded: ${result.filename || 'file'}`} />
             {result.path && (
               <XStack gap={8} paddingLeft={8}>
                 <Text color={c.text3} fontSize={9}>

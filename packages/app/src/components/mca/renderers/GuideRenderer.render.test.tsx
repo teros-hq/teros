@@ -1,8 +1,8 @@
 /**
  * Render test for the Teros Guide renderer (TER-583).
  *
- * Mordedura: afirma que el header compone el tense correcto a partir del
- * `output` REAL del backend (los datos serializados como texto plano), tolera
+ * Mordedura: afirma que el header (texto estático desde c3085299b) se compone
+ * a partir del `output` REAL del backend (los datos serializados como texto plano), tolera
  * además el wrapper legacy `{content, structuredContent}`, y pinta el
  * badge/health correctos. El parsing del output es la clase de bug que importa
  * (cambio de significado del shape). El body expandido (EntityRows /
@@ -72,10 +72,11 @@ describe('GuideRenderer — list-guide-topics', () => {
     expect(getByText('Listed 1 guide topics')).toBeTruthy();
   });
 
-  it('running state shows the present tense, no crash without output', () => {
+  it('running state renders the static header, no crash without output', () => {
+    // The tense system was removed (c3085299b): the header is the same static text
+    // in every status; with no output yet the count falls back to 0.
     const { getByText } = renderTool({ toolName: 'list-guide-topics', status: 'running' });
-    // present tense appends an ellipsis ("…"), so match by substring
-    expect(getByText(/Reading the guide index/)).toBeTruthy();
+    expect(getByText('Listed 0 guide topics')).toBeTruthy();
   });
 });
 
@@ -96,9 +97,13 @@ describe('GuideRenderer — search-guide', () => {
     expect(getByText('Guide search: "create an agent"')).toBeTruthy();
   });
 
-  it('running state shows the present tense', () => {
-    const { getByText } = renderTool({ toolName: 'search-guide', status: 'running' });
-    expect(getByText(/Searching the guide/)).toBeTruthy();
+  it('running state renders the static header with the query, no crash without output', () => {
+    const { getByText } = renderTool({
+      toolName: 'search-guide',
+      status: 'running',
+      input: { query: 'create an agent' },
+    });
+    expect(getByText('Guide search: "create an agent"')).toBeTruthy();
   });
 });
 
@@ -119,14 +124,16 @@ describe('GuideRenderer — get-guide-section', () => {
     expect(getByText('Guide: Agents')).toBeTruthy();
   });
 
-  it('failed state composes the failure tense', () => {
-    const { getByText } = renderTool({
+  it('failed state keeps the requested topic in the header and marks the card failed', () => {
+    const { getByText, getByLabelText } = renderTool({
       toolName: 'get-guide-section',
       status: 'failed',
       input: { topic: 'agents' },
       error: 'boom',
     });
-    expect(getByText(/Failed to open the guide section/)).toBeTruthy();
+    // No output → the header falls back to the requested topic (static, c3085299b).
+    expect(getByText('Guide: agents')).toBeTruthy();
+    expect(getByLabelText('Failed')).toBeTruthy();
   });
 });
 

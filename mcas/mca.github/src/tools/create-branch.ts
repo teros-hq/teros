@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const createBranch: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -18,6 +18,7 @@ export const createBranch: ToolConfig = {
     const { owner, repo, branch, from_branch = 'main' } = args as {
       owner: string; repo: string; branch: string; from_branch?: string;
     };
+    assertOwnerRepo(owner, repo);
     const refData = await githubRequest(context, `/repos/${owner}/${repo}/git/refs/heads/${from_branch}`) as any;
     return await githubRequest(context, `/repos/${owner}/${repo}/git/refs`, {
       method: 'POST',

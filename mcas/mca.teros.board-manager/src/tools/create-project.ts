@@ -20,8 +20,10 @@ export const createProject: ToolConfig = {
     },
     required: ['name'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const workspaceId = (args?.workspaceId as string) || WORKSPACE_ID;
     const name = args?.name as string;
@@ -32,6 +34,7 @@ export const createProject: ToolConfig = {
         workspaceId,
         name,
         description: args?.description,
+        callerAgentId,
       }),
       15_000,
       'create_project',

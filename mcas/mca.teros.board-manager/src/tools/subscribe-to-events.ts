@@ -5,6 +5,7 @@ import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 
 export const subscribeToEvents: ToolConfig = {
   description:
+    'DEPRECATED (v1.4.4): use the reserved per-app tools instead — `board_manager__subscribe` for this app\'s events, `<app>__subscribe` for any other app\'s (e.g. gmail__subscribe with event "email.received"). The reserved tools take the LOCAL event name, validate filters against the app\'s declaration and keep state in the backend. This tool still works (raw topic + rules) but will be removed. ' +
     'Subscribe the current conversation to MCA events on a topic. Events matching the topic are delivered to the conversation as they happen. Use rules to narrow events. Returns: { subscription: { id, topic, channelId, rules, mode, createdAt } }. Use unsubscribe-from-events to stop.',
   annotations: { readOnlyHint: false, version: '1.0.0', stability: 'experimental' },
   parameters: {
@@ -12,7 +13,7 @@ export const subscribeToEvents: ToolConfig = {
     properties: {
       topic: {
         type: 'string',
-        description: 'Event topic to subscribe to (e.g. "mca.teros.scheduler.reminder")',
+        description: 'Event topic to subscribe to (e.g. "telegram.message.received")',
       },
       channelId: {
         type: 'string',
@@ -27,7 +28,7 @@ export const subscribeToEvents: ToolConfig = {
         type: 'string',
         enum: ['notify', 'wake'],
         description:
-          'Delivery mode: notify = silent notification, wake = trigger agent response turn. Default: notify',
+          'Delivery mode: notify = silent notification, wake = trigger agent response turn (the agent gets a response turn). Default: wake',
       },
       includeRaw: { type: 'boolean', description: 'Return full subscription document' },
     },
@@ -45,12 +46,16 @@ export const subscribeToEvents: ToolConfig = {
       CURRENT_CHANNEL_ID;
     if (!channelId) throw new Error('channelId not found in execution context');
 
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
+
     const result = await withTimeout(
       wsClient.queryConversations<any>('subscribe_to_events', {
         topic,
         channelId,
         rules: args?.rules,
-        mode: args?.mode ?? 'notify',
+        mode: args?.mode ?? 'wake',
+        callerAgentId,
       }),
       15_000,
       'subscribe_to_events',

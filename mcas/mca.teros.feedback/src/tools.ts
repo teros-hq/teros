@@ -42,7 +42,11 @@ export async function submitFeedback(body: FeedbackSubmitBody) {
 // =============================================================================
 
 export const reportBug: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: owner decision (2026-10-01) — "report-bug y report-suggestion
+  // siempre tienen que ser safe y en allow". Feedback reports are private to the
+  // platform team's feedback inbox, attributable to the reporter, and the write
+  // is reversible (reports can be discarded), so they seed 'allow' not 'ask'.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description: 'Report a bug or technical issue with the platform',
   parameters: {
     type: 'object',
@@ -90,7 +94,8 @@ export const reportBug: ToolConfig = {
 };
 
 export const reportSuggestion: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: owner decision (2026-10-01) — see report-bug above.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description: 'Submit a suggestion or feature request to improve the platform',
   parameters: {
     type: 'object',

@@ -1,0 +1,685 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-events.json",
+  "mcaId": "mca.teros.todo-list",
+  "events": [
+    {
+      "topic": "todo.task_created",
+      "description": "A task (or group) was created in the to-do list.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "parentText": "string (parent's title)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_started",
+      "description": "A task entered the working state (autoplay start, start-node, or manual set-state).",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fromState": "string (previous state)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_completed",
+      "description": "A task reached done or review (work finished). Carries the output reference when one was delivered.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fromState": "string (previous state)",
+        "outputFormat": "string (markdown|form|file)",
+        "outputName": "string (file name)",
+        "outputUrl": "string (public file url)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_blocked",
+      "description": "A task was blocked, with its reason.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fromState": "string (previous state)",
+        "reason": "string (why it is blocked)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_state_changed",
+      "description": "A task moved between states (generic transition not covered by started/completed/blocked).",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fromState": "string (previous state)",
+        "reason": "string (when blocked context)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_assigned",
+      "description": "A task was assigned to an agent or workspace member.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_unassigned",
+      "description": "A task lost its assignee.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (the previous assignee)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_planned",
+      "description": "A task was planned for a day (or taken off its day), optionally with a time.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "day": "string YYYY-MM-DD | null",
+        "plannedTime": "string HH:MM | null"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_output_delivered",
+      "description": "A task delivered its output (markdown, form or file).",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "outputFormat": "string (markdown|form|file)",
+        "outputName": "string (file name)",
+        "outputUrl": "string (public file url)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_progress",
+      "description": "A task reported progress (percentage) or a log note was added.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "progress": "number | null (reported %)",
+        "noteText": "string (log note text)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_updated",
+      "description": "A task's text, description, instructions or expected output changed.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fields": "string[] (changed fields)"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_moved",
+      "description": "A task was moved to another parent or position in the tree.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "fromParentId": "string | null",
+        "parentText": "string (new parent's title)",
+        "position": "number"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.task_deleted",
+      "description": "A task (and its subtree) was deleted.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task node ID)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (new state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "channelId": "string | null (task conversation)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date",
+        "descendantCount": "number"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.agent_play_changed",
+      "description": "An autoplay runner's play was toggled.",
+      "payload": {
+        "workspaceId": "string",
+        "agentId": "string",
+        "playEnabled": "boolean",
+        "actorAgentId": "string",
+        "actorUserId": "string",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.agent_slots_changed",
+      "description": "An autoplay runner's parallel slots changed.",
+      "payload": {
+        "workspaceId": "string",
+        "agentId": "string",
+        "slots": "number",
+        "actorAgentId": "string",
+        "actorUserId": "string",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this specific task (node ID) — 'avísame cuando ESTA tarea termine'."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group's subtree (group node ID)."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace (backend envelope)."
+        }
+      }
+    },
+    {
+      "topic": "todo.dependency_added",
+      "description": "A task now waits on another task (add-dependency) - the day/tree rows show the waiting semaforo until the blocker reaches done or cancelled.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task that waits)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (task state)",
+        "blockerNodeId": "string (the blocker task node ID)",
+        "blockerText": "string (blocker title)",
+        "blockerState": "string | null (blocker state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this task (node ID)."
+        },
+        "blockerNodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this blocker (node ID)."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group’s subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the waiting task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace."
+        }
+      }
+    },
+    {
+      "topic": "todo.dependency_removed",
+      "description": "A task stopped waiting on another task (remove-dependency) - it becomes autoplay-eligible again at once.",
+      "payload": {
+        "workspaceId": "string",
+        "nodeId": "string (task that waits)",
+        "text": "string (task title)",
+        "parentId": "string | null",
+        "state": "string (task state)",
+        "blockerNodeId": "string (the blocker task node ID)",
+        "blockerText": "string (blocker title)",
+        "blockerState": "string | null (blocker state)",
+        "assigneeKind": "'agent' | 'user'",
+        "assigneeId": "string (assignee id)",
+        "actorAgentId": "string (agent that caused it)",
+        "actorUserId": "string (user that caused it)",
+        "occurredAt": "ISO date"
+      },
+      "filters": {
+        "nodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events for this task (node ID)."
+        },
+        "blockerNodeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events about this blocker (node ID)."
+        },
+        "groupNodeIds": {
+          "type": "string",
+          "operator": "anyOf",
+          "description": "Only events for tasks inside this group’s subtree (group node ID)."
+        },
+        "assigneeId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events where the waiting task is assigned to this agent/user."
+        },
+        "workspaceId": {
+          "type": "string",
+          "operator": "equals",
+          "description": "Only events of this workspace."
+        }
+      }
+    }
+  ]
+}

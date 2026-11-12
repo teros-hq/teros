@@ -4,7 +4,12 @@ import { validateAgentId } from './utils';
 export const agentProvidersGet: ToolConfig = {
   annotations: { readOnlyHint: true },
   description:
-    "Get the LLM provider configuration for an agent. Returns the agent's available providers, preferred provider, and selected model.",
+    "Get the LLM model configuration for an agent. Returns ALL of the owner's active providers " +
+    '(each with isDefault, defaultModelId and its models), the agent pin ' +
+    '(selectedProviderId/selectedModelId, null = System Default), the resolved provider/model a ' +
+    'run would actually use (source: agent_pin | user_default_provider | unresolved), and ' +
+    'warnings for any orphaned or inconsistent configuration. System Default = the user default ' +
+    'provider (isDefault) + its defaultModelId.',
   parameters: {
     type: 'object',
     properties: {

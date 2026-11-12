@@ -87,13 +87,22 @@ export class ProviderApi {
   }
 
   /** Test connection and discover models for a provider */
-  test(providerId: string): Promise<{
+  test(
+    providerId: string,
+    opts: { probe?: boolean } = {},
+  ): Promise<{
     providerId: string
     ok: boolean
     models?: any[]
     error?: string
+    /** Text of the real completion when `probe` was requested (ONB-REQ-8). */
+    reply?: string
   }> {
-    return this.transport.request("provider.test", { providerId }, { timeout: 30_000 })
+    return this.transport.request(
+      "provider.test",
+      { providerId, ...(opts.probe ? { probe: true } : {}) },
+      { timeout: opts.probe ? 60_000 : 30_000 },
+    )
   }
 
   /** Update provider settings (displayName, priority, status, defaultModelId, isDefault) */

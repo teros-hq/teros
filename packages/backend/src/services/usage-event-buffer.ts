@@ -17,7 +17,7 @@
  *   - Metrics exposed via getMetrics() for `/metrics` Prometheus endpoint.
  *   - shutdown() flushes pending events on SIGTERM.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §7 — Bus de eventos UsageEventBuffer
  */
 
 import { resolve } from "node:path"
@@ -259,7 +259,9 @@ export class UsageEventBuffer {
     const result = await withRetry(
       async () => {
         await this.repo.bulkInsert(batch)
-        await this.applier.applyBatch(batch)
+        // applyAll throws if any event failed, so it is retried (MOD-7);
+        // events already applied are skipped by their claim
+        await this.applier.applyAll(batch)
       },
       {
         // During shutdown, a single attempt then dead-letter — the 3-retry
@@ -305,7 +307,7 @@ export class UsageEventBuffer {
   private async writeCriticalEventDirectly(event: AgentUsageEvent): Promise<void> {
     try {
       await this.repo.bulkInsert([event])
-      await this.applier.applyBatch([event])
+      await this.applier.applyAll([event])
       this.metrics.incrementFlushed(1)
     } catch (err) {
       this.log.error(

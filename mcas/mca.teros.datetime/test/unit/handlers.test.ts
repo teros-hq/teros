@@ -3,27 +3,26 @@
  *
  * Las 8 tools son funciones puras de datos — el caso canónico para
  * fast-check (properties en datetime.properties.test.ts). El dispatcher
- * devuelve content MCP: {content:[{type:'text', text}]} con JSON dentro —
- * se parsea y se asserta el shape exacto.
+ * de test devuelve content MCP: {content:[{type:'text', text}]} con JSON
+ * dentro — se parsea y se asserta el shape exacto.
+ *
+ * v0.9.1: las tools ahora son ToolConfig del SDK (@teros/mca-sdk); el
+ * dispatcher de test (./_dispatcher) reproduce el contrato de error del
+ * transporte stdio del SDK, que es el mismo que tenía el viejo
+ * handleToolCall de mcp/src/handlers.ts.
  */
 
 import { describe, expect, it } from "bun:test"
-import { handleToolCall } from "../../mcp/src/handlers"
+import { handleToolCall } from "./_dispatcher"
 
 async function call(name: string, args: unknown): Promise<Record<string, unknown>> {
-  const result = (await handleToolCall(name, args)) as {
-    content: Array<{ type: string; text: string }>
-    isError?: boolean
-  }
+  const result = await handleToolCall(name, args)
   expect(result.content[0].type).toBe("text")
   return JSON.parse(result.content[0].text)
 }
 
 async function callRaw(name: string, args: unknown) {
-  return (await handleToolCall(name, args)) as {
-    content: Array<{ type: string; text: string }>
-    isError?: boolean
-  }
+  return handleToolCall(name, args)
 }
 
 describe("get-current", () => {
@@ -32,7 +31,7 @@ describe("get-current", () => {
     expect(Object.keys(result)).toEqual(["datetime", "timezone", "offset", "timestamp"])
     expect(result.timezone).toBe("Europe/Madrid")
     expect(typeof result.timestamp).toBe("number")
-    // junio: CEST = UTC+2
+    // octubre: CEST = UTC+2 (hasta el cambio de hora de finales de octubre)
     expect(result.offset).toBe(120)
   })
 
@@ -47,7 +46,7 @@ describe("get-current", () => {
     expect(result.offset).toBe(540)
   })
 
-  it("timezone inválida → isError (luxon zone invalid revienta el toISO→null... pin del catch)", async () => {
+  it("timezone inválida → nulls SIN error (luxon setZone inválido → DateTime invalid → toISO null)", async () => {
     const raw = await callRaw("get-current", { timezone: "Marte/Cráter" })
     // setZone con zona inválida produce DateTime invalid → toISO() null → datetime null SIN error
     // (characterization: la tool no valida la zona; el agente recibe nulls)
@@ -219,10 +218,10 @@ describe("is-valid", () => {
 })
 
 describe("dispatcher", () => {
-  it("unknown tool → isError con el nombre", async () => {
+  it("unknown tool → isError con el nombre (contrato del SDK: Tool 'x' not found)", async () => {
     const raw = await callRaw("no-existe", {})
     expect(raw.isError).toBe(true)
-    expect(raw.content[0].text).toBe("Error: Unknown tool: no-existe")
+    expect(raw.content[0].text).toBe("Error: Tool 'no-existe' not found")
   })
 
   it("error no-Error se stringifica", async () => {

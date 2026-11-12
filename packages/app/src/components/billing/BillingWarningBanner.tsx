@@ -1,6 +1,5 @@
 /**
- * BillingWarningBanner — the non-invasive 80% usage notice (FASE 6, decision #11;
- * refreshed in TER-596 I4).
+ * BillingWarningBanner — the 80% agent-hours banner (TER-596 I4 redesign).
  *
  * Lives OUTSIDE the chat flow: mounted globally in the workspace layout next to
  * ImpersonationBanner. Driven by billingStore (fed by billing.usage-warning via
@@ -8,16 +7,18 @@
  * re-surfaces it. Its CTA opens the shared BoostModal (which buys for individual
  * users and requests from the admin for team members) — it never blocks anything
  * and never assumes the "request" path up front.
+ *
+ * Presentation: a full-width tinted strip (amber; red once the hours are gone)
+ * with a Phosphor warning glyph, the copy, a small pill CTA and a dismiss.
  */
 
-import { X } from "@tamagui/lucide-icons"
 import { useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, Text, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import { getDateLocale } from "../../i18n"
 import { useBillingStore } from "../../store/billingStore"
 import { useColors } from "../mca/primitives/useColors"
-import { indicators } from "../mca/primitives/colors"
+import { Btn, IconBtn, Ph, T } from "../ui/ds"
 import { BoostModal } from "./BoostModal"
 
 export function BillingWarningBanner() {
@@ -31,6 +32,8 @@ export function BillingWarningBanner() {
   if (!warning || dismissed) return null
 
   const pct = warning.limit > 0 ? Math.round((warning.used / warning.limit) * 100) : 0
+  const exhausted = warning.limit > 0 && warning.used >= warning.limit
+  const tint = exhausted ? c.tint.r : c.tint.a
   const renewsAt = warning.periodEnd
     ? new Date(warning.periodEnd).toLocaleDateString(getDateLocale(), {
         day: "numeric",
@@ -39,50 +42,51 @@ export function BillingWarningBanner() {
     : null
 
   return (
-    <YStack
+    <View
       testID="billing-warning-banner"
-      backgroundColor={indicators.risk.bg}
-      borderBottomWidth={1}
-      borderBottomColor={indicators.risk.border}
-      paddingHorizontal="$3"
-      paddingVertical="$2"
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: tint.bg,
+        borderBottomWidth: 1,
+        borderBottomColor: tint.bd,
+      }}
     >
-      <XStack alignItems="center" justifyContent="space-between" gap="$3">
-        <YStack flex={1} gap="$0.5">
-          <Text color={c.text} fontSize="$2" fontWeight="600">
-            {warning.planName
-              ? t("billing.warning.titlePlan", { pct, plan: warning.planName })
-              : t("billing.warning.title", { pct })}
-          </Text>
-          <Text testID="billing-warning-usage" color={c.text2} fontSize="$1">
-            {warning.used.toFixed(1)}h / {warning.limit}h
-            {renewsAt ? ` · ${t("billing.warning.renews", { date: renewsAt })}` : ""}
-          </Text>
-        </YStack>
+      <Ph name="warning" size={16} color={tint.tx} />
+      <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
+        <T step="sm">
+          {warning.planName
+            ? t("billing.warning.titlePlan", { pct, plan: warning.planName })
+            : t("billing.warning.title", { pct })}
+        </T>
+        <T testID="billing-warning-usage" step="12" tone="text2">
+          {warning.used.toFixed(1)}h / {warning.limit}h
+          {renewsAt ? ` · ${t("billing.warning.renews", { date: renewsAt })}` : ""}
+        </T>
+      </View>
 
-        <XStack alignItems="center" gap="$1">
-          <Button
-            testID="billing-warning-cta"
-            size="$2"
-            backgroundColor={indicators.risk.bg}
-            color={indicators.risk.fg}
-            pressStyle={{ backgroundColor: "rgba(245, 158, 11, 0.22)" }}
-            onPress={() => setBoostOpen(true)}
-          >
-            {t("billing.warning.getMore")}
-          </Button>
-          <Button
-            testID="billing-warning-dismiss"
-            size="$2"
-            circular
-            chromeless
-            icon={<X size={16} color={c.text3} />}
-            onPress={dismissWarning}
-          />
-        </XStack>
-      </XStack>
+      <Btn
+        testID="billing-warning-cta"
+        size="sm"
+        variant={exhausted ? "primary" : "amber"}
+        icon="lightning"
+        onPress={() => setBoostOpen(true)}
+      >
+        {t("billing.warning.getMore")}
+      </Btn>
+      <IconBtn
+        testID="billing-warning-dismiss"
+        icon="x"
+        plain
+        sm
+        title={t("common.close")}
+        onPress={dismissWarning}
+      />
 
       <BoostModal open={boostOpen} onClose={() => setBoostOpen(false)} />
-    </YStack>
+    </View>
   )
 }

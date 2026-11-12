@@ -5,23 +5,28 @@
  * Opened from the "Projects" button in the Navbar.
  */
 
-import { Folder } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { WorkspacesListWindowContent } from './WorkspacesListWindowContent';
+import { Folder } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const WorkspacesListWindowContent = lazyWithRetry(() =>
+  import("./WorkspacesListWindowContent").then((m) => ({ default: m.WorkspacesListWindowContent })),
+)
 
 export interface WorkspacesListWindowProps {
   /** Initial status filter */
-  status?: 'active' | 'archived';
+  status?: "active" | "archived"
   /** Initial search query */
-  search?: string;
+  search?: string
 }
 
 export const workspacesListWindowDefinition: WindowTypeDefinition<WorkspacesListWindowProps> = {
-  type: 'workspaces',
-  displayName: 'Workspaces',
+  type: "workspaces",
+  audience: "user",
+  displayName: "Workspaces",
   icon: Folder,
-  color: '#C4923B',
+  phIcon: "buildings",
+  color: "#C4923B",
   component: WorkspacesListWindowContent,
 
   defaultSize: { width: 700, height: 500 },
@@ -39,4 +44,4 @@ export const workspacesListWindowDefinition: WindowTypeDefinition<WorkspacesList
     status: data.status,
     search: data.search,
   }),
-};
+}

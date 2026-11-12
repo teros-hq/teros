@@ -1,0 +1,67 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "내부 상태 확인 도구. OAuth 자격 증명 및 연결을 확인합니다."
+    },
+    "read-document": {
+      "name": "read-document",
+      "description": "Word 문서를 마크다운(기본값) 또는 HTML로 읽습니다. 구조가 아닌 텍스트를 반환합니다 — 편집에 인덱스가 필요하면 list-paragraphs를 사용하세요."
+    },
+    "get-document-info": {
+      "name": "get-document-info",
+      "description": "Word 문서의 OneDrive 메타데이터, 문서 속성, 단락 및 단어 수를 가져옵니다."
+    },
+    "list-paragraphs": {
+      "name": "list-paragraphs",
+      "description": "Word 문서의 단락을 편집 도구가 사용하는 안정적인 인덱스와 함께 나열합니다. 편집 전에 올바른 단락을 찾기 위해 호출하세요."
+    },
+    "get-comments": {
+      "name": "get-comments",
+      "description": "Word 문서의 검토 의견을 작성자 및 날짜와 함께 읽습니다. 의견이 없으면 빈 목록을 반환합니다."
+    },
+    "create-document": {
+      "name": "create-document",
+      "description": "구조화된 단락에서 새 Word 문서를 만듭니다. overwrite를 설정하지 않으면 경로에 파일이 이미 있을 때 실패합니다."
+    },
+    "replace-text": {
+      "name": "replace-text",
+      "description": "Word 문서에서 텍스트를 찾아 바꿉니다. Word가 서식 실행으로 분할한 경우에도 읽는 사람이 보는 대로 일치합니다."
+    },
+    "append-paragraphs": {
+      "name": "append-paragraphs",
+      "description": "Word 문서 끝에 단락을 추가합니다. 기존 내용은 그대로 둡니다."
+    },
+    "delete-paragraph": {
+      "name": "delete-paragraph",
+      "description": "list-paragraphs의 인덱스로 Word 문서에서 단락을 삭제합니다. 삭제 후 인덱스가 변경되므로 다시 삭제하기 전에 다시 나열하세요."
+    },
+    "insert-table": {
+      "name": "insert-table",
+      "description": "Word 문서에 표를 추가합니다. 행은 일반 문자열이며, 첫 번째 행을 헤더로 스타일링할 수 있습니다."
+    },
+    "insert-page-break": {
+      "name": "insert-page-break",
+      "description": "Word 문서에 페이지 나누기를 추가하여 다음 내용이 새 페이지에서 시작되도록 합니다."
+    },
+    "insert-image": {
+      "name": "insert-image",
+      "description": "Word 문서 끝에 PNG 또는 JPEG 이미지를 삽입합니다."
+    },
+    "update-document-properties": {
+      "name": "update-document-properties",
+      "description": "Word 문서의 제목, 저자, 주제 또는 설명을 설정합니다 — Word의 파일 → 정보에 표시되는 속성입니다. 문서 본문은 수정하지 않습니다."
+    },
+    "convert-to-pdf": {
+      "name": "convert-to-pdf",
+      "description": "Word 문서를 PDF로 변환하여 OneDrive에 저장합니다. overwrite를 설정하지 않으면 대상에 파일이 이미 있을 때 실패합니다."
+    }
+  },
+  "name": "Word",
+  "description": "Microsoft Graph API를 통한 Microsoft Word 문서 자동화",
+  "changelog": [
+    {
+      "notes": "초기 릴리스 — OneDrive에서 Word 문서 생성, 읽기 및 정밀 편집"
+    }
+  ]
+}

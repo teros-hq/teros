@@ -112,3 +112,31 @@ describe('extractPendingFromMessages', () => {
     expect(result.map((r) => r.requestId)).toEqual(['perm_m1', 'perm_m2', 'perm_m3'])
   })
 })
+
+describe('[PERMB-AC-4] extractPendingFromMessages — v4 marker fallback', () => {
+  const markerOutput = (id: string, appId?: string) =>
+    JSON.stringify({ status: 'permission_requested', permissionRequestId: `perm_${id}`, appId, irreversible: false })
+
+  it('[PERMB-AC-4] rehydrates a completed card carrying the marker, ids from the marker', () => {
+    const msg = makeToolMessage('m1', {
+      status: 'completed',
+      permissionRequestId: undefined,
+      appId: undefined,
+      output: markerOutput('m1', 'app_marker'),
+    })
+    expect(extractPendingFromMessages(['m1'], { m1: msg })).toEqual([
+      { requestId: 'perm_m1', messageId: 'm1', toolCallId: 'tc_m1', appId: 'app_marker', toolName: 'write-file' },
+    ])
+  })
+
+  it('[PERMB-AC-4] skips a marker card with no appId anywhere and a completed non-marker card', () => {
+    const noApp = makeToolMessage('m1', {
+      status: 'completed',
+      permissionRequestId: undefined,
+      appId: undefined,
+      output: markerOutput('m1'),
+    })
+    const plain = makeToolMessage('m2', { status: 'completed', output: '{"ok":true}' })
+    expect(extractPendingFromMessages(['m1', 'm2'], { m1: noApp, m2: plain })).toEqual([])
+  })
+})

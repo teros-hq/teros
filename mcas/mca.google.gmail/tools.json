@@ -8,6 +8,102 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "-subscribe",
+      "description": "Subscribe this conversation to one of this app's events (email.received). Matching events are delivered here as they happen and wake the agent (self-wake guard: an agent is never woken by an event it caused itself). The subscription lives in the backend — it survives restarts of this app. Subscribing again to the same event REPLACES the previous filter. Returns: { subscription: { subscriptionId, topic, event, channelId, mode, filter, wakeUpOn, createdAt }, message }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "enum": [
+              "email.received"
+            ],
+            "description": "Local event name (the app namespace is implicit). Valid: email.received — A new email arrived in the connected Gmail account."
+          },
+          "filter": {
+            "type": "object",
+            "description": "Optional filter. Fields AND-ed, values within a field OR-ed. Only the fields declared for the event are valid — see the event list."
+          },
+          "wakeUpOn": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "email.received"
+              ]
+            },
+            "description": "Event names that wake the agent (response turn). Default: the subscribed event always wakes. Rarely needed with a single-event subscription."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Conversation that receives the events. Defaults to the calling conversation — omit it."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "notify",
+              "wake"
+            ],
+            "description": "notify = silent delivery, wake = trigger an agent response turn. Default: wake."
+          }
+        },
+        "required": [
+          "event"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-unsubscribe",
+      "description": "Cancel this conversation's subscription(s) to this app's events. By subscriptionId, by event name, or — with neither — ALL of this conversation's subscriptions to this app. Idempotent. Returns: { unsubscribed, deleted?, channelId }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "subscriptionId": {
+            "type": "string",
+            "description": "Specific subscription to cancel (from -list-subscriptions)."
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "email.received"
+            ],
+            "description": "Cancel the subscription to this event."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true
+      }
+    },
+    {
+      "name": "-list-subscriptions",
+      "description": "List this conversation's subscriptions to this app's events, plus the app's event catalog (events, payload fields and valid filter fields) to subscribe to. Returns: { subscriptions: [...], events: [...] }.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channelId": {
+            "type": "string",
+            "description": "Defaults to the calling conversation."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
@@ -39,13 +135,22 @@
     },
     {
       "name": "get-message",
-      "description": "Get full details of a specific email message by ID.",
+      "description": "Get full details of a specific email message by ID. Use format=\"html\" to get the original text/html part (inline styles, fonts, colors — e.g. to replicate a hand-written draft's formatting) or format=\"raw\" to get the complete MIME message in base64. Default format=\"text\" returns the plain-text body.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "messageId": {
             "type": "string",
             "description": "The ID of the message to retrieve"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "text",
+              "html",
+              "raw"
+            ],
+            "description": "Response format: \"text\" (default) = plain-text body as before; \"html\" = original text/html part in bodyHtml (null + hasHtmlPart:false if the message has no HTML part); \"raw\" = full MIME message in raw (base64, Gmail API format=raw)."
           }
         },
         "required": [
@@ -262,6 +367,14 @@
                 "path"
               ]
             }
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Gmail thread ID. When present, the draft is created as a reply INSIDE that thread (appears in the conversation in Gmail). Optional."
+          },
+          "replyToMessageId": {
+            "type": "string",
+            "description": "Gmail message ID being replied to. The tool fetches it and automatically derives In-Reply-To/References headers (and the threadId when none is given), so the draft threads canonically. Optional."
           }
         },
         "required": [
@@ -339,6 +452,10 @@
                 "path"
               ]
             }
+          },
+          "threadId": {
+            "type": "string",
+            "description": "Gmail thread ID. Moves the draft into that thread. When omitted, the current threadId of the draft is preserved automatically (an update never detaches a threaded draft). Optional."
           }
         },
         "required": [
@@ -590,7 +707,7 @@
     },
     {
       "name": "start-email-watcher",
-      "description": "Start a background polling loop that detects new unread emails and emits `gmail.email.received` events to the backend. The watcher polls the Gmail API at a configurable interval (default: 5 minutes). Only one watcher can be active per MCA process.",
+      "description": "DEPRECATED (v1.4.4): the watcher is now an internal detail managed by the app — it runs automatically while any gmail.email.received subscription exists. MIGRATION: use the reserved tool `gmail__subscribe` with event \"email.received\" instead — subscribing IS the intent to receive emails, and the app ensures its watcher runs. This tool still works (manual override) but will be removed.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -607,7 +724,7 @@
     },
     {
       "name": "stop-email-watcher",
-      "description": "Stop the background email polling loop. No more events will be emitted.",
+      "description": "DEPRECATED (v1.4.4): the watcher is now managed by the app based on active subscriptions. MIGRATION: use `gmail__unsubscribe` (event \"email.received\") — when the last subscription goes, the watcher stops by itself. This tool still works (manual override) but will be removed.",
       "inputSchema": {
         "type": "object",
         "properties": {}
@@ -618,7 +735,60 @@
     },
     {
       "name": "get-watcher-status",
-      "description": "Get the current status of the email watcher: whether it is active, when it last checked, how many message IDs are tracked, and the polling interval.",
+      "description": "DEPRECATED (v1.4.4): the watcher is now an internal detail. MIGRATION: use `gmail__list-subscriptions` to see what this conversation is subscribed to — the watcher runs automatically while subscriptions exist. This tool still works but will be removed.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "get-stats",
+      "description": "Get exact mailbox statistics without pagination: messages in INBOX (total + unread), total UNREAD, STARRED count, DRAFT count, plus SPAM, TRASH, SENT and the 4 CATEGORY_* labels (PROMOTIONS, UPDATES, SOCIAL, FORUMS), and total mailbox messages/threads. Uses users.labels.get + users.getProfile — exact counts, immune to the search resultSizeEstimate cap of 100. Optionally include per-label breakdowns.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "includeLabels": {
+            "type": "boolean",
+            "description": "Include per-label breakdown for ALL labels (1 API call per label — can be slow with many labels). Default: false."
+          },
+          "labelIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Specific label IDs to include in the breakdown (e.g. [\"INBOX\", \"UNREAD\", \"STARRED\"]). Cheaper than includeLabels."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "set-signature",
+      "description": "Save the email signature (HTML) for the connected Gmail account. Overrides the account signature (Gmail sendAs) for emails sent from Teros. The signature is stored per-account and automatically appended to outgoing emails (send-message, reply-message, create-draft, update-draft) — never invented or reconstructed from other emails. If the user wants a signature and none is configured, ask them for it (HTML preferred) and save it with this tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "signatureHtml": {
+            "type": "string",
+            "description": "The signature as HTML (e.g. with logo <img>, styled name, role, company). Images must use absolute https URLs."
+          }
+        },
+        "required": [
+          "signatureHtml"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "get-signature",
+      "description": "Get the email signature (HTML) for the connected Gmail account, if any. Checks the account signature (Gmail sendAs) and the Teros-stored override. Use before composing emails to check whether a signature is configured.",
       "inputSchema": {
         "type": "object",
         "properties": {}

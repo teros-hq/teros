@@ -61,6 +61,12 @@ interface ServerMessage {
   [key: string]: unknown
 }
 
+// Close code the backend sends when it shuts down for a deploy (RFC 6455 §7.4.1
+// "Service Restart"). Reconnect window for it, in ms (DEP-REQ-5).
+const SERVICE_RESTART_CLOSE_CODE = 1012
+const HANDOFF_RECONNECT_MIN_MS = 250
+const HANDOFF_RECONNECT_MAX_MS = 1500
+
 // ============================================================================
 // WsTransport
 // ============================================================================
@@ -72,6 +78,14 @@ export class WsTransport implements Transport {
   private url: string = ''
   private shouldReconnect = true
   private sessionToken: string | null = null
+  /**
+   * F2: authenticate the WS with the httpOnly session cookie instead of a
+   * Bearer token. Set on web after a page reload, when the token is not
+   * readable by JS (it lives only in the cookie). The auth frame carries no
+   * token — the browser sends teros_session on the upgrade request and the
+   * server resolves it from there.
+   */
+  private cookieAuth = false
 
   // --- Request/response correlation ---
   private requestCounter = 0
@@ -130,7 +144,7 @@ export class WsTransport implements Transport {
     const requestId = `ws_${++this.requestCounter}_${Date.now()}`
     const timeout = options?.timeout ?? this.config.defaultTimeout
 
-    return new Promise<TResponse>((resolve, reject) => {
+    const pending = new Promise<TResponse>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         if (this.pendingRequests.has(requestId)) {
           this.pendingRequests.delete(requestId)
@@ -161,6 +175,8 @@ export class WsTransport implements Transport {
         this.messageQueue.push({ requestId, message })
       }
     })
+    pending.catch(() => {})
+    return pending
   }
 
   subscribe<TEvent = unknown>(event: string, handler: EventHandler<TEvent>): void {
@@ -235,6 +251,24 @@ export class WsTransport implements Transport {
 
   setSessionToken(token: string | null): void {
     this.sessionToken = token
+    // An explicit token always wins over cookie auth — the caller knows the
+    // token (login, OAuth popup, impersonation, native SecureStorage).
+    if (token) this.cookieAuth = false
+  }
+
+  /**
+   * F2: switch the transport to cookie-based WS auth (web reload path). The
+   * next connect() authenticates with {type:'auth', method:'cookie'} — the
+   * frame carries no token; the httpOnly cookie on the upgrade request is
+   * the credential.
+   */
+  setCookieAuth(enabled: boolean): void {
+    this.cookieAuth = enabled
+    if (enabled) this.sessionToken = null
+  }
+
+  isCookieAuth(): boolean {
+    return this.cookieAuth
   }
 
   getSessionToken(): string | null {
@@ -300,6 +334,43 @@ export class WsTransport implements Transport {
     })
   }
 
+  /**
+   * F2: authenticate the WS with the httpOnly session cookie carried on the
+   * upgrade request. Same handshake contract as authenticate(token) — the
+   * frame just carries no credential; the cookie is the credential. Used on
+   * web after a page reload, when the token is not readable by JS.
+   */
+  async authenticateWithCookie(): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    const ws = this.ws
+    return new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        this.unsubscribe('authenticated', onSuccess)
+        this.unsubscribe('auth_error', onError)
+        reject(new Error('Authentication timeout'))
+      }, 10_000)
+
+      const onSuccess = () => {
+        clearTimeout(timeoutId)
+        this.unsubscribe('authenticated', onSuccess)
+        this.unsubscribe('auth_error', onError)
+        resolve()
+      }
+      const onError = (err: unknown) => {
+        clearTimeout(timeoutId)
+        this.unsubscribe('authenticated', onSuccess)
+        this.unsubscribe('auth_error', onError)
+        reject(new Error(typeof err === 'string' ? err : 'Authentication failed'))
+      }
+
+      this.subscribe('authenticated', onSuccess)
+      this.subscribe('auth_error', onError)
+      ws.send(JSON.stringify({ type: 'auth', method: 'cookie' }))
+    })
+  }
+
   async authenticateWithCredentials(email: string, password: string): Promise<void> {
     if (this.state !== ConnectionState.CONNECTED || !this.ws) {
       throw new Error('WsTransport: not connected')
@@ -307,11 +378,62 @@ export class WsTransport implements Transport {
     this.ws.send(JSON.stringify({ type: 'auth', method: 'credentials', email, password }))
   }
 
+  /** Local dev auto-login (backend with TEROS_DEV_AUTOLOGIN=1); answered with the normal auth_success. */
+  async authenticateDev(): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'dev' }))
+  }
+
   async register(email: string, password: string, displayName: string): Promise<void> {
     if (this.state !== ConnectionState.CONNECTED || !this.ws) {
       throw new Error('WsTransport: not connected')
     }
     this.ws.send(JSON.stringify({ type: 'auth', method: 'register', email, password, displayName }))
+  }
+
+  async verifyEmail(challengeToken: string, code: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'verify_email', challengeToken, code }))
+  }
+
+  async resendEmailVerification(challengeToken: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'resend_email_verification', challengeToken }))
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'forgot_password', email }))
+  }
+
+  async resetPassword(challengeToken: string, code: string, newPassword: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'reset_password', challengeToken, code, newPassword }))
+  }
+
+  /** Ask the server to check the emailed code without consuming the challenge (PWR-REQ-2). */
+  async verifyPasswordResetCode(challengeToken: string, code: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'verify_password_reset', challengeToken, code }))
+  }
+
+  async resendPasswordReset(challengeToken: string): Promise<void> {
+    if (this.state !== ConnectionState.CONNECTED || !this.ws) {
+      throw new Error('WsTransport: not connected')
+    }
+    this.ws.send(JSON.stringify({ type: 'auth', method: 'resend_password_reset', challengeToken }))
   }
 
   // ============================================================================
@@ -340,6 +462,24 @@ export class WsTransport implements Transport {
         this.emit('auth_failed', { reason: 'auth_error', message: (err as Error)?.message })
         return
       }
+    } else if (this.cookieAuth) {
+      // F2: web reload path — no in-memory token, the httpOnly cookie on the
+      // upgrade request is the credential. The server answers the normal
+      // auth_success (without a sessionToken — we wouldn't be able to read
+      // the token anyway, that's the whole point).
+      try {
+        await this.authenticateWithCookie()
+      } catch (err: unknown) {
+        console.error('WsTransport: cookie authentication failed', err)
+        // The cookie is no longer a credential: stop offering it. Otherwise the
+        // sign-in screen's connect() retries cookie auth, fails again, and the
+        // auth_failed → logout → sign-in redirect loops forever.
+        this.cookieAuth = false
+        this.shouldReconnect = false
+        this.setState(ConnectionState.ERROR)
+        this.emit('auth_failed', { reason: 'auth_error', message: (err as Error)?.message })
+        return
+      }
     }
 
     this.emit('connected', undefined)
@@ -352,7 +492,14 @@ export class WsTransport implements Transport {
     console.log('👋 WsTransport: closed', { code: event.code, reason: event.reason })
     this.emit('disconnected', { code: event.code, reason: event.reason, wasClean: event.wasClean })
 
-    if (this.shouldReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
+    if (this.shouldReconnect && event.code === SERVICE_RESTART_CLOSE_CODE) {
+      // Blue/green handoff (DEP-REQ-5): the server closed us on purpose and the
+      // new backend is already serving. Reconnect right away with a little
+      // jitter (so a thousand tabs do not reconnect in the same millisecond)
+      // and without spending a reconnect attempt — this is not a network drop.
+      this.setState(ConnectionState.RECONNECTING)
+      this.scheduleHandoffReconnect()
+    } else if (this.shouldReconnect && this.reconnectAttempts < this.config.maxReconnectAttempts) {
       this.setState(ConnectionState.RECONNECTING)
       this.scheduleReconnect()
     } else if (this.shouldReconnect) {
@@ -438,6 +585,19 @@ export class WsTransport implements Transport {
       return
     }
     if (isAuthError(message as any)) {
+      // A login that waits for the emailed code is not a failure: the screen
+      // moves on to the code prompt instead of showing an error.
+      const emailVerification = (message as any).emailVerification
+      if (emailVerification) {
+        this.emit('email_verification_required', { ...emailVerification, message: (message as any).error })
+        return
+      }
+      // Same for a password reset waiting for its emailed code.
+      const passwordReset = (message as any).passwordReset
+      if (passwordReset) {
+        this.emit('password_reset_required', { ...passwordReset, message: (message as any).error })
+        return
+      }
       this.emit('auth_error', (message as any).error)
       return
     }
@@ -547,6 +707,13 @@ export class WsTransport implements Transport {
   // ============================================================================
   // Reconnection (private)
   // ============================================================================
+
+  private scheduleHandoffReconnect(): void {
+    if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout)
+    const delay = HANDOFF_RECONNECT_MIN_MS + Math.floor(Math.random() * (HANDOFF_RECONNECT_MAX_MS - HANDOFF_RECONNECT_MIN_MS))
+    console.log(`🔄 WsTransport: server restart (1012) — reconnecting in ${delay}ms`)
+    this.reconnectTimeout = setTimeout(() => this.connect(this.url), delay)
+  }
 
   private scheduleReconnect(): void {
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout)

@@ -100,13 +100,14 @@ async function seedSkill(
   skillId: string,
   name: string,
   content: string,
-  opts: { order?: number; enabled?: boolean; workspaceId?: string } = {},
+  opts: { order?: number; enabled?: boolean; workspaceId?: string; loadMode?: 'always' | 'on-demand' } = {},
 ) {
   await db.collection('skills').insertOne({
     skillId,
     workspaceId: opts.workspaceId ?? WORKSPACE_ID,
     name,
     content,
+    loadMode: opts.loadMode,
     tags: [],
     createdBy: 'user_1',
     createdAt: new Date().toISOString(),
@@ -343,7 +344,9 @@ describe('inyección de app_instructions', () => {
         'You are Iria Devon, a AI Assistant.' +
         '\n\n<app_instructions app="Mi Notion" mca="mca.notion">\nUsa la base de datos de proyectos.\n</app_instructions>' +
         '\n\n<context>' +
-        `\nAgent id: ${AGENT_ID}` +
+        // Since ada2eee58 (superagent app self-install) the context block also
+        // carries the agent id — the superagent needs it to resolve itself.
+        '\nAgent id: agent_aaaa111122223333' +
         '\nCurrent time: <NOW>' +
         '\n</context>',
     )
@@ -462,5 +465,169 @@ describe('getEffectiveAgentConfig', () => {
     await db.collection('agent_cores').updateOne({ coreId: 'core_x' }, { $set: { modelId: 'modelo-roto' } })
     await seedAgent()
     expect(await service.getEffectiveAgentConfig(AGENT_ID)).toBeNull()
+  })
+})
+
+// ===========================================================================
+// Progressive Disclosure — always vs on-demand skills (TER-618)
+// ===========================================================================
+
+describe('progressive disclosure — always vs on-demand skills', () => {
+  it('always skill → content in prompt', async () => {
+    await seedAgent()
+    await seedSkill('sk_always', 'AlwaysSkill', 'Always content here', { loadMode: 'always' })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<skill name="AlwaysSkill">')
+    expect(prompt).toContain('Always content here')
+    expect(prompt).not.toContain('<available_skills>')
+  })
+
+  it('on-demand skill → only index in prompt, no content', async () => {
+    await seedAgent()
+    await seedSkill('sk_ondemand', 'OnDemandSkill', 'SECRET CONTENT', { loadMode: 'on-demand', order: 0 })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<available_skills>')
+    expect(prompt).toContain('- OnDemandSkill')
+    expect(prompt).not.toContain('SECRET CONTENT')
+    expect(prompt).not.toContain('<skill name="OnDemandSkill">')
+  })
+
+  it('on-demand skill with description → index includes description', async () => {
+    await seedAgent()
+    await db.collection('skills').insertOne({
+      skillId: 'sk_desc',
+      workspaceId: WORKSPACE_ID,
+      name: 'DescSkill',
+      content: 'Secret body',
+      description: 'A helpful skill',
+      loadMode: 'on-demand',
+      tags: [],
+      createdBy: 'user_1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    await db.collection('agent_skill_access').insertOne({
+      agentId: AGENT_ID,
+      skillId: 'sk_desc',
+      workspaceId: WORKSPACE_ID,
+      enabled: true,
+      order: 0,
+      grantedBy: 'user_1',
+      grantedAt: new Date().toISOString(),
+    })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<available_skills>')
+    expect(prompt).toContain('- DescSkill: A helpful skill')
+    expect(prompt).not.toContain('Secret body')
+  })
+
+  it('no on-demand skills → no available_skills block', async () => {
+    await seedAgent()
+    await seedSkill('sk_always', 'AlwaysSkill', 'Always content', { loadMode: 'always' })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<skill name="AlwaysSkill">')
+    expect(prompt).not.toContain('<available_skills>')
+  })
+
+  it('mixed → both blocks present, content only in always', async () => {
+    await seedAgent()
+    await seedSkill('sk_always', 'AlwaysSkill', 'Always content', { loadMode: 'always', order: 0 })
+    await seedSkill('sk_ondemand', 'OnDemandSkill', 'SECRET ONDEMAND', { loadMode: 'on-demand', order: 1 })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<skill name="AlwaysSkill">')
+    expect(prompt).toContain('Always content')
+    expect(prompt).toContain('<available_skills>')
+    expect(prompt).toContain('- OnDemandSkill')
+    expect(prompt).not.toContain('SECRET ONDEMAND')
+  })
+
+  it('skill without loadMode (pre-migration) → treated as always', async () => {
+    await seedAgent()
+    // Insert skill without loadMode field (simulating pre-migration state)
+    await db.collection('skills').insertOne({
+      skillId: 'sk_legacy',
+      workspaceId: WORKSPACE_ID,
+      name: 'LegacySkill',
+      content: 'Legacy content',
+      tags: [],
+      createdBy: 'user_1',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    await db.collection('agent_skill_access').insertOne({
+      agentId: AGENT_ID,
+      skillId: 'sk_legacy',
+      workspaceId: WORKSPACE_ID,
+      enabled: true,
+      order: 0,
+      grantedBy: 'user_1',
+      grantedAt: new Date().toISOString(),
+    })
+
+    const prompt = await getPrompt()
+    expect(prompt).toContain('<skill name="LegacySkill">')
+    expect(prompt).toContain('Legacy content')
+    expect(prompt).not.toContain('<available_skills>')
+  })
+
+  it('INVARIANT: no on-demand skill content appears in buildSystemPrompt', async () => {
+    await seedAgent()
+    await seedSkill('sk_ondemand', 'OnDemandSkill', 'SECRET CONTENT', { loadMode: 'on-demand' })
+
+    const prompt = await getPrompt()
+    // Extract all <skill>...</skill> blocks
+    const skillBlocks = prompt.match(/<skill name="[^"]+">[\s\S]*?<\/skill>/g) ?? []
+    for (const block of skillBlocks) {
+      expect(block).not.toContain('SECRET CONTENT')
+    }
+    expect(prompt).not.toContain('SECRET CONTENT')
+  })
+})
+
+// ===========================================================================
+// Terminal + Claude Code — the guidance rides the real core prompts
+// ===========================================================================
+
+describe('Terminal + Claude Code guidance (real core prompts)', () => {
+  const TERMINAL_HEADING = '## Terminal and Claude Code'
+  const count = (text: string, needle: string) => text.split(needle).length - 1
+
+  async function useRealCore(file: string) {
+    const { readFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const prompt = readFileSync(join(import.meta.dir, '../../src/prompts', file), 'utf8')
+    await db.collection('agent_cores').updateOne({ coreId: 'core_x' }, { $set: { systemPrompt: prompt } })
+  }
+
+  it('reaches an agent WITHOUT the Terminal app, once, in the stable prefix before Identity', async () => {
+    await useRealCore('base-agent-core.md')
+    await seedAgent()
+
+    const prompt = await getPrompt()
+    expect(count(prompt, TERMINAL_HEADING)).toBe(1)
+    expect(prompt.indexOf(TERMINAL_HEADING)).toBeLessThan(prompt.indexOf('## Your Identity'))
+    expect(prompt).toContain("check the user's remembered preference")
+    expect(prompt).toContain('guide topic `terminal-claude-code`')
+  })
+
+  it('an agent WITH the Terminal app granted gets the same section, not a second copy', async () => {
+    await useRealCore('base-agent-core.md')
+    await seedAgent()
+    await seedApp('app_term', 'mca.teros.terminal', 'Terminal', undefined)
+
+    const prompt = await getPrompt()
+    expect(count(prompt, TERMINAL_HEADING)).toBe(1)
+  })
+
+  it('the superagent core carries it too', async () => {
+    await useRealCore('base-super-agent-core.md')
+    await seedAgent({ workspaceId: null })
+
+    expect(count(await getPrompt(), TERMINAL_HEADING)).toBe(1)
   })
 })

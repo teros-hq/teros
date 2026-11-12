@@ -23,6 +23,10 @@ import type {
   WsSystemSecretsResponse,
   WsUpdateUserSecretsResponse,
   WsUserSecretsResponse,
+  WsDomainResponse,
+  WsStreamError,
+  WsStreamInput,
+  WsStreamViewers,
 } from '@teros/shared';
 import { EventEmitter } from 'events';
 import WebSocket from 'ws';
@@ -52,6 +56,10 @@ export interface McaWebSocketEvents {
   subscription_removed: (subscriptionId: string, reason: string) => void;
   credentials_updated: (credentials: Record<string, string>) => void;
   command: (command: WsCommand) => void;
+  /** MCA streams (spec MCS-REQ-4): who watches a stream, their input, and backend refusals. */
+  stream_viewers: (message: WsStreamViewers) => void;
+  stream_input: (message: WsStreamInput) => void;
+  stream_error: (message: WsStreamError) => void;
 }
 
 // ============================================================================
@@ -95,6 +103,10 @@ export class McaWebSocketClient extends EventEmitter {
   >();
 
   // Pending admin requests (requestId -> resolver)
+  private pendingDomainRequests = new Map<
+    string,
+    { resolve: (data: unknown) => void; reject: (error: Error) => void }
+  >();
   private pendingAdminRequests = new Map<
     string,
     {
@@ -176,6 +188,28 @@ export class McaWebSocketClient extends EventEmitter {
   }
 
   /**
+   * Resolve once the client is connected (connection_ack received). If a connection is currently
+   * being established or re-established — e.g. a tool call arrives right after a cold container
+   * start, before the outbound WS finished its handshake — wait for it rather than failing the
+   * caller immediately. Returns at once when already connected (steady state, no added latency).
+   * Rejects with the same 'Not connected to backend' error if no connection arrives within timeoutMs.
+   */
+  async waitUntilConnected(timeoutMs = 5000): Promise<void> {
+    if (this.isConnected) return;
+    await new Promise<void>((resolve, reject) => {
+      const onConnected = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        this.off('connected', onConnected);
+        reject(new Error('Not connected to backend'));
+      }, timeoutMs);
+      this.once('connected', onConnected);
+    });
+  }
+
+  /**
    * Handle incoming message from backend
    */
   private handleMessage(data: WebSocket.RawData, onConnected?: (value: void) => void): void {
@@ -221,6 +255,18 @@ export class McaWebSocketClient extends EventEmitter {
         this.emit('command', message);
         break;
 
+      case 'stream_viewers':
+        this.emit('stream_viewers', message);
+        break;
+
+      case 'stream_input':
+        this.emit('stream_input', message);
+        break;
+
+      case 'stream_error':
+        this.emit('stream_error', message);
+        break;
+
       case 'system_secrets':
         this.handleSecretsResponse(message);
         break;
@@ -239,6 +285,10 @@ export class McaWebSocketClient extends EventEmitter {
 
       case 'admin_response':
         this.handleAdminResponse(message);
+        break;
+
+      case 'domain_response':
+        this.handleDomainResponse(message);
         break;
     }
   }
@@ -301,6 +351,23 @@ export class McaWebSocketClient extends EventEmitter {
 
     if (message.error) {
       pending.reject(new Error(message.error));
+    } else {
+      pending.resolve(message.data);
+    }
+  }
+
+  /** Handle domain_response from backend. */
+  private handleDomainResponse(message: WsDomainResponse): void {
+    const pending = this.pendingDomainRequests.get(message.requestId);
+    if (!pending) {
+      console.warn(`[McaWsClient:${this.appId}] Received domain_response for unknown requestId: ${message.requestId}`);
+      return;
+    }
+    this.pendingDomainRequests.delete(message.requestId);
+    if (message.error) {
+      const err = new Error(message.error);
+      (err as any).code = message.code;
+      pending.reject(err);
     } else {
       pending.resolve(message.data);
     }
@@ -402,6 +469,32 @@ export class McaWebSocketClient extends EventEmitter {
   }
 
   /**
+   * Send an arbitrary protocol message (MCA streams control frames, MCS-REQ-2).
+   * The shape is validated by the backend; callers pass a message of the
+   * MCA → backend union.
+   */
+  sendRaw(message: Record<string, unknown>): boolean {
+    return this.send(message as unknown as WsMcaToBackendMessage);
+  }
+
+  /** Send a binary frame (MCA streams, MCS-REQ-3). False when not connected. */
+  sendBinary(data: Uint8Array): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(data, { binary: true });
+      return true;
+    } catch (error) {
+      console.error(`[McaWsClient:${this.appId}] Failed to send binary frame:`, error);
+      return false;
+    }
+  }
+
+  /** Bytes queued on the socket, for stream backpressure (MCS-REQ-5). */
+  bufferedAmount(): number {
+    return this.ws ? this.ws.bufferedAmount : 0;
+  }
+
+  /**
    * Send pong response to ping
    */
   private sendPong(): void {
@@ -471,9 +564,9 @@ export class McaWebSocketClient extends EventEmitter {
    * @returns Promise resolving to secrets object or null if not available
    */
   async getSystemSecrets(timeoutMs: number = 5000): Promise<Record<string, string> | null> {
-    if (!this.isConnected) {
-      throw new Error('Not connected to backend');
-    }
+    // Tolerate a cold-start / reconnect race: wait briefly for the connection instead of failing
+    // immediately. Throws 'Not connected to backend' only if it never arrives within the window.
+    await this.waitUntilConnected();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -518,9 +611,9 @@ export class McaWebSocketClient extends EventEmitter {
    * @returns Promise resolving to secrets object or null if not authenticated
    */
   async getUserSecrets(timeoutMs: number = 5000): Promise<Record<string, string> | null> {
-    if (!this.isConnected) {
-      throw new Error('Not connected to backend');
-    }
+    // Tolerate a cold-start / reconnect race: wait briefly for the connection instead of failing
+    // immediately. Throws 'Not connected to backend' only if it never arrives within the window.
+    await this.waitUntilConnected();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -569,9 +662,9 @@ export class McaWebSocketClient extends EventEmitter {
     secrets: Record<string, string>,
     timeoutMs: number = 5000,
   ): Promise<boolean> {
-    if (!this.isConnected) {
-      throw new Error('Not connected to backend');
-    }
+    // Tolerate a cold-start / reconnect race: wait briefly for the connection instead of failing
+    // immediately. Throws 'Not connected to backend' only if it never arrives within the window.
+    await this.waitUntilConnected();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -650,9 +743,9 @@ export class McaWebSocketClient extends EventEmitter {
     params: Record<string, unknown>,
     timeoutMs: number = 10000,
   ): Promise<T> {
-    if (!this.isConnected) {
-      throw new Error('Not connected to backend');
-    }
+    // Tolerate a cold-start / reconnect race: wait briefly for the connection instead of failing
+    // immediately. Throws 'Not connected to backend' only if it never arrives within the window.
+    await this.waitUntilConnected();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -704,14 +797,52 @@ export class McaWebSocketClient extends EventEmitter {
    * @param timeoutMs - Timeout in milliseconds (default: 15000)
    * @returns Promise resolving to the response data
    */
+  /**
+   * Invoke a backend domain action (`automate.create-starter`, …) on behalf
+   * of the acting user/agent. The action must be declared in the manifest's
+   * `backend.actions`; pass the tool's execution identity as `actor` so the
+   * handler runs as the turn's user and records the agent.
+   */
+  async domainRequest<T = unknown>(
+    action: string,
+    params: Record<string, unknown> = {},
+    actor?: { userId?: string; agentId?: string; channelId?: string },
+    timeoutMs: number = 15000,
+  ): Promise<T> {
+    await this.waitUntilConnected();
+    const requestId = `dom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pendingDomainRequests.delete(requestId);
+        reject(new Error(`Timeout waiting for domain_request (${action})`));
+      }, timeoutMs);
+      this.pendingDomainRequests.set(requestId, {
+        resolve: (data) => {
+          clearTimeout(timeout);
+          resolve(data as T);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
+      });
+      const sent = this.send({ type: 'domain_request', requestId, action, params, actor });
+      if (!sent) {
+        clearTimeout(timeout);
+        this.pendingDomainRequests.delete(requestId);
+        reject(new Error('Failed to send domain_request'));
+      }
+    });
+  }
+
   async adminRequest<T = unknown>(
     action: string,
     params: Record<string, unknown> = {},
     timeoutMs: number = 15000,
   ): Promise<T> {
-    if (!this.isConnected) {
-      throw new Error('Not connected to backend');
-    }
+    // Tolerate a cold-start / reconnect race: wait briefly for the connection instead of failing
+    // immediately. Throws 'Not connected to backend' only if it never arrives within the window.
+    await this.waitUntilConnected();
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 

@@ -45,7 +45,7 @@ export function createPermissionCommands(deps: PermissionCommandsDeps) {
     }
 
     // Workspace apps - check if user has admin access
-    if (app.ownerType === 'workspace' || app.ownerId.startsWith('work_')) {
+    if (app.ownerType === 'workspace' || app.ownerId.startsWith('work_') || app.ownerId.startsWith('ws_')) {
       if (workspaceService) {
         return await workspaceService.canAdmin(app.ownerId, userId);
       }

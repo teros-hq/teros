@@ -9,14 +9,14 @@
 import { generateProjectId } from '@teros/core';
 import type { Db } from 'mongodb';
 import type { Project } from '../types/database';
+import { DeletionService } from './deletion-service';
 
 export class ProjectService {
   private col;
 
   constructor(private db: Db) {
     this.col = db.collection<Project>('projects');
-    this.col.createIndex({ workspaceId: 1 }).catch(() => {}); // intentional: index may already exist — cleanup only
-    this.col.createIndex({ boardId: 1 }, { unique: true }).catch(() => {}); // intentional: index may already exist — cleanup only
+    // Indexes ({workspaceId}, unique {boardId}) live in src/db/indexes.ts (GOV-4).
   }
 
   async create(
@@ -69,9 +69,14 @@ export class ProjectService {
     return this.get(projectId);
   }
 
-  async delete(projectId: string): Promise<boolean> {
-    const result = await this.col.deleteOne({ projectId });
-    return result.deletedCount > 0;
+  /**
+   * Delete a project with its board, tasks, events and relationships (INF-3:
+   * this path used to delete only the project document).
+   */
+  async delete(projectId: string, actor = 'system'): Promise<boolean> {
+    const existed = (await this.col.countDocuments({ projectId })) > 0;
+    await new DeletionService(this.db).deleteProject(projectId, actor);
+    return existed;
   }
 
   async linkBoard(projectId: string, boardId: string): Promise<void> {

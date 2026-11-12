@@ -1,12 +1,13 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
+import { assertIsRepo, assertSafeRef, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Merge a ref into the current branch. Detects conflicts and surfaces them
  * via `GIT_CONFLICT`. Supports `--no-ff`, `--squash`, custom strategies.
  */
-export const gitMerge: ToolConfig = {
+export const gitMerge: ToolConfig = lockedGitTool('git-merge', {
   annotations: { readOnlyHint: false },
   description:
     'Merge a branch/tag/commit into the current branch. On conflict, throws `GIT_CONFLICT` and the agent should resolve via `git-status` + edit + `git-add`.',
@@ -39,6 +40,7 @@ export const gitMerge: ToolConfig = {
     };
     const repoPath = resolveRepoPath(a);
     assertIsRepo(repoPath);
+    assertSafeRef(a.target, 'target');
 
     const flags: string[] = [];
     if (a.noFf) flags.push('--no-ff');
@@ -47,11 +49,14 @@ export const gitMerge: ToolConfig = {
     if (a.strategyOption) flags.push('-X', a.strategyOption);
     if (a.message) flags.push('-m', a.message);
 
-    const result = runGit(repoPath, ['merge', ...flags, a.target]);
+    // `--` separates the agent-supplied ref from the flag section so a
+    // dash-leading value can never be parsed as an option (verified: `git
+    // merge <flags> -- <ref>` keeps normal merge semantics).
+    const result = await runGit(repoPath, ['merge', ...flags, '--', a.target]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const shaResult = runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const shaResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
 
     return {
       repoPath,
@@ -62,4 +67,4 @@ export const gitMerge: ToolConfig = {
       details: result.stdout.trim(),
     };
   },
-};
+});

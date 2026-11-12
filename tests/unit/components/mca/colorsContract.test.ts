@@ -40,15 +40,12 @@ describe('semantic tokens (theme-agnostic)', () => {
 });
 
 describe('status dot colors (renderer-ux-guide.html §3)', () => {
-  it('exposes exactly the 6 statuses required by v2 + inline forms', () => {
+  it('exposes exactly the 5 statuses required by v2', () => {
     expect(Object.keys(statusDotColors).sort()).toEqual([
       'completed',
       'failed',
       'pending',
       'pending_permission',
-      // Added with the inline user-input forms feature: same "waiting on the
-      // human" family as pending_permission (violet, pulsing).
-      'pending_user_input',
       'running',
     ]);
   });
@@ -76,11 +73,6 @@ describe('status dot colors (renderer-ux-guide.html §3)', () => {
   it('pending_permission = violet, pulse', () => {
     expect(statusDotColors.pending_permission.fill).toBe('#8B5CF6');
     expect(statusDotColors.pending_permission.pulse).toBe(true);
-  });
-
-  it('pending_user_input = violet, pulse (same waiting-on-human family)', () => {
-    expect(statusDotColors.pending_user_input.fill).toBe('#8B5CF6');
-    expect(statusDotColors.pending_user_input.pulse).toBe(true);
   });
 });
 
@@ -126,9 +118,7 @@ describe('surface tokens', () => {
   });
 
   it('light surface matches guide v2 cream palette', () => {
-    // bgPage deepened from #EFE9DB with the v1.3.0 light/dark theme release
-    // (light became the default app theme; see CHANGELOG v1.3.0 "Themes").
-    expect(surface.light.bgPage).toBe('#E8E1D0');
+    expect(surface.light.bgPage).toBe('#EFE9DB');
     expect(surface.light.text).toBe('#1A1A1F');
     expect(surface.light.text2).toBe('#4A4A5A');
     expect(surface.light.text3).toBe('#8A8A9A');

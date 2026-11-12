@@ -10,13 +10,23 @@
  * Currently exposes:
  *   user-api.my-usage-tokens-per-hour   — buckets of the user's own usage
  *   user-api.my-usage-list-sessions     — paginated list of the user's sessions
+ *   user-api.my-usage-channels-summary  — batch per-channel agent-hours for the
+ *                                         current billing period (WS2)
  */
 
 import type { Db } from "mongodb"
 import type { WsRouter } from "../../../ws-framework/WsRouter"
-import { createMyUsageListSessionsHandler, createMyUsageTokensPerHourHandler } from "./my-usage"
+import {
+  createMyUsageChannelsSummaryHandler,
+  createMyUsageListSessionsHandler,
+  createMyUsageTokensPerHourHandler,
+} from "./my-usage"
 
 export function registerUserApiDomain(router: WsRouter, db: Db): void {
   router.register("user-api.my-usage-tokens-per-hour", createMyUsageTokensPerHourHandler(db))
   router.register("user-api.my-usage-list-sessions", createMyUsageListSessionsHandler(db))
+  router.register(
+    "user-api.my-usage-channels-summary",
+    createMyUsageChannelsSummaryHandler(db),
+  )
 }

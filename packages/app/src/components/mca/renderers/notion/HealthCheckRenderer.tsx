@@ -13,6 +13,7 @@ import {
   SuccessBlock,
   ToolCallCard,
   XCircle,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import { parseOutput } from './shared';
@@ -95,6 +96,7 @@ export function HealthCheckRenderer({
   error,
   appIcon,
 }: ToolCallRendererProps): React.ReactElement {
+  const c = useColors();
   const parsed = output ? parseOutput<HealthCheckResult>(output) : null;
   const result =
     parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'status' in (parsed as any)
@@ -138,7 +140,7 @@ export function HealthCheckRenderer({
           {issues.length > 0 && (
             <YStack gap={6}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -157,11 +159,11 @@ export function HealthCheckRenderer({
                   borderColor={`${issueAccent(issue.code)}33`}
                 >
                   <IconChip text={issue.code} accent={issueAccent(issue.code)} />
-                  <Text color={globalColors.primary} fontSize={10}>
+                  <Text color={c.text} fontSize={10}>
                     {issue.message}
                   </Text>
                   {issue.action && (
-                    <Text color={globalColors.secondary} fontSize={9}>
+                    <Text color={c.text2} fontSize={9}>
                       → {issue.action.description}
                       {issue.action.url ? ` (${issue.action.url})` : ''}
                     </Text>

@@ -85,7 +85,7 @@ export const TOOL_PERMISSIONS: Record<string, ToolPermissions> = {
 
   // -- Files --
   'get-file-content': { contents: 'read' },
-  'create-or-update-file': { contents: 'write' },
+  'create-or-update-file': { contents: 'write', workflows: 'write' },
 
   // -- Search --
   'search-code': { metadata: 'read' },
@@ -93,10 +93,6 @@ export const TOOL_PERMISSIONS: Record<string, ToolPermissions> = {
   // -- Users / git ops --
   'get-installation-context': { metadata: 'read' },
   'clone-repo': { contents: 'read' },
-
-  // -- Checks (App-only) --
-  'create-check-run': { checks: 'write' },
-  'update-check-run': { checks: 'write' },
 
   // -- Misc App utilities --
   'get-rate-limit': { metadata: 'read' },

@@ -6,7 +6,7 @@
  *
  * Base path: /mca/callback/:channelId/*
  *
- *
+ * @see docs/rfc-003-mca-endpoints.md
  */
 
 import type {
@@ -28,21 +28,34 @@ import type {
 } from '@teros/shared';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Db } from 'mongodb';
+import { AgentMailboxService } from '../services/agent-mailbox-service';
+import type { AgentInstance } from '../types/database';
+import { warnOnCatalogDrift } from '../services/event-catalog-drift';
 import type { AuthManager } from '../auth/auth-manager';
 import type { McaOAuth } from '../auth/mca-oauth';
+import type { AwaitingAuthRegistry } from '../handlers/message/awaiting-auth-registry';
 import type { SecretsManager } from '../secrets/secrets-manager';
 import type { MCAEventSubscriptionService } from '../services/mca-event-subscription-service';
 import type { McaContainerManager } from '../services/mca-container-manager';
 import type { Rules } from '../models/mca-event-subscriptions';
 import type { AgentProvisioningService } from '../services/agent-provisioning-service';
 import type { McaService } from '../services/mca-service';
+import type { McaManager } from "../services/mca-manager";
 import type { PubSubService } from '../services/pubsub-service';
 import type { VolumeService } from '../services/volume-service';
 import type { WorkspaceService } from '../services/workspace-service';
+import type { UserService } from '../auth/user-service';
 import * as resources from './mca-resources-handlers';
+import { CallbackHandlers } from '../services/agent-apps';
+import { AGENT_APPS_CALLBACK_ROUTES } from './agent-apps-callback-paths';
+import { handleMcaAction } from '../mca-actions';
 import { config } from '../config';
+import { createLogger } from '../lib/logger';
+import { isMcaCallGrantId, resolveMcaCallGrant } from '../services/mca-call-grants';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+
+const log = createLogger('McaCallback');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -56,6 +69,8 @@ export interface McaCallbackRoutesConfig {
   secretsManager: SecretsManager;
   authManager: AuthManager;
   workspaceService: WorkspaceService;
+  /** Resolves invitee accounts by email for POST /resources/workspaces/:id/members. */
+  userService: UserService;
   volumeService: VolumeService;
   /** Single creation path for agents (POST /resources/agents). */
   provisioningService: AgentProvisioningService;
@@ -66,6 +81,8 @@ export interface McaCallbackRoutesConfig {
    * tools de las conversaciones activas sin reiniciar.
    */
   mcaService: McaService;
+  /** MCA manager — used to load tool annotations for permissions views. */
+  mcaManager?: McaManager | null;
   /**
    * PubSub usado para emitir `agent.created` cuando un agente crea otro agente
    * vía la herramienta `agent-create` (POST /resources/agents). Sin esto el
@@ -99,6 +116,26 @@ export interface McaCallbackRoutesConfig {
    * so active conversations pick up the change without a backend restart.
    */
   invalidateToolCache?: (agentId: string) => Promise<void>;
+  /**
+   * Base path for Agent Apps object storage (used by CallbackHandlers for
+   * filesystem objects). Defaults to config.agentApps.objectStoragePath.
+   * Required for /agent-apps/objects/* and /agent-apps/volume/* callbacks.
+   */
+  objectStoragePath?: string;
+  /**
+   * v2 non-blocking interactions: awaiting-auth registry (userId, appId) →
+   * channelId. Passed to show-app-auth so it registers the wake pointer; the
+   * OAuth callback consumes it via mcaOAuth.setOnAppAuthReady. Optional —
+   * without it the auth-ready wake is a no-op (legacy behavior).
+   */
+  awaitingAuth?: AwaitingAuthRegistry;
+  /**
+   * Agent secret tools (docs/specs/20261031_agent-secret-tools.md): used by
+   * set-app-secret's post-write redaction sweep over the calling channel.
+   * Optional — without it the sweep is skipped (the credential write still
+   * succeeds; the agent can run redact-by-value standalone).
+   */
+  channelManager?: import('../services/channel-manager').ChannelManager;
 }
 
 interface McaCallbackContext {
@@ -106,6 +143,18 @@ interface McaCallbackContext {
   appId?: string;
   mcaId?: string;
   userId?: string;
+  /** Workspace the authenticated app is installed in (its ownerId). */
+  workspaceId?: string;
+  /** User whose tool call opened this callback, from a backend-issued call grant. */
+  callerUserId?: string;
+  /**
+   * Conversation channel the tool call originated from, from the same call
+   * grant. ctx.channelId is the grant id (rewritten to appId) after grant
+   * resolution — this field preserves the REAL ch_* channel so channel-scoped
+   * work (e.g. the set-app-secret redaction sweep) can target the conversation
+   * the secret was shared in.
+   */
+  callerChannelId?: string;
   path: string;
 }
 
@@ -181,7 +230,15 @@ export function authenticateCallback(
   const verifiedKey = candidateKeys.find((key) => containerManager.verifyCallbackToken(key, bearerToken));
   if (!verifiedKey) return null;
 
-  const mcaId = containerManager.getInfo(verifiedKey)?.mcaId ?? verifiedKey;
+  // Resolve the trusted mcaId from the verified key. Containers resolve via
+  // getInfo (ContainerInfo.mcaId); stdio MCAs register their token through
+  // registerCallbackToken and have NO ContainerInfo, so getCallbackTokenMcaId
+  // falls back to the registration map. Optional-call keeps older structural
+  // fakes (tests) working — they only implement verifyCallbackToken/getInfo.
+  const mcaId =
+    containerManager.getCallbackTokenMcaId?.(verifiedKey) ??
+    containerManager.getInfo(verifiedKey)?.mcaId ??
+    verifiedKey;
   return { verifiedKey, mcaId, headerAppId };
 }
 
@@ -235,24 +292,33 @@ function parseResourcePath(path: string): {
  * Create MCA callback routes handler
  */
 export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
-  const { db, secretsManager, authManager, workspaceService, volumeService, provisioningService, mcaService, pubSubService, mcaEventSubscriptionService, containerManager, mcaOAuth, invalidateToolCache, getChannelOwnerUserIdFn } = cfg;
+  const { db, secretsManager, authManager, workspaceService, userService, volumeService, provisioningService, mcaService, mcaManager, pubSubService, mcaEventSubscriptionService, containerManager, mcaOAuth, invalidateToolCache, getChannelOwnerUserIdFn, awaitingAuth, channelManager } = cfg;
+
+  // Agent Apps CallbackHandlers — instantiated once for the lifetime of the
+  // callback router. Handles /agent-apps/volume/*, /agent-apps/storage/*, and
+  // /agent-apps/objects/* callbacks from the MCA SDK (ctx.volume, ctx.storage,
+  // ctx.objects).
+  const agentAppsHandlers = new CallbackHandlers({
+    db,
+    objectStoragePath: cfg.objectStoragePath ?? config.agentApps.objectStoragePath,
+  });
 
   return async function handleMcaCallbackRoutes(
     req: IncomingMessage,
     res: ServerResponse,
     url: string,
   ): Promise<boolean> {
-    console.log(`[MCA Callback] Received request: ${req.method} ${url}`);
+    log.info({ method: req.method, url }, 'Received request');
 
     // Only handle /mca/callback/* routes
     if (!url.startsWith('/mca/callback/')) {
       return false;
     }
 
-    // CORS preflight
+    // CORS preflight — ACAO is set by the main request handler via
+    // resolveAllowedOrigin(); only methods/headers need to be echoed here.
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE',
         'Access-Control-Allow-Headers': 'Content-Type, X-App-Id, X-Mca-Id',
       });
@@ -262,7 +328,7 @@ export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
 
     // Parse URL
     const ctx = parseCallbackUrl(url);
-    console.log(`[MCA Callback] Parsed context:`, ctx);
+    log.info({ ctx }, 'Parsed context');
     if (!ctx) {
       sendJson(res, 400, { error: 'Invalid callback URL format' });
       return true;
@@ -307,8 +373,22 @@ export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
         if (app.ownerId) {
           const workspace = await db.collection('workspaces').findOne({ workspaceId: app.ownerId });
           if (workspace?.ownerId) ctx.userId = workspace.ownerId;
+          if (workspace?.workspaceId) ctx.workspaceId = workspace.workspaceId;
         }
       }
+    }
+
+    if (isMcaCallGrantId(ctx.channelId)) {
+      const grant = resolveMcaCallGrant(ctx.channelId);
+      if (!grant || !ctx.appId || grant.appId !== ctx.appId) {
+        sendJson(res, 403, { error: 'Call grant does not belong to this app' });
+        return true;
+      }
+      ctx.callerUserId = grant.userId;
+      // Preserve the REAL conversation channel (ch_*) from the grant — the
+      // set-app-secret sweep needs it (ctx.channelId becomes the appId here).
+      if (grant.channelId) ctx.callerChannelId = grant.channelId;
+      ctx.channelId = ctx.appId;
     }
 
     // Bind the URL channelId to the authenticated user. We NEVER derive userId
@@ -325,13 +405,13 @@ export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
         return true;
       }
     }
-    console.log(`[MCA Callback] Authenticated — mcaId=${ctx.mcaId} appId=${ctx.appId} userId=${ctx.userId} path=${ctx.path}`);
+    log.info({ mcaId: ctx.mcaId, appId: ctx.appId, userId: ctx.userId, path: ctx.path }, 'Authenticated');
 
     // Route to handler
     try {
       // Check for resource paths first
       if (ctx.path.startsWith('/resources/')) {
-        return await handleResourceRoute(req, res, ctx, db, workspaceService, volumeService, provisioningService, mcaService, pubSubService, mcaOAuth, invalidateToolCache);
+        return await handleResourceRoute(req, res, ctx, db, workspaceService, userService, volumeService, provisioningService, mcaService, mcaManager ?? null, pubSubService, mcaOAuth, invalidateToolCache, awaitingAuth, channelManager, authManager);
       }
 
       // Check for data storage paths
@@ -339,11 +419,76 @@ export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
         return await handleDataRoute(req, res, ctx, db);
       }
 
+      // ----------------------------------------------------------------
+      // Agent Apps callbacks: /agent-apps/volume/*, /agent-apps/storage/*,
+      // /agent-apps/objects/*
+      //
+      // The MCA SDK (BackendClient) sends these as HTTP callbacks when an
+      // agent uses ctx.volume, ctx.storage, or ctx.objects. The path maps
+      // to a CallbackRequest type via AGENT_APPS_CALLBACK_ROUTES, and the
+      // CallbackHandlers execute the actual operation (filesystem, MongoDB,
+      // object storage).
+      // ----------------------------------------------------------------
+      if (ctx.path.startsWith('/agent-apps/')) {
+        const callbackType = AGENT_APPS_CALLBACK_ROUTES[ctx.path];
+        if (!callbackType) {
+          sendJson(res, 404, { error: 'Unknown agent-apps callback', path: ctx.path });
+          return true;
+        }
+
+        const body = await parseBody<Record<string, unknown>>(req);
+
+        // Volume callbacks need a workspaceId to locate the workspace volume.
+        // The SDK sends it in the body, but as a fallback we resolve it from
+        // the channel record (the channel that opened the MCA).
+        if (ctx.path.startsWith('/agent-apps/volume/') && !body.workspaceId && ctx.channelId) {
+          const channel = await db.collection('channels').findOne({ channelId: ctx.channelId });
+          if (channel?.workspaceId) {
+            body.workspaceId = channel.workspaceId;
+          }
+        }
+
+        // Storage and object callbacks need an installationId. The SDK sends
+        // it as this.config.appId, but if missing, fall back to the
+        // authenticated appId from the callback token.
+        if (!body.installationId && ctx.appId) {
+          body.installationId = ctx.appId;
+        }
+
+        const request = { ...body, type: callbackType };
+        const result = await agentAppsHandlers.handle(request as any);
+        sendJson(res, 200, result);
+        return true;
+      }
+
+      // ----------------------------------------------------------------
+      // MCA actions: /actions/<capability>/<action>
+      //
+      // Datastore-isolation (P1b): named, validated backend actions so MCAs
+      // never hold a datastore connection. The capability is bound to one
+      // mcaId; identity comes from the verified token (ctx), never the body.
+      // ----------------------------------------------------------------
+      if (ctx.path.startsWith('/actions/')) {
+        if (!ctx.mcaId) {
+          sendJson(res, 401, { error: 'No verified MCA identity for action call' });
+          return true;
+        }
+        const body = await parseBody<Record<string, unknown>>(req);
+        const result = await handleMcaAction(
+          { mcaId: ctx.mcaId, appId: ctx.appId, userId: ctx.userId, channelId: ctx.channelId },
+          db,
+          ctx.path.slice('/actions/'.length),
+          body ?? {},
+        );
+        sendJson(res, result.status, result.body);
+        return true;
+      }
+
       // Other routes
       switch (ctx.path) {
         // Layer 2: Events
         case '/events':
-          return await handleEmitEvent(req, res, ctx, mcaEventSubscriptionService);
+          return await handleEmitEvent(req, res, ctx, db, mcaEventSubscriptionService);
 
         // Layer 2: Subscriptions
         case '/subscriptions/channel':
@@ -353,15 +498,22 @@ export function createMcaCallbackRoutes(cfg: McaCallbackRoutesConfig) {
         case '/secrets/system':
           return await handleGetSystemSecrets(req, res, ctx, secretsManager, containerManager);
         case '/secrets/user':
-          return await handleGetUserSecrets(req, res, ctx, authManager, mcaOAuth, containerManager);
+          return await handleGetUserSecrets(req, res, ctx, authManager, mcaOAuth, containerManager, mcaService);
         case '/secrets/user/update':
-          return await handleUpdateUserSecrets(req, res, ctx, authManager);
+          return await handleUpdateUserSecrets(req, res, ctx, authManager, mcaService);
         case '/auth/error':
           return await handleAuthError(req, res, ctx);
 
         // Email notification (via Resend)
         case '/email/send':
           return await handleEmailSend(req, res, ctx, db, secretsManager);
+
+        // Agent mailbox lazy safety-net (tn_PcquTN30AawbK8uE): an email MCA
+        // tool call that finds no resolvable mailbox asks the backend to
+        // provision/retry it here (covers pre-deploy grants and pending
+        // Stalwart failures), then retries the tool.
+        case '/mailbox/provision':
+          return await handleMailboxProvision(req, res, ctx, db);
 
         // Lifecycle
         case '/health':
@@ -428,7 +580,7 @@ async function handleDataRoute(
   const collection = db.collection('mca_data');
   const action = body.action || 'get';
 
-  console.log(`[MCA Data] ${action} key="${key}" scope="${scope}" appId="${ctx.appId}"`);
+  log.info({ action, key, scope, appId: ctx.appId }, 'MCA data operation');
 
   try {
     switch (action) {
@@ -464,6 +616,7 @@ async function handleDataRoute(
               appId: ctx.appId,
               scope,
               key,
+              ...(ctx.workspaceId ? { workspaceId: ctx.workspaceId } : {}),
               createdAt: new Date().toISOString(),
             },
           },
@@ -526,14 +679,19 @@ async function handleResourceRoute(
   ctx: McaCallbackContext,
   db: Db,
   workspaceService: any,
+  userService: UserService,
   volumeService: any,
   provisioningService: AgentProvisioningService,
   mcaService: McaService,
+  mcaManager: McaManager | null,
   pubSubService: PubSubService,
   mcaOAuth?: McaOAuth,
   invalidateToolCache?: (agentId: string) => Promise<void>,
+  awaitingAuth?: AwaitingAuthRegistry,
+  channelManager?: import('../services/channel-manager').ChannelManager,
+  authManager?: AuthManager,
 ): Promise<boolean> {
-  console.log(`[MCA Callback] handleResourceRoute called, path: ${ctx.path}`);
+  log.info({ path: ctx.path }, 'handleResourceRoute called');
 
   if (!ctx.userId) {
     sendJson(res, 401, { error: 'User not authenticated' });
@@ -544,10 +702,13 @@ async function handleResourceRoute(
     userId: ctx.userId,
     channelId: ctx.channelId,
     appId: ctx.appId,
+    mcaManager: mcaManager ?? null,
+    // Real ch_* conversation channel in grant mode (ctx.channelId = appId there)
+    ...(ctx.callerChannelId ? { callerChannelId: ctx.callerChannelId } : {}),
   };
 
   const parsed = parseResourcePath(ctx.path);
-  console.log(`[MCA Callback] Parsed resource path:`, parsed);
+  log.info({ parsed }, 'Parsed resource path');
   if (!parsed) {
     sendJson(res, 404, { error: 'Invalid resource path', path: ctx.path });
     return true;
@@ -560,9 +721,9 @@ async function handleResourceRoute(
   let body: any = {};
   try {
     body = await parseBody<any>(req);
-    console.log(`[MCA Callback] Body parsed:`, body);
+    log.debug({ body }, 'Body parsed');
   } catch (e) {
-    console.log(`[MCA Callback] Body parse error:`, e);
+    log.error({ err: e }, 'Body parse error');
   }
 
   // Route based on resource type and method
@@ -588,7 +749,7 @@ async function handleResourceRoute(
           if (body.action === 'get' || !body.action) {
             await resources.handleAgentGet(res, resourceCtx, db, id);
           } else if (body.action === 'update') {
-            await resources.handleAgentUpdate(res, resourceCtx, db, id, body);
+            await resources.handleAgentUpdate(res, resourceCtx, db, id, body, pubSubService);
           } else if (body.action === 'delete') {
             await resources.handleAgentDelete(res, resourceCtx, db, id);
           } else {
@@ -601,18 +762,20 @@ async function handleResourceRoute(
         // /resources/agents/:id/apps
         await resources.handleAgentAppsList(res, resourceCtx, db, id);
       } else if (id && subResource === 'providers' && !subId) {
-        // /resources/agents/:id/providers
+        // /resources/agents/:id/providers — get (2-level model read) / set (pin-only)
         if (body.action === 'get' || !body.action) {
           await resources.handleAgentProvidersGet(res, resourceCtx, db, id);
         } else if (body.action === 'set') {
-          await resources.handleAgentProvidersSet(res, resourceCtx, db, id, body);
+          await resources.handleAgentProvidersSet(res, resourceCtx, db, id, body, pubSubService);
         } else {
           sendJson(res, 400, { error: 'Invalid action' });
         }
-      } else if (id && subResource === 'providers' && subId === 'preferred') {
-        // /resources/agents/:id/providers/preferred
-        if (body.action === 'set' || !body.action) {
-          await resources.handleAgentPreferredProviderSet(res, resourceCtx, db, id, body);
+      } else if (id && subResource === 'model') {
+        // /resources/agents/:id/model — atomic model pin (set) / System Default (reset)
+        if (body.action === 'set') {
+          await resources.handleAgentModelSet(res, resourceCtx, db, id, body, pubSubService);
+        } else if (body.action === 'reset') {
+          await resources.handleAgentModelReset(res, resourceCtx, db, id, body, pubSubService);
         } else {
           sendJson(res, 400, { error: 'Invalid action' });
         }
@@ -653,7 +816,7 @@ async function handleResourceRoute(
         }
       } else if (id && subResource === 'members' && !subId) {
         // /resources/workspaces/:id/members
-        await resources.handleWorkspaceMemberAdd(res, resourceCtx, db, id, body);
+        await resources.handleWorkspaceMemberAdd(res, resourceCtx, db, id, body, workspaceService, userService);
       } else if (id && subResource === 'members' && subId) {
         // /resources/workspaces/:id/members/:userId
         if (body.action === 'remove') {
@@ -679,9 +842,7 @@ async function handleResourceRoute(
       if (!id) {
         // /resources/apps
         if (method === 'POST') {
-          if (body.action === 'list' || !body.action) {
-            await resources.handleAppList(res, resourceCtx, db, body);
-          } else if (body.action === 'install') {
+          if (body.action === 'install') {
             await resources.handleAppInstall(res, resourceCtx, db, body, mcaService, pubSubService);
           } else {
             sendJson(res, 400, { error: 'Invalid action' });
@@ -720,7 +881,40 @@ async function handleResourceRoute(
         if (body.action === 'check') {
           await resources.handleAppCheckAuth(res, resourceCtx, db, id, mcaOAuth);
         } else {
-          await resources.handleAppShowAuth(res, resourceCtx, db, id, mcaOAuth);
+          await resources.handleAppShowAuth(res, resourceCtx, db, id, mcaOAuth, awaitingAuth, pubSubService);
+        }
+      } else if (id && subResource === 'secrets') {
+        // /resources/apps/:id/secrets — agent secret tools
+        // (docs/specs/20261031_agent-secret-tools.md). set-app-secret is
+        // alwaysAsk at the TOOL layer, so by the time this runs the user has
+        // confirmed the write. get-app-secret returns a masked preview only.
+        if (body.action === 'set') {
+          await resources.handleAppSetSecret(
+            res,
+            resourceCtx,
+            db,
+            id,
+            body,
+            mcaOAuth,
+            channelManager,
+            body.agentId,
+          );
+        } else if (body.action === 'get') {
+          await resources.handleAppGetSecret(res, resourceCtx, db, id, body, mcaOAuth);
+        } else if (body.action === 'copy') {
+          // copy-app-auth (tn_aGVdSrVwIJi9mfvc) — URL id is the TARGET app,
+          // body.sourceAppId the origin. alwaysAsk at the TOOL layer.
+          await resources.handleAppCopyAuth(
+            res,
+            resourceCtx,
+            db,
+            id,
+            body,
+            authManager,
+            mcaOAuth,
+          );
+        } else {
+          sendJson(res, 400, { error: "Invalid action — use 'set', 'get' or 'copy'" });
         }
       } else {
         sendJson(res, 404, { error: 'Invalid app resource path' });
@@ -822,6 +1016,7 @@ async function handleEmitEvent(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: McaCallbackContext,
+  db: Db,
   mcaEventSubscriptionService?: MCAEventSubscriptionService,
 ): Promise<boolean> {
   // Channel-scoped route: require a token-derived userId, symmetric with
@@ -835,19 +1030,22 @@ async function handleEmitEvent(
 
   const body = await parseBody<EmitEventRequest>(req);
 
-  console.log(`[MCA Callback] Event from ${ctx.appId}: ${body.event}`, {
-    channelId: ctx.channelId,
-    payload: body.payload,
-  });
+  log.info({ appId: ctx.appId, event: body.event, channelId: ctx.channelId }, 'Event received');
+
+  if (body.event) void warnOnCatalogDrift(db, ctx.appId, body.event, (body.payload ?? {}) as Record<string, unknown>);
 
   if (mcaEventSubscriptionService && body.event) {
     await mcaEventSubscriptionService.dispatch({
       topic: body.event,
       payload: {
         ...(body.payload ?? {}),
-        // Inject channelId and appId so subscribers can filter by them
+        // The envelope: stamped by the backend from the verified identity so
+        // an emitter can never claim another channel, app or workspace.
+        // Subscribers (channel/agent subscriptions, flows, Automate) scope on it.
         channelId: ctx.channelId,
         appId: ctx.appId,
+        workspaceId: ctx.workspaceId,
+        occurredAt: new Date().toISOString(),
       },
     });
   }
@@ -891,13 +1089,13 @@ async function handleChannelSubscription(
     rules?: Rules;
     mode?: 'notify' | 'wake';
     subscriptionId?: string;
+    // Voice events (P1+P2, docs/specs/20261018_voice-events.md §3.4/§3.5):
+    // one-time subscriptions auto-delete after the first matched dispatch.
+    // Optional, default false — same backward-compatible semantics as the model.
+    oneTime?: boolean;
   }>(req);
 
-  console.log(`[MCA Callback] Subscription ${body.action} from ${ctx.appId}`, {
-    topic: body.topic,
-    channelId: body.channelId ?? ctx.channelId,
-    mode: body.mode,
-  });
+  log.info({ appId: ctx.appId, action: body.action, topic: body.topic, channelId: body.channelId ?? ctx.channelId, mode: body.mode }, 'Subscription action');
 
   /**
    * Capa 2 (TER-358): si el MCA pide operar sobre un `body.channelId` que NO
@@ -944,6 +1142,7 @@ async function handleChannelSubscription(
       channelId: targetChannelId,
       rules: body.rules ?? [],
       mode: body.mode,
+      oneTime: body.oneTime === true,
     });
     sendJson(res, 200, { success: true, subscription: sub });
   } else if (body.action === 'delete') {
@@ -994,15 +1193,15 @@ async function handleGetSystemSecrets(
   // up the correct .secrets/mcas/<mcaId>/credentials.json file.
   const resolvedMcaId = resolveMcaIdForCallback(ctx, containerManager);
 
-  console.log(`[MCA Callback] System secrets request from ${ctx.appId} (mcaId: ${ctx.mcaId} → resolved: ${resolvedMcaId})`, {
-    keys: body.keys,
-  });
+  log.info({ appId: ctx.appId, mcaId: ctx.mcaId, resolvedMcaId, keys: body.keys }, 'System secrets request');
 
-  // Get secrets from SecretsManager (reads from .secrets/mcas/<mcaId>/credentials.json)
+  // Get secrets from SecretsManager (reads fresh from .secrets/mcas/<mcaId>/credentials.json)
+  // @fixme nira - 2026.10.18 : use getMcaFresh so credentials created/edited after
+  // backend boot are visible without restart (was secretsManager.mca which reads cache)
   let secrets: Record<string, string> | null = null;
 
   if (resolvedMcaId) {
-    const mcaSecrets = secretsManager.mca(resolvedMcaId);
+    const mcaSecrets = secretsManager.getMcaFresh(resolvedMcaId);
 
     if (mcaSecrets) {
       // Filter by requested keys if specified
@@ -1080,21 +1279,133 @@ export function shouldRefreshOAuthToken(credentials: Record<string, unknown>): b
   return expiry <= Date.now() + OAUTH_REFRESH_SKEW_MS;
 }
 
-async function handleGetUserSecrets(
+async function isPerUserAuthMca(mcaId: string | undefined, mcaService?: McaService): Promise<boolean> {
+  if (!mcaId || !mcaService) return false;
+  const mca = await mcaService.getMcaFromCatalog(mcaId);
+  const auth = mca?.auth as { type?: string; userOAuth?: boolean } | undefined;
+  return auth?.type === 'github-app' && auth.userOAuth === true;
+}
+
+async function secretsOwnerUserId(
+  ctx: McaCallbackContext,
+  mcaService?: McaService,
+): Promise<{ userId?: string; error?: string }> {
+  if (!(await isPerUserAuthMca(ctx.mcaId, mcaService))) return { userId: ctx.userId };
+  if (!ctx.callerUserId) {
+    return { error: "This app uses each user's own connection and the request names no calling user" };
+  }
+  return { userId: ctx.callerUserId };
+}
+
+// ============================================================================
+// AGENT MAILBOX LAZY PROVISIONING (tn_PcquTN30AawbK8uE)
+// ============================================================================
+
+interface MailboxProvisionRequest {
+  agentId?: string;
+  preferredName?: string;
+}
+
+interface MailboxProvisionResponse {
+  provisioned: boolean;
+  address?: string;
+  status?: 'active' | 'pending' | 'renamed';
+  reason?: string;
+}
+
+/**
+ * POST /mca/callback/:appId/mailbox/provision { agentId }
+ *
+ * Lazy safety-net for the agent-mailbox lifecycle: the email MCA calls this
+ * when a personal tool finds no resolvable mailbox (pre-deploy grant, or a
+ * provisioning that failed against Stalwart and stayed pending). Idempotent
+ * — an existing active mailbox is returned as-is. Only allowed for the
+ * email MCA itself.
+ */
+async function handleMailboxProvision(
   req: IncomingMessage,
   res: ServerResponse,
   ctx: McaCallbackContext,
+  db: Db,
+): Promise<boolean> {
+  if (ctx.mcaId !== 'mca.teros.email') {
+    sendJson(res, 403, { error: 'Mailbox provisioning is only available to the email MCA' });
+    return true;
+  }
+
+  const body = await parseBody<MailboxProvisionRequest>(req);
+  const agentId = body.agentId?.trim();
+  if (!agentId) {
+    const response: MailboxProvisionResponse = { provisioned: false, reason: 'agentId is required' };
+    sendJson(res, 400, response);
+    return true;
+  }
+
+  const agent = await db.collection('agents').findOne({ agentId });
+  if (!agent) {
+    const response: MailboxProvisionResponse = { provisioned: false, reason: `Agent ${agentId} not found` };
+    sendJson(res, 404, response);
+    return true;
+  }
+
+  // Only provision when the agent actually has the email app granted — the
+  // grant IS the toggle; without it there is nothing to provision.
+  const app = await db.collection('apps').findOne({ mcaId: 'mca.teros.email' });
+  if (app) {
+    const granted = await db.collection('agent_app_access').findOne({ agentId, appId: app.appId });
+    if (!granted) {
+      const response: MailboxProvisionResponse = {
+        provisioned: false,
+        reason: 'Agent does not have the email app granted (grant is the toggle)',
+      };
+      sendJson(res, 200, response);
+      return true;
+    }
+  }
+
+  try {
+    const mailboxService = new AgentMailboxService(db);
+    const result = await mailboxService.ensureMailbox(agent as unknown as AgentInstance, {
+      preferredName: body.preferredName,
+    });
+    const response: MailboxProvisionResponse = {
+      provisioned: result.status === 'active',
+      address: result.address,
+      status: result.status,
+      ...(result.reason ? { reason: result.reason } : {}),
+    };
+    sendJson(res, 200, response);
+  } catch (error) {
+    const response: MailboxProvisionResponse = {
+      provisioned: false,
+      reason: error instanceof Error ? error.message : 'Provisioning failed',
+    };
+    sendJson(res, 500, response);
+  }
+  return true;
+}
+
+async function handleGetUserSecrets(
+  req: IncomingMessage,
+  res: ServerResponse,
+  callbackCtx: McaCallbackContext,
   authManager: AuthManager,
   mcaOAuth?: McaOAuth,
   containerManager?: McaContainerManager,
+  mcaService?: McaService,
 ): Promise<boolean> {
   const body = await parseBody<GetUserSecretsRequest>(req);
 
-  console.log(`[MCA Callback] User secrets request from ${ctx.appId}`, {
-    keys: body.keys,
-    channelId: ctx.channelId,
-    userId: ctx.userId,
-  });
+  const owner = await secretsOwnerUserId(callbackCtx, mcaService);
+  const ctx: McaCallbackContext = { ...callbackCtx, userId: owner.userId };
+
+  log.info({ appId: ctx.appId, keys: body.keys, channelId: ctx.channelId, userId: ctx.userId, callerUserId: ctx.callerUserId }, 'User secrets request');
+
+  if (owner.error) {
+    const response: GetUserSecretsResponse = { secrets: null, authenticated: false, error: owner.error };
+    sendJson(res, 200, response);
+    return true;
+  }
 
   // Need both appId and userId
   if (!ctx.appId) {
@@ -1142,7 +1453,7 @@ async function handleGetUserSecrets(
       if (resolvedMcaId) {
         const result = await mcaOAuth.refreshToken(ctx.userId, ctx.appId, resolvedMcaId);
         if (result.success) {
-          console.log(`[MCA Callback] Refreshed OAuth token for ${ctx.appId} (mcaId: ${resolvedMcaId})`);
+          log.info({ appId: ctx.appId, mcaId: resolvedMcaId }, 'Refreshed OAuth token');
           credentials = (await authManager.get(ctx.userId, ctx.appId)) ?? credentials;
         } else {
           // No rompemos el endpoint: servimos el token viejo. El MCA verá el 401
@@ -1193,16 +1504,15 @@ async function handleGetUserSecrets(
 async function handleUpdateUserSecrets(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: McaCallbackContext,
+  callbackCtx: McaCallbackContext,
   authManager: AuthManager,
+  mcaService?: McaService,
 ): Promise<boolean> {
   const body = await parseBody<UpdateUserSecretsRequest>(req);
+  const owner = await secretsOwnerUserId(callbackCtx, mcaService);
+  const ctx: McaCallbackContext = { ...callbackCtx, userId: owner.userId };
 
-  console.log(`[MCA Callback] User secrets update from ${ctx.appId}`, {
-    keys: Object.keys(body.secrets),
-    channelId: ctx.channelId,
-    userId: ctx.userId,
-  });
+  log.info({ appId: ctx.appId, keys: Object.keys(body.secrets), channelId: ctx.channelId, userId: ctx.userId }, 'User secrets update');
 
   // Need both appId and userId
   if (!ctx.appId || !ctx.userId || !ctx.mcaId) {
@@ -1245,12 +1555,7 @@ async function handleAuthError(
 ): Promise<boolean> {
   const body = await parseBody<ReportAuthErrorRequest>(req);
 
-  console.log(`[MCA Callback] Auth error from ${ctx.appId}:`, {
-    error: body.error,
-    message: body.message,
-    canRetry: body.canRetry,
-    channelId: ctx.channelId,
-  });
+  log.warn({ appId: ctx.appId, error: body.error, message: body.message, canRetry: body.canRetry, channelId: ctx.channelId }, 'Auth error reported');
 
   // TODO: Handle different error types
 
@@ -1273,11 +1578,7 @@ async function handleHealthReport(
 ): Promise<boolean> {
   const body = await parseBody<ReportHealthRequest>(req);
 
-  console.log(`[MCA Callback] Health report from ${ctx.appId}:`, {
-    status: body.status,
-    message: body.message,
-    issues: body.issues?.length || 0,
-  });
+  log.info({ appId: ctx.appId, status: body.status, message: body.message, issueCount: body.issues?.length || 0 }, 'Health report');
 
   // TODO: Update MCA health status in registry
 
@@ -1400,7 +1701,7 @@ async function handleEmailSend(
       return true;
     }
 
-    console.log(`[MCA Callback] Notification email sent to ${userEmail}: "${body.subject}"`);
+    log.info({ userEmail, subject: body.subject }, 'Notification email sent');
 
     sendJson(res, 200, {
       success: true,

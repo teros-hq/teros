@@ -6,7 +6,7 @@ export const healthCheck: ToolConfig = {
   description:
     "Internal health check. Verifies Google OAuth credentials and Calendar API connectivity.",
   parameters: { type: "object", properties: {} },
-  annotations: { version: "2.0.0", stability: "stable" },
+  annotations: { readOnlyHint: true, version: "2.0.0", stability: "stable" },
   handler: async (_args, context) => {
     const builder = new HealthCheckBuilder()
       .setVersion("2.0.0")
@@ -25,7 +25,7 @@ export const healthCheck: ToolConfig = {
           },
         )
       }
-      if (!userSecrets.ACCESS_TOKEN || !userSecrets.REFRESH_TOKEN) {
+      if (!userSecrets.ACCESS_TOKEN) {
         builder.addIssue("AUTH_REQUIRED", "Google account not connected", {
           type: "user_action",
           description: "Connect your Google account to use Calendar.",

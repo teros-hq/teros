@@ -42,7 +42,7 @@ export const listInstances: ToolConfig = {
       args as unknown as ListInstancesArgs
     const maxResults = sanitizeLimit(limit, { max: 2500, default: 25 })
 
-    const response = await wrapCalendarCall(() =>
+    const response = await wrapCalendarCall(context, () =>
       calendar.events.instances({
         calendarId: calendarId ?? "primary",
         eventId,

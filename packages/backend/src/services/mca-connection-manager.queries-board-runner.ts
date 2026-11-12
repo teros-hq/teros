@@ -10,6 +10,17 @@
 import { enrichTaskWithColumn } from '../handlers/domains/board/_helpers';
 import { buildAvatarUrl } from '../lib/avatar-url';
 import type { QueryHandlerContext, ActiveConnection } from './mca-connection-manager.types';
+import { guardReviewClaim, releaseReviewClaim } from './mca-connection-manager.review-claim-guard';
+import {
+  emitDependencyAdded,
+  emitDependencyRemoved,
+  emitTaskMoved,
+  emitTaskProgressNote,
+} from './board-event-emitters';
+
+// The single-flight review claim guard (guardReviewClaim / releaseReviewClaim)
+// lives in ./mca-connection-manager.review-claim-guard and is shared with the
+// board-manager query handlers. See docs/specs/20261019_single-flight-review-claims.md.
 
 export async function handleBoardRunnerAction(
   ctx: QueryHandlerContext,
@@ -20,6 +31,17 @@ export async function handleBoardRunnerAction(
   connection: ActiveConnection,
   appId?: string,
 ): Promise<unknown> {
+  // MCA query handlers are only called by agents, never humans.
+  // effectiveAgentId must always be present. If it isn't, the calling MCA
+  // tool failed to pass agentId in its queryConversations params — throw
+  // so the bug surfaces immediately instead of silently storing null.
+  if (!effectiveAgentId) {
+    throw new Error(
+      `Cannot determine agent for board action "${action}". ` +
+      `The MCA tool must pass agentId in its queryConversations params.`
+    );
+  }
+  const actor = effectiveAgentId;
   let data: unknown;
 
   switch (action) {
@@ -41,23 +63,90 @@ case 'move_my_task': {
   if (mmtTask.assignedAgentId !== mmtAgentId) {
     throw new Error('Agent is not assigned to this task');
   }
+
+  // Single-flight guard: for review moves, exactly one session of this agent
+  // proceeds; the rest skip without moving.
+  const mmtClaimSkip = await guardReviewClaim(ctx, connection, 'move_my_task', mmtTaskId, mmtAgentId, params);
+  if (mmtClaimSkip) {
+    data = { task: mmtTask, ...mmtClaimSkip };
+    break;
+  }
+
   const mmtMoved = await ctx.boardService.moveTask(
     mmtTaskId,
-    userId,
+    actor,
     mmtColumnId,
     mmtPosition,
   );
   if (!mmtMoved) {
     throw new Error('Task not found');
   }
+
+  // The move is the review's terminal action → release the claim so the task
+  // is claimable again (e.g. a later re-review).
+  await releaseReviewClaim(ctx, connection, mmtTaskId, mmtAgentId, params);
   const mmtBoardEn = await ctx.boardService.getBoard(mmtMoved.boardId);
   data = { task: enrichTaskWithColumn(mmtMoved, mmtBoardEn) };
   ctx.pubSubService?.broadcastToTopic(`board:${mmtMoved.boardId}`, {
     type: 'board_task_updated',
     task: mmtMoved,
   });
+  // Emit board.task_moved to subscribers (fb_d211b16343bd3034 — mirrors
+  // handlers/domains/board/move-my-task.ts). mmtTask is the pre-move snapshot.
+  if (ctx.boardSubscriptionService && mmtBoardEn) {
+    const mmtFromCol = mmtBoardEn.columns.find((c: any) => c.columnId === mmtTask.columnId);
+    const mmtToCol = mmtBoardEn.columns.find((c: any) => c.columnId === mmtColumnId);
+    emitTaskMoved(
+      ctx.boardSubscriptionService,
+      mmtMoved,
+      {
+        fromColumnId: mmtTask.columnId,
+        fromColumnName: mmtFromCol?.name,
+        toColumnId: mmtColumnId,
+        toColumnName: mmtToCol?.name,
+      },
+      { actorAgentId: mmtAgentId },
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Workflow hook: if this task was created by a workflow execution
+  // and is being moved to 'review' or 'done', notify the ActionBridge
+  // to advance the workflow engine.
+  // ──────────────────────────────────────────────────────────────
+  if (ctx.actionBridgeManager && mmtMoved.workflowExecutionId && mmtBoardEn) {
+    const mmtTargetCol = mmtBoardEn.columns.find((c: any) => c.columnId === mmtColumnId);
+    const mmtTargetSlug = mmtTargetCol?.slug;
+    if (mmtTargetSlug === 'review' || mmtTargetSlug === 'done') {
+      try {
+        const mmtProject = await ctx.boardService.getProject(mmtBoardEn.projectId);
+        if (mmtProject) {
+          const mmtResult = await ctx.actionBridgeManager.onTaskCompleted(mmtProject.projectId, {
+            taskId: mmtMoved.taskId,
+            status: mmtTargetSlug,
+            workflowExecutionId: mmtMoved.workflowExecutionId,
+            workflowNodeId: mmtMoved.workflowNodeId,
+            outputData: mmtMoved.output?.data,
+          });
+
+          if (mmtResult.rejected) {
+            // The bridge moved the task back. Re-fetch to get updated state.
+            const rejectedTask = await ctx.boardService.getTask(mmtTaskId);
+            if (rejectedTask) {
+              const rejectedBoardEn = await ctx.boardService.getBoard(rejectedTask.boardId);
+              data = { task: enrichTaskWithColumn(rejectedTask, rejectedBoardEn) };
+            }
+          }
+        }
+      } catch (err) {
+        // Workflow hook failure must not break the move flow.
+        console.error('[move_my_task MCA] Workflow advancement failed:', err);
+      }
+    }
+  }
   break;
 }
+
 
 
 
@@ -119,6 +208,15 @@ case 'add_my_progress_note': {
   if (ampnTask.assignedAgentId !== ampnAgentId) {
     throw new Error('Agent is not assigned to this task');
   }
+
+  // Single-flight guard: for review notes, exactly one session of this agent
+  // posts; the rest skip without writing a duplicate note.
+  const ampnClaimSkip = await guardReviewClaim(ctx, connection, 'add_my_progress_note', ampnTaskId, ampnAgentId, params);
+  if (ampnClaimSkip) {
+    data = { task: ampnTask, ...ampnClaimSkip };
+    break;
+  }
+
   const ampnNoteTask = await ctx.boardService.addProgressNote(ampnTaskId, ampnText, ampnAgentId);
   if (!ampnNoteTask) {
     throw new Error('Task not found');
@@ -130,6 +228,13 @@ case 'add_my_progress_note': {
     type: 'board_task_updated',
     task: ampnNoteTask,
   });
+  // Emit board.task_progress_note to subscribers (fb_d211b16343bd3034 — THE
+  // bug case: runner progress notes went through this inline path and never
+  // emitted, so subscriptions with taskIds/eventTypes filters got zero wakes.
+  // Mirrors handlers/domains/board/add-my-progress-note.ts).
+  if (ctx.boardSubscriptionService) {
+    emitTaskProgressNote(ctx.boardSubscriptionService, ampnNoteTask, ampnText, { actorAgentId: ampnAgentId });
+  }
   break;
 }
 
@@ -248,7 +353,7 @@ case 'add_dependency': {
   }
   let adTask;
   try {
-    adTask = await ctx.boardService.addDependency(adTaskId, adDependsOnTaskId, userId);
+    adTask = await ctx.boardService.addDependency(adTaskId, adDependsOnTaskId, actor);
   } catch (err: any) {
     if (err.message?.startsWith('CIRCULAR_DEPENDENCY:')) {
       throw new Error(err.message);
@@ -258,6 +363,11 @@ case 'add_dependency': {
   ctx.pubSubService?.broadcastToTopic(`board:${adTask.boardId}`, { type: 'board_task_updated', task: adTask });
   const adBoardEn = await ctx.boardService.getBoard(adTask.boardId);
   data = { task: enrichTaskWithColumn(adTask, adBoardEn) };
+  // Emit board.dependency_added to subscribers (fb_d211b16343bd3034 — mirrors
+  // handlers/domains/board/add-dependency.ts).
+  if (ctx.boardSubscriptionService) {
+    emitDependencyAdded(ctx.boardSubscriptionService, adTask, adDependsOnTaskId, { actorAgentId: actor });
+  }
   break;
 }
 
@@ -270,10 +380,15 @@ case 'remove_dependency': {
   if (!rdTaskId || !rdDependsOnTaskId) {
     throw new Error('taskId and dependsOnTaskId are required');
   }
-  const rdTask = await ctx.boardService.removeDependency(rdTaskId, rdDependsOnTaskId, userId);
+  const rdTask = await ctx.boardService.removeDependency(rdTaskId, rdDependsOnTaskId, actor);
   ctx.pubSubService?.broadcastToTopic(`board:${rdTask.boardId}`, { type: 'board_task_updated', task: rdTask });
   const rdBoardEn = await ctx.boardService.getBoard(rdTask.boardId);
   data = { task: enrichTaskWithColumn(rdTask, rdBoardEn) };
+  // Emit board.dependency_removed to subscribers (fb_d211b16343bd3034 —
+  // mirrors handlers/domains/board/remove-dependency.ts).
+  if (ctx.boardSubscriptionService) {
+    emitDependencyRemoved(ctx.boardSubscriptionService, rdTask, rdDependsOnTaskId, { actorAgentId: actor });
+  }
   break;
 }
 

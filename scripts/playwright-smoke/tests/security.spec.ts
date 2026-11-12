@@ -14,7 +14,13 @@
  * ws-transport fix); `message` is the backend's literal string.
  */
 import { expect, test } from "../fixtures"
+import { channelStarter, deleteStartersForChannel } from "../helpers/automate"
+import { closeDb } from "../helpers/db"
 import { attemptAction, evalTeros, getPrimaryIds } from "../helpers/teros"
+
+test.afterAll(async () => {
+  await closeDb()
+})
 
 type Denial = { resolved: boolean; message: string | null; code: string | null }
 
@@ -75,7 +81,8 @@ test.describe("security — cross-workspace authz @security", () => {
     }
   })
 
-  // 2) agent (TER-513 / #211) — gate ownerId === caller → AGENT_NOT_FOUND (existence-hiding).
+  // 2) agent (TER-513 / #211; MUW-REQ-3 since 2026-11-02) — gate canAccessAgent (workspace
+  //    membership) → ACCESS_DENIED for a visible-but-foreign agent; AGENT_NOT_FOUND only when it does not exist.
   // Uses an EPHEMERAL agent (not the seed agent) so a broken delete gate can't poison the env.
   test("user2 no puede editar/borrar un agente de user1", async ({ terosPage, user2Page }) => {
     const agentId = await evalTeros(terosPage, async () => {
@@ -100,14 +107,14 @@ test.describe("security — cross-workspace authz @security", () => {
 
       expectDenied(
         await attemptAction(user2Page, "agent.update", { agentId, name: "hacked" }),
-        "AGENT_NOT_FOUND",
-        "not found or access denied",
+        "ACCESS_DENIED",
+        "do not have access to this agent",
         "agent.update",
       )
       expectDenied(
         await attemptAction(user2Page, "agent.delete", { agentId }),
-        "AGENT_NOT_FOUND",
-        "not found or access denied",
+        "ACCESS_DENIED",
+        "do not have access to this agent",
         "agent.delete",
       )
     } finally {
@@ -192,32 +199,40 @@ test.describe("security — cross-workspace authz @security", () => {
     }
   })
 
-  // 5) scheduler (TER-358 / #174) — channel-ownership gate → FORBIDDEN "does not belong to user".
+  // 5) reminders (TER-358 / #174) — since c550f85bd a reminder is a `once` Automate starter on
+  // a channel. Channel gate: the channel must belong to the starter's workspace → user2 (in his
+  // own workspace) cannot aim one at user1's channel → VALIDATION_ERROR "Channel not found in
+  // workspace". (automate-starter-guards.spec covers the recurring variant + the role gate.)
   test("user2 no puede programar un reminder en un canal de user1", async ({
     terosPage,
     user2Page,
   }) => {
     const { agentId, privateWorkspaceId } = await getPrimaryIds(terosPage)
     expect(agentId, "agentId de user1").toBeTruthy()
+    const u2 = await getPrimaryIds(user2Page)
+    expect(u2.agentId, "agentId de user2").toBeTruthy()
     const channelId = await evalTeros(
       terosPage,
       ({ aid, wid }) =>
         window.teros.channel.create({ agentId: aid, workspaceId: wid }).then((r) => r.channelId),
-      { aid: agentId, wid: privateWorkspaceId },
+      { aid: agentId as string, wid: privateWorkspaceId as string },
     )
-    expect(channelId, "canal creado por user1 (shape ch_<16hex>)").toMatch(/^ch_[0-9a-f]{16}$/)
     try {
       expectDenied(
-        await attemptAction(user2Page, "scheduler.schedule-reminder", {
-          channelId,
-          message: "x",
-          time: "in 1 hour",
-        }),
-        "FORBIDDEN",
-        "does not belong to user",
-        "scheduler.schedule-reminder",
+        await attemptAction(
+          user2Page,
+          "automate.create-starter",
+          channelStarter(u2.privateWorkspaceId as string, channelId, u2.agentId as string, {
+            type: "once",
+            at: new Date(Date.now() + 3_600_000).toISOString(),
+          }),
+        ),
+        "VALIDATION_ERROR",
+        "Channel not found in workspace",
+        "automate.create-starter (reminder en canal ajeno)",
       )
     } finally {
+      await deleteStartersForChannel(channelId)
       await evalTeros(
         terosPage,
         (id) => window.teros.channel.close(id).catch(() => null),
@@ -251,7 +266,12 @@ test.describe("security — cross-workspace authz @security", () => {
         "board.create-project",
       )
       expectDenied(
-        await attemptAction(user2Page, "board.create-task", { projectId, title: "intruso" }),
+        await attemptAction(user2Page, "board.create-task", {
+          projectId,
+          title: "intruso",
+          // valid payload so the call reaches the write-access gate (instructions is validated first)
+          instructions: "intruso",
+        }),
         "FORBIDDEN",
         "No write access",
         "board.create-task",

@@ -1,0 +1,15 @@
+export { authStatus } from './auth-status';
+export { authSendCode } from './auth-send-code';
+export { authSignIn } from './auth-sign-in';
+export { authDisconnect } from './auth-disconnect';
+export { listChats } from './list-chats';
+export { getChatHistory } from './get-chat-history';
+export { searchMessages } from './search-messages';
+export { sendMessage } from './send-message';
+export { sendMedia } from './send-media';
+export { downloadMedia } from './download-media';
+export { editMessage } from './edit-message';
+export { deleteMessages } from './delete-messages';
+export { createGroup } from './create-group';
+export { manageMembers } from './manage-members';
+export { markAsRead } from './mark-as-read';

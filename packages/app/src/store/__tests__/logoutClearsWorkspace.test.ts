@@ -19,7 +19,7 @@
  * Runner: bun:test. Storage + transport + sentry are lazily required by
  * SessionManager and stubbed here so no react-native is pulled in.
  */
-import { beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, mock } from 'bun:test'
 
 const mem = new Map<string, unknown>()
 const fakeStorage = {
@@ -45,7 +45,34 @@ mock.module('../../services/storage', () => ({
     ACTIVE_WORKSPACE: ACTIVE_WORKSPACE_KEY,
     LAST_ACTIVE_WORKSPACE: LAST_ACTIVE_WORKSPACE_KEY,
   },
+  shouldPersistSessionToken: false,
 }))
+
+// Web session cookie: logout must DELETE /auth/session (clears the httpOnly
+// cookie + revokes server-side), otherwise a reload restores the session.
+let serverCookieAlive = true
+let clearCalls = 0
+mock.module('../../services/sessionCookie', () => ({
+  clearSessionCookie: async () => {
+    clearCalls++
+    serverCookieAlive = false
+  },
+  installSessionCookie: () => {
+    serverCookieAlive = true
+  },
+  restoreSessionFromCookie: async () =>
+    serverCookieAlive ? { token: 'tok_A', userId: 'user_A' } : null,
+}))
+
+// bun's mock.module is process-wide: neutralise it so other test files that
+// import authStore don't see a "live" cookie after this file finishes.
+afterAll(() => {
+  mock.module('../../services/sessionCookie', () => ({
+    clearSessionCookie: async () => {},
+    installSessionCookie: () => {},
+    restoreSessionFromCookie: async () => null,
+  }))
+})
 
 let authMod: typeof import('../authStore')
 let registryMod: typeof import('../session/StoreRegistry')
@@ -94,5 +121,23 @@ describe('logout clears the full session (workspace contamination guard)', () =>
     expect(mem.has(LAST_ACTIVE_WORKSPACE_KEY)).toBe(false)
     // Auth is cleared too.
     expect(authMod.useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('logout() clears the session cookie and a subsequent reload does not restore the session', async () => {
+    clearCalls = 0
+    authMod.useAuthStore.getState().login({ userId: 'user_A', email: 'a@x.com' }, 'tok_A')
+    expect(serverCookieAlive).toBe(true)
+
+    await authMod.useAuthStore.getState().logout()
+    expect(clearCalls).toBe(1)
+
+    // "Reload": hydrate from scratch — cookie is gone, so no session.
+    await authMod.useAuthStore.getState().hydrate()
+    expect(authMod.useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+
+  it('logout() still resolves (local teardown never depends on the cookie call)', async () => {
+    // Covered by the timeout in SessionManager; here ensure a rejection does not break logout.
+    await expect(authMod.useAuthStore.getState().logout()).resolves.toBeUndefined()
   })
 })

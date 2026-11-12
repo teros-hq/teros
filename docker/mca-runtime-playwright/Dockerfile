@@ -16,7 +16,7 @@
 # ─────────────────────────────────────────────────────────────────
 # Stage 1 — builder: bake @teros packages + the full union of MCA deps
 # ─────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/playwright:v1.61.1-noble AS builder
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf AS builder
 
 # Toolchain some native modules need to build (node-gyp etc.)
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
@@ -58,7 +58,7 @@ RUN cd /opt/mca-deps && npm install --omit=dev --no-audit --no-fund && \
 # ─────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
 # ─────────────────────────────────────────────────────────────────
-FROM mcr.microsoft.com/playwright:v1.61.1-noble
+FROM mcr.microsoft.com/playwright:v1.64.1-noble@sha256:7852dc5a7d72f5fe458a597d690f6c42fbc8e9e26ddfa95f8e6ef552558d9bbf
 
 RUN apt-get update && apt-get install -y curl git openssh-client && rm -rf /var/lib/apt/lists/*
 RUN npm install -g tsx typescript

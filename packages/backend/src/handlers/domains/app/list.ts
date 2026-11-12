@@ -19,9 +19,10 @@ export function createListAppsHandler(db: Db) {
     }
 
     const appsCollection = db.collection('apps')
-    const installedApps = await appsCollection
-      .find({ ownerId: privateWorkspaceId })
-      .toArray()
+    // MUW-REQ-13: shared apps plus the caller's own personal apps.
+    const installedApps = (await appsCollection.find({ ownerId: privateWorkspaceId }).toArray()).filter(
+      (app) => app.scope === 'shared' || app.installedBy === ctx.userId,
+    )
 
     const catalogCollection = db.collection('mca_catalog')
 

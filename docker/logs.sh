@@ -1,3 +1,5 @@
-#!/bin/bash
+#!/bin/sh
+# Follow the logs of every Teros service (or of the ones given as arguments).
+set -eu
 cd "$(dirname "$0")/.."
-docker compose logs -f
+exec docker compose logs -f --tail=200 "$@"

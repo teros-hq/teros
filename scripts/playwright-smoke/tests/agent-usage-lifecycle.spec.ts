@@ -23,7 +23,7 @@
 import type { Page } from "@playwright/test"
 import { expect, test } from "../fixtures"
 import { closeDb } from "../helpers/db"
-import { openChat } from "../helpers/dom"
+import { composerInput, openChat } from "../helpers/dom"
 import { ensureTerosProvider } from "../helpers/provider"
 import { evalTeros, getPrimaryIds } from "../helpers/teros"
 import { waitForSessionWhere } from "../helpers/usage"
@@ -52,7 +52,7 @@ test.describe("usage lifecycle bound to execution (TER-650/G1) @usage", () => {
       `PWlife${Date.now()}`,
     )
     try {
-      const input = terosPage.getByTestId("composer-input")
+      const input = composerInput(terosPage, channelId)
       await input.fill("hola")
       await input.press("Enter")
 
@@ -96,7 +96,7 @@ test.describe("usage lifecycle bound to execution (TER-650/G1) @usage", () => {
       `PW691-${Date.now()}`,
     )
     try {
-      const input = terosPage.getByTestId("composer-input")
+      const input = composerInput(terosPage, channelId)
       await input.fill("di solo la palabra: hola")
       await input.press("Enter")
 

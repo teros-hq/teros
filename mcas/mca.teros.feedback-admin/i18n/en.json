@@ -2,10 +2,11 @@
   "tools": {
     "list-feedback": {
       "name": "list-feedback",
-      "description": "List all feedback reports from users. Supports filtering by type, status, priority, and user.",
+      "description": "List all feedback reports from users. Filter by lifecycle view (tracking/future/dismissed/completed/all) or by exact type, status, priority, and user.",
       "params": {
+        "view": "Lifecycle view (optional): tracking = open/in_review/in_progress, future = postponed, dismissed, completed = resolved. Wins over status.",
         "type": "Filter by type (optional)",
-        "status": "Filter by status (optional)",
+        "status": "Filter by exact status (optional)",
         "priority": "Filter by priority (optional)",
         "userId": "Filter by user ID (optional)",
         "limit": "Maximum number of results (default: 50)"
@@ -18,12 +19,27 @@
         "feedbackId": "The feedback ID (e.g., fb_xxx)"
       }
     },
+    "create-feedback": {
+      "name": "create-feedback",
+      "description": "Register a bug report or suggestion that arrived OUTSIDE the feedback tool — e.g. mentioned in a conversation, an email, or word of mouth — so that triage has ONE inbox. Use source to record where it came from.",
+      "params": {
+        "type": "Report type",
+        "title": "Short summary",
+        "description": "Detailed description, steps to reproduce, context",
+        "severity": "Severity (optional)",
+        "reportedBy": "User ID of the person who reported it (or a placeholder like user_external)",
+        "reportedByName": "Display name of the reporter (e.g. \"Álvaro\")",
+        "source": "Where the report came from (default: manual)"
+      }
+    },
     "update-status": {
       "name": "update-status",
-      "description": "Update the status of a feedback report",
+      "description": "Update the status of a feedback report. Dismissing REQUIRES a dismissReason ('wont_fix' = valid but we won't do it, 'invalid' = not a real bug). Resolving emails the reporter unless notifyReporter is false.",
       "params": {
         "feedbackId": "The feedback ID",
-        "status": "New status",
+        "status": "New status. postponed parks it on the Future list; resolved marks it Completed and emails the reporter.",
+        "dismissReason": "Required when status is 'dismissed': wont_fix (product decision) or invalid (not a real bug)",
+        "notifyReporter": "When resolving: email the reporter that their item is done (default true)",
         "message": "Optional message to include with the status change (will be visible to user)"
       }
     },

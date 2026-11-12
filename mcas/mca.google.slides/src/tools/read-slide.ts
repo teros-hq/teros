@@ -1,6 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import {
-  ensureAuthenticated,
   extractTextFromSlide,
   initializeGoogleClients,
   withAuthRetry,
@@ -25,7 +24,6 @@ export const readSlide: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { fileId, slideIndex } = args as { fileId: string; slideIndex: number };
 

@@ -6,7 +6,11 @@ import { assertBackendConnected, resolveFields, withTimeout } from './utils';
 export const cancelMyTask: ToolConfig = {
   description:
     'Cancel your assigned task. Archives in-place (does not move column) + adds a progress note with the reason. Clears running. Use when the task is no longer needed, is a duplicate, or cannot be completed. Returns: { task: { ...TASK_WITH_PROGRESS_FIELDS, archived: true } }.',
-  annotations: { readOnlyHint: false, irreversible: true, version: '1.0.0', stability: 'stable' },
+  // safeWriteHint: critical for headless runners — these are the tools a runner
+  // uses to report its work. If they ask permission in a conversation with no
+  // human watching, nobody can approve and the runner deadlocks. `irreversible`
+  // only drives the UI badge, not the permission seed.
+  annotations: { readOnlyHint: false, safeWriteHint: true, irreversible: true, version: '1.0.0', stability: 'stable' },
   parameters: {
     type: 'object',
     properties: {

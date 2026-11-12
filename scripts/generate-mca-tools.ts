@@ -17,7 +17,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { z } from 'zod';
-import { mergeCuratedAnnotations } from './lib/tool-annotations.js';
+import { type CuratedAnnotation, mergeCuratedAnnotations } from './lib/tool-annotations.js';
 
 // Permissive tools/list result schema. The SDK's `client.listTools()` validates
 // against ToolAnnotationsSchema, a closed z.object that silently STRIPS the
@@ -174,10 +174,10 @@ async function generateToolsForMca(mcaId: string): Promise<boolean> {
   let transport: StdioClientTransport | null = null;
 
   try {
-    // Load secrets for this MCA
+    // Load secrets for this MCA — do not log secret count (info leak)
     const secrets = loadMcaSecrets(mcaId);
     if (Object.keys(secrets).length > 0) {
-      console.log(`  🔐 Loaded ${Object.keys(secrets).length} secret(s)`);
+      console.log(`  🔐 Secrets loaded`);
     }
 
     // Create transport with stderr captured to format as normal logs
@@ -226,19 +226,25 @@ async function generateToolsForMca(mcaId: string): Promise<boolean> {
     console.log(`  ✅ Connected`);
 
     // Preserve author-curated catalog presentation (annotations.summary/group,
-    // TER-538) from the existing tools.json: these aren't declared in code for
-    // most MCAs, so a plain regen from listTools() would wipe them. We re-apply
-    // them per tool unless the code already declares them.
+    // TER-538) and the approval intent template (annotations.intentTemplate) from
+    // the existing tools.json: these aren't declared in code for most MCAs, so a
+    // plain regen from listTools() would wipe them. We re-apply them per tool
+    // unless the code already declares them.
     const toolsPath = join(MCAS_PATH, mcaId, 'tools.json');
-    const curated: Record<string, { summary?: string; group?: string }> = {};
+    const curated: Record<string, CuratedAnnotation> = {};
     try {
       if (existsSync(toolsPath)) {
         const prev = JSON.parse(readFileSync(toolsPath, 'utf-8')) as {
-          tools?: Array<{ name: string; annotations?: { summary?: string; group?: string } }>;
+          tools?: Array<{ name: string; annotations?: CuratedAnnotation }>;
         };
         for (const t of prev.tools ?? []) {
           const a = t.annotations;
-          if (a && (a.summary || a.group)) curated[t.name] = { summary: a.summary, group: a.group };
+          if (a && (a.summary || a.group || a.intentTemplate))
+            curated[t.name] = {
+              summary: a.summary,
+              group: a.group,
+              intentTemplate: a.intentTemplate,
+            };
         }
       }
     } catch {

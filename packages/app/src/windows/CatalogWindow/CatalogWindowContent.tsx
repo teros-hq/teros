@@ -1,47 +1,44 @@
 /**
- * Catalog Window Content — MCA marketplace (TER-525).
- *
- * Pixel-perfect port of docs/mcas/catalog-window.html: a left sidebar of
- * categories with live counts, a stats strip, and a grid of minimal cards
- * (icon · name+badge · description · id). Clicking a card opens the catalog
- * detail window (install moved there in TER-526). All colour comes from the
- * theme-adaptive token system (`useColors`) so dark/light switch for free.
+ * Catalog Window Content — the Agent App marketplace, in the OS prototype's
+ * language: page head (eyebrow · serif headline · mono stats · search +
+ * All/Installed tabs), a scrollable category chip bar, and per-category grids
+ * of `.appc` cards (Tile · category pill · name · description · id · install).
+ * Clicking a card (or its Install link) opens the catalog detail window —
+ * install itself lives there (TER-526). Filters, counts and grouping are the
+ * same pure derivation as before.
  */
 
-import {
-  CheckSquare,
-  ChevronLeft,
-  ChevronRight,
-  Chrome,
-  Code2,
-  Cog,
-  Database,
-  HardDrive,
-  LayoutGrid,
-  MessageSquare,
-  MoreHorizontal,
-  Palette,
-  Search,
-  Sparkles,
-  Wrench,
-} from "@tamagui/lucide-icons"
-import type { TFunction } from "i18next"
 import type React from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Image, TextInput, View, useWindowDimensions } from "react-native"
-import { ScrollView, Text, XStack, YStack } from "tamagui"
+import { Platform, Pressable, ScrollView, View } from "react-native"
 import { useTranslation } from "react-i18next"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { useToast } from "../../components/Toast"
 import { FullscreenLoader } from "../../components/ui"
-import { McaIcon } from '../../components/mca/McaIcon'
+import { McaIcon } from "../../components/mca/McaIcon"
 import { useColors } from "../../components/mca/primitives/useColors"
 import { availabilityBadges } from "../../components/mca/availabilityBadges"
-import { FONT_MONO, FONT_SANS } from "../../components/mca/primitives/fonts"
 import { useTilingStore } from "../../store/tilingStore"
 import { useWorkspaceStore } from "../../store/workspaceStore"
+import {
+  Badge,
+  type BadgeTone,
+  Card,
+  Chip,
+  EmptyState,
+  Field,
+  Grid,
+  IconBtn,
+  Page,
+  PageHead,
+  Ph,
+  PTabs,
+  SectionLabel,
+  T,
+  Tile,
+} from "../../components/ui/ds"
 import type { CatalogWindowProps } from "./definition"
-import { GOOGLE_FAKE_INSTALLS, GOOGLE_PLACEHOLDER_CARDS, GOOGLE_SUITE_ORDER } from "./googleSuite"
+import { CAT_ORDER, CAT_ICONS, categoryLabel } from "./catalogCategories"
 
 interface CatalogMca {
   mcaId: string
@@ -58,16 +55,22 @@ interface CatalogMca {
     hidden: boolean
     role: "user" | "admin" | "super"
   }
-  i18n?: Record<string, {
-    name?: string
-    description?: string
-    tagline?: string
-    tools?: Record<string, {
+  i18n?: Record<
+    string,
+    {
       name?: string
       description?: string
-      params?: Record<string, string>
-    }>
-  }>
+      tagline?: string
+      tools?: Record<
+        string,
+        {
+          name?: string
+          description?: string
+          params?: Record<string, string>
+        }
+      >
+    }
+  >
 }
 
 interface InstalledApp {
@@ -76,123 +79,16 @@ interface InstalledApp {
   name: string
 }
 
-// Cards for the four Google apps not yet in the backend catalog (see
-// googleSuite.ts) — a shared source of truth so the list, detail and My Apps
-// agree, already re-tagged into the `google` category.
-
 // ── MCA i18n helpers ──────────────────────────────────────────────────────────
 
 function mcaLocale(i18nLang: string): string {
   return i18nLang.split("-")[0]
 }
 
-function getMcaTranslations(
-  i18nData: CatalogMca["i18n"],
-  locale: string,
-) {
+function getMcaTranslations(i18nData: CatalogMca["i18n"], locale: string) {
   if (!i18nData) return undefined
   const lang = mcaLocale(locale)
   return i18nData[lang] ?? i18nData["en"]
-}
-
-const GOOGLE_PLACEHOLDERS = GOOGLE_PLACEHOLDER_CARDS as CatalogMca[]
-
-/**
- * Fold the curated Google Suite into the raw catalog: re-tag the real Google
- * apps into the `google` category, drop in the placeholder cards, and place all
- * nine first in GOOGLE_SUITE_ORDER so the group renders in a fixed order.
- */
-function withGoogleSuite(raw: CatalogMca[]): CatalogMca[] {
-  const ids = new Set<string>(GOOGLE_SUITE_ORDER)
-  const byId = new Map<string, CatalogMca>()
-  for (const m of raw) if (ids.has(m.mcaId)) byId.set(m.mcaId, { ...m, category: "google" })
-  for (const p of GOOGLE_PLACEHOLDERS) if (!byId.has(p.mcaId)) byId.set(p.mcaId, p)
-  const suite = GOOGLE_SUITE_ORDER.map((id) => byId.get(id)).filter((m): m is CatalogMca => !!m)
-  const rest = raw.filter((m) => !ids.has(m.mcaId))
-  return [...suite, ...rest]
-}
-
-// Display order + label for the sidebar categories (mirrors the mockup).
-// "google" (Google Suite) is a curated group that always sits first.
-const CAT_ORDER = [
-  "google",
-  "communication",
-  "productivity",
-  "development",
-  "ai",
-  "media",
-  "design",
-  "storage",
-  "system",
-  "data",
-  "utility",
-  "other",
-] as const
-
-// Category → i18n key. Labels are resolved at render time via `t()` so they
-// follow the active locale (es/en/ko). `ai` and `media` share one label because
-// the catalog presents them as a single "AI & Media" group (see CAT_ICONS).
-const CAT_I18N: Record<string, string> = {
-  google: "catalog.categoryGoogleSuite",
-  communication: "catalog.categoryCommunication",
-  productivity: "catalog.categoryProductivity",
-  development: "catalog.categoryDevelopment",
-  ai: "catalog.categoryAiMedia",
-  media: "catalog.categoryAiMedia",
-  design: "catalog.categoryDesign",
-  storage: "catalog.categoryStorage",
-  system: "catalog.categorySystem",
-  data: "catalog.categoryData",
-  utility: "catalog.categoryUtility",
-  other: "catalog.categoryOther",
-}
-
-/** Localised label for a category key, falling back to the raw key. */
-function categoryLabel(cat: string, t: TFunction): string {
-  const key = CAT_I18N[cat]
-  return key ? t(key) : cat
-}
-
-const CAT_ICONS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
-  google: Chrome,
-  communication: MessageSquare,
-  productivity: CheckSquare,
-  development: Code2,
-  ai: Sparkles,
-  media: Sparkles,
-  design: Palette,
-  storage: HardDrive,
-  system: Cog,
-  data: Database,
-  utility: Wrench,
-  other: MoreHorizontal,
-}
-
-function isImageUrl(str?: string): boolean {
-  if (!str) return false
-  return (
-    str.startsWith("http://") ||
-    str.startsWith("https://") ||
-    str.startsWith("data:") ||
-    str.endsWith(".png") ||
-    str.endsWith(".jpg") ||
-    str.endsWith(".jpeg") ||
-    str.endsWith(".svg")
-  )
-}
-
-function getIconUrl(icon?: string): string {
-  if (!icon) return ""
-  if (icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("data:"))
-    return icon
-  const backendUrl = process.env.EXPO_PUBLIC_BACKEND_URL
-  if (!backendUrl) return ""
-  return `${backendUrl}/static/mcas/${icon}`
-}
-
-/** 2-char fallback from the mca id, e.g. mca.teros.bash → "TE" (mockup behaviour). */
-function fallbackInitials(mcaId: string): string {
-  return mcaId.replace(/^mca\./, "").slice(0, 2).toUpperCase()
 }
 
 interface CatalogWindowContentProps extends CatalogWindowProps {
@@ -267,7 +163,6 @@ export function CatalogWindowContent({
   category: initialCategory,
   search: initialSearch,
 }: CatalogWindowContentProps) {
-  const c = useColors()
   const { t } = useTranslation()
   const client = getTerosClient()
   const toast = useToast()
@@ -278,7 +173,6 @@ export function CatalogWindowContent({
   const [installedApps, setInstalledApps] = useState<InstalledApp[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState(initialSearch || "")
-  const [searchFocused, setSearchFocused] = useState(false)
   // Scope (All / Installed) is orthogonal to the category filter: you can be in
   // "Installed" and still narrow down by category. `activeCat` is category-only
   // ("all" = no category filter); the legacy "installed" category maps to scope.
@@ -293,13 +187,11 @@ export function CatalogWindowContent({
     setIsLoading(true)
     try {
       const catalogResult = await client.app.listCatalog()
-      setCatalog(withGoogleSuite(catalogResult.catalog as CatalogMca[]))
+      setCatalog(catalogResult.catalog as CatalogMca[])
       if (activeWorkspaceId) {
         const { apps } = await client.workspace.listWorkspaceApps(activeWorkspaceId)
         const mine = apps.map((a) => ({ appId: a.appId, mcaId: a.mcaId, name: a.name }))
-        // Prototype: the Google Suite apps have no backend, so their installs are
-        // simulated (see googleSuite.ts).
-        setInstalledApps([...GOOGLE_FAKE_INSTALLS, ...mine])
+        setInstalledApps(mine)
       }
     } catch (err) {
       console.error("Error loading catalog:", err)
@@ -332,15 +224,6 @@ export function CatalogWindowContent({
 
   // ── Derived data ──────────────────────────────────────────────────────────
   const q = searchQuery.toLowerCase().trim()
-  const { width: windowWidth } = useWindowDimensions()
-  // Card width: 210px on desktop, but on narrow screens (mobile) compute
-  // so exactly 2 cards fit: (containerWidth - gap) / 2.
-  // ScrollView padding is 20px each side = 40px total.
-  const containerWidth = windowWidth - 40
-  const GAP = 10
-  const cardWidth = containerWidth < 430
-    ? Math.floor((containerWidth - GAP) / 2)  // 2 cards on mobile
-    : 210                                      // fixed on desktop
   const { scopedCatalog, counts, presentCats, filtered, grouped, sections, ctxTitle, ctxStats } =
     deriveCatalogView(catalog, isInstalled, scope, activeCat, q, {
       all: t("catalog.allMcas"),
@@ -348,170 +231,97 @@ export function CatalogWindowContent({
       category: (cat) => categoryLabel(cat, t),
     })
 
-  return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Header — title + search (titlebar chrome comes from the window manager) */}
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        paddingHorizontal={16}
-        height={44}
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-        backgroundColor={c.bgCard}
-      >
-        <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="500" color={c.text}>
-          {t("catalog.title")}
-        </Text>
-        <XStack
-          alignItems="center"
-          gap={8}
-          paddingHorizontal={10}
-          height={28}
-          width={220}
-          borderRadius={6}
-          borderWidth={1}
-          backgroundColor={c.bgPage}
-          borderColor={searchFocused ? "#5E6AD2" : c.border}
-        >
-          <Search size={13} color={c.text3} />
-          <TextInput
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
-            placeholder={t("common.search")}
-            placeholderTextColor={c.text3}
-            style={{ flex: 1, color: c.text, fontSize: 13, fontFamily: FONT_SANS }}
-          />
-        </XStack>
-      </XStack>
+  if (isLoading) {
+    return <FullscreenLoader variant="default" label={t("common.loading")} />
+  }
 
-      {/* Context bar — contextual title + stats (left), scope toggle (right) */}
-      <XStack
-        alignItems="center"
-        justifyContent="space-between"
-        gap={12}
-        paddingHorizontal={24}
-        height={56}
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-      >
-        <XStack alignItems="baseline" gap={10} flex={1} minWidth={0}>
-          <Text fontFamily={FONT_SANS} fontSize={15} fontWeight="600" color={c.text} numberOfLines={1}>
-            {ctxTitle}
-          </Text>
-          <Text fontFamily={FONT_MONO} fontSize={12} color={c.text3} numberOfLines={1}>
+  return (
+    <Page>
+      <PageHead
+        eyebrow={t("catalog.title")}
+        title={t("catalog.headline", { defaultValue: "Where your agents get work done." })}
+        accent={t("catalog.headlineAccent", { defaultValue: "get work done." })}
+        lead={
+          <T step="code" tone="text3">
             {ctxStats}
-          </Text>
-        </XStack>
-        <XStack
-          borderWidth={1}
-          borderColor={c.borderStrong}
-          borderRadius={6}
-          overflow="hidden"
-          flexShrink={0}
-        >
-          <ScopeButton
-            label={t("catalog.scopeAll")}
-            active={scope === "all"}
-            c={c}
-            onPress={() => setScope("all")}
-          />
-          <ScopeButton
-            label={t("catalog.scopeInstalled")}
-            active={scope === "installed"}
-            c={c}
-            onPress={() => setScope("installed")}
-          />
-        </XStack>
-      </XStack>
+          </T>
+        }
+        actions={
+          <>
+            <Field
+              icon="magnifying-glass"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder={t("catalog.searchPlaceholder", { defaultValue: "Search apps…" })}
+              containerStyle={{ width: 240 }}
+            />
+            <PTabs<"all" | "installed">
+              value={scope}
+              onChange={setScope}
+              items={[
+                { key: "all", label: t("catalog.scopeAll") },
+                {
+                  key: "installed",
+                  label: t("catalog.scopeInstalled"),
+                  count: installedApps.length,
+                },
+              ]}
+            />
+          </>
+        }
+      />
 
       {/* Category chips — horizontal scroll with wheel-to-horizontal + arrows
           so the row is reachable without a trackpad. */}
-      <CategoryChipBar c={c}>
-        <CatChip
-          label={t("catalog.allMcas")}
-          Icon={LayoutGrid}
+      <CategoryChipBar>
+        <Chip
+          icon="squares-four"
           count={scopedCatalog.length}
-          active={activeCat === "all"}
-          c={c}
+          on={activeCat === "all"}
           onPress={() => setActiveCat("all")}
-        />
+        >
+          {t("catalog.allMcas")}
+        </Chip>
         {presentCats.map((cat) => (
-          <CatChip
+          <Chip
             key={cat}
-            label={categoryLabel(cat, t)}
-            Icon={CAT_ICONS[cat] ?? MoreHorizontal}
+            icon={CAT_ICONS[cat] ?? "dots-three"}
             count={counts[cat] ?? 0}
-            active={activeCat === cat}
-            c={c}
+            on={activeCat === cat}
             onPress={() => setActiveCat(cat)}
-          />
+          >
+            {categoryLabel(cat, t)}
+          </Chip>
         ))}
       </CategoryChipBar>
 
-      {/* Grid */}
-      {isLoading ? (
-        <FullscreenLoader variant="default" label={t("common.loading")} />
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon="magnifying-glass"
+          title={t("catalog.noAppsFound")}
+          text={q ? `“${searchQuery}”` : undefined}
+        />
       ) : (
-        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 32 }}>
-          {filtered.length === 0 ? (
-            <YStack alignItems="center" paddingVertical={60} gap={10}>
-              <Search size={32} color={c.text3} opacity={0.4} />
-              <Text fontFamily={FONT_SANS} fontSize={13.5} color={c.text3}>
-                {q
-                  ? t("catalog.noAppsFound", { defaultValue: `No Agent Apps found for "${searchQuery}"` })
-                  : t("catalog.noAppsFound")}
-              </Text>
-            </YStack>
-          ) : (
-            sections.map(({ cat, items }) => (
-              <YStack key={cat} marginBottom={20}>
-                {grouped && (
-                  <XStack alignItems="center" gap={10} marginBottom={12} marginTop={4}>
-                    <Text
-                      fontFamily={FONT_SANS}
-                      fontSize={10.5}
-                      fontWeight="600"
-                      color={c.text3}
-                      textTransform="uppercase"
-                      letterSpacing={0.8}
-                    >
-                      {categoryLabel(cat, t)}
-                    </Text>
-                    <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
-                    <Text fontFamily={FONT_MONO} fontSize={11} color={c.text3}>
-                      {items.length}
-                    </Text>
-                  </XStack>
-                )}
-                <XStack flexWrap="wrap" gap={10}>
-                  {items.map((mca) => (
-                    <CatalogCard
-                      key={mca.mcaId}
-                      mca={mca}
-                      c={c}
-                      categoryName={categoryLabel(mca.category, t)}
-                      installCount={installedApps.filter((a) => a.mcaId === mca.mcaId).length}
-                      cardWidth={cardWidth}
-                      onPress={() => openDetail(mca.mcaId)}
-                    />
-                  ))}
-                </XStack>
-              </YStack>
-            ))
-          )}
-        </ScrollView>
+        sections.map(({ cat, items }) => (
+          <View key={cat} style={{ marginBottom: 24 }}>
+            <SectionLabel label={grouped ? categoryLabel(cat, t) : ctxTitle} count={items.length} />
+            <Grid cols={3}>
+              {items.map((mca) => (
+                <CatalogCard
+                  key={mca.mcaId}
+                  mca={mca}
+                  categoryName={categoryLabel(mca.category, t)}
+                  installCount={installedApps.filter((a) => a.mcaId === mca.mcaId).length}
+                  onPress={() => openDetail(mca.mcaId)}
+                />
+              ))}
+            </Grid>
+          </View>
+        ))
       )}
-    </YStack>
+    </Page>
   )
 }
-
-type Colors = ReturnType<typeof useColors>
-const ACCENT = "#5E6AD2"
-// Green for the installed-instances count dot (matches the "Ready" dot in My Apps).
-const ACCENT_GREEN = "#10B981"
 
 // Minimal shape of the DOM scroll node we drive (web). Kept structural so the
 // file doesn't depend on DOM lib types.
@@ -519,40 +329,16 @@ type ScrollNode = {
   scrollLeft: number
   clientWidth: number
   scrollWidth: number
-  addEventListener: (type: string, handler: (e: { deltaY: number; preventDefault: () => void }) => void, opts?: { passive: boolean }) => void
-  removeEventListener: (type: string, handler: (e: { deltaY: number; preventDefault: () => void }) => void) => void
+  addEventListener: (
+    type: string,
+    handler: (e: { deltaY: number; preventDefault: () => void }) => void,
+    opts?: { passive: boolean },
+  ) => void
+  removeEventListener: (
+    type: string,
+    handler: (e: { deltaY: number; preventDefault: () => void }) => void,
+  ) => void
   scrollBy?: (opts: { left: number; behavior?: "smooth" | "auto" }) => void
-}
-
-/** Left/right scroll affordance for the chip bar. Dimmed + inert at the ends. */
-function ChipArrow({
-  dir,
-  enabled,
-  c,
-  onPress,
-}: {
-  dir: "left" | "right"
-  enabled: boolean
-  c: Colors
-  onPress: () => void
-}) {
-  const Icon = dir === "left" ? ChevronLeft : ChevronRight
-  return (
-    <XStack
-      width={30}
-      height={30}
-      marginHorizontal={4}
-      borderRadius={8}
-      alignItems="center"
-      justifyContent="center"
-      opacity={enabled ? 1 : 0.25}
-      cursor={enabled ? "pointer" : "default"}
-      hoverStyle={enabled ? { backgroundColor: c.bgCardHover } : {}}
-      onPress={enabled ? onPress : undefined}
-    >
-      <Icon size={16} color={c.text2} />
-    </XStack>
-  )
 }
 
 /**
@@ -561,7 +347,7 @@ function ChipArrow({
  * click (enabled only when there's more in that direction). Falls back to a
  * plain scroller if the platform doesn't expose a DOM node.
  */
-function CategoryChipBar({ c, children }: { c: Colors; children: React.ReactNode }) {
+function CategoryChipBar({ children }: { children: React.ReactNode }) {
   const scrollRef = useRef<{ getScrollableNode?: () => ScrollNode } | null>(null)
   const [canLeft, setCanLeft] = useState(false)
   const [canRight, setCanRight] = useState(false)
@@ -603,128 +389,69 @@ function CategoryChipBar({ c, children }: { c: Colors; children: React.ReactNode
   }
 
   return (
-    <XStack alignItems="center" borderBottomWidth={1} borderBottomColor={c.border}>
-      <ChipArrow dir="left" enabled={canLeft} c={c} onPress={() => scrollByX(-220)} />
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 24 }}>
+      <IconBtn icon="caret-left" plain sm disabled={!canLeft} onPress={() => scrollByX(-220)} />
       <ScrollView
         ref={scrollRef as never}
         horizontal
         showsHorizontalScrollIndicator={false}
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 12, gap: 7, alignItems: "center" }}
+        contentContainerStyle={{ paddingVertical: 2, gap: 8, alignItems: "center" }}
         onContentSizeChange={updateArrows}
       >
         {children}
       </ScrollView>
-      <ChipArrow dir="right" enabled={canRight} c={c} onPress={() => scrollByX(220)} />
-    </XStack>
+      <IconBtn icon="caret-right" plain sm disabled={!canRight} onPress={() => scrollByX(220)} />
+    </View>
   )
 }
 
-/**
- * Category filter pill (horizontal scroller). `active` swaps the whole colour
- * set in one shot so there's a single decision point instead of one ternary
- * per styled prop.
- */
-function CatChip({
-  label,
-  Icon,
-  count,
-  active,
-  c,
-  onPress,
-}: {
-  label: string
-  Icon: React.ComponentType<{ size?: number; color?: string }>
-  count: number
-  active: boolean
-  c: Colors
-  onPress: () => void
-}) {
-  const s = active
-    ? { border: ACCENT, bg: ACCENT, hoverBg: ACCENT, fg: "#FFFFFF", count: "rgba(255,255,255,0.85)" }
-    : { border: c.border, bg: "transparent", hoverBg: c.bgCardHover, fg: c.text2, count: c.text3 }
+/** Category pill of a card — tinted with the MCA category colour (`categoryBadges`). */
+function CategoryPill({ category, label }: { category: string; label: string }) {
+  const c = useColors()
+  const tint = c.categoryBadges[category as keyof typeof c.categoryBadges] ?? c.categoryBadges.other
   return (
-    <XStack
-      alignItems="center"
-      gap={6}
-      paddingHorizontal={11}
-      paddingVertical={5}
-      borderRadius={20}
-      borderWidth={1}
-      borderColor={s.border}
-      backgroundColor={s.bg}
-      hoverStyle={{ backgroundColor: s.hoverBg, borderColor: active ? ACCENT : c.borderStrong }}
-      cursor="pointer"
-      onPress={onPress}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 5,
+        height: 22,
+        paddingHorizontal: 9,
+        borderRadius: 100,
+        backgroundColor: tint.bg,
+        flexShrink: 1,
+        minWidth: 0,
+      }}
     >
-      <Icon size={13} color={active ? "#FFFFFF" : c.text3} />
-      <Text
-        fontFamily={FONT_SANS}
-        fontSize={12}
-        fontWeight={active ? "500" : "400"}
-        color={s.fg}
-        numberOfLines={1}
-      >
+      <Ph name={CAT_ICONS[category] ?? "dots-three"} size={11} color={tint.text} />
+      <T step="xxs" color={tint.text} numberOfLines={1} style={{ fontSize: 9.5, lineHeight: 12 }}>
         {label}
-      </Text>
-      <Text fontFamily={FONT_MONO} fontSize={11} color={s.count}>
-        {count}
-      </Text>
-    </XStack>
+      </T>
+    </View>
   )
 }
 
-/** Scope toggle segment (All / Installed). */
-function ScopeButton({
-  label,
-  active,
-  c,
-  onPress,
-}: {
-  label: string
-  active: boolean
-  c: Colors
-  onPress: () => void
-}) {
-  return (
-    <XStack
-      paddingHorizontal={12}
-      paddingVertical={5}
-      backgroundColor={active ? ACCENT : "transparent"}
-      hoverStyle={{ backgroundColor: active ? ACCENT : c.bgCardHover }}
-      cursor="pointer"
-      onPress={onPress}
-    >
-      <Text
-        fontFamily={FONT_SANS}
-        fontSize={12}
-        fontWeight={active ? "500" : "400"}
-        color={active ? "#FFFFFF" : c.text2}
-      >
-        {label}
-      </Text>
-    </XStack>
-  )
+const AVAIL_TONE: Record<"gray" | "info" | "warn", BadgeTone> = {
+  gray: "muted",
+  info: "i",
+  warn: "a",
 }
 
-/** A single MCA tile: icon, name + category badge, description, availability chips, id. */
+/** A single MCA tile: Tile + category pill, name, description, availability chips, id + install. */
 function CatalogCard({
   mca,
-  c,
   categoryName,
   installCount,
-  cardWidth,
   onPress,
 }: {
   mca: CatalogMca
-  c: Colors
   categoryName: string
   installCount: number
-  cardWidth: number
   onPress: () => void
 }) {
+  const c = useColors()
   const { t, i18n } = useTranslation()
-  const CatIcon = CAT_ICONS[mca.category] ?? MoreHorizontal
   const mcaTr = getMcaTranslations(mca.i18n, i18n.language)
   const trName = mcaTr?.name ?? mca.name
   const trDescription = mcaTr?.description ?? mca.description
@@ -733,122 +460,115 @@ function CatalogCard({
   // on nearly every tile — it lives in the detail view instead.
   const availChips = availabilityBadges(mca.availability).filter((b) => b.key !== "multi")
   return (
-    <YStack
-      width={cardWidth}
-      flexGrow={0}
-      flexShrink={0}
-      gap={9}
-      padding={14}
-      borderRadius={10}
-      borderWidth={1}
-      borderColor={c.border}
-      backgroundColor={c.bgCard}
-      cursor="pointer"
-      animation="quick"
-      enterStyle={{ opacity: 0, y: 8 }}
-      hoverStyle={{ y: -2, backgroundColor: c.bgCardHover, borderColor: c.borderStrong }}
-      onPress={onPress}
-    >
-      {/* Top row: logo (left) + category pill (right) — outline style with the
-          category icon + uppercase label, matching the detail view's tag. */}
-      <XStack alignItems="center" justifyContent="space-between" gap={8}>
-        <CardIcon mca={mca} />
-        <XStack
-          alignItems="center"
-          gap={5}
-          paddingHorizontal={8}
-          paddingVertical={3}
-          borderRadius={20}
-          borderWidth={1}
-          borderColor={c.border}
-          flexShrink={1}
-        >
-          <CatIcon size={11} color={c.text3} />
-          <Text
-            fontFamily={FONT_SANS}
-            fontSize={9.5}
-            fontWeight="500"
-            color={c.text2}
-            textTransform="uppercase"
-            letterSpacing={0.5}
-            numberOfLines={1}
-          >
-            {categoryName}
-          </Text>
-        </XStack>
-      </XStack>
-      <Text fontFamily={FONT_SANS} fontSize={13} fontWeight="600" color={c.text} numberOfLines={1}>
+    <Card hov pad={20} onPress={onPress} style={{ minHeight: 176, width: "100%" }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 8,
+        }}
+      >
+        <Tile>
+          <McaIcon
+            icon={mca.icon}
+            mcaId={mca.mcaId}
+            size={24}
+            color={c.accent}
+            backgroundColor="transparent"
+            borderRadius={0}
+          />
+        </Tile>
+        <CategoryPill category={mca.category} label={categoryName} />
+      </View>
+      <T step="base" ellipsis style={{ marginTop: 14 }}>
         {trName}
-      </Text>
-      <Text fontFamily={FONT_SANS} fontSize={11.5} lineHeight={18} color={c.text2} numberOfLines={2}>
+      </T>
+      <T step="sm" tone="text2" numberOfLines={2} style={{ marginTop: 4, flex: 1 }}>
         {trDescription}
-      </Text>
-      {availChips.length > 0 && (
-        <XStack gap={5} flexWrap="wrap">
-          {availChips.map((b) => {
-            const tint = c.badges[b.tint]
-            return (
-              <View
-                key={b.key}
-                style={{
-                  backgroundColor: tint.bg,
-                  borderColor: tint.border,
-                  borderWidth: 1,
-                  paddingHorizontal: 6,
-                  paddingVertical: 2,
-                  borderRadius: 20,
-                }}
-              >
-                <Text fontFamily={FONT_SANS} fontSize={9} fontWeight="500" color={tint.text}>
-                  {b.label}
-                </Text>
-              </View>
-            )
-          })}
-        </XStack>
-      )}
-      <XStack alignItems="center" justifyContent="space-between" gap={6}>
-        <Text flex={1} fontFamily={FONT_MONO} fontSize={9.5} color={c.text3} numberOfLines={1}>
+      </T>
+      {availChips.length > 0 ? (
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 5, marginTop: 8 }}>
+          {availChips.map((b) => (
+            <Badge key={b.key} tone={AVAIL_TONE[b.tint]} sm pill>
+              {b.label}
+            </Badge>
+          ))}
+        </View>
+      ) : null}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 8,
+          marginTop: 14,
+        }}
+      >
+        <T step="code" tone="text3" ellipsis style={{ flex: 1, fontSize: 10.5 }}>
           {mca.mcaId}
-        </Text>
-        {installCount > 0 && (
-          <XStack alignItems="center" gap={5} flexShrink={0}>
-            <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: ACCENT_GREEN }} />
-            <Text fontFamily={FONT_SANS} fontSize={10.5} fontWeight="500" color={c.text2}>
-              {t("catalog.appCount", { count: installCount })}
-            </Text>
-          </XStack>
+        </T>
+        {installCount > 0 ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Badge tone="g" dot sm pill>
+              {installCount > 1
+                ? `${t("catalog.installedBadge")} ×${installCount}`
+                : t("catalog.installedBadge")}
+            </Badge>
+            <InstallLink iconOnly onPress={onPress} label={t("catalog.addAnother")} />
+          </View>
+        ) : (
+          <InstallLink onPress={onPress} label={t("catalog.install")} />
         )}
-      </XStack>
-    </YStack>
+      </View>
+    </Card>
   )
 }
 
-/** Card icon — theme-aware via McaIcon (SVG inline on web, PNG fallback). */
-function CardIcon({ mca }: { mca: CatalogMca }) {
+/** `.ap-inst` — the quiet accent "＋ Install" link at a card's foot. */
+function InstallLink({
+  onPress,
+  label,
+  iconOnly,
+}: {
+  onPress: () => void
+  label: string
+  iconOnly?: boolean
+}) {
   const c = useColors()
+  const [hover, setHover] = useState(false)
   return (
-    <View
-      style={{
-        width: 38,
-        height: 38,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: c.border,
-        backgroundColor: c.bgCardHover,
-        justifyContent: "center",
-        alignItems: "center",
-        overflow: "hidden",
-      }}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      {...(Platform.OS === "web"
+        ? { onHoverIn: () => setHover(true), onHoverOut: () => setHover(false) }
+        : {})}
+      style={[
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          height: 26,
+          paddingHorizontal: iconOnly ? 0 : 10,
+          width: iconOnly ? 26 : undefined,
+          justifyContent: "center",
+          borderRadius: 100,
+          marginRight: -6,
+          backgroundColor: hover ? c.navActive : "transparent",
+        },
+        Platform.OS === "web"
+          ? ({ cursor: "pointer", transition: "background 0.2s" } as any)
+          : null,
+      ]}
     >
-      <McaIcon
-        icon={mca.icon}
-        mcaId={mca.mcaId}
-        size={30}
-        color={c.text3}
-        backgroundColor="transparent"
-        borderRadius={0}
-      />
-    </View>
+      <Ph name="plus" size={13} color={c.accent} />
+      {iconOnly ? null : (
+        <T step="12" tone="accent">
+          {label}
+        </T>
+      )}
+    </Pressable>
   )
 }

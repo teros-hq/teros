@@ -16,17 +16,21 @@ export const linkConversation: ToolConfig = {
     },
     required: ['taskId', 'channelId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     const channelId = args?.channelId as string;
     if (!taskId || !channelId) throw new Error('taskId and channelId are required');
 
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
+
     const result = await withTimeout(
       wsClient.queryConversations<any>('link_conversation', {
         taskId,
         channelId,
+        callerAgentId,
       }),
       15_000,
       'link_conversation',

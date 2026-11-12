@@ -12,38 +12,36 @@
  *   <FullscreenLoader label="Loading data…" />
  */
 
-import React from 'react';
-import { Text, YStack } from 'tamagui';
-import { useColors } from '../mca/primitives/useColors';
-import { AppSpinner, type SpinnerSize, type SpinnerVariant } from './AppSpinner';
+import React from "react"
+import { View } from "react-native"
+import { T } from "./ds"
+import { AppSpinner, type SpinnerSize, type SpinnerVariant } from "./AppSpinner"
 
 export interface FullscreenLoaderProps {
   /** Size of the inner spinner (default: 'lg') */
-  size?: SpinnerSize;
+  size?: SpinnerSize
   /** Color variant (default: 'brand') */
-  variant?: SpinnerVariant;
+  variant?: SpinnerVariant
   /** Override color directly */
-  color?: string;
+  color?: string
   /** Optional label shown below the spinner */
-  label?: string;
+  label?: string
 }
 
 export function FullscreenLoader({
-  size = 'lg',
-  variant = 'brand',
+  size = "lg",
+  variant = "brand",
   color,
   label,
 }: FullscreenLoaderProps) {
-  const c = useColors();
-
   return (
-    <YStack flex={1} justifyContent="center" alignItems="center" gap={12}>
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", gap: 12 }}>
       <AppSpinner size={size} variant={variant} color={color} />
       {label ? (
-        <Text color={c.text3} fontSize={13}>
+        <T step="sm" tone="text3" center>
           {label}
-        </Text>
+        </T>
       ) : null}
-    </YStack>
-  );
+    </View>
+  )
 }

@@ -4,12 +4,15 @@
 
 # Teros
 
-**The open-source AI agent operating system.**
+**The open AI agent operating system.**
 
 Build, run, and extend AI agents that actually get things done.
 
+Fair source under FSL-1.1; each release becomes Apache 2.0 two years after it ships.
+
 [![GitHub Stars](https://img.shields.io/github/stars/teros-hq/teros?style=flat&logo=github&color=yellow)](https://github.com/teros-hq/teros/stargazers)
 [![License](https://img.shields.io/badge/license-FSL--1.1-blue.svg)](./LICENSE.md)
+[![Fair Source](https://img.shields.io/badge/Fair%20Source-fair.io-5e4b8b.svg)](https://fair.io)
 [![GitHub Issues](https://img.shields.io/github/issues/teros-hq/teros?style=flat&logo=github)](https://github.com/teros-hq/teros/issues)
 [![Discord](https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/zHxZrbkUhb)
 
@@ -40,7 +43,7 @@ curl -fsSL https://get.teros.ai | bash
 
 ## What is Teros?
 
-Teros is an open-source platform for building and running **AI agents with real tool capabilities**. Think of it as an operating system for AI — agents live inside it, have access to tools (MCAs), connect to your services, and work for you across tasks.
+Teros is a fair source platform for building and running **AI agents with real tool capabilities**. Think of it as an operating system for AI — agents live inside it, have access to tools (MCAs), connect to your services, and work for you across tasks.
 
 Unlike chat wrappers, Teros agents are **persistent, multi-tool, and autonomous**. They can browse the web, write and run code, manage your calendar, send emails, interact with GitHub, deploy to Railway, and much more — all through a clean, extensible architecture.
 
@@ -169,16 +172,22 @@ cp .env.example .env
 # (See .secrets/README.md for the other, optional system secrets.)
 node -e "const c=require('crypto');require('fs').writeFileSync('.secrets/system/encryption.json',JSON.stringify({masterKey:c.randomBytes(32).toString('hex')},null,2))"
 
-# Build the MCA runtime images (needed once, and again after mcas/*/package.json
-# or docker/mca-runtime*/Dockerfile changes) — `docker compose up` starts the
-# core services but does not build these, since the container-agent spawns
-# MCA containers straight from the Docker daemon.
-./scripts/build-mca-runtimes.sh
+# Get the MCA runtime images the apps run in. `docker compose` does not fetch
+# them: the container-agent starts app containers straight from the Docker
+# daemon. This pulls the release builds and tags them locally (it falls back to
+# ./scripts/build-mca-runtimes.sh, which you also use after changing
+# mcas/*/package.json or docker/mca-runtime*/Dockerfile).
+./docker/pull-runtimes.sh
 
-docker compose up
+# Pull the release images (multi-arch, published for every tag) and start.
+# To run your own changes instead: `docker compose up -d --build`.
+docker compose pull
+docker compose up -d
 ```
 
 Open [http://localhost:10002](http://localhost:10002).
+
+Pin a version with `TEROS_IMAGE_TAG=1.4.7` in `.env`; `docker/update.sh` pulls the latest images and restarts.
 
 ### Development setup
 
@@ -286,7 +295,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full MCA development guide.
 
 ## Contributing
 
-Teros is open source and contributions are welcome.
+Teros is fair source (FSL-1.1) and contributions are welcome.
 
 ```bash
 # Fork, clone, create a branch

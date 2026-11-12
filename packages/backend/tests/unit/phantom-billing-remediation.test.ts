@@ -262,4 +262,53 @@ describe('PhantomBillingRemediation (real Mongo)', () => {
     const sub = await db.collection('billing_subscriptions').findOne({ _id: 'sub_1' })
     expect(sub?.agentHoursUsed).toBeCloseTo(inflatedHours, 9)
   })
+
+  // ==========================================================================
+  // WS1 / Decision #29 — consistency with the new billed metric (userWorkMs)
+  // ==========================================================================
+
+  it('WS1: a v2 rollup (userWorkMs) that matches the real work → dry-run reports 0 drift', async () => {
+    // Post-#29 rollup: userWorkMs present and equal to the recomputed work of
+    // the real sessions. The remediation reads stored userWorkMs and compares
+    // against computeUserBilledMsForHour('work') — both sides use the SAME
+    // metric, so no phantom is measured and nothing is corrected. This is the
+    // guard against the metric switch itself introducing false drift.
+    await seedSessions()
+    // Two REAL parallel sessions (agent_a + agent_b, both 30s, overlapping) so
+    // work (60s) ≠ union (30s) — a reader on the wrong metric would see drift.
+    await db.collection('agent_usage_sessions').insertOne(
+      makeSession({
+        sessionUsageId: 'usess_real2',
+        agentId: 'agent_b',
+        startedAt: new Date('2026-05-20T10:30:00Z'),
+        endedAt: new Date('2026-05-20T10:30:30Z'),
+        durationMs: REAL_MS,
+        totalTokens: 150,
+      }),
+    )
+    const WORK_MS = 2 * REAL_MS // sum: 30s + 30s
+    await db.collection('agent_usage_rollups_user_hourly').insertOne({
+      rollupId: 'usro_v2',
+      hourBucket: HOUR,
+      groupKey: { userId: 'user_1', workspaceId: 'work_1' },
+      userActiveMs: REAL_MS, // union of the overlapping pair
+      userWorkMs: WORK_MS, // sum — the billed metric
+      sessionCount: 2,
+      totalTokens: 300,
+      costUsd: 0.02,
+      computedAt: new Date(),
+      jobRunId: 'seed',
+      schemaVersion: 2,
+      createdAt: new Date(),
+    })
+    await seedSubscription(WORK_MS / HOUR_MS)
+
+    const report = await new PhantomBillingRemediation(db, stubLogger).run({ since, dryRun: true })
+
+    // No phantom in the sessions → stored work == recomputed work → 0 drift.
+    expect(report.subsCorrected).toBe(0)
+    expect(report.totalHoursReturned).toBe(0)
+    const sub = await db.collection('billing_subscriptions').findOne({ _id: 'sub_1' })
+    expect(sub?.agentHoursUsed).toBeCloseTo(WORK_MS / HOUR_MS, 9)
+  })
 })

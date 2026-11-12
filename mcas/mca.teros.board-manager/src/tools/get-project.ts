@@ -23,8 +23,10 @@ export const getProject: ToolConfig = {
     },
     required: ['projectId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     if (!projectId) throw new Error('projectId is required');
@@ -32,7 +34,7 @@ export const getProject: ToolConfig = {
     const result = await withRetry(
       () =>
         withTimeout(
-          wsClient.queryConversations<any>('get_project', { projectId }),
+          wsClient.queryConversations<any>('get_project', { projectId, callerAgentId }),
           15_000,
           'get_project',
         ),

@@ -19,6 +19,7 @@ import {
   parseOutput,
   ResourceCard,
   SuccessBlock,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import { type HealthCheckOutput, HunterToolShell } from './shared';
@@ -74,6 +75,7 @@ export function HealthCheckRenderer({
   error,
   appIcon,
 }: ToolCallRendererProps): React.ReactNode {
+  const c = useColors();
   const parsed = output ? parseOutput<HealthCheckOutput>(output) : null;
   const result =
     parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'status' in (parsed as object)
@@ -83,7 +85,7 @@ export function HealthCheckRenderer({
   const healthStatus: HealthStatus = result?.status ?? 'ready';
   const issues = result?.issues ?? [];
   const healthy = healthStatus === 'ready' && issues.length === 0;
-  const accent = STATUS_ACCENT[healthStatus] ?? globalColors.muted;
+  const accent = STATUS_ACCENT[healthStatus] ?? c.text3;
   const title = STATUS_TITLE[healthStatus] ?? String(healthStatus);
 
   return (
@@ -91,7 +93,7 @@ export function HealthCheckRenderer({
       toolName={toolName}
       status={status}
       appIcon={appIcon}
-      verb="Health check"
+      description="Health check"
       defaultExpanded={false}
     >
       {error && <ErrorBlock error={error} />}
@@ -112,7 +114,7 @@ export function HealthCheckRenderer({
           {healthy && <SuccessBlock message="All checks passed." />}
           {issues.length > 0 && (
             <YStack gap={6}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 issues ({issues.length})
               </Text>
               {issues.map((issue, i) => (
@@ -126,11 +128,11 @@ export function HealthCheckRenderer({
                   borderColor={`${issueAccent(issue.code)}33`}
                 >
                   <IconChip text={issue.code} accent={issueAccent(issue.code)} />
-                  <Text color={globalColors.primary} fontSize={10}>
+                  <Text color={c.text} fontSize={10}>
                     {issue.message}
                   </Text>
                   {issue.action?.description && (
-                    <Text color={globalColors.secondary} fontSize={9}>
+                    <Text color={c.text2} fontSize={9}>
                       → {issue.action.description}
                     </Text>
                   )}

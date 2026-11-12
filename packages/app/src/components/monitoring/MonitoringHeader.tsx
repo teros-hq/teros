@@ -1,27 +1,16 @@
-import {
-  Activity,
-  AlertTriangle,
-  BarChart3,
-  Check,
-  ChevronLeft,
-  ListTree,
-  XCircle,
-} from "@tamagui/lucide-icons"
 import { LEVEL_LABELS } from "@teros/shared"
 import type { ReactNode } from "react"
-import { Text, XStack, YStack } from "tamagui"
-import { colors as semanticColors, surface } from "../mca/primitives/colors"
+import { View, useWindowDimensions } from "react-native"
 import { useColors } from "../mca/primitives/useColors"
+import { Badge, type BadgeTone } from "../ui/ds/Badge"
+import { ChipBtn } from "../ui/ds/Buttons"
+import { T } from "../ui/ds/Text"
 
 /** The monitoring surfaces. `hub` has no chip (it's the breadcrumb root). */
 export type MonitoringView = "hub" | "activity" | "models" | "trace"
 
 /** Window types the header can drill to (what `onNavigate` receives). */
-export type MonitoringTarget =
-  | "monitoring"
-  | "agent-usage"
-  | "model-health"
-  | "session-trace"
+export type MonitoringTarget = "monitoring" | "agent-usage" | "model-health" | "session-trace"
 
 const VIEW_TARGET: Record<Exclude<MonitoringView, "hub">, MonitoringTarget> = {
   activity: "agent-usage",
@@ -33,23 +22,26 @@ const VIEW_TARGET: Record<Exclude<MonitoringView, "hub">, MonitoringTarget> = {
 // surface says the same word for a level — no more "Incident" here vs "Critical"
 // in the KPI vs "All systems healthy" vs "Healthy". The keys stay the header's
 // own enum (ok/degraded/error); only the words are unified.
-const STATUS = {
-  ok: { color: semanticColors.green, Icon: Check, text: LEVEL_LABELS.ok },
-  degraded: { color: semanticColors.amber, Icon: AlertTriangle, text: LEVEL_LABELS.warn },
-  error: { color: semanticColors.red, Icon: XCircle, text: LEVEL_LABELS.critical },
-} as const
+const STATUS: Record<"ok" | "degraded" | "error", { tone: BadgeTone; icon: string; text: string }> =
+  {
+    ok: { tone: "g", icon: "check", text: LEVEL_LABELS.ok },
+    degraded: { tone: "a", icon: "warning", text: LEVEL_LABELS.warn },
+    error: { tone: "r", icon: "x-circle", text: LEVEL_LABELS.critical },
+  }
 
-const CHIPS: { key: Exclude<MonitoringView, "hub">; label: string; Icon: typeof Activity }[] = [
-  { key: "activity", label: "Agent Activity", Icon: Activity },
-  { key: "models", label: "Model Health", Icon: BarChart3 },
-  { key: "trace", label: "Session Trace", Icon: ListTree },
+const CHIPS: { key: Exclude<MonitoringView, "hub">; label: string; icon: string }[] = [
+  { key: "activity", label: "Agent Activity", icon: "pulse" },
+  { key: "models", label: "Model Health", icon: "chart-bar" },
+  { key: "trace", label: "Session Trace", icon: "tree-structure" },
 ]
 
 /**
- * Shared header for every monitoring window — the connective tissue of the suite.
- * Breadcrumb back to the hub + window title + a live status pill + "Related views"
- * chips (current one disabled). `onNavigate(target)` is wired by the window to
- * `openWindow(target)`, so the primitive stays free of the tiling store.
+ * Shared header for every monitoring window — the connective tissue of the
+ * suite, drawn as the OS prototype's page head: accent eyebrow + live status
+ * badge, serif title, and a row of view chips (hub first, the current one
+ * lit) with the window controls at the right end. `onNavigate(target)` is
+ * wired by the window to `openWindow(target)`, so the primitive stays free of
+ * the tiling store.
  */
 export function MonitoringHeader({
   title,
@@ -58,6 +50,7 @@ export function MonitoringHeader({
   activeView,
   onNavigate,
   controls,
+  lead,
 }: {
   title: string
   statusLevel?: keyof typeof STATUS
@@ -66,101 +59,84 @@ export function MonitoringHeader({
   onNavigate?: (target: MonitoringTarget) => void
   /**
    * Window controls (period selector, refresh…) rendered at the right end of
-   * the second row — IN FLOW. Windows must NOT overlay controls with
-   * `position="absolute"` on top of the header: that lands exactly on the
-   * status pill (top-right of row 1) and covers it.
+   * the chips row — IN FLOW. Windows must NOT overlay controls with
+   * `position="absolute"` on top of the header.
    */
   controls?: ReactNode
+  /** Optional lead sentence under the title. */
+  lead?: string
 }) {
   const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
+  const { width } = useWindowDimensions()
   const s = STATUS[statusLevel]
+  const isHub = activeView === "hub"
   return (
-    <YStack
-      gap={12}
-      paddingVertical={16}
-      paddingHorizontal={24}
-      borderBottomWidth={1}
-      borderBottomColor={c.border}
-      backgroundColor={isDark ? "rgba(94,106,210,0.04)" : semanticColors.indigoGlow}
-    >
-      <XStack ai="center" jc="space-between" gap={16}>
-        <XStack ai="center" gap={10} minWidth={0} flex={1}>
-          <XStack
-            ai="center"
-            gap={4}
-            cursor="pointer"
-            hoverStyle={{ opacity: 0.8 }}
-            onPress={() => onNavigate?.("monitoring")}
-            aria-label="Back to Monitoring"
-          >
-            <ChevronLeft size={14} color={c.text3} />
-            <Text fontSize={14} color={c.text3}>
-              Monitoring
-            </Text>
-          </XStack>
-          <Text fontSize={14} color={c.text3}>
-            /
-          </Text>
-          <Text fontSize={20} fontWeight="650" color={c.text} numberOfLines={1} ellipsizeMode="tail">
-            {title}
-          </Text>
-        </XStack>
-        <XStack
-          ai="center"
-          gap={8}
-          paddingVertical={5}
-          paddingHorizontal={11}
-          borderRadius={9999}
-          borderWidth={1}
-          borderColor={`${s.color}38`}
-          backgroundColor={`${s.color}1A`}
-        >
-          <YStack width={7} height={7} borderRadius={9999} backgroundColor={s.color} />
-          <s.Icon size={13} color={s.color} />
-          <Text fontSize={14} fontWeight="600" color={s.color} numberOfLines={1}>
+    <View style={{ gap: 16, marginBottom: 20 }}>
+      <View style={{ gap: 12 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <T step="xs" tone="accent">
+            Monitorización
+          </T>
+          <Badge tone={s.tone} dot icon={s.icon} pill>
             {statusText ?? s.text}
-          </Text>
-        </XStack>
-      </XStack>
+          </Badge>
+        </View>
+        <T step="3xl" numberOfLines={2}>
+          {title}
+        </T>
+        {lead ? (
+          <T step="lg" tone="text2" style={{ maxWidth: 560 }}>
+            {lead}
+          </T>
+        ) : null}
+      </View>
 
-      <XStack ai="center" gap={12} flexWrap="wrap">
-        <Text fontSize={12} fontWeight="600" letterSpacing={0.6} textTransform="uppercase" color={c.text3}>
-          Related views
-        </Text>
-        <XStack ai="center" gap={8} flexWrap="wrap" flex={1}>
-          {CHIPS.map(({ key, label, Icon }) => {
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            flexWrap: "wrap",
+            flex: 1,
+            minWidth: width <= 620 ? "100%" : 320,
+          }}
+        >
+          <ChipBtn
+            icon={isHub ? "chart-line-up" : "caret-left"}
+            on={isHub}
+            onPress={isHub ? undefined : () => onNavigate?.("monitoring")}
+            disabled={isHub}
+            accessibilityLabel={isHub ? "Current view" : "Back to Monitoring"}
+            {...({ "aria-label": isHub ? "Current view" : "Back to Monitoring" } as any)}
+            style={isHub ? { opacity: 1 } : undefined}
+          >
+            Monitoring
+          </ChipBtn>
+          {CHIPS.map(({ key, label, icon }) => {
             const current = key === activeView
             return (
-              <XStack
+              <ChipBtn
                 key={key}
-                ai="center"
-                gap={6}
-                paddingVertical={5}
-                paddingHorizontal={11}
-                borderRadius={9999}
-                borderWidth={1}
-                borderColor={current ? c.borderStrong : c.border}
-                backgroundColor={current ? c.bgCardHover : c.bgInner}
-                cursor={current ? "default" : "pointer"}
-                hoverStyle={current ? {} : { backgroundColor: c.bgCardHover }}
+                icon={icon}
+                on={current}
+                disabled={current}
                 onPress={current ? undefined : () => onNavigate?.(VIEW_TARGET[key])}
-                aria-label={current ? "Current view" : `Go to ${label}`}
+                accessibilityLabel={current ? "Current view" : `Go to ${label}`}
+                {...({ "aria-label": current ? "Current view" : `Go to ${label}` } as any)}
+                style={current ? { opacity: 1 } : undefined}
               >
-                <Icon size={13} color={current ? c.text : c.text2} />
-                <Text fontSize={14} fontWeight="500" color={current ? c.text : c.text2}>
-                  {label}
-                </Text>
-              </XStack>
+                {label}
+              </ChipBtn>
             )
           })}
-        </XStack>
+        </View>
         {controls ? (
-          <XStack ai="center" gap={6}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             {controls}
-          </XStack>
+          </View>
         ) : null}
-      </XStack>
-    </YStack>
+      </View>
+    </View>
   )
 }

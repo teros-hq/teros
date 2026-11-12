@@ -5,18 +5,28 @@
  * a known state, then assert the RAW Mongo result after exercising the real
  * backend through the live client.
  *
- * Runs only under `yarn smoke:billing` (MONGODB_DATABASE=teros_billing). Every
- * mutating spec resets the shared playwright1/2 accounts + team_demo back to the
- * documented baseline (Kimi=plan_pro 40/80h, team_demo=plan_pro no override, 0
- * members) in afterAll, so Antonio's manual smoke finds a clean slate.
+ * Run by the regular `yarn smoke` (CI e2e job) against the seeded stack, and by
+ * `yarn smoke:billing` against a hand-provisioned billing DB. Every mutating spec resets
+ * the shared accounts + team_demo back to the documented baseline (Kimi=plan_pro 40/80h,
+ * team_demo=plan_pro no override, 0 members) in afterAll. The `@stripe` specs need a
+ * Stripe sandbox (system `stripe` secret + a vaulted test card) and are excluded in CI.
  */
 import { randomUUID } from "node:crypto"
+import { loadFixtures } from "./config"
 import { getMongoDb } from "./db"
 
+/**
+ * The ids come from the seed (seed.mjs → fixtures file), so the specs run against any
+ * seeded stack — they used to hardcode the ids of one hand-made `teros_billing` DB.
+ */
 /** playwright2 — the Kimi-agent user; the one that sees chat blocks + boosts. */
-export const KIMI_USER = "user_044ffd9ad48ecf2a"
-/** playwright1 — admin + owner of team_demo. */
-export const ADMIN_USER = "user_81ccc3b3f7500f15"
+export const KIMI_USER = loadFixtures().user2.userId
+/**
+ * playwright3 — the seeded SUPER user: billing admin (requireSystemAdmin = admin|super)
+ * + owner of team_demo. Not playwright1: the seed keeps user1 a plain user on purpose
+ * (security-authz.spec relies on "seed has no admin").
+ */
+export const ADMIN_USER = loadFixtures().user3.userId
 export const TEAM_ID = "team_demo"
 
 const DAY = 24 * 60 * 60 * 1000
@@ -160,6 +170,9 @@ export async function getPlan(planId: string): Promise<Record<string, unknown> |
 /**
  * Restore team_demo to the documented baseline: plan_pro, seatPrice 89, no
  * override, zero members; and clear teamId from any sub that pointed at it.
+ * Upsert: on a freshly seeded stack the team does not exist yet (it was only ever
+ * created by hand in the old `teros_billing` DB), so the first reset creates it,
+ * owned by the billing admin.
  */
 export async function resetTeamBaseline(teamId: string = TEAM_ID): Promise<void> {
   const db = await getMongoDb()
@@ -179,7 +192,16 @@ export async function resetTeamBaseline(teamId: string = TEAM_ID): Promise<void>
         status: "active",
         updatedAt: new Date(),
       },
+      $setOnInsert: {
+        name: "Team Demo",
+        slug: "team-demo",
+        paymentMethod: "manual",
+        billingEmail: "playwright3@test.com",
+        ownerId: ADMIN_USER,
+        createdAt: new Date(),
+      },
     },
+    { upsert: true },
   )
 }
 
@@ -221,149 +243,6 @@ export async function deleteTeam(teamId: string): Promise<void> {
   await db
     .collection("billing_subscriptions")
     .updateMany({ teamId }, { $set: { teamId: null, updatedAt: new Date() } })
-}
-
-/** Remove every billing row for a user (used to reset a throwaway onboarding user). */
-export async function deleteUserBilling(userId: string): Promise<void> {
-  const db = await getMongoDb()
-  await db.collection("billing_subscriptions").deleteMany({ userId })
-  await db.collection("billing_invoices").deleteMany({ userId })
-  await db.collection("billing_hour_boosts").deleteMany({ userId })
-  await db.collection("billing_access_requests").deleteMany({ userId })
-}
-
-// ── Onboarding throwaway user (I2 DOM spec) ─────────────────────────────────────
-// A DEDICATED user that the onboarding wizard spec drives end-to-end. Kept apart
-// from playwright1/2 so the wizard (which sets onboardingCompletedAt + changes the
-// plan) never disturbs the shared baseline Antonio's manual smoke relies on.
-export const ONB_USER = "user_0b0b0b0b0b0b0b0b"
-export const ONB_EMAIL = "playwright-onb@test.com"
-export const ONB_PASSWORD = "test1234"
-const ONB_WS = "work_0b0b0b0b0b0b0b0b"
-const ONB_VOL = "vol_user_0b0b0b0b0b0b0b0b"
-const ONB_AGENT = "agent_0b0b0b0b0b0b0b0b"
-const ONB_CORE = "core:pw-test"
-// bcrypt(test1234, rounds=12) — hardcoded so the test runner needs no native bcrypt.
-const ONB_PW_HASH = "$2b$12$EdCzr9xiEVnXFsFIMTu.sOejn9sKJpVcQPR0Ztfm4omVXp5eUbMey"
-
-/**
- * Seed (idempotent) the throwaway onboarding user in PRE-onboarding state:
- * accessGranted + termsAcceptedAt set, onboardingCompletedAt UNSET, a Starter
- * subscription as the default, and a default agent + private workspace so the
- * wizard's init load resolves. Call in beforeEach: it both creates the user once
- * and resets it to pre-onboarding every run (unsets onboardingCompletedAt + wipes
- * billing back to Starter), so the redirect gate fires again.
- */
-export async function seedOnboardingUser(): Promise<{
-  email: string
-  password: string
-  userId: string
-}> {
-  const db = await getMongoDb()
-  const now = new Date()
-
-  await db.collection("volumes").updateOne(
-    { volumeId: ONB_VOL },
-    {
-      $set: {
-        volumeId: ONB_VOL,
-        name: "Onb Personal",
-        type: "user",
-        ownerId: ONB_USER,
-        members: [],
-        quotaBytes: 0,
-        updatedAt: now.toISOString(),
-      },
-      $setOnInsert: { createdAt: now.toISOString() },
-    },
-    { upsert: true },
-  )
-  await db.collection("workspaces").updateOne(
-    { workspaceId: ONB_WS },
-    {
-      $set: {
-        workspaceId: ONB_WS,
-        name: "Private",
-        type: "private",
-        ownerId: ONB_USER,
-        volumeId: ONB_VOL,
-        members: [],
-        settings: {},
-        status: "active",
-        updatedAt: now.toISOString(),
-      },
-      $setOnInsert: { createdAt: now.toISOString() },
-    },
-    { upsert: true },
-  )
-  // User in PRE-onboarding state. $unset onboardingCompletedAt so a re-run (where a
-  // prior wizard set it) goes back through the redirect gate.
-  await db.collection("users").updateOne(
-    { userId: ONB_USER },
-    {
-      $set: {
-        userId: ONB_USER,
-        profile: { email: ONB_EMAIL, displayName: "Play Onb", avatarUrl: null },
-        privateWorkspaceId: ONB_WS,
-        accessGranted: true,
-        emailVerified: true,
-        termsAcceptedAt: now,
-        status: "active",
-        role: "user",
-        updatedAt: now,
-      },
-      $unset: { onboardingCompletedAt: "" },
-      $setOnInsert: { createdAt: now },
-    },
-    { upsert: true },
-  )
-  await db.collection("user_identities").updateOne(
-    { userId: ONB_USER, type: "password" },
-    {
-      $set: {
-        userId: ONB_USER,
-        type: "password",
-        providerUserId: ONB_EMAIL,
-        email: ONB_EMAIL,
-        data: { passwordHash: ONB_PW_HASH, failedAttempts: 0, lastPasswordChangeAt: now },
-        status: "active",
-        updatedAt: now,
-      },
-      $setOnInsert: { createdAt: now },
-    },
-    { upsert: true },
-  )
-  await db.collection("agents").updateOne(
-    { agentId: ONB_AGENT },
-    {
-      $set: {
-        agentId: ONB_AGENT,
-        coreId: ONB_CORE,
-        ownerId: ONB_USER,
-        workspaceId: null,
-        name: "OnbBot",
-        fullName: "Onboarding Bot",
-        role: "test assistant",
-        intro: "Onboarding smoke agent.",
-        avatarUrl: "iria.png",
-        availableProviders: [],
-        selectedProviderId: null,
-        selectedModelId: null,
-        updatedAt: now.toISOString(),
-      },
-      $setOnInsert: { createdAt: now.toISOString() },
-    },
-    { upsert: true },
-  )
-  // Default Starter subscription (so PlanStep shows Starter as current).
-  await resetUserPlan(ONB_USER, "plan_starter")
-  return { email: ONB_EMAIL, password: ONB_PASSWORD, userId: ONB_USER }
-}
-
-/** Read a user document (to assert onboardingCompletedAt was persisted). */
-export async function getUser(userId: string): Promise<Record<string, unknown> | null> {
-  const db = await getMongoDb()
-  return db.collection("users").findOne({ userId })
 }
 
 /** Read the Stripe customer mapping (defaultPaymentMethodId / stripeCustomerId). */

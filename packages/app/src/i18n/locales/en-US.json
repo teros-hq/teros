@@ -24,7 +24,8 @@
       "anthropicConsumer": "Claude Pro/Max trains on your conversations by default and retains them for up to 5 years. Turn off \"Help improve Claude\" in your account's privacy settings to prevent it.",
       "openaiConsumer": "ChatGPT Plus/Pro trains on your conversations by default. Turn off \"Improve the model for everyone\" in your account's Data Controls to prevent it.",
       "minimax": "MiniMax's data policy is opaque: it doesn't specify whether it trains on your data or where it stores it, and its parent company is in China. Not recommended for sensitive data.",
-      "unknown": "We haven't classified this provider's data policy. Treat it as if it retains your data."
+      "unknown": "We haven't classified this provider's data policy. Treat it as if it retains your data.",
+      "helmcode": "Helmcode runs inference on EU infrastructure with Zero Data Retention by default. Your prompts are not stored or used for training."
     },
     "modal": {
       "title": "Heads up about your data",
@@ -128,6 +129,7 @@
     "comingSoonPassword": "Password recovery will be available shortly",
     "signInFailed": "Sign in failed",
     "couldNotSignInGoogle": "Could not sign in with Google",
+    "couldNotSignInGitHub": "Could not sign in with GitHub",
     "popupBlocked": "Please allow popups to sign in",
     "emailPlaceholder": "Email",
     "passwordPlaceholder": "Password",
@@ -136,6 +138,15 @@
     "passwordMinCharsPlaceholder": "Password (min. 8 characters)",
     "pleaseEnterEmailPassword": "Please enter your email and password",
     "requestTimedOut": "Request timed out — server not responding",
+    "verifyEmailTitle": "Check your email",
+    "verifyEmailLead": "We sent a 6-digit code to {{email}}. Enter it to continue.",
+    "verificationCode": "Verification code",
+    "verifyAndContinue": "Verify and continue",
+    "resendCode": "Send a new code",
+    "resendCodeIn": "You can request another code in {{seconds}}s",
+    "codeResent": "We sent you a new code.",
+    "invalidCode": "Incorrect code",
+    "couldNotResendCode": "Could not send a new code",
     "incorrectCredentials": "Incorrect email or password",
     "createYourAccount": "Create your account",
     "earlyAlpha": "Early Alpha",
@@ -161,7 +172,39 @@
     "getStarted": "Get started",
     "couldNotSavePreferences": "Could not save your preferences. Please try again.",
     "signingOut": "Signing out...",
-    "error": "Error"
+    "error": "Error",
+    "forgotPasswordTitle": "Reset your password",
+    "forgotPasswordLead": "Enter your email and we'll send you a code to set a new password.",
+    "sendResetCode": "Send reset code",
+    "resetPasswordTitle": "Set a new password",
+    "resetPasswordLead": "Enter the 6-digit code we sent to {{email}} and choose a new password.",
+    "newPassword": "New password",
+    "confirmPassword": "Confirm password",
+    "resetAndSignIn": "Reset and sign in",
+    "enterValidEmail": "Enter a valid email address",
+    "enterTheCode": "Enter the 6-digit code",
+    "resetRequestFailed": "Could not start the password reset",
+    "selfHosted": "Self-hosted",
+    "selfHostedLead": "This Teros runs on your own infrastructure",
+    "selfHostedNotice1": "Your data stays on this machine or server",
+    "selfHostedNotice2": "Fair source under FSL-1.1: each release becomes Apache 2.0 after two years",
+    "selfHostedNotice3": "Early alpha: features change and rough edges are expected",
+    "selfHostedNotice4": "Back up the data folder and Docker volumes before updating",
+    "termsCheckboxSelfHosted": "I understand Teros is in early alpha and I accept the <1>license</1>",
+    "sendResetCodeIn": "You can request another code in {{seconds}}s",
+    "resetSessionExpired": "Your reset session expired. Request a new code to continue.",
+    "backToForgot": "Request a new code",
+    "checkYourEmail": "Check your email",
+    "resetCodeLead": "We sent a 6-digit code to {{email}}. It expires in 15 minutes.",
+    "resetCodeLabel": "Reset code",
+    "resetCodeHint": "Paste the code or type it. It checks itself when complete.",
+    "checkingCode": "Checking the code…",
+    "continue": "Continue",
+    "newPasswordTitle": "Choose a new password",
+    "codeVerifiedFor": "Code verified for {{email}}",
+    "ruleMinLength": "At least 8 characters",
+    "ruleMatch": "Both passwords match",
+    "resetSignsOut": "You will be signed in, and other devices signed out."
   },
   "nav": {
     "agents": "Agents",
@@ -172,6 +215,9 @@
     "admin": "Admin",
     "catalog": "Catalog",
     "skills": "Skills",
+    "todo": "Tasks",
+    "academy": "Academy",
+    "automate": "Automate",
     "profile": "Profile",
     "providers": "Providers",
     "agentCores": "Agent Cores",
@@ -179,6 +225,7 @@
     "users": "Users",
     "usageAndCosts": "Usage & Costs",
     "featureFlags": "Feature Flags",
+    "terosProvider": "Teros provider",
     "billingRequests": "Billing Requests",
     "billingTeams": "Billing Teams",
     "workspace": "Workspace",
@@ -195,7 +242,64 @@
     "moreConversations": "+{{count}} more...",
     "inactiveConversations": "+{{count}} inactive...",
     "viewArchived": "View archived",
-    "whatsNew": "What's New"
+    "whatsNew": "What's New",
+    "inactive": "Inactive",
+    "archived": "Archived",
+    "newChat": "New chat",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "pendingApprovals_one": "{{count}} pending approval",
+    "pendingApprovals_other": "{{count}} pending approvals",
+    "home": "Home",
+    "workspaceSettings": "Workspace settings",
+    "viewAll": "View all",
+    "search": "Search",
+    "themeToggle": "Toggle theme",
+    "pendingNotices_one": "{{count}} notice waiting",
+    "pendingNotices_other": "{{count}} notices waiting",
+    "zoneWorkspace": "Workspace",
+    "zonePersonal": "Personal",
+    "visibleToAll": "Visible to everyone in {{name}}",
+    "visibleToAllShort": "Visible to everyone",
+    "widgetToday": "today",
+    "widgetOverdue": "{{n}} overdue",
+    "widgetDone": "{{n}} done",
+    "widgetOpenLabel": "open",
+    "widgetMore": "+{{n}} more",
+    "widgetNoTasks": "Nothing planned for today",
+    "widgetAllTasks": "All tasks",
+    "widgetNoProjects": "No projects yet",
+    "widgetUnavailable": "Not available here",
+    "onlyYou": "Only you",
+    "pinHere": "Pin here",
+    "pinInWorkspace": "Pin in {{name}}",
+    "pinInPersonal": "Pin for you",
+    "unpin": "Remove",
+    "rename": "Rename",
+    "moveToPersonal": "Move to personal",
+    "moveToWorkspace": "Move to {{name}}",
+    "makeGlobal": "Make global",
+    "makeLocal": "Keep in {{name}} only",
+    "showAsWidget": "Show as widget",
+    "showAsRow": "Show as row",
+    "openInNewTab": "Open in new tab",
+    "nothingPinned": "Nothing pinned yet",
+    "dragHere": "Drag a tab here",
+    "disabledByAdmin": "Disabled in {{name}} by an admin",
+    "openWindows": "Open windows",
+    "pinWorkspace": "Workspaces",
+    "pinnedByAgent": "Pinned by an agent",
+    "zoneLocked": "Only the owner or an admin can edit this zone",
+    "pinned": "Pinned",
+    "alreadyPinned": "Already pinned",
+    "signOut": "Sign out",
+    "theme": "Theme",
+    "themeDark": "dark",
+    "themeLight": "light",
+    "administration": "Administration",
+    "monitoring": "Monitoring",
+    "latitudeSignals": "Latitude Signals",
+    "noAgents": "No agents yet"
   },
   "accessGate": {
     "privateBeta": "Private Beta",
@@ -295,6 +399,7 @@
       "loadFailed": "Failed to load directory listing."
     },
     "windowContentLoadFailed": "Error loading window content",
+    "retryLoad": "Retry",
     "mcas": {
       "loadFailed": "Failed to load Agent Apps",
       "updateFailed": "Failed to update Agent App"
@@ -327,6 +432,62 @@
       "outputTruncated": "Output truncated and could not extract content"
     }
   },
+  "feedback": {
+    "thumbsUp": "Thumbs up",
+    "thumbsDown": "Thumbs down",
+    "copy": "Copy message",
+    "copied": "Copied to clipboard",
+    "copyError": "Could not copy",
+    "report": "Report problem",
+    "reportSent": "Report sent to the team",
+    "reportError": "Could not send report",
+    "submitReport": "Submit report",
+    "reportDescriptionLabel": "What went wrong?",
+    "reportPlaceholder": "Describe the problem…",
+    "why": "Why was this unhelpful?",
+    "commentPlaceholder": "Add a comment (optional)",
+    "submit": "Submit feedback",
+    "sending": "Sending…",
+    "thankYou": "Thanks for your feedback",
+    "submitError": "Could not save feedback",
+    "tryAgain": "Please try again",
+    "reasons": {
+      "inaccurate": "Incorrect",
+      "incomplete": "Incomplete",
+      "not_helpful": "Not helpful",
+      "wrong_tone": "Wrong tone",
+      "did_not_follow_instructions": "Didn't follow instructions",
+      "other": "Other"
+    }
+  },
+  "notFoundScreen": {
+    "title": "This page doesn't exist",
+    "description": "The link may be old, or the page may have moved. Everything you're looking for is waiting for you at the start.",
+    "goHome": "Go to start"
+  },
+  "rootResolver": {
+    "titleFailed": "We couldn't load your workspace",
+    "descriptionFailed": "We couldn't reach the server to load your workspaces. Check your connection and try again — if the service is back, you'll go straight in.",
+    "retry": "Retry",
+    "titleNoWorkspaces": "No workspace to load",
+    "descriptionNoWorkspaces": "Your account has no workspaces yet. If you were invited to one, accept the invitation and try again."
+  },
+  "invitations": {
+    "screenTitle": "You've been invited to a workspace",
+    "screenDescription": "Accept to join with the email {{email}} — decline and it won't appear again.",
+    "accept": "Accept",
+    "decline": "Decline",
+    "acceptedTitle": "Invitation accepted",
+    "acceptedDescription": "The workspace is now available in your workspace list.",
+    "declinedTitle": "Invitation declined",
+    "declinedDescription": "The invitation was discarded. If you change your mind, ask to be invited again.",
+    "errorTitle": "This invitation can't be accepted",
+    "errorNotFound": "The invitation is no longer valid — it may have been revoked, declined, or already accepted.",
+    "errorMismatch": "This invitation was sent to a different email address than your account.",
+    "errorGeneric": "We couldn't process the invitation. Try again in a moment.",
+    "continue": "Continue",
+    "bannerTitle": "{{inviter}} invited you to {{workspace}}"
+  },
   "impersonation": {
     "impersonating": "Impersonating",
     "backToMySession": "Back to my session"
@@ -342,9 +503,30 @@
     "notFound": "Conversation not found",
     "notFoundDescription": "This conversation does not exist or has been deleted.",
     "startConversation": "Start a conversation",
+    "letter": {
+      "greeting": "Hello, {{name}}.",
+      "greetingGeneric": "Hello.",
+      "introStatic": "I'm your assistant here. I can move board tasks, review code, write, and search the web — tell me where to start.",
+      "introLive": "While you were away: ",
+      "introLiveTail": " I can walk you through any of it — or tell me where we start.",
+      "factBoardPrefix": "the ",
+      "factInProgress": "{{count}} in progress",
+      "factTodo": "{{count}} queued",
+      "factBlocked": "{{count}} blocked",
+      "startHere": "WHERE WE START",
+      "promptBoardLabel": "How is {{project}} doing?",
+      "promptBoard": "Give me a status update on the {{project}} board — what's moving, what's stuck, what needs my call.",
+      "promptStatic1": "What's on my plate today?",
+      "promptStatic1Message": "What's on my plate today? Give me the short version.",
+      "promptStatic2": "Draft the launch post for Thursday",
+      "promptStatic2Message": "Draft the launch post for Thursday — I'll review and edit.",
+      "promptStatic3": "What was left pending from Monday's meeting?",
+      "promptStatic3Message": "What was left pending from Monday's meeting? Summarize the open items."
+    },
     "loadEarlierMessages": "Load earlier messages",
     "unexpectedError": "An unexpected error occurred",
     "boardEvent": "(board event)",
+    "systemLabel": "Teros",
     "board": "BOARD",
     "rename": "Rename",
     "viewTokenUsage": "View token usage",
@@ -417,7 +599,13 @@
       "open": "Open",
       "systemEvent": "System event",
       "observedChannel": "Observed channel"
-    }
+    },
+    "authorUser": "You",
+    "authorAgent": "Agent",
+    "download": "Download",
+    "openInNewTab": "Open",
+    "share": "Share",
+    "refresh": "Refresh"
   },
   "permission": {
     "required": "Permission required",
@@ -463,16 +651,90 @@
     "download": "Download",
     "retrySending": "Retry sending",
     "retryTranscription": "Retry transcription",
-    "retry": "Retry",
+    "mode": {
+      "title": "Voice mode",
+      "available": "Available",
+      "availableDescription": "Answers when you call her and keeps nothing she overhears",
+      "passive": "Listening",
+      "passiveDescription": "Keeps what she hears as context and only speaks when you call her",
+      "conversation": "Talking",
+      "conversationDescription": "Answers to everything she hears",
+      "muted": "Muted",
+      "off": "Voice off"
+    },
+    "presence": {
+      "connecting": "Connecting…",
+      "turnOn": "Turn on"
+    },
+    "activity": {
+      "idle": "At rest",
+      "hearing": "Listening",
+      "thinking": "Thinking...",
+      "speaking": "Speaking",
+      "waitingWorker": "Working: {{worker}}",
+      "reconnecting": "Reconnecting ({{attempt}})...",
+      "muted": "Muted",
+      "error": "Error",
+      "connecting": "Connecting...",
+      "tapToStart": "Tap to start"
+    },
+    "orb": {
+      "label": "{{agent}} presence",
+      "agent": "Agent",
+      "lastHeard": "What did you hear?",
+      "hangUp": "Hang up",
+      "resting": "at rest",
+      "mute": "Mute microphone",
+      "unmute": "Unmute microphone"
+    },
+    "bubble": {
+      "mark": "Voice"
+    },
+    "overheard": {
+      "meta": "Voice · overheard"
+    },
+    "divider": {
+      "open": "{{name}} connected · {{time}}",
+      "closed": "{{name}} connected {{start}}–{{end}}",
+      "interrupted": "interrupted",
+      "mode": "mode"
+    },
+    "delegation": {
+      "started": "{{name}} started working",
+      "finished": "{{name}} finished",
+      "permission": "{{name}} needs approval: {{tool}}",
+      "granted": "approved · {{tool}}",
+      "denied": "denied · {{tool}}",
+      "approve": "Approve"
+    },
     "error": {
-      "auth": "Authentication failed — please log in again",
-      "badRequest": "Invalid request — check your parameters",
-      "elevenlabs": "Voice service unavailable (ElevenLabs connection failed)",
-      "flagDisabled": "Voice mode is not enabled for your account",
-      "serverError": "Server error — please try again",
-      "timeout": "Connection timed out — please try again",
-      "unknown": "Connection failed",
-      "workspace": "Could not resolve workspace for voice session"
+      "bannerLabel": "Voice error",
+      "auth": "Your session has expired. Log in again to talk to {{agent}}.",
+      "flagDisabled": "Voice mode is not enabled for your account yet.",
+      "elevenlabs": "The voice service is unavailable right now. Try again in a moment.",
+      "timeout": "The connection is taking too long.",
+      "workspace": "We couldn't identify your workspace.",
+      "micPermission": "{{agent}} needs microphone access to hear you.",
+      "serverError": "Something failed on our servers.",
+      "badRequest": "The request is not valid.",
+      "stt": "We couldn't transcribe your voice. Try again in a moment.",
+      "tts": "We couldn't generate {{agent}}'s voice. Try again in a moment.",
+      "unknown": "Something failed.",
+      "actionLogin": "Log in",
+      "actionRequestAccess": "Request access",
+      "actionOpenSettings": "Open permission settings",
+      "actionRetry": "Retry",
+      "copyCode": "Copy code",
+      "autoRetry": "Retrying in {{s}}s…",
+      "autoRetryStatic": "Retrying in {{s}}s",
+      "cancelRetry": "cancel"
+    },
+    "reconnect": {
+      "toast": "Reconnected",
+      "toastBody": "Still listening"
+    },
+    "earcons": {
+      "toggle": "Presence sounds"
     }
   },
   "billing": {
@@ -588,6 +850,20 @@
       "removeError": "Could not remove the member.",
       "companySettings": "Company settings",
       "companySettingsSoon": "Self-serve company settings for the team owner are coming soon."
+    },
+    "automateQuota": {
+      "title": "“{{name}}” was skipped: today's Automate runs are used up",
+      "titleGeneric": "Today's Automate runs are used up",
+      "body": "Your {{plan}} plan allows {{limit}} Automate runs a day across all your automations. The budget resets at {{time}}.",
+      "bodyGeneric": "Your plan's Automate runs for today are used up. The budget resets at {{time}}.",
+      "busiest": "“{{name}}” ran {{count}} times today.",
+      "ctaUpgrade": "Upgrade plan",
+      "openAutomate": "Open Automate",
+      "bannerTitle": "Today's {{limit}} Automate runs of your {{plan}} plan are used up",
+      "bannerDetail": "Runs are skipped until the budget resets at {{time}}. Space out or pause your automations, or upgrade your plan.",
+      "bannerDetailBusiest": "“{{name}}” ran {{count}} times today. Runs are skipped until {{time}}: space it out, pause it, or upgrade your plan.",
+      "toastTitle": "Today's {{limit}} Automate runs ({{plan}}) are used up",
+      "toastBody": "“{{name}}” was skipped. Runs resume at the daily reset, or upgrade your plan."
     }
   },
   "windows": {
@@ -605,12 +881,14 @@
     "conversationsAll": "All",
     "createAgent": "Create Agent",
     "featureFlags": "Feature Flags",
+    "terosProvider": "Teros provider",
     "featureFlagsSub": "Feature flag management",
     "mcaCatalog": "Agent App Catalog",
     "mcaCatalogSub": "Manage Agent App definitions",
     "myProviders": "My Providers",
     "myProvidersSub": "Manage your LLM API keys",
     "skills": "Skills",
+    "academy": "Academy",
     "usageAndCosts": "Usage & Costs",
     "usageAndCostsSub": "LLM usage analytics",
     "users": "Users",
@@ -728,6 +1006,20 @@
         "blockedSelf": "You can't change your own access.",
         "blockedSuper": "Super admins can't be modified here.",
         "impersonateBlocked": "You can't impersonate a super admin or yourself.",
+        "stepUp": {
+          "passwordTitle": "Re-authenticate required",
+          "passwordBody": "This action requires verification. Enter your password to continue.",
+          "passwordPlaceholder": "Your password",
+          "mfaTitle": "Verification code required",
+          "mfaBody": "This action requires verification. Enter the 6-digit code from your authenticator app.",
+          "mfaPlaceholder": "123456",
+          "confirm": "Verify",
+          "verifying": "Verifying…",
+          "wrongPassword": "Incorrect password. Try again.",
+          "wrongMfa": "Invalid code. Try again.",
+          "mfaRequired": "An MFA code is required for your account.",
+          "failed": "Verification failed. Try again."
+        },
         "confirm": {
           "role": {
             "title": "Change {{name}}'s role?",
@@ -867,6 +1159,7 @@
     "workspace": "Workspace",
     "console": "Console",
     "terminal": "Terminal",
+    "browser": "Browser",
     "newTab": "New tab",
     "project": "Project",
     "fileBrowser": "File Browser",
@@ -880,7 +1173,21 @@
     "splitBottom": "Split bottom",
     "splitHorizontal": "Split horizontal",
     "splitVertical": "Split vertical",
-    "closePanel": "Close panel"
+    "closePanel": "Close panel",
+    "todo": "Tasks",
+    "flowEditor": "Flow Editor",
+    "flowList": "Flows",
+    "previewTab": "preview",
+    "previewTabHint": "Preview: follows the selection. Double-click or pin to keep it.",
+    "pinTab": "Pin tab",
+    "todoNode": "Task",
+    "feedbackAdmin": "Feedback Admin",
+    "feedbackAdminSub": "Feedback and bug triage",
+    "browserDesktopOnly": "Browser is a desktop app window",
+    "browserDesktopOnlyText": "The Browser window is only available in the Teros desktop app. Open it from the launcher there to browse the web in a real, persistent browser.",
+    "browserDesktopOnlyCta": "Get the desktop app",
+    "agents": "Agents",
+    "projects": "Projects"
   },
   "archivedConversations": {
     "searchPlaceholder": "Search archived...",
@@ -1004,7 +1311,37 @@
     "archiveConfirmBody": "This conversation will be moved to archived. You can restore it later from the archived section.",
     "archiveConfirm": "Archive",
     "archiveCancel": "Cancel",
-    "newConversationTooltip": "New conversation"
+    "moveToWorkspace": "Move to workspace",
+    "moveToWorkspaceTitle": "Move conversation",
+    "moveToWorkspaceBody": "Select a workspace to move this conversation to.",
+    "moveToWorkspaceSuccess": "Conversation moved to {{workspace}}",
+    "moveToWorkspaceError": "Failed to move conversation",
+    "moveToWorkspaceCancel": "Cancel",
+    "moveToWorkspaceNoWorkspaces": "No other workspaces available",
+    "newConversationTooltip": "New conversation",
+    "makeShared": "Make shared",
+    "sharedConversation": "Shared with the workspace",
+    "makePersonal": "Make personal",
+    "myConversations": "My Conversations",
+    "shared": "Shared",
+    "prePublishWarningTitle": "Personal apps detected",
+    "prePublishWarningBody": "This conversation used the following personal apps. Making it shared will expose the conversation history to all workspace members.",
+    "prePublishWarningAdvice": "Consider redacting sensitive content from these apps before making the conversation shared.",
+    "prePublishCancel": "Cancel",
+    "prePublishConfirm": "Make shared anyway",
+    "redacted": {
+      "redact": "Redact",
+      "unredact": "Un-redact",
+      "redactedLabel": "Redacted",
+      "protectedBy": "Protected by {{owner}}",
+      "owner": "Owner",
+      "clickToReveal": "Click to reveal",
+      "clickToHide": "Click to hide",
+      "emptyContent": "[Redacted content]"
+    },
+    "scopeChangedShared": "Conversation is now shared",
+    "scopeChangedPersonal": "Conversation is now personal",
+    "scopeError": "Failed to change scope"
   },
   "profile": {
     "title": "My Profile",
@@ -1031,6 +1368,20 @@
     "statAgents": "Agents",
     "statDays": "Days",
     "madeWith": "Teros · Made with ♥",
+    "conversationSummary": {
+      "section": "Conversations",
+      "title": "Summary when you open a new chat",
+      "sub": "Your agent opens each new conversation with a summary of what's going on and a few ideas to start. Off: just a hello.",
+      "error": "Couldn't save the setting. Try again."
+    },
+    "improveTeros": {
+      "section": "Improve Teros",
+      "title": "Help improve Teros",
+      "sub": "Share anonymized conversations (identities protected) to evaluate and improve Teros for everyone. Your conversations are stored as always — this only allows their use for evaluation.",
+      "on": "Thanks for helping improve Teros",
+      "off": "You stopped sharing for evaluation",
+      "error": "Couldn't save the setting. Try again."
+    },
     "plan": {
       "entryTitle": "Plan & billing",
       "entrySub": "Subscription, usage, invoices",
@@ -1102,6 +1453,7 @@
       "toastUpgraded": "Plan updated to {{plan}}",
       "toastDowngrade": "Downgrade to {{plan}} scheduled",
       "toastDowngradeDetail": "You keep your current plan until {{date}}.",
+      "toastDowngradeCancelled": "You'll stay on {{plan}}. The scheduled change was cancelled.",
       "toastChangeError": "Couldn't change your plan",
       "toastPaymentSaved": "Payment method saved",
       "payment": {
@@ -1111,12 +1463,52 @@
         "save": "Save card",
         "unavailable": "Card payments are only available on the web app.",
         "initError": "Couldn't start the payment form. Please try again.",
-        "loading": "Loading payment form…"
+        "loading": "Loading payment form…",
+        "countryLabel": "Billing country",
+        "taxIdLabel": "VAT / tax ID (optional)",
+        "taxIdPlaceholder": "ESB12345678",
+        "taxIdHint": "Printed on the invoice and used to apply the right VAT.",
+        "returnSuccess": "Card saved.",
+        "returnFailed": "The card setup did not complete. Please try again."
+      },
+      "automateRunsPerDay": "{{runs}} Automate runs / day",
+      "automateRunsUnlimited": "Unlimited Automate runs",
+      "linkOnFile": "Link · {{email}}",
+      "sepaOnFile": "SEPA ···· {{last4}}"
+    },
+    "dangerZone": {
+      "section": "Danger zone",
+      "signOutSub": "You exit Teros on this device. You can sign back in anytime."
+    },
+    "deleteAccount": {
+      "open": "Delete account",
+      "dialogTitle": "Delete your account?",
+      "dialogBody": "This is permanent and cannot be undone. Your profile, conversations, agents, files and personal workspace will be erased, and you will be signed out.",
+      "emailLabel": "Type your email ({{email}}) to confirm",
+      "passwordLabel": "Password",
+      "passwordLabelOptional": "Password (if your account has one)",
+      "passwordPlaceholder": "Your current password",
+      "passwordHint": "Leave it blank if you only sign in with Google or another provider.",
+      "mfaLabel": "Authentication code",
+      "mfaPlaceholder": "6-digit code from your authenticator app",
+      "confirm": "Delete permanently",
+      "deleting": "Deleting…",
+      "errors": {
+        "confirmationMismatch": "The email doesn't match your account email.",
+        "mfaRequired": "Your account has two-factor authentication. Enter the code from your authenticator app.",
+        "mfaInvalid": "That authentication code is not valid. Try again.",
+        "passwordRequired": "Enter your password to confirm.",
+        "invalidCredentials": "Incorrect password.",
+        "blocked": "You own shared workspaces that still have other members. Transfer their ownership or delete them first:",
+        "userNotFound": "Your account could not be found. It may already have been deleted.",
+        "failed": "Could not delete your account. Please try again."
       }
     }
   },
   "board": {
     "autoplay": "Autoplay",
+    "backlogAutoplayWarning": "Autoplay won't pick up tasks in Backlog",
+    "backlogAutoplayHint": "Move to Tasks for autoplay to pick them up",
     "addRunner": "Add runner",
     "noAgentsAvailable": "No agents available",
     "selectWorkspace": "Select a workspace",
@@ -1164,7 +1556,98 @@
     "taskStarted": "Task started",
     "stopRequested": "Stop requested",
     "showMore": "Show more",
-    "showLess": "Show less"
+    "showLess": "Show less",
+    "statusView": "Status",
+    "kanbanView": "Kanban",
+    "missionView": "Mission",
+    "settingsView": "Settings",
+    "mcMetrics": "Metrics & Distribution",
+    "mcActivity": "Activity",
+    "mcBurnup": "Burnup",
+    "mcBurnupEmpty": "No data yet",
+    "mcBurnupTotal": "Total",
+    "mcBurnupDone": "Done",
+    "mcBurnupDays": "days",
+    "mcTeam": "Team",
+    "settingsTitle": "Project Settings",
+    "settingsName": "Name",
+    "settingsNamePlaceholder": "Project name",
+    "settingsDescription": "Description",
+    "settingsDescriptionPlaceholder": "Short description",
+    "settingsContext": "Context",
+    "settingsContextPlaceholder": "Architecture notes, coding standards, etc.",
+    "settingsContextHint": "This context is injected into agent system prompts when working on this project.",
+    "settingsColumns": "Board Columns",
+    "settingsSave": "Save",
+    "settingsSaving": "Saving...",
+    "settingsSaved": "Settings saved",
+    "settingsSaveError": "Failed to save settings",
+    "statusHealthy": "Healthy",
+    "statusWarning": "Warning",
+    "statusCritical": "Critical",
+    "statusProgress": "Progress",
+    "statusTasksDone": "tasks done",
+    "statusInProgress": "in progress",
+    "statusInReview": "in review",
+    "statusSummary": "Summary",
+    "statusTotal": "Total",
+    "statusRunning": "Running",
+    "statusBlocked": "Blocked",
+    "statusDone": "Done",
+    "statusDistribution": "Board Distribution",
+    "statusBurnChart": "Progress Chart",
+    "burnUpTitle": "Burn Up — last 7 days",
+    "burnDownTitle": "Burn Down — last 7 days",
+    "burnUp": "Up",
+    "burnDown": "Down",
+    "burnScope": "Scope",
+    "burnCompleted": "Completed",
+    "burnRemaining": "Remaining",
+    "burnBlocked": "Blocked",
+    "burnNoData": "No data yet",
+    "burnToday": "today",
+    "burnProjection": "Projection",
+    "burnEstCompletion": "Est. completion",
+    "burnNoProjection": "Not enough data for projection",
+    "burnTasksDay": "tasks/day",
+    "statusAgents": "Active Agents",
+    "statusActive": "Active",
+    "statusPaused": "Paused",
+    "statusSlots": "slots",
+    "statusActivity": "Recent Activity",
+    "statusBy": "by",
+    "statusCreated": "Created",
+    "statusNoTasks": "No tasks yet",
+    "statusNoTasksHint": "Create tasks on the Kanban board to see project stats here",
+    "activity_task_created": "Task created",
+    "activity_task_moved": "Task moved",
+    "activity_task_status_changed": "Status changed",
+    "activity_task_started": "Task started",
+    "activity_task_completed": "Task completed",
+    "activity_task_blocked": "Task blocked",
+    "activity_task_stopped": "Task stopped",
+    "activity_progress_note": "Progress note",
+    "activity_task_assigned": "Task assigned",
+    "activity_task_updated": "Task updated",
+    "activity_task_deleted": "Task deleted",
+    "activity_board_task_created": "Task created",
+    "activity_board_task_updated": "Task updated",
+    "activity_board_task_moved": "Task moved",
+    "activity_board_task_status_changed": "Status changed",
+    "activity_board_task_assigned": "Task assigned",
+    "activity_board_task_progress_note": "Progress note",
+    "activity_board_task_deleted": "Task deleted",
+    "activity_board_agent_play_changed": "Autoplay toggled",
+    "activity_board_agent_slots_changed": "Slots changed",
+    "activity_board_dependency_added": "Dependency added",
+    "activity_board_dependency_removed": "Dependency removed",
+    "taskDetail": {
+      "tabInput": "Input"
+    },
+    "input": {
+      "typed": "Input artifact · {{id}}",
+      "untyped": "Input data (untyped)"
+    }
   },
   "agent": {
     "createNewAgent": "Create New Agent",
@@ -1246,6 +1729,7 @@
     "noSkillsHint": "There are no skills configured in this workspace yet.",
     "llmModel": "LLM Model",
     "modelSelectHint": "Select which model this agent should use, or leave it on System Default to automatically use your default provider and model.",
+    "zdrFilterActive": "Zero Data Retention is enabled for this workspace — only ZDR models (local or no-retention providers) are shown.",
     "noProvidersConfigured": "No Providers Configured",
     "noProvidersHint": "You need to configure at least one LLM provider to use this agent.",
     "noProvidersAction": "Go to My Providers in the sidebar to add a provider (Anthropic, OpenAI, etc.).",
@@ -1311,6 +1795,7 @@
     "categorySystem": "System",
     "categoryProductivity": "Productivity",
     "categoryGoogleSuite": "Google Suite",
+    "categoryMicrosoftSuite": "Microsoft Suite",
     "categoryCommunication": "Communication",
     "categoryIntegration": "Integration",
     "categoryAi": "Artificial Intelligence",
@@ -1319,12 +1804,20 @@
     "categoryMedia": "Media",
     "categoryOther": "Other",
     "categoryGoogle": "Google Suite",
+    "categoryMicrosoft": "Microsoft",
     "loadingApp": "Loading app...",
     "context": "Context",
     "noContextConfigured": "No context configured. Tap the pencil icon to add context.",
     "editContext": "Edit Context",
     "contextPlaceholder": "Add context about this app...",
     "dangerZone": "Danger zone",
+    "scopeChanged": "Scope updated",
+    "scopeChangedPersonal": "This app is now personal — only you see it and use it, in your personal conversations.",
+    "scopeChangedShared": "This app is now shared — every member sees it and the agents use it in any conversation.",
+    "scopeChangeError": "Failed to change scope",
+    "collisionTitle": "Rename before sharing",
+    "collisionHint": "Another app in this workspace already uses this name. Pick a new name; it becomes shared with that name.",
+    "collisionRenameAndShare": "Rename and share",
     "uninstallApp": "Uninstall app",
     "uninstallWarning": "This action will remove the app and all its settings. This cannot be undone.",
     "uninstallConfirmMessage": "Are you sure you want to uninstall \"{{name}}\"? This action cannot be undone.",
@@ -1379,11 +1872,16 @@
     "app": "App",
     "authentication": "Authentication",
     "permissions": "Permissions",
-    "connection": "Connection",
-    "configuration": "Configuration",
-    "instructions": "Instructions",
-    "addInstructions": "Add instructions",
-    "editInstructions": "Edit"
+    "scope": "App scope",
+    "scopeHint": "A personal app is only visible to you and only works in your personal conversations. A shared app is visible to every member and works in every conversation, with the credentials it was installed with.",
+    "scopeShared": "Shared",
+    "scopeSharedDesc": "Visible to the whole workspace · works in every conversation",
+    "scopePersonal": "Personal",
+    "scopePersonalDesc": "Only you · your personal conversations only",
+    "scopeChanging": "Changing scope…",
+    "moreAppsTitle": "Looking for more apps?",
+    "moreAppsHint": "Gmail, Notion, HubSpot, Linear and more — connect them in seconds.",
+    "moreAppsCta": "Browse catalog"
   },
   "usage": {
     "loadingData": "Loading usage data...",
@@ -1454,6 +1952,59 @@
     "userId": "User ID",
     "companyId": "Company ID"
   },
+  "feedbackAdmin": {
+    "eyebrow": "Triage",
+    "subtitle": "One inbox for every bug & suggestion report",
+    "search": "Search title, reporter, ID…",
+    "loadingDetail": "Loading report…",
+    "adminRequired": "Admin privileges required.",
+    "loadFailed": "Failed to load feedback.",
+    "error": "Error",
+    "emptyTitle": "Nothing here",
+    "emptyText": "No reports match this view.",
+    "view_all": "All",
+    "view_tracking": "Tracking",
+    "view_future": "Future",
+    "view_dismissed": "Dismissed",
+    "view_completed": "Completed",
+    "typeAll": "All",
+    "typeBug": "Bug",
+    "typeSuggestion": "Suggestion",
+    "backToList": "Back to list",
+    "sectionReport": "Report",
+    "sectionDescription": "Description",
+    "sectionPriority": "Priority",
+    "sectionActions": "Actions",
+    "sectionUpdates": "Updates",
+    "sectionAddUpdate": "Add update",
+    "noUpdates": "No updates yet.",
+    "dismiss_wont_fix": "Won't fix",
+    "dismiss_invalid": "Invalid",
+    "source_tool": "Tool",
+    "source_conversation": "Conversation",
+    "source_email": "Email",
+    "source_manual": "Manual",
+    "actReopen": "Reopen",
+    "actReview": "Review",
+    "actStart": "Start work",
+    "actPostpone": "Postpone → Future",
+    "actDismiss": "Dismiss",
+    "actComplete": "Complete",
+    "changeTo": "Change status",
+    "notePlaceholder": "Optional note for the reporter (shown on their timeline)",
+    "notifyReporter": "Email the reporter that this is done",
+    "updatePlaceholder": "Write an update the reporter will see…",
+    "addUpdate": "Add update",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "statusUpdated": "Status updated",
+    "reporterEmailed": "The reporter has been emailed.",
+    "prioritySet": "Priority set",
+    "updateAdded": "Update added",
+    "updateFailed": "Update failed",
+    "reporterNotified": "Reporter emailed",
+    "reporterNotifyError": "Reporter email failed"
+  },
   "skills": {
     "title": "Skills",
     "newSkill": "New skill",
@@ -1481,8 +2032,31 @@
     "namePlaceholder": "Skill name",
     "descriptionPlaceholder": "Short description (optional)",
     "contentPlaceholder": "Instructions in Markdown...",
+    "labelLoadMode": "LOAD MODE",
+    "loadMode": "Load mode",
+    "loadModeAlways": "Always loaded",
+    "loadModeOnDemand": "On-demand",
     "noSkills": "No skills in this workspace",
     "noSkillsHint": "Create a skill to add reusable instructions to your agents"
+  },
+  "academy": {
+    "title": "Academy",
+    "subtitle": "Learn Teros with video tutorials, organized by phase.",
+    "searchPlaceholder": "Search tutorials…",
+    "allPhases": "All",
+    "noResults": "No tutorials match your search.",
+    "back": "Back to catalog",
+    "previous": "Previous",
+    "next": "Next",
+    "objectiveLabel": "Objective",
+    "stepsLabel": "Steps",
+    "transcriptLabel": "Transcript",
+    "contentLanguage": "Content language",
+    "resultsLabel": "results",
+    "gridView": "Grid",
+    "listView": "List",
+    "videoLabel": "Video",
+    "phaseShort": "Phase"
   },
   "onboarding": {
     "loadingTeros": "Loading Teros…",
@@ -1610,7 +2184,7 @@
     "failedToGrantAccess": "Failed to grant access",
     "allSetTitle": "You're all set, {{firstName}}!",
     "hereIsWhatWeSetUp": "Here's what we set up together:",
-    "startChatting": "Start chatting →",
+    "startChatting": "Start chatting",
     "addMoreAnytime": "You can always add more providers and apps from the workspace settings.",
     "providerConnected": "Provider connected",
     "youIntroducedYourself": "You introduced yourself",
@@ -1671,7 +2245,24 @@
     "customizeYourAgent": "Customize your agent",
     "configureAppCredentials": "Configure app credentials",
     "grantAgentAccessToApps": "Grant agent access to apps",
-    "sendYourFirstMessage": "Send your first message"
+    "sendYourFirstMessage": "Send your first message",
+    "stepModel": "Model",
+    "quoteModel": "\"Connect me to a model so I can think\"",
+    "setupModelLabel": "Connect a model",
+    "setupModelSub": "Required: an API key or a local Ollama",
+    "setupAboutLabel": "Tell me about yourself",
+    "setupAboutSub": "So I can help you from day one",
+    "modelConnected": "Connected to {{provider}}",
+    "addMoreAnytimeCloud": "You can connect apps and invite people from the workspace anytime.",
+    "modelStep": {
+      "title": "Connect a model",
+      "description": "This Teros runs on your infrastructure, so I need a model to think with. Paste an API key from your provider, or point me to a local Ollama.",
+      "checking": "Checking…",
+      "probing": "Asking {{agentName}} to say hello…",
+      "noAnswer": "The model did not answer. Check the key and try again.",
+      "readyNoReply": "I'm connected and ready.",
+      "connectedVia": "{{agentName}} · via {{provider}}"
+    }
   },
   "catalog": {
     "title": "Catalog",
@@ -1700,6 +2291,7 @@
     "categorySystem": "System",
     "categoryProductivity": "Productivity",
     "categoryGoogleSuite": "Google Suite",
+    "categoryMicrosoftSuite": "Microsoft Suite",
     "categoryCommunication": "Communication",
     "categoryIntegration": "Integration",
     "categoryAi": "Artificial Intelligence",
@@ -1729,7 +2321,22 @@
     "showLess": "Show less",
     "showAllActions": "Show all {{count}} actions",
     "groupOther": "Other",
-    "instancesInstalled": "Installed instances"
+    "instancesInstalled": "Installed instances",
+    "breadcrumb": "Catalog",
+    "notFound": "Agent App not found",
+    "sectionPreview": "Preview",
+    "previewComingSoon": "Preview coming soon",
+    "sectionPermissions": "Permissions",
+    "sectionAbout": "About",
+    "toolsCount": "{{count}} tool this Agent App exposes to agents",
+    "toolsCount_other": "{{count}} tools this Agent App exposes to agents",
+    "sectionEvents": "Events",
+    "eventsSubtitle": "Subscribe agents to real-time triggers",
+    "noEvents": "No events defined yet",
+    "eventsDescription": "Events let agents react to things happening in {{name}}.",
+    "dependenciesTitle": "Missing dependencies",
+    "dependenciesBody": "{{name}} needs the following apps installed in this workspace to work properly:",
+    "installDependency": "Install {{name}}"
   },
   "browserbase": {
     "reloadLiveView": "Reload Live View",
@@ -1752,9 +2359,203 @@
     "contextTitle": "Context"
   },
   "terminal": {
+    "chat": {
+      "needsYou": "{{name}} needs you",
+      "needsYouHandsWheel": "{{name}} needs you · {{agent}} hands you the wheel",
+      "wantsToRun": "Wants to run",
+      "openFloating": "Open floating",
+      "always": "Always",
+      "noEllipsis": "No…",
+      "sent": "You answered {{key}}",
+      "answered": "Answered",
+      "ended": "The session has ended",
+      "goToTerminal": "Go to the terminal"
+    },
+    "float": {
+      "untitled": "Terminal",
+      "take": "Take",
+      "takeWheel": "Take the wheel",
+      "keyboardHere": "keyboard here",
+      "dock": "Back to the Terminal window (it keeps running)",
+      "minimize": "Minimise to a bubble",
+      "needsYou": "needs you",
+      "dropBack": "Drop to keep it in the crew",
+      "dropToFloat": "Drop to float it here",
+      "more": "More",
+      "dockItem": "Back to the Terminal window",
+      "dockHint": "keeps running",
+      "close": "Close terminal",
+      "closeHint": "ends it",
+      "closeConfirm": "Click again to close it",
+      "toWindow": "To the Terminal"
+    },
     "title": "Terminal",
-    "noBashApp": "Bash app not available",
-    "installBashHint": "Install the Bash app from the catalog to use the terminal"
+    "noBashApp": "Terminal needs the Bash app",
+    "installBashHint": "Terminal sessions run in this workspace's Bash app (its own Linux machine, with persistent home and files). Install it and a terminal opens right away.",
+    "clear": "Clear",
+    "newShell": "New shell",
+    "newClaude": "Claude Code",
+    "sessions": "Sessions",
+    "sessionsTitle": "Workspace sessions ({{count}})",
+    "noSessions": "No sessions yet.",
+    "split": "Split side by side",
+    "optionMeta": "Option key as Meta (Alt)",
+    "closeTab": "Close tab (the session keeps running)",
+    "opening": "Opening…",
+    "kill": "End session",
+    "confirmKill": "Click again to end the session",
+    "killFailed": "Could not end the session",
+    "pinned": "pinned",
+    "ephemeral": "ephemeral",
+    "pinnedHint": "Pinned: kept until you close it",
+    "ephemeralHint": "Ephemeral: closes after 30 min idle",
+    "watching": "{{count}} watching",
+    "watchers": "{{names}} watching",
+    "byAgent": "by an agent",
+    "live": "Live",
+    "ended": "Session ended",
+    "denied": "No access",
+    "reconnecting": "Reconnecting…",
+    "connecting": "Connecting…",
+    "agentTyping": "A Teros agent is typing…",
+    "personTyping": "{{name}} is typing…",
+    "createFailed": "Could not open a terminal",
+    "installBash": "Install Bash and open a terminal",
+    "installFailed": "Could not install Bash",
+    "bashInstalled": "Bash installed — opening a terminal",
+    "readRoleTitle": "Terminals need write access",
+    "readRoleText": "A terminal is a shell in this workspace's machine, and its screen can show secrets. Ask an admin for write access.",
+    "attentionBlocked": "{{name}} needs you",
+    "attentionDone": "{{name}} finished",
+    "open": "Open",
+    "tabsCount": "{{count}} sessions",
+    "state": {
+      "blocked": "Needs you",
+      "done": "Done",
+      "working": "Working",
+      "idle": "Idle"
+    },
+    "legacy": "not persistent: ends if the server restarts",
+    "auth": {
+      "title": "How should {{name}} sign in?",
+      "titleLogin": "{{name}} needs to sign in",
+      "privacy": "These credentials are yours: Teros keeps them encrypted and injects them only into your own sessions. Nothing is written to the workspace's disk.",
+      "signOut": "Sign out",
+      "teros": "Use Teros",
+      "terosText": "Runs through your Teros provider {{label}}. Nothing to set up.",
+      "terosCta": "Use Teros",
+      "recommended": "zero setup",
+      "login": "Sign in with Claude",
+      "loginText": "Pro or Max subscription. The sign-in page opens in a new tab; paste the code it gives you here.",
+      "openAgain": "Open the sign-in page again ↗",
+      "codePlaceholder": "Paste the code from the page",
+      "finish": "Finish",
+      "loginCta": "Sign in with Claude",
+      "key": "Use an API key",
+      "keyTextClaude": "An Anthropic API key (sk-ant-…), billed to your Anthropic account.",
+      "keyText": "An OpenAI API key for {{name}}.",
+      "save": "Save",
+      "share": "Share with this workspace's agents (off: only your own sessions use it)",
+      "saved": "New {{name}} sessions will use: {{label}}",
+      "none": "not signed in",
+      "change": "change",
+      "loginRetry": "Start the sign-in again",
+      "backendOutdated": "This server's backend is older than the app and can't do this yet. Restart or redeploy the backend, then try again.",
+      "loginStarting": "Starting Claude Code's sign-in…",
+      "loginInstalling": "Installing Claude Code in this workspace (first time only, about a minute)…",
+      "openPage": "Open the Claude sign-in page ↗",
+      "codeHint": "Sign in there, then copy the code the page shows and paste it here. It works once, for a few minutes.",
+      "loginExchanging": "Checking the code with Claude…",
+      "rejected": "{{name}} asked to sign in although it got your saved sign-in ({{label}}): it may have expired or been revoked. Sign in again or pick another option.",
+      "staleSession": "This session started with an earlier sign-in ({{old}}). Your current one is {{label}}: open a new session to use it.",
+      "replaceSession": "Open a new session as {{label}}",
+      "restartOffer_one": "{{count}} open Claude Code session still uses your previous sign-in",
+      "restartOffer_other": "{{count}} open Claude Code sessions still use your previous sign-in",
+      "restartAction": "Restart as {{label}}"
+    },
+    "crew": {
+      "agentWaits": "{{name}} is waiting",
+      "allFloating": "Your terminals are floating. Drop one on the crew to bring it back here.",
+      "ask": "Ask",
+      "askWheel": "Ask for the wheel",
+      "asleep": "asleep",
+      "atOnce": "at once",
+      "claim": "Ask for it",
+      "clashHint": "both of your keystrokes reach the same line",
+      "close": "Close terminal",
+      "closeAgentDrives": "{{name}} is at the wheel and loses this terminal.",
+      "closePersonDrives": "{{name}} is at the wheel.",
+      "closeProgram": "{{command}} is still running in it.",
+      "closeShort": "Close",
+      "closeTitle": "Close {{name}}?",
+      "closeWorking": "{{agent}} is in the middle of a turn: it stops here.",
+      "closed": "{{name}} closed",
+      "copilotWaits": "{{name}} waits as co-pilot",
+      "crew": "Crew",
+      "dockOne": "Bring {{name}} back",
+      "drives": "drives",
+      "dropBack": "Drop to dock",
+      "dropHere": "Drop here",
+      "emptyText": "Open a shell or a Claude Code. When an agent opens one, it shows up here with its face, and you see who is at the wheel.",
+      "emptyTitle": "No terminals yet",
+      "float": "Float",
+      "floating": "Floating",
+      "frozen": "frozen",
+      "giveBackFailed": "Could not give the wheel back",
+      "giveBackShort": "Give back",
+      "giveBackTo": "Give back to {{name}}",
+      "giveBackToAgent": "Give back to the agent",
+      "gripHint": "Drag to switch sides",
+      "keep": "Keep it",
+      "letGo": "Let go of the wheel",
+      "more": "More",
+      "new": "New terminal",
+      "newClaudeHint": "with your sign-in",
+      "newShellHint": "bash in this workspace",
+      "noNote": "No note",
+      "nobody": "Nobody at the wheel",
+      "notYet": "This server doesn't know the wheel yet.",
+      "notePlaceholder": "A note for {{name}} (optional)",
+      "onLeft": "On the left",
+      "onRight": "On the right",
+      "pair": "{{a}} and {{b}}",
+      "sideSavedLeft": "Saved: the crew goes on the left",
+      "sideSavedRight": "Saved: the crew goes on the right",
+      "since": "since {{time}}",
+      "switchSide": "Move the crew to the other side",
+      "take": "Take",
+      "takeFailed": "Could not take the wheel",
+      "takeWheel": "Take the wheel",
+      "terminal": "Terminal",
+      "theAgent": "The agent",
+      "theAgentLower": "the agent",
+      "toLeft": "Move to the left",
+      "toRight": "Move to the right",
+      "undo": "Undo",
+      "watching": "Watching",
+      "watchingMany": "{{a}}, {{b}} and {{count}} more are watching",
+      "watchingOne": "{{a}} is watching",
+      "watchingTwo": "{{a}} and {{b}} are watching",
+      "yield": "Let them",
+      "you": "You",
+      "youDrive": "drive",
+      "youLower": "you",
+      "yourTurn": "Your turn"
+    },
+    "pane": {
+      "starting": "Starting…",
+      "retry": "Retry",
+      "restart": "Restart",
+      "denied": "You don't have access to this session",
+      "jump": "Jump to the bottom"
+    },
+    "bar": {
+      "signIn": "{{name}} sign-in: {{label}}"
+    },
+    "notices": {
+      "title": "Terminals",
+      "lead": "Claude Code is waiting for your answer. Click an option and it is typed for you."
+    }
   },
   "providers": {
     "myProviders": "My Providers",
@@ -1831,6 +2632,41 @@
     "tabContext": "Context",
     "noMembers": "No members in this workspace",
     "membersTitle": "Members",
+    "members": {
+      "addMember": "Add member",
+      "loading": "Loading members…",
+      "statusPending": "Pending",
+      "pendingHint": "Invited by {{invitedBy}} — activates when they accept the invitation",
+      "resend": "Resend invitation",
+      "revoke": "Revoke invitation",
+      "emailLabel": "Email",
+      "emailPlaceholder": "person@team.com",
+      "emailHelp": "They receive an email invitation and become a member when they accept it — whether or not they already have a Teros account.",
+      "roleLabel": "Role",
+      "roleHelp": "Admin manages members · Write creates and edits · Read can only view.",
+      "sendInvite": "Send invitation",
+      "invitedTitle": "Members",
+      "addedActive": "{{email}} is already an active member of this workspace.",
+      "invitedPending": "Invitation sent to {{email}}. They become a member when they accept it.",
+      "invitedNoEmail": "Invitation created for {{email}}, but the email could not be sent. You can resend it from the list.",
+      "resent": "Invitation resent to {{email}}.",
+      "revokedTitle": "Invitation revoked",
+      "revoked": "{{email}}'s invitation has been removed. It will no longer appear on signup.",
+      "addError": "Could not add the member",
+      "resendError": "Could not resend the invitation",
+      "revokeError": "Could not revoke the invitation",
+      "remove": "Remove from workspace",
+      "removedTitle": "Member removed",
+      "removed": "{{name}} is no longer a member of this workspace.",
+      "removeError": "Could not remove the member",
+      "roleUpdatedTitle": "Role updated",
+      "roleUpdated": "{{name}} is now {{role}}.",
+      "roleUpdateError": "Could not change the role",
+      "leave": "Leave workspace",
+      "leftTitle": "You left the workspace",
+      "left": "You are no longer a member of {{name}}.",
+      "leaveError": "Could not leave the workspace"
+    },
     "workspaceContext": "Workspace Context",
     "workspaceContextDescription": "The context is included in the prompts of agents in this workspace. Use it to provide project-specific information, coding standards, or any other relevant information that agents should know.",
     "icon": "Icon",
@@ -1920,6 +2756,8 @@
       "testedAt": "Tested {{date}}",
       "toolTestedAt": "Tested {{date}}",
       "categories": {
+        "google": "Google Suite",
+        "microsoft": "Microsoft Suite",
         "productivity": "Productivity",
         "development": "Development",
         "ai": "AI",
@@ -1971,7 +2809,13 @@
     },
     "terosCore": {
       "providersConfig": "Providers configuration",
-      "providersUpdated": "Providers updated"
+      "providersUpdated": "Providers updated",
+      "modelPinned": "Model pinned",
+      "modelReset": "Model reset",
+      "systemDefault": "System Default",
+      "viaProvider": "via {{provider}}",
+      "switchedFrom": "switched from {{provider}}",
+      "providerAutoAdded": "{{provider}} added to the agent's providers"
     },
     "figma": {
       "unnamedFile": "(unnamed file)",
@@ -1997,6 +2841,1097 @@
     "context7": {
       "noMatchingLibraries": "No matching libraries found in Context7.",
       "noSnippets": "No documentation snippets returned for this query."
+    },
+    "tools": {
+      "terosCore": {
+        "listAgents": {
+          "pending": "List agents",
+          "running": "Listing agents",
+          "completed": "Listed agents",
+          "failed": "Couldn't list agents"
+        },
+        "listWorkspaceAgents": {
+          "pending": "List agents in {{workspace}}",
+          "running": "Listing agents in {{workspace}}",
+          "completed": "Listed agents in {{workspace}}",
+          "failed": "Couldn't list agents in {{workspace}}",
+          "pendingGeneric": "List workspace agents",
+          "runningGeneric": "Listing workspace agents",
+          "completedGeneric": "Listed workspace agents",
+          "failedGeneric": "Couldn't list workspace agents"
+        },
+        "getAgent": {
+          "pending": "Look up {{agent}}",
+          "running": "Looking up {{agent}}",
+          "completed": "Looked up {{agent}}",
+          "failed": "Couldn't look up {{agent}}",
+          "pendingGeneric": "Look up an agent",
+          "runningGeneric": "Looking up an agent",
+          "completedGeneric": "Looked up an agent",
+          "failedGeneric": "Couldn't look up the agent"
+        },
+        "createAgent": {
+          "pending": "Create agent {{agent}}",
+          "running": "Creating agent {{agent}}",
+          "completed": "Created agent {{agent}}",
+          "failed": "Couldn't create agent {{agent}}",
+          "pendingGeneric": "Create an agent",
+          "runningGeneric": "Creating an agent",
+          "completedGeneric": "Created an agent",
+          "failedGeneric": "Couldn't create the agent"
+        },
+        "updateAgent": {
+          "pending": "Update {{agent}}",
+          "running": "Updating {{agent}}",
+          "completed": "Updated {{agent}}",
+          "failed": "Couldn't update {{agent}}",
+          "pendingGeneric": "Update an agent",
+          "runningGeneric": "Updating an agent",
+          "completedGeneric": "Updated an agent",
+          "failedGeneric": "Couldn't update the agent"
+        },
+        "deleteAgent": {
+          "pending": "Delete {{agent}}",
+          "running": "Deleting {{agent}}",
+          "completed": "Deleted {{agent}}",
+          "failed": "Couldn't delete {{agent}}",
+          "pendingGeneric": "Delete an agent",
+          "runningGeneric": "Deleting an agent",
+          "completedGeneric": "Deleted an agent",
+          "failedGeneric": "Couldn't delete the agent"
+        },
+        "listAgentApps": {
+          "pending": "List {{agent}}'s apps",
+          "running": "Listing {{agent}}'s apps",
+          "completed": "Listed {{agent}}'s apps",
+          "failed": "Couldn't list {{agent}}'s apps",
+          "pendingGeneric": "List an agent's apps",
+          "runningGeneric": "Listing an agent's apps",
+          "completedGeneric": "Listed an agent's apps",
+          "failedGeneric": "Couldn't list the agent's apps"
+        },
+        "getAgentProviders": {
+          "pending": "Check {{agent}}'s model providers",
+          "running": "Checking {{agent}}'s model providers",
+          "completed": "Checked {{agent}}'s model providers",
+          "failed": "Couldn't check {{agent}}'s model providers",
+          "pendingGeneric": "Check an agent's model providers",
+          "runningGeneric": "Checking an agent's model providers",
+          "completedGeneric": "Checked an agent's model providers",
+          "failedGeneric": "Couldn't check the agent's model providers"
+        },
+        "setAgentProviders": {
+          "pending": "Set {{agent}}'s model providers",
+          "running": "Setting {{agent}}'s model providers",
+          "completed": "Set {{agent}}'s model providers",
+          "failed": "Couldn't set {{agent}}'s model providers",
+          "pendingGeneric": "Set an agent's model providers",
+          "runningGeneric": "Setting an agent's model providers",
+          "completedGeneric": "Set an agent's model providers",
+          "failedGeneric": "Couldn't set the agent's model providers"
+        },
+        "setAgentPreferredProvider": {
+          "pending": "Change {{agent}}'s preferred provider",
+          "running": "Changing {{agent}}'s preferred provider",
+          "completed": "Changed {{agent}}'s preferred provider",
+          "failed": "Couldn't change {{agent}}'s preferred provider",
+          "pendingGeneric": "Change an agent's preferred provider",
+          "runningGeneric": "Changing an agent's preferred provider",
+          "completedGeneric": "Changed an agent's preferred provider",
+          "failedGeneric": "Couldn't change the agent's preferred provider"
+        },
+        "setAgentModel": {
+          "pending": "Pin {{agent}}'s model",
+          "running": "Pinning {{agent}}'s model",
+          "completed": "Pinned {{agent}}'s model",
+          "failed": "Couldn't pin {{agent}}'s model",
+          "pendingGeneric": "Pin an agent's model",
+          "runningGeneric": "Pinning an agent's model",
+          "completedGeneric": "Pinned an agent's model",
+          "failedGeneric": "Couldn't pin the agent's model"
+        },
+        "resetAgentModel": {
+          "pending": "Reset {{agent}}'s model to System Default",
+          "running": "Resetting {{agent}}'s model to System Default",
+          "completed": "Reset {{agent}}'s model to System Default",
+          "failed": "Couldn't reset {{agent}}'s model",
+          "pendingGeneric": "Reset an agent's model to System Default",
+          "runningGeneric": "Resetting an agent's model to System Default",
+          "completedGeneric": "Reset an agent's model to System Default",
+          "failedGeneric": "Couldn't reset the agent's model"
+        },
+        "setDefaultProvider": {
+          "pending": "Set the System Default provider",
+          "running": "Setting the System Default provider",
+          "completed": "System Default provider set",
+          "failed": "Couldn't set the System Default provider",
+          "pendingGeneric": "Set the System Default provider",
+          "runningGeneric": "Setting the System Default provider",
+          "completedGeneric": "System Default provider set",
+          "failedGeneric": "Couldn't set the System Default provider"
+        },
+        "listWorkspaces": {
+          "pending": "List workspaces",
+          "running": "Listing workspaces",
+          "completed": "Listed workspaces",
+          "failed": "Couldn't list workspaces"
+        },
+        "getWorkspace": {
+          "pending": "Look up workspace {{workspace}}",
+          "running": "Looking up workspace {{workspace}}",
+          "completed": "Looked up workspace {{workspace}}",
+          "failed": "Couldn't look up workspace {{workspace}}",
+          "pendingGeneric": "Look up a workspace",
+          "runningGeneric": "Looking up a workspace",
+          "completedGeneric": "Looked up a workspace",
+          "failedGeneric": "Couldn't look up the workspace"
+        },
+        "createWorkspace": {
+          "pending": "Create workspace {{workspace}}",
+          "running": "Creating workspace {{workspace}}",
+          "completed": "Created workspace {{workspace}}",
+          "failed": "Couldn't create workspace {{workspace}}",
+          "pendingGeneric": "Create a workspace",
+          "runningGeneric": "Creating a workspace",
+          "completedGeneric": "Created a workspace",
+          "failedGeneric": "Couldn't create the workspace"
+        },
+        "updateWorkspace": {
+          "pending": "Update workspace {{workspace}}",
+          "running": "Updating workspace {{workspace}}",
+          "completed": "Updated workspace {{workspace}}",
+          "failed": "Couldn't update workspace {{workspace}}",
+          "pendingGeneric": "Update a workspace",
+          "runningGeneric": "Updating a workspace",
+          "completedGeneric": "Updated a workspace",
+          "failedGeneric": "Couldn't update the workspace"
+        },
+        "archiveWorkspace": {
+          "pending": "Archive workspace {{workspace}}",
+          "running": "Archiving workspace {{workspace}}",
+          "completed": "Archived workspace {{workspace}}",
+          "failed": "Couldn't archive workspace {{workspace}}",
+          "pendingGeneric": "Archive a workspace",
+          "runningGeneric": "Archiving a workspace",
+          "completedGeneric": "Archived a workspace",
+          "failedGeneric": "Couldn't archive the workspace"
+        },
+        "addWorkspaceMember": {
+          "pending": "Invite {{email}} to {{workspace}}",
+          "running": "Inviting {{email}} to {{workspace}}",
+          "completed": "Invited {{email}} to {{workspace}}",
+          "failed": "Couldn't invite {{email}} to {{workspace}}",
+          "pendingGeneric": "Invite someone to a workspace",
+          "runningGeneric": "Inviting someone to a workspace",
+          "completedGeneric": "Invited someone to a workspace",
+          "failedGeneric": "Couldn't invite them to the workspace"
+        },
+        "removeWorkspaceMember": {
+          "pending": "Remove a member from {{workspace}}",
+          "running": "Removing a member from {{workspace}}",
+          "completed": "Removed a member from {{workspace}}",
+          "failed": "Couldn't remove the member from {{workspace}}",
+          "pendingGeneric": "Remove a workspace member",
+          "runningGeneric": "Removing a workspace member",
+          "completedGeneric": "Removed a workspace member",
+          "failedGeneric": "Couldn't remove the workspace member"
+        },
+        "updateWorkspaceMemberRole": {
+          "pending": "Change a member's role in {{workspace}}",
+          "running": "Changing a member's role in {{workspace}}",
+          "completed": "Changed a member's role in {{workspace}}",
+          "failed": "Couldn't change the member's role in {{workspace}}",
+          "pendingGeneric": "Change a member's role",
+          "runningGeneric": "Changing a member's role",
+          "completedGeneric": "Changed a member's role",
+          "failedGeneric": "Couldn't change the member's role"
+        },
+        "listWorkspaceApps": {
+          "pending": "List apps in {{workspace}}",
+          "running": "Listing apps in {{workspace}}",
+          "completed": "Listed apps in {{workspace}}",
+          "failed": "Couldn't list apps in {{workspace}}",
+          "pendingGeneric": "List workspace apps",
+          "runningGeneric": "Listing workspace apps",
+          "completedGeneric": "Listed workspace apps",
+          "failedGeneric": "Couldn't list workspace apps"
+        },
+        "getApp": {
+          "pending": "Look up {{app}}",
+          "running": "Looking up {{app}}",
+          "completed": "Looked up {{app}}",
+          "failed": "Couldn't look up {{app}}",
+          "pendingGeneric": "Look up an app",
+          "runningGeneric": "Looking up an app",
+          "completedGeneric": "Looked up an app",
+          "failedGeneric": "Couldn't look up the app"
+        },
+        "installApp": {
+          "pending": "Install {{app}}",
+          "running": "Installing {{app}}",
+          "completed": "Installed {{app}}",
+          "failed": "Couldn't install {{app}}",
+          "pendingGeneric": "Install an app",
+          "runningGeneric": "Installing an app",
+          "completedGeneric": "Installed an app",
+          "failedGeneric": "Couldn't install the app"
+        },
+        "uninstallApp": {
+          "pending": "Uninstall {{app}}",
+          "running": "Uninstalling {{app}}",
+          "completed": "Uninstalled {{app}}",
+          "failed": "Couldn't uninstall {{app}}",
+          "pendingGeneric": "Uninstall an app",
+          "runningGeneric": "Uninstalling an app",
+          "completedGeneric": "Uninstalled an app",
+          "failedGeneric": "Couldn't uninstall the app"
+        },
+        "renameApp": {
+          "pending": "Rename app to {{name}}",
+          "running": "Renaming app to {{name}}",
+          "completed": "Renamed app to {{name}}",
+          "failed": "Couldn't rename app to {{name}}",
+          "pendingGeneric": "Rename an app",
+          "runningGeneric": "Renaming an app",
+          "completedGeneric": "Renamed an app",
+          "failedGeneric": "Couldn't rename the app"
+        },
+        "checkAppAuth": {
+          "pending": "Check {{app}} connection",
+          "running": "Checking {{app}} connection",
+          "completed": "Checked {{app}} connection",
+          "failed": "Couldn't check {{app}} connection",
+          "pendingGeneric": "Check an app connection",
+          "runningGeneric": "Checking an app connection",
+          "completedGeneric": "Checked an app connection",
+          "failedGeneric": "Couldn't check the app connection"
+        },
+        "setAppSecret": {
+          "pending": "Save the {{key}} secret for {{app}}",
+          "running": "Saving the {{key}} secret for {{app}}",
+          "completed": "Saved the {{key}} secret for {{app}}",
+          "failed": "Couldn't save the {{key}} secret for {{app}}",
+          "pendingGeneric": "Save an app secret",
+          "runningGeneric": "Saving an app secret",
+          "completedGeneric": "Saved an app secret",
+          "failedGeneric": "Couldn't save the app secret"
+        },
+        "getAppSecret": {
+          "pending": "Check the {{key}} secret of {{app}}",
+          "running": "Checking the {{key}} secret of {{app}}",
+          "completed": "Checked the {{key}} secret of {{app}}",
+          "failed": "Couldn't check the {{key}} secret of {{app}}",
+          "pendingGeneric": "Check an app secret",
+          "runningGeneric": "Checking an app secret",
+          "completedGeneric": "Checked an app secret",
+          "failedGeneric": "Couldn't check the app secret"
+        },
+        "copyAppAuth": {
+          "pending": "Copy {{source}} credentials to {{target}}",
+          "running": "Copying {{source}} credentials to {{target}}",
+          "completed": "Copied {{source}} credentials to {{target}}",
+          "failed": "Couldn't copy {{source}} credentials to {{target}}",
+          "pendingGeneric": "Copy app credentials",
+          "runningGeneric": "Copying app credentials",
+          "completedGeneric": "Copied app credentials",
+          "failedGeneric": "Couldn't copy the app credentials"
+        },
+        "showAppAuth": {
+          "pending": "Show {{app}} connection",
+          "running": "Showing {{app}} connection",
+          "completed": "Showed {{app}} connection",
+          "failed": "Couldn't show {{app}} connection",
+          "pendingGeneric": "Show an app connection",
+          "runningGeneric": "Showing an app connection",
+          "completedGeneric": "Showed an app connection",
+          "failedGeneric": "Couldn't show the app connection"
+        },
+        "listAppAccess": {
+          "pending": "Check who can use {{app}}",
+          "running": "Checking who can use {{app}}",
+          "completed": "Checked who can use {{app}}",
+          "failed": "Couldn't check who can use {{app}}",
+          "pendingGeneric": "Check who can use an app",
+          "runningGeneric": "Checking who can use an app",
+          "completedGeneric": "Checked who can use an app",
+          "failedGeneric": "Couldn't check who can use the app"
+        },
+        "grantAppAccess": {
+          "pending": "Give {{agent}} access to {{app}}",
+          "running": "Giving {{agent}} access to {{app}}",
+          "completed": "Gave {{agent}} access to {{app}}",
+          "failed": "Couldn't give {{agent}} access to {{app}}",
+          "pendingGeneric": "Give an agent access to an app",
+          "runningGeneric": "Giving an agent access to an app",
+          "completedGeneric": "Gave an agent access to an app",
+          "failedGeneric": "Couldn't give the agent access to the app"
+        },
+        "revokeAppAccess": {
+          "pending": "Remove {{agent}}'s access to {{app}}",
+          "running": "Removing {{agent}}'s access to {{app}}",
+          "completed": "Removed {{agent}}'s access to {{app}}",
+          "failed": "Couldn't remove {{agent}}'s access to {{app}}",
+          "pendingGeneric": "Remove an agent's access to an app",
+          "runningGeneric": "Removing an agent's access to an app",
+          "completedGeneric": "Removed an agent's access to an app",
+          "failedGeneric": "Couldn't remove the agent's access to the app"
+        },
+        "getAppPermissions": {
+          "pending": "Check {{app}} permissions",
+          "running": "Checking {{app}} permissions",
+          "completed": "Checked {{app}} permissions",
+          "failed": "Couldn't check {{app}} permissions",
+          "pendingGeneric": "Check an app's permissions",
+          "runningGeneric": "Checking an app's permissions",
+          "completedGeneric": "Checked an app's permissions",
+          "failedGeneric": "Couldn't check the app's permissions"
+        },
+        "setAppPermissions": {
+          "pending": "Update {{app}} permissions",
+          "running": "Updating {{app}} permissions",
+          "completed": "Updated {{app}} permissions",
+          "failed": "Couldn't update {{app}} permissions",
+          "pendingGeneric": "Update an app's permissions",
+          "runningGeneric": "Updating an app's permissions",
+          "completedGeneric": "Updated an app's permissions",
+          "failedGeneric": "Couldn't update the app's permissions"
+        },
+        "listCatalog": {
+          "pending": "Browse the app catalog",
+          "running": "Browsing the app catalog",
+          "completed": "Browsed the app catalog",
+          "failed": "Couldn't browse the app catalog"
+        },
+        "listProviders": {
+          "pending": "List model providers",
+          "running": "Listing model providers",
+          "completed": "Listed model providers",
+          "failed": "Couldn't list model providers"
+        },
+        "skillList": {
+          "pending": "List skills",
+          "running": "Listing skills",
+          "completed": "Listed skills",
+          "failed": "Couldn't list skills"
+        },
+        "skillCreate": {
+          "pending": "Create skill {{skill}}",
+          "running": "Creating skill {{skill}}",
+          "completed": "Created skill {{skill}}",
+          "failed": "Couldn't create skill {{skill}}",
+          "pendingGeneric": "Create a skill",
+          "runningGeneric": "Creating a skill",
+          "completedGeneric": "Created a skill",
+          "failedGeneric": "Couldn't create the skill"
+        },
+        "skillUpdate": {
+          "pending": "Update skill {{skill}}",
+          "running": "Updating skill {{skill}}",
+          "completed": "Updated skill {{skill}}",
+          "failed": "Couldn't update skill {{skill}}",
+          "pendingGeneric": "Update a skill",
+          "runningGeneric": "Updating a skill",
+          "completedGeneric": "Updated a skill",
+          "failedGeneric": "Couldn't update the skill"
+        },
+        "skillDelete": {
+          "pending": "Delete skill {{skill}}",
+          "running": "Deleting skill {{skill}}",
+          "completed": "Deleted skill {{skill}}",
+          "failed": "Couldn't delete skill {{skill}}",
+          "pendingGeneric": "Delete a skill",
+          "runningGeneric": "Deleting a skill",
+          "completedGeneric": "Deleted a skill",
+          "failedGeneric": "Couldn't delete the skill"
+        },
+        "skillGrantAccess": {
+          "pending": "Give {{agent}} the {{skill}} skill",
+          "running": "Giving {{agent}} the {{skill}} skill",
+          "completed": "Gave {{agent}} the {{skill}} skill",
+          "failed": "Couldn't give {{agent}} the {{skill}} skill",
+          "pendingGeneric": "Give an agent a skill",
+          "runningGeneric": "Giving an agent a skill",
+          "completedGeneric": "Gave an agent a skill",
+          "failedGeneric": "Couldn't give the agent the skill"
+        },
+        "skillRevokeAccess": {
+          "pending": "Remove the {{skill}} skill from {{agent}}",
+          "running": "Removing the {{skill}} skill from {{agent}}",
+          "completed": "Removed the {{skill}} skill from {{agent}}",
+          "failed": "Couldn't remove the {{skill}} skill from {{agent}}",
+          "pendingGeneric": "Remove a skill from an agent",
+          "runningGeneric": "Removing a skill from an agent",
+          "completedGeneric": "Removed a skill from an agent",
+          "failedGeneric": "Couldn't remove the skill from the agent"
+        },
+        "skillEnable": {
+          "pending": "Turn on {{skill}} for {{agent}}",
+          "running": "Turning on {{skill}} for {{agent}}",
+          "completed": "Turned on {{skill}} for {{agent}}",
+          "failed": "Couldn't turn on {{skill}} for {{agent}}",
+          "pendingGeneric": "Turn on a skill",
+          "runningGeneric": "Turning on a skill",
+          "completedGeneric": "Turned on a skill",
+          "failedGeneric": "Couldn't turn on the skill"
+        },
+        "skillDisable": {
+          "pending": "Turn off {{skill}} for {{agent}}",
+          "running": "Turning off {{skill}} for {{agent}}",
+          "completed": "Turned off {{skill}} for {{agent}}",
+          "failed": "Couldn't turn off {{skill}} for {{agent}}",
+          "pendingGeneric": "Turn off a skill",
+          "runningGeneric": "Turning off a skill",
+          "completedGeneric": "Turned off a skill",
+          "failedGeneric": "Couldn't turn off the skill"
+        },
+        "skillGetAgentSkills": {
+          "pending": "List {{agent}}'s skills",
+          "running": "Listing {{agent}}'s skills",
+          "completed": "Listed {{agent}}'s skills",
+          "failed": "Couldn't list {{agent}}'s skills",
+          "pendingGeneric": "List an agent's skills",
+          "runningGeneric": "Listing an agent's skills",
+          "completedGeneric": "Listed an agent's skills",
+          "failedGeneric": "Couldn't list the agent's skills"
+        },
+        "fallback": {
+          "pending": "Run tool",
+          "running": "Running tool",
+          "completed": "Ran tool",
+          "failed": "Couldn't run tool"
+        }
+      },
+      "board": {
+        "completeMyTask": {
+          "pending": "Complete task {{task}}",
+          "running": "Completing task {{task}}",
+          "completed": "Completed task {{task}}",
+          "failed": "Couldn't complete task {{task}}",
+          "pendingGeneric": "Complete my task",
+          "runningGeneric": "Completing my task",
+          "completedGeneric": "Completed my task",
+          "failedGeneric": "Couldn't complete the task"
+        },
+        "blockMyTask": {
+          "pending": "Mark {{task}} as blocked",
+          "running": "Marking {{task}} as blocked",
+          "completed": "Marked {{task}} as blocked",
+          "failed": "Couldn't mark {{task}} as blocked",
+          "pendingGeneric": "Mark my task as blocked",
+          "runningGeneric": "Marking my task as blocked",
+          "completedGeneric": "Marked my task as blocked",
+          "failedGeneric": "Couldn't mark the task as blocked"
+        },
+        "cancelMyTask": {
+          "pending": "Cancel task {{task}}",
+          "running": "Cancelling task {{task}}",
+          "completed": "Cancelled task {{task}}",
+          "failed": "Couldn't cancel task {{task}}",
+          "pendingGeneric": "Cancel my task",
+          "runningGeneric": "Cancelling my task",
+          "completedGeneric": "Cancelled my task",
+          "failedGeneric": "Couldn't cancel the task"
+        },
+        "listTasks": {
+          "pending": "List tasks in {{project}}",
+          "running": "Listing tasks in {{project}}",
+          "completed": "Listed tasks in {{project}}",
+          "failed": "Couldn't list tasks in {{project}}",
+          "pendingGeneric": "List tasks",
+          "runningGeneric": "Listing tasks",
+          "completedGeneric": "Listed tasks",
+          "failedGeneric": "Couldn't list tasks"
+        },
+        "getMyTasks": {
+          "pending": "List my tasks",
+          "running": "Listing my tasks",
+          "completed": "Listed my tasks",
+          "failed": "Couldn't list my tasks"
+        },
+        "listProjects": {
+          "pending": "List projects",
+          "running": "Listing projects",
+          "completed": "Listed projects",
+          "failed": "Couldn't list projects"
+        },
+        "listBoardAgents": {
+          "pending": "List board agents",
+          "running": "Listing board agents",
+          "completed": "Listed board agents",
+          "failed": "Couldn't list board agents"
+        },
+        "listBoardSubscriptions": {
+          "pending": "List board subscriptions",
+          "running": "Listing board subscriptions",
+          "completed": "Listed board subscriptions",
+          "failed": "Couldn't list board subscriptions"
+        },
+        "getTaskDependencies": {
+          "pending": "Check what {{task}} depends on",
+          "running": "Checking what {{task}} depends on",
+          "completed": "Checked what {{task}} depends on",
+          "failed": "Couldn't check what {{task}} depends on",
+          "pendingGeneric": "Check task dependencies",
+          "runningGeneric": "Checking task dependencies",
+          "completedGeneric": "Checked task dependencies",
+          "failedGeneric": "Couldn't check task dependencies"
+        },
+        "getTask": {
+          "pending": "Open task {{task}}",
+          "running": "Opening task {{task}}",
+          "completed": "Opened task {{task}}",
+          "failed": "Couldn't open task {{task}}",
+          "pendingGeneric": "Open a task",
+          "runningGeneric": "Opening a task",
+          "completedGeneric": "Opened a task",
+          "failedGeneric": "Couldn't open the task"
+        },
+        "getMyTask": {
+          "pending": "Check my current task",
+          "running": "Checking my current task",
+          "completed": "Current task: {{task}}",
+          "failed": "Couldn't check my current task",
+          "pendingGeneric": "Check my current task",
+          "runningGeneric": "Checking my current task",
+          "completedGeneric": "No active task",
+          "failedGeneric": "Couldn't check my current task"
+        },
+        "getProject": {
+          "pending": "Open project {{project}}",
+          "running": "Opening project {{project}}",
+          "completed": "Opened project {{project}}",
+          "failed": "Couldn't open project {{project}}",
+          "pendingGeneric": "Open a project",
+          "runningGeneric": "Opening a project",
+          "completedGeneric": "Opened a project",
+          "failedGeneric": "Couldn't open the project"
+        },
+        "getBoardStatus": {
+          "pending": "Check the status of {{board}}",
+          "running": "Checking the status of {{board}}",
+          "completed": "Checked the status of {{board}}",
+          "failed": "Couldn't check the status of {{board}}",
+          "pendingGeneric": "Check board status",
+          "runningGeneric": "Checking board status",
+          "completedGeneric": "Checked board status",
+          "failedGeneric": "Couldn't check board status"
+        },
+        "createProject": {
+          "pending": "Create project {{project}}",
+          "running": "Creating project {{project}}",
+          "completed": "Created project {{project}}",
+          "failed": "Couldn't create project {{project}}",
+          "pendingGeneric": "Create a project",
+          "runningGeneric": "Creating a project",
+          "completedGeneric": "Created a project",
+          "failedGeneric": "Couldn't create the project"
+        },
+        "createTask": {
+          "pending": "Create task {{task}}",
+          "running": "Creating task {{task}}",
+          "completed": "Created task {{task}}",
+          "failed": "Couldn't create task {{task}}",
+          "pendingGeneric": "Create a task",
+          "runningGeneric": "Creating a task",
+          "completedGeneric": "Created a task",
+          "failedGeneric": "Couldn't create the task"
+        },
+        "batchCreateTasks": {
+          "pending": "Create tasks ({{count}})",
+          "running": "Creating tasks ({{count}})",
+          "completed": "Created tasks ({{count}})",
+          "failed": "Couldn't create tasks ({{count}})",
+          "pendingGeneric": "Create tasks",
+          "runningGeneric": "Creating tasks",
+          "completedGeneric": "Created tasks",
+          "failedGeneric": "Couldn't create the tasks"
+        },
+        "updateTask": {
+          "pending": "Update task {{task}}",
+          "running": "Updating task {{task}}",
+          "completed": "Updated task {{task}}",
+          "failed": "Couldn't update task {{task}}",
+          "pendingGeneric": "Update a task",
+          "runningGeneric": "Updating a task",
+          "completedGeneric": "Updated a task",
+          "failedGeneric": "Couldn't update the task"
+        },
+        "updateProject": {
+          "pending": "Update project {{project}}",
+          "running": "Updating project {{project}}",
+          "completed": "Updated project {{project}}",
+          "failed": "Couldn't update project {{project}}",
+          "pendingGeneric": "Update a project",
+          "runningGeneric": "Updating a project",
+          "completedGeneric": "Updated a project",
+          "failedGeneric": "Couldn't update the project"
+        },
+        "assignTask": {
+          "pending": "Assign {{task}} to {{agent}}",
+          "running": "Assigning {{task}} to {{agent}}",
+          "completed": "Assigned {{task}} to {{agent}}",
+          "failed": "Couldn't assign {{task}} to {{agent}}",
+          "pendingGeneric": "Assign a task",
+          "runningGeneric": "Assigning a task",
+          "completedGeneric": "Assigned a task",
+          "failedGeneric": "Couldn't assign the task"
+        },
+        "unassignTask": {
+          "pending": "Unassign {{task}}",
+          "running": "Unassigning {{task}}",
+          "completed": "Unassigned {{task}}",
+          "failed": "Couldn't unassign {{task}}",
+          "pendingGeneric": "Unassign a task",
+          "runningGeneric": "Unassigning a task",
+          "completedGeneric": "Unassigned a task",
+          "failedGeneric": "Couldn't unassign the task"
+        },
+        "moveTask": {
+          "pending": "Move {{task}} to {{column}}",
+          "running": "Moving {{task}} to {{column}}",
+          "completed": "Moved {{task}} to {{column}}",
+          "failed": "Couldn't move {{task}} to {{column}}",
+          "pendingGeneric": "Move a task",
+          "runningGeneric": "Moving a task",
+          "completedGeneric": "Moved a task",
+          "failedGeneric": "Couldn't move the task"
+        },
+        "archiveTask": {
+          "pending": "Archive task {{task}}",
+          "running": "Archiving task {{task}}",
+          "completed": "Archived task {{task}}",
+          "failed": "Couldn't archive task {{task}}",
+          "pendingGeneric": "Archive a task",
+          "runningGeneric": "Archiving a task",
+          "completedGeneric": "Archived a task",
+          "failedGeneric": "Couldn't archive the task"
+        },
+        "restoreTask": {
+          "pending": "Restore task {{task}}",
+          "running": "Restoring task {{task}}",
+          "completed": "Restored task {{task}}",
+          "failed": "Couldn't restore task {{task}}",
+          "pendingGeneric": "Restore a task",
+          "runningGeneric": "Restoring a task",
+          "completedGeneric": "Restored a task",
+          "failedGeneric": "Couldn't restore the task"
+        },
+        "startTask": {
+          "pending": "Start task {{task}}",
+          "running": "Starting task {{task}}",
+          "completed": "Started task {{task}}",
+          "failed": "Couldn't start task {{task}}",
+          "pendingGeneric": "Start a task",
+          "runningGeneric": "Starting a task",
+          "completedGeneric": "Started a task",
+          "failedGeneric": "Couldn't start the task"
+        },
+        "stopTask": {
+          "pending": "Ask a task to stop",
+          "running": "Asking a task to stop",
+          "completed": "Asked a task to stop",
+          "failed": "Couldn't ask the task to stop"
+        },
+        "deleteTask": {
+          "pending": "Delete a task",
+          "running": "Deleting a task",
+          "completed": "Deleted a task",
+          "failed": "Couldn't delete the task"
+        },
+        "linkConversation": {
+          "pending": "Link a conversation to {{task}}",
+          "running": "Linking a conversation to {{task}}",
+          "completed": "Linked a conversation to {{task}}",
+          "failed": "Couldn't link a conversation to {{task}}",
+          "pendingGeneric": "Link a conversation to a task",
+          "runningGeneric": "Linking a conversation to a task",
+          "completedGeneric": "Linked a conversation to a task",
+          "failedGeneric": "Couldn't link the conversation"
+        },
+        "addProgressNote": {
+          "pending": "Add a note to {{task}}",
+          "running": "Adding a note to {{task}}",
+          "completed": "Added a note to {{task}}",
+          "failed": "Couldn't add a note to {{task}}",
+          "pendingGeneric": "Add a progress note",
+          "runningGeneric": "Adding a progress note",
+          "completedGeneric": "Added a progress note",
+          "failedGeneric": "Couldn't add the note"
+        },
+        "addTaskDependency": {
+          "pending": "Add a dependency to {{task}}",
+          "running": "Adding a dependency to {{task}}",
+          "completed": "Added a dependency to {{task}}",
+          "failed": "Couldn't add a dependency to {{task}}",
+          "pendingGeneric": "Add a task dependency",
+          "runningGeneric": "Adding a task dependency",
+          "completedGeneric": "Added a task dependency",
+          "failedGeneric": "Couldn't add the dependency"
+        },
+        "removeTaskDependency": {
+          "pending": "Remove a dependency from {{task}}",
+          "running": "Removing a dependency from {{task}}",
+          "completed": "Removed a dependency from {{task}}",
+          "failed": "Couldn't remove a dependency from {{task}}",
+          "pendingGeneric": "Remove a task dependency",
+          "runningGeneric": "Removing a task dependency",
+          "completedGeneric": "Removed a task dependency",
+          "failedGeneric": "Couldn't remove the dependency"
+        },
+        "setAgentSlots": {
+          "pending": "Set {{agent}}'s slots to {{slots}}",
+          "running": "Setting {{agent}}'s slots to {{slots}}",
+          "completed": "Set {{agent}}'s slots to {{slots}}",
+          "failed": "Couldn't set {{agent}}'s slots to {{slots}}",
+          "pendingGeneric": "Set an agent's slots",
+          "runningGeneric": "Setting an agent's slots",
+          "completedGeneric": "Set an agent's slots",
+          "failedGeneric": "Couldn't set the agent's slots"
+        },
+        "enableAgentPlay": {
+          "pending": "Turn on autoplay for {{agent}}",
+          "running": "Turning on autoplay for {{agent}}",
+          "completed": "Turned on autoplay for {{agent}}",
+          "failed": "Couldn't turn on autoplay for {{agent}}",
+          "pendingGeneric": "Turn on autoplay",
+          "runningGeneric": "Turning on autoplay",
+          "completedGeneric": "Turned on autoplay",
+          "failedGeneric": "Couldn't turn on autoplay"
+        },
+        "disableAgentPlay": {
+          "pending": "Turn off autoplay for {{agent}}",
+          "running": "Turning off autoplay for {{agent}}",
+          "completed": "Turned off autoplay for {{agent}}",
+          "failed": "Couldn't turn off autoplay for {{agent}}",
+          "pendingGeneric": "Turn off autoplay",
+          "runningGeneric": "Turning off autoplay",
+          "completedGeneric": "Turned off autoplay",
+          "failedGeneric": "Couldn't turn off autoplay"
+        },
+        "subscribeToBoard": {
+          "pending": "Follow {{board}}",
+          "running": "Following {{board}}",
+          "completed": "Now following {{board}}",
+          "failed": "Couldn't follow {{board}}",
+          "pendingGeneric": "Follow a board",
+          "runningGeneric": "Following a board",
+          "completedGeneric": "Now following a board",
+          "failedGeneric": "Couldn't follow the board"
+        },
+        "unsubscribeFromBoard": {
+          "pending": "Stop following a board",
+          "running": "Unfollowing a board",
+          "completed": "Stopped following a board",
+          "failed": "Couldn't stop following the board"
+        },
+        "archiveProject": {
+          "pending": "Archive project {{project}}",
+          "running": "Archiving project {{project}}",
+          "completed": "Archived project {{project}}",
+          "failed": "Couldn't archive project {{project}}",
+          "pendingGeneric": "Archive a project",
+          "runningGeneric": "Archiving a project",
+          "completedGeneric": "Archived a project",
+          "failedGeneric": "Couldn't archive the project"
+        },
+        "deleteProject": {
+          "pending": "Delete a project",
+          "running": "Deleting a project",
+          "completed": "Deleted a project",
+          "failed": "Couldn't delete the project"
+        },
+        "updateBoardConfig": {
+          "pending": "Update board settings",
+          "running": "Updating board settings",
+          "completed": "Updated board settings",
+          "failed": "Couldn't update board settings"
+        },
+        "subscribeToEvents": {
+          "pending": "Subscribe to {{topic}} events",
+          "running": "Subscribing to {{topic}} events",
+          "completed": "Subscribed to {{topic}} events",
+          "failed": "Couldn't subscribe to {{topic}} events",
+          "pendingGeneric": "Subscribe to events",
+          "runningGeneric": "Subscribing to events",
+          "completedGeneric": "Subscribed to events",
+          "failedGeneric": "Couldn't subscribe to events"
+        },
+        "unsubscribeFromEvents": {
+          "pending": "Unsubscribe from events",
+          "running": "Unsubscribing from events",
+          "completed": "Unsubscribed from events",
+          "failed": "Couldn't unsubscribe from events"
+        },
+        "listEventSubscriptions": {
+          "pending": "List event subscriptions",
+          "running": "Listing event subscriptions",
+          "completed": "Listed event subscriptions",
+          "failed": "Couldn't list event subscriptions"
+        },
+        "healthCheck": {
+          "pending": "Check the board connection",
+          "running": "Checking the board connection",
+          "completed": "Checked the board connection",
+          "failed": "Couldn't check the board connection"
+        },
+        "fallback": {
+          "pending": "Run board tool",
+          "running": "Running board tool",
+          "completed": "Ran board tool",
+          "failed": "Couldn't run board tool"
+        }
+      },
+      "automate": {
+        "healthCheck": {
+          "pending": "Check Automate",
+          "running": "Checking Automate",
+          "completed": "Checked Automate",
+          "failed": "Couldn't check Automate"
+        },
+        "listAutomations": {
+          "pending": "List automations",
+          "running": "Listing automations",
+          "completed": "Listed {{count}} automations",
+          "failed": "Couldn't list automations",
+          "pendingGeneric": "List automations",
+          "runningGeneric": "Listing automations",
+          "completedGeneric": "Listed automations",
+          "failedGeneric": "Couldn't list automations"
+        },
+        "getAutomation": {
+          "pending": "Open “{{name}}”",
+          "running": "Opening “{{name}}”",
+          "completed": "Opened “{{name}}”",
+          "failed": "Couldn't open “{{name}}”",
+          "pendingGeneric": "Open an automation",
+          "runningGeneric": "Opening an automation",
+          "completedGeneric": "Opened an automation",
+          "failedGeneric": "Couldn't open the automation"
+        },
+        "listExecutions": {
+          "pending": "Check the run history",
+          "running": "Checking the run history",
+          "completed": "Checked {{count}} runs",
+          "failed": "Couldn't check the run history",
+          "pendingGeneric": "Check the run history",
+          "runningGeneric": "Checking the run history",
+          "completedGeneric": "Checked the run history",
+          "failedGeneric": "Couldn't check the run history"
+        },
+        "listWebhookCalls": {
+          "pending": "Check webhook calls",
+          "running": "Checking webhook calls",
+          "completed": "Checked {{count}} webhook calls",
+          "failed": "Couldn't check webhook calls",
+          "pendingGeneric": "Check webhook calls",
+          "runningGeneric": "Checking webhook calls",
+          "completedGeneric": "Checked webhook calls",
+          "failedGeneric": "Couldn't check webhook calls"
+        },
+        "listUpcoming": {
+          "pending": "Check what's coming up",
+          "running": "Checking what's coming up",
+          "completed": "Found {{count}} upcoming runs",
+          "failed": "Couldn't check what's coming up",
+          "pendingGeneric": "Check what's coming up",
+          "runningGeneric": "Checking what's coming up",
+          "completedGeneric": "Checked what's coming up",
+          "failedGeneric": "Couldn't check what's coming up"
+        },
+        "listEventTopics": {
+          "pending": "List available events",
+          "running": "Listing available events",
+          "completed": "Listed {{count}} event topics",
+          "failed": "Couldn't list available events",
+          "pendingGeneric": "List available events",
+          "runningGeneric": "Listing available events",
+          "completedGeneric": "Listed available events",
+          "failedGeneric": "Couldn't list available events"
+        },
+        "parseTimeExpression": {
+          "pending": "Read “{{expression}}” as a time",
+          "running": "Reading “{{expression}}” as a time",
+          "completed": "Read “{{expression}}” as a time",
+          "failed": "Couldn't read “{{expression}}” as a time",
+          "pendingGeneric": "Read a time expression",
+          "runningGeneric": "Reading a time expression",
+          "completedGeneric": "Read a time expression",
+          "failedGeneric": "Couldn't read the time expression"
+        },
+        "createAutomation": {
+          "pending": "Create automation “{{name}}”",
+          "running": "Creating automation “{{name}}”",
+          "completed": "Created automation “{{name}}”",
+          "failed": "Couldn't create automation “{{name}}”",
+          "pendingGeneric": "Create an automation",
+          "runningGeneric": "Creating an automation",
+          "completedGeneric": "Created an automation",
+          "failedGeneric": "Couldn't create the automation"
+        },
+        "scheduleReminder": {
+          "pending": "Remind “{{name}}”",
+          "running": "Scheduling reminder “{{name}}”",
+          "completed": "Scheduled reminder “{{name}}”",
+          "failed": "Couldn't schedule reminder “{{name}}”",
+          "pendingGeneric": "Schedule a reminder",
+          "runningGeneric": "Scheduling a reminder",
+          "completedGeneric": "Scheduled a reminder",
+          "failedGeneric": "Couldn't schedule the reminder"
+        },
+        "createRecurringTask": {
+          "pending": "Schedule “{{name}}”",
+          "running": "Scheduling “{{name}}”",
+          "completed": "Scheduled “{{name}}”",
+          "failed": "Couldn't schedule “{{name}}”",
+          "pendingGeneric": "Schedule a recurring task",
+          "runningGeneric": "Scheduling a recurring task",
+          "completedGeneric": "Scheduled a recurring task",
+          "failedGeneric": "Couldn't schedule the recurring task"
+        },
+        "createWebhook": {
+          "pending": "Create webhook “{{name}}”",
+          "running": "Creating webhook “{{name}}”",
+          "completed": "Created webhook “{{name}}”",
+          "failed": "Couldn't create webhook “{{name}}”",
+          "pendingGeneric": "Create a webhook",
+          "runningGeneric": "Creating a webhook",
+          "completedGeneric": "Created a webhook",
+          "failedGeneric": "Couldn't create the webhook"
+        },
+        "updateAutomation": {
+          "pending": "Update “{{name}}”",
+          "running": "Updating “{{name}}”",
+          "completed": "Updated “{{name}}”",
+          "failed": "Couldn't update “{{name}}”",
+          "pendingGeneric": "Update an automation",
+          "runningGeneric": "Updating an automation",
+          "completedGeneric": "Updated an automation",
+          "failedGeneric": "Couldn't update the automation"
+        },
+        "enableAutomation": {
+          "pending": "Enable “{{name}}”",
+          "running": "Enabling “{{name}}”",
+          "completed": "Enabled “{{name}}”",
+          "failed": "Couldn't enable “{{name}}”",
+          "pendingGeneric": "Enable an automation",
+          "runningGeneric": "Enabling an automation",
+          "completedGeneric": "Enabled an automation",
+          "failedGeneric": "Couldn't enable the automation"
+        },
+        "disableAutomation": {
+          "pending": "Disable “{{name}}”",
+          "running": "Disabling “{{name}}”",
+          "completed": "Disabled “{{name}}”",
+          "failed": "Couldn't disable “{{name}}”",
+          "pendingGeneric": "Disable an automation",
+          "runningGeneric": "Disabling an automation",
+          "completedGeneric": "Disabled an automation",
+          "failedGeneric": "Couldn't disable the automation"
+        },
+        "snoozeReminder": {
+          "pending": "Snooze “{{name}}”",
+          "running": "Snoozing “{{name}}”",
+          "completed": "Snoozed “{{name}}”",
+          "failed": "Couldn't snooze “{{name}}”",
+          "pendingGeneric": "Snooze a reminder",
+          "runningGeneric": "Snoozing a reminder",
+          "completedGeneric": "Snoozed a reminder",
+          "failedGeneric": "Couldn't snooze the reminder"
+        },
+        "regenerateWebhookUrl": {
+          "pending": "Regenerate the webhook URL",
+          "running": "Regenerating the webhook URL",
+          "completed": "Regenerated the webhook URL",
+          "failed": "Couldn't regenerate the webhook URL"
+        },
+        "testWebhook": {
+          "pending": "Send a test to the webhook",
+          "running": "Sending a test to the webhook",
+          "completed": "Sent a test to the webhook",
+          "failed": "Couldn't send a test to the webhook"
+        },
+        "deleteAutomation": {
+          "pending": "Delete the automation",
+          "running": "Deleting the automation",
+          "completed": "Deleted the automation",
+          "failed": "Couldn't delete the automation"
+        },
+        "cancelReminder": {
+          "pending": "Cancel the reminder",
+          "running": "Cancelling the reminder",
+          "completed": "Cancelled the reminder",
+          "failed": "Couldn't cancel the reminder"
+        },
+        "bulkCancel": {
+          "pending": "Delete several automations",
+          "running": "Deleting several automations",
+          "completed": "Deleted {{count}} automations",
+          "failed": "Couldn't delete the automations",
+          "pendingGeneric": "Delete several automations",
+          "runningGeneric": "Deleting several automations",
+          "completedGeneric": "Deleted several automations",
+          "failedGeneric": "Couldn't delete the automations"
+        },
+        "fallback": {
+          "pending": "Use Automate",
+          "running": "Using Automate",
+          "completed": "Used Automate",
+          "failed": "Couldn't use Automate"
+        },
+        "getQuota": {
+          "pending": "Check the daily Automate budget",
+          "running": "Checking the daily Automate budget",
+          "completed": "Checked the daily budget: {{used}} of {{limit}} runs",
+          "failed": "Couldn't check the daily Automate budget",
+          "pendingGeneric": "Check the daily Automate budget",
+          "runningGeneric": "Checking the daily Automate budget",
+          "completedGeneric": "Checked the daily Automate budget",
+          "failedGeneric": "Couldn't check the daily Automate budget"
+        }
+      }
+    },
+    "permission": {
+      "awaiting": "Awaiting your approval",
+      "deny": "Deny",
+      "allow": "Allow",
+      "denyAlways": "Always deny",
+      "allowAlways": "Always allow",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "confirmTitle": "Confirm decision",
+      "confirmDenyAlways": "Block this tool permanently? You won't be asked again.",
+      "confirmAllowAlways": "Allow this tool permanently? You won't be asked again.",
+      "confirmDenyAll": "Deny all pending actions? This will reject every tool in this batch.",
+      "confirmAllowAll": "Allow all pending actions? This will approve every reversible tool in this batch.",
+      "irreversible": "irreversible",
+      "irreversibleAriaLabel": "This action cannot be undone",
+      "risk": "risk",
+      "riskAriaLabel": "Elevated risk: this action affects security or has a wide blast radius"
+    },
+    "permissionGroup": {
+      "allowAll": "Allow all",
+      "denyAll": "Deny all",
+      "awaiting_one": "{{count}} action needs your approval",
+      "awaiting_other": "{{count}} actions need your approval",
+      "destructiveNote": "{{count}} destructive — decide individually",
+      "allDestructiveNote": "Destructive actions — decide individually"
+    },
+    "permissionDetail": {
+      "showAllParams_one": "Show {{count}} parameter",
+      "showAllParams_other": "Show all {{count}} parameters",
+      "hideParams": "Show fewer parameters",
+      "undeclared": "not in schema",
+      "hiddenUndeclared": "{{count}} not in schema",
+      "showMore": "show more",
+      "showLess": "show less",
+      "readsOnly": "Reads only",
+      "irreversible": "Irreversible",
+      "network": "Network",
+      "noParams": "This tool will be called with no parameters.",
+      "moreItems": "+{{count}} more not shown",
+      "nestingLimit_one": "{{count}} nested field — too deep to show",
+      "nestingLimit_other": "{{count}} nested fields — too deep to show",
+      "detailsUnavailable": "Couldn't load this tool's details. Parameters are shown as sent."
     }
   },
   "badges": {
@@ -2255,5 +4190,1321 @@
       "dismiss": "Got it",
       "progress": "{{current}} of {{total}}"
     }
+  },
+  "todo": {
+    "title": "Tasks",
+    "notInstalled": "The Tasks app is not installed",
+    "notInstalledHint": "Install “Tasks” from the catalog in this workspace to start.",
+    "noWorkspace": "Pick a workspace to see its Tasks.",
+    "loadError": "Couldn’t load the Tasks.",
+    "retry": "Retry",
+    "loading": "Loading…",
+    "view": {
+      "label": "View",
+      "tree": "Tree",
+      "day": "By day"
+    },
+    "summary": "{{tasks}} tasks · {{open}} open",
+    "search": {
+      "placeholder": "Search the tree",
+      "clear": "Clear search"
+    },
+    "newTask": "New task",
+    "filter": {
+      "label": "Filter",
+      "all": "All",
+      "working": "In progress",
+      "review": "Review",
+      "blocked": "Blocked",
+      "mine": "Mine"
+    },
+    "hint": {
+      "drag": "drag",
+      "edge": "edge",
+      "reorders": "reorders",
+      "centre": "centre",
+      "nests": "nests",
+      "arrows": "arrows"
+    },
+    "kin": {
+      "blocked_one": "{{count}} blocked",
+      "blocked_other": "{{count}} blocked",
+      "review_one": "{{count}} in review",
+      "review_other": "{{count}} in review"
+    },
+    "state": {
+      "planning": "Planning",
+      "pending": "Pending",
+      "working": "In progress",
+      "blocked": "Blocked",
+      "review": "In review",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    },
+    "legend": {
+      "planning_one": "{{count}} planning",
+      "planning_other": "{{count}} planning",
+      "pending_one": "{{count}} pending",
+      "pending_other": "{{count}} pending",
+      "working_one": "{{count}} in progress",
+      "working_other": "{{count}} in progress",
+      "blocked_one": "{{count}} blocked",
+      "blocked_other": "{{count}} blocked",
+      "review_one": "{{count}} in review",
+      "review_other": "{{count}} in review",
+      "done_one": "{{count}} done",
+      "done_other": "{{count}} done",
+      "cancelled_one": "{{count}} cancelled",
+      "cancelled_other": "{{count}} cancelled"
+    },
+    "transitionHint": {
+      "planning_pending": "defined",
+      "pending_working": "start",
+      "pending_done": "complete",
+      "working_review": "deliver",
+      "working_blocked": "block",
+      "working_pending": "park",
+      "working_done": "complete",
+      "blocked_working": "unblock",
+      "blocked_planning": "redefine",
+      "review_done": "accept",
+      "review_working": "send back",
+      "done_working": "reopen",
+      "planning_cancelled": "call off",
+      "pending_cancelled": "call off",
+      "working_cancelled": "call off",
+      "blocked_cancelled": "call off",
+      "review_cancelled": "call off",
+      "cancelled_pending": "reopen"
+    },
+    "verb": {
+      "planning_pending": "Mark as pending",
+      "pending_working": "Start",
+      "pending_planning": "Back to planning",
+      "pending_done": "Complete",
+      "working_review": "Send to review",
+      "working_blocked": "Block",
+      "working_pending": "Park",
+      "working_done": "Complete",
+      "blocked_working": "Unblock",
+      "blocked_planning": "Back to planning",
+      "review_done": "Accept",
+      "review_working": "Send back",
+      "done_working": "Reopen",
+      "planning_cancelled": "Cancel task",
+      "pending_cancelled": "Cancel task",
+      "working_cancelled": "Cancel task",
+      "blocked_cancelled": "Cancel task",
+      "review_cancelled": "Cancel task",
+      "cancelled_pending": "Reopen"
+    },
+    "row": {
+      "focus": "Focus mode: {{title}}",
+      "exitFocus": "Exit focus: {{title}}",
+      "add": "Add inside {{title}}",
+      "drag": "Drag to move",
+      "dragOrder": "Drag to order",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "group": "group",
+      "archive": "Archive {{title}}",
+      "unarchive": "Unarchive {{title}}",
+      "archivedBadge": "Archived"
+    },
+    "focus": {
+      "exit": "Exit focus",
+      "suffix": "focus",
+      "root": "Root"
+    },
+    "add": {
+      "placeholder": "New task…",
+      "child": "New child task…",
+      "inGroup": "New task in {{title}}…",
+      "newGroup": "New group",
+      "menuTask": "New task",
+      "menuGroup": "New group"
+    },
+    "empty": {
+      "treeTitle": "Your tree is empty",
+      "treeBody": "Start with a group (Home, Work) or a single task. Then drag to order and nest.",
+      "task": "Task",
+      "group": "Group",
+      "noMatchTitle": "Nothing here",
+      "noMatchBody": "No task matches the filter.",
+      "detailTitle": "Pick a task",
+      "detailBody": "What you select in Tasks opens here. Double-click a row to pin it in its own tab.",
+      "missingTitle": "This task no longer exists",
+      "missingBody": "It was deleted or moved to another workspace."
+    },
+    "drop": {
+      "before": "before {{title}}",
+      "after": "after {{title}}",
+      "inside": "inside {{title}}",
+      "groupInTask": "a group can’t go inside a task",
+      "invalid": "can’t drop here",
+      "endOf": "at the end of {{day}}"
+    },
+    "day": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "yesterday": "Yesterday",
+      "prev": "Previous day",
+      "next": "Next day",
+      "fromEarlier": "From earlier days",
+      "moveAllToday": "Move all to today",
+      "plan": "Plan",
+      "dragToOrder": "drag to order",
+      "nothingPlanned": "Nothing planned for {{day}}.",
+      "nothingPlannedHint": "Drag here from “Unplanned” or use the Day chip in the detail.",
+      "unplanned": "Unplanned",
+      "unplannedSummary": "{{count}} open",
+      "allPlanned": "Every open task has a day.",
+      "completed": "Completed",
+      "completedSummary": "{{count}} done",
+      "doneSink": "Completed at the bottom",
+      "viewMenu": "View options",
+      "allDone": "Everything planned is done.",
+      "here": "Here",
+      "removeFromDay": "Remove from the day",
+      "planOn": "Plan for {{day}}",
+      "overdue": "overdue",
+      "noDay": "No day",
+      "planFor": "Plan for",
+      "current": "current",
+      "otherDate": "Other date",
+      "time": "Time",
+      "clearTime": "No time"
+    },
+    "chip": {
+      "state": "State",
+      "progress": "Progress",
+      "day": "Day",
+      "fromChildren": "from children",
+      "group": "Group",
+      "tasks": "tasks",
+      "open": "open",
+      "assignee": "Assigned",
+      "reviewer": "Reviewer"
+    },
+    "stateMenu": {
+      "now": "Now",
+      "block": "Block",
+      "blockQuestion": "What’s missing to continue?",
+      "blockPlaceholder": "The client’s tax ID is missing…",
+      "back": "Back"
+    },
+    "progressMenu": {
+      "reported": "reported",
+      "fromChildren": "Compute from children",
+      "label": "Progress"
+    },
+    "blocked": {
+      "header": "Blocked · waiting for your reply",
+      "noReason": "No reason given",
+      "replyPlaceholder": "Your reply",
+      "reply": "Reply and continue",
+      "footer": "Replying moves it back to In progress"
+    },
+    "sendBack": {
+      "region": "Send back",
+      "header": "Review · sending it back",
+      "title": "Why are you sending it back?",
+      "placeholder": "What is missing or wrong, so the agent can fix it",
+      "submit": "Send back with a note",
+      "cancel": "Cancel",
+      "footer": "It goes back to In progress with your note"
+    },
+    "voice": {
+      "record": "Record a voice note",
+      "stopSend": "Stop and send",
+      "transcribing": "Transcribing…",
+      "unsupported": "Voice isn’t available here",
+      "failed": "Couldn’t transcribe the note"
+    },
+    "complete": {
+      "openChildren_one": "{{count}} child task is still open: {{list}}. Close it too?",
+      "openChildren_other": "{{count}} child tasks are still open: {{list}}. Close them too?",
+      "all": "Complete all",
+      "onlyThis": "Only this one",
+      "cancel": "Cancel"
+    },
+    "tabs": {
+      "summary": "Summary",
+      "output": "Output",
+      "log": "Log"
+    },
+    "section": {
+      "description": "Description",
+      "instructions": "Instructions",
+      "doneWhen": "Done when",
+      "input": "Input",
+      "children": "Child tasks",
+      "content": "Content",
+      "context": "Context",
+      "groupState": "Group status",
+      "log": "Log"
+    },
+    "edit": "Edit",
+    "write": "Write",
+    "save": "Save",
+    "cancel": "Cancel",
+    "noInstructions": "No instructions. A task in Planning moves to Pending once it knows what to do and when it is done.",
+    "descriptionPlaceholder": "Add a description…",
+    "instructionsPlaceholder": "- [ ] First step\n\n## Done when\n- [ ] …",
+    "readyForReview": "Everything under “Done when” is ticked.",
+    "childTask": "Child task",
+    "task": "Task",
+    "group": "Group",
+    "io": {
+      "markdown": "markdown",
+      "form_one": "form · {{count}} field",
+      "form_other": "form · {{count}} fields",
+      "file": "file · {{ext}}",
+      "none": "no output",
+      "draft": "draft",
+      "deliveredAt": "delivered {{when}}",
+      "noOutput": "No output yet. It is delivered at the end: a markdown document, a form or a file.",
+      "upload": "Upload file",
+      "writeMarkdown": "Write markdown",
+      "replace": "Replace",
+      "remove": "Remove",
+      "tooLarge": "The file is larger than 10 MB.",
+      "download": "Download",
+      "open": "Open",
+      "uploading": "Uploading…",
+      "markdownPlaceholder": "# Result\n\nWhat was done…",
+      "noInput": "No input. Add the data the task starts from.",
+      "pages": "{{type}} · {{size}}",
+      "savedAt": "in progress · saved {{when}}",
+      "outputMarkdown": "Output · markdown",
+      "inputMarkdown": "Input · markdown",
+      "noOutputShort": "No output yet",
+      "noInputShort": "No input"
+    },
+    "log": {
+      "addPlaceholder": "Add a note to the log",
+      "add": "Add",
+      "replied": "You replied: “{{text}}”",
+      "progress": "Progress {{value}} %",
+      "progressCleared": "Progress computed from children",
+      "plannedFor": "Planned for {{day}}",
+      "plannedTime": "Planned time {{time}}",
+      "plannedTimeCleared": "Planned time cleared",
+      "removedFromDay": "Removed from the day",
+      "outputDelivered": "Output delivered · {{what}}",
+      "outputCleared": "Output removed",
+      "inputSet": "Input set · {{what}}",
+      "inputCleared": "Input removed",
+      "completed": "Marked as done",
+      "uncompleted": "Marked as not done",
+      "toGroup": "Converted to group",
+      "toTask": "Converted to task",
+      "blockedReason": "Blocked: {{reason}}",
+      "empty": "No entries yet.",
+      "assignedTo": "Assigned to {{name}}",
+      "unassigned": "Unassigned"
+    },
+    "more": {
+      "label": "More actions",
+      "addChild": "Add child task",
+      "addTask": "Add task",
+      "addGroup": "Add group",
+      "toGroup": "Convert to group",
+      "toTask": "Convert to task",
+      "hasOutput": "has output",
+      "hasGroups": "contains groups",
+      "delete": "Delete",
+      "focus": "Focus mode",
+      "exitFocus": "Exit focus",
+      "writeDescription": "Write a description",
+      "archive": "Archive",
+      "unarchive": "Unarchive"
+    },
+    "delete": {
+      "title": "Delete “{{title}}”?",
+      "withChildren_one": "Its {{count}} child task goes too. This can’t be undone.",
+      "withChildren_other": "Its {{count}} child tasks go too. This can’t be undone.",
+      "noChildren": "This can’t be undone.",
+      "confirm": "Delete"
+    },
+    "titleField": {
+      "edit": "Click to edit",
+      "label": "Title"
+    },
+    "error": "Couldn’t save: {{message}}",
+    "a11y": {
+      "tree": "Tasks",
+      "treeNav": "Task tree",
+      "dayPlan": "Plan for the day",
+      "blockedRegion": "Blocked",
+      "crumb": "Location",
+      "chips": "Task details",
+      "actions": "Task actions"
+    },
+    "assign": {
+      "none": "Unassigned",
+      "title": "Assign to",
+      "search": "Search agents and people",
+      "me": "Assign to me",
+      "agents": "Agents",
+      "people": "People",
+      "agent": "agent",
+      "person": "person",
+      "you": "you",
+      "remove": "Remove assignment",
+      "noMatch": "Nobody matches."
+    },
+    "dep": {
+      "waitsOn": "Waits on:",
+      "blockedBy": "Blocked by",
+      "blocks": "Blocks",
+      "add": "Add dependency",
+      "search": "Search workspace tasks",
+      "tasks": "Tasks",
+      "noMatch": "No task matches.",
+      "remove": "Remove dependency",
+      "none": "Depends on nothing.",
+      "reorderWarning": "You placed it before \"{{blocker}}\", which it depends on — the autoplay will respect it anyway."
+    },
+    "review": {
+      "none": "Manual validation",
+      "title": "Reviewer",
+      "search": "Search agents and people",
+      "me": "Make me the reviewer",
+      "agents": "Agents",
+      "people": "People",
+      "agent": "agent",
+      "person": "person",
+      "you": "you",
+      "remove": "Remove reviewer",
+      "noMatch": "Nobody matches."
+    },
+    "autoplay": {
+      "chip": "Autoplay · {{count}}",
+      "title": "Autoplay",
+      "subtitle": "Runners · slots · Play",
+      "working": "Working",
+      "waiting": "Waiting for tasks",
+      "paused": "Paused",
+      "inProgress": "{{active}}/{{slots}} in progress",
+      "fewer": "Fewer slots for {{name}}",
+      "more": "More slots for {{name}}",
+      "play": "Play {{name}}",
+      "pause": "Pause {{name}}",
+      "remove": "Remove {{name}}",
+      "add": "Add runner",
+      "noAgents": "Every agent is already a runner",
+      "empty": "No runners yet. Add an agent, give it slots and press play.",
+      "footer": "Teros wakes each runner when one of its tasks is pending and planned for today or earlier, honouring slots. Agents move tasks to Review; you move them to Done. Limit of {{cap}} auto-wakes per task.",
+      "footerScope": "With \"Also picks up\" set, it also takes unassigned tasks planned for today or earlier in that branch and assigns them to itself.",
+      "scope": {
+        "label": "Also picks up:",
+        "nothing": "Nothing",
+        "nothingItem": "Nothing · only tasks assigned to {{name}}",
+        "today": "Planned for today",
+        "anyItem": "Unassigned tasks, any branch",
+        "onlyIn": "Planned for today, only in",
+        "any": "Today · any branch",
+        "in": "Today · {{path}}",
+        "missing": "Branch deleted",
+        "choose": "What {{name}} also picks up"
+      },
+      "close": "Close",
+      "config": "Autoplay configuration",
+      "pausedGlobal": "Paused · global",
+      "enable": "Enable {{name}} (include it in global play)",
+      "disable": "Disable {{name}} (exclude it from global play)",
+      "global": {
+        "play": "Play the workspace autoplay",
+        "pause": "Pause the workspace autoplay",
+        "playing": "Playing · {{count}} enabled",
+        "paused": "Paused",
+        "stop": "Stop now: pause the autoplay and interrupt the {{count}} turns in flight",
+        "hint": "Global play starts only enabled runners; disabled ones stay out."
+      }
+    },
+    "conversation": {
+      "open": "Conversation",
+      "chip": "Conversation",
+      "start": "Start"
+    },
+    "runner": {
+      "open": "Terminal",
+      "wake": "Terminal (asleep — click to wake)",
+      "recreate": "Terminal (gone — click to reopen with context)",
+      "openFailed": "Couldn't open the terminal: {message}"
+    },
+    "expected": {
+      "title": "Expected output",
+      "label": "Expected format",
+      "markdown": "Markdown",
+      "form": "Form",
+      "file": "File",
+      "descriptionLabel": "Expected output description",
+      "descriptionPlaceholder": "Invoice as PDF with tax id, base, VAT and total",
+      "fileType": "File type",
+      "other": "Other",
+      "fields": "Fields",
+      "fieldName": "Field name",
+      "fieldType": "Field type",
+      "required": "Required",
+      "addField": "Add field",
+      "removeField": "Remove field {{name}}",
+      "clear": "Clear",
+      "summary": "Expected: {{what}}",
+      "types": {
+        "text": "Text",
+        "textarea": "Long text",
+        "number": "Number",
+        "checkbox": "Checkbox",
+        "date": "Date",
+        "time": "Time",
+        "datetime": "Date & time",
+        "select": "Select",
+        "radio": "Choice"
+      },
+      "fillIn": "Fill in",
+      "what": {
+        "markdown": "markdown",
+        "form": "form",
+        "file": "file"
+      },
+      "fieldCount_one": "{{count}} field",
+      "fieldCount_other": "{{count}} fields"
+    },
+    "settings": {
+      "label": "Tree settings",
+      "title": "View",
+      "hideFinished": "Hide finished",
+      "showArchived": "Show archived",
+      "archiveFinished": "Archive finished",
+      "autoArchive": "Auto-archive finished",
+      "autoOff": "Off",
+      "autoDays_one": "After {{count}} day",
+      "autoDays_other": "After {{count}} days"
+    },
+    "finished": {
+      "title": "Finished ({{count}})",
+      "section": "Show or hide the finished tasks"
+    },
+    "archive": {
+      "done_one": "Archived {{count}} task",
+      "done_other": "Archived {{count}} tasks",
+      "confirmTitle": "Archive finished tasks",
+      "confirmBody_one": "{{count}} finished task will move to the archive. You can bring it back any time (Show archived).",
+      "confirmBody_other": "{{count}} finished tasks will move to the archive. You can bring them back any time (Show archived).",
+      "confirmGo": "Archive",
+      "confirmChildren_one": "It still has {{count}} non-archived child task — its branch will leave the tree and the day view. You can bring it back any time (Show archived).",
+      "confirmChildren_other": "It still has {{count}} non-archived child tasks — its branch will leave the tree and the day view. You can bring it back any time (Show archived).",
+      "nodeConfirmTitle": "Archive “{{title}}”?"
+    }
+  },
+  "home": {
+    "title": "Home",
+    "greetingMorning": "Good morning",
+    "greetingAfternoon": "Good afternoon",
+    "greetingNight": "Good evening",
+    "pillApprovals": "await your permission",
+    "pillReview": "to review",
+    "pillWorking": "agents working",
+    "askPlaceholder": "Ask {{name}} something…",
+    "askPlaceholderNoAgent": "Create an agent to get started",
+    "ask": "Start chat",
+    "sugInbox": "Summarize my inbox",
+    "sugWeek": "Plan my week",
+    "sugBlocked": "What's blocked?",
+    "waiting": "Waiting for you",
+    "waitingLead": "actions pending your permission",
+    "waitingEmpty": "Nothing pending. Your agents are on it.",
+    "anAgent": "An agent",
+    "wants": "wants",
+    "openInChat": "Open in chat",
+    "moreApprovals": "+{{n}} more",
+    "team": "Your team right now",
+    "active": "active",
+    "noAgents": "No agents yet.",
+    "workingOn": "Working on “{{title}}”",
+    "idle": "No tasks assigned",
+    "projects": "Projects",
+    "noProjects": "No projects yet.",
+    "pulse": "Pulse",
+    "kpiChatsToday": "chats today",
+    "kpiOpenTasks": "open tasks",
+    "kpiWorking": "active agents",
+    "kpiApprovals": "approvals",
+    "waitingLeadAny_one": "thing waiting for your answer",
+    "waitingLeadAny_other": "things waiting for your answer"
+  },
+  "automate": {
+    "title": "Automate",
+    "launcherSub": "Schedules, webhooks and events that create work",
+    "eyebrow": "Automate",
+    "headline": "What runs on its own.",
+    "headlineAccent": "on its own.",
+    "lead": "{{count}} automations · {{active}} active",
+    "leadEmpty": "Couple a trigger — a schedule, a webhook or an event — with what should happen: a task, a message to a channel or a flow.",
+    "new": "New automation",
+    "search": "Search automations…",
+    "loading": "Loading automations…",
+    "noWorkspace": "No workspace selected",
+    "enable": "Enable",
+    "disable": "Disable",
+    "delete": "Delete",
+    "never": "never",
+    "status": {
+      "enabled": "Active",
+      "disabled": "Disabled"
+    },
+    "type": {
+      "scheduler": "Schedule",
+      "webhook": "Webhook",
+      "event": "Event",
+      "once": "Reminder"
+    },
+    "section": {
+      "scheduler": "Scheduled",
+      "webhook": "Webhooks",
+      "event": "Events",
+      "once": "Reminders"
+    },
+    "action": {
+      "createTask": "Create task",
+      "channelEvent": "Message a channel",
+      "startFlow": "Start flow"
+    },
+    "filters": {
+      "active": "Active",
+      "disabled": "Disabled",
+      "clear": "Clear",
+      "results": "Results"
+    },
+    "card": {
+      "perDay": "{{avg}}/day",
+      "noRuns": "no runs yet",
+      "last": "last {{time}}",
+      "openChannel": "Open channel"
+    },
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    },
+    "empty": {
+      "title": "No automations yet",
+      "text": "Start with a schedule, a webhook or an event. The first one takes a minute.",
+      "filteredTitle": "No automations match",
+      "filteredText": "Try another search or clear the filters."
+    },
+    "errors": {
+      "load": "Could not load automations",
+      "toggle": "Could not update status",
+      "delete": "Could not delete automation",
+      "save": "Could not save the automation",
+      "regenerate": "Could not regenerate the URL",
+      "resources": "Could not load projects, agents and channels"
+    },
+    "deleteDialog": {
+      "title": "Delete automation",
+      "body": "Delete \"{{name}}\"? It stops firing immediately. Tasks, messages and flow runs it already produced are kept."
+    },
+    "detail": {
+      "back": "Automations",
+      "newTitle": "New automation",
+      "newLead": "Pick when it fires and what it does. You can change both later.",
+      "create": "Create",
+      "save": "Save"
+    },
+    "form": {
+      "name": "Name",
+      "namePlaceholder": "e.g. GitHub issues → tasks",
+      "nameRequired": "Give it a name",
+      "enabled": "Enabled",
+      "enabledHint": "Disabled automations keep their configuration but never fire.",
+      "triggerSection": "When does it fire?",
+      "actionSection": "What happens?",
+      "cron": "Cron expression",
+      "cronHint": "5 fields: minute · hour · day · month · weekday. \"0 9 * * 1-5\" is weekdays at 09:00.",
+      "cronRequired": "A cron expression is required",
+      "timezone": "Timezone",
+      "timezoneHint": "IANA name such as Europe/Madrid. Empty means UTC.",
+      "eventPattern": "Event pattern",
+      "patternHint": "Topic to listen to. * matches anything.",
+      "patternRequired": "An event pattern is required",
+      "filters": "Filters",
+      "filtersHint": "Optional JSON array. Objects are OR-ed; fields inside an object are AND-ed.",
+      "filtersInvalid": "Filters must be a JSON array of objects",
+      "webhookHintCreate": "A unique URL is generated when you save. It is shown once — copy it then.",
+      "webhookHintEdit": "External systems POST JSON to the URL. Regenerate it below to rotate the secret.",
+      "project": "Project",
+      "selectProject": "Select a project",
+      "projectRequired": "Pick a project",
+      "agent": "Agent",
+      "selectAgent": "Select an agent",
+      "agentRequired": "Pick an agent",
+      "column": "Column",
+      "selectColumn": "Default column",
+      "channel": "Channel",
+      "selectChannel": "Select a channel",
+      "channelRequired": "Pick a channel",
+      "flow": "Flow",
+      "selectFlow": "Select a flow",
+      "flowRequired": "Pick a flow",
+      "flowProject": "Project",
+      "titleTemplate": "Title template",
+      "templateHint": "{{payload.xxx}} placeholders are filled from the trigger payload; {{now.date}} and {{now.time}} stamp the execution date/time; {{a || b || \"text\"}} takes the first non-empty value. Required — an empty title fails the run.",
+      "messageTemplate": "Message",
+      "messagePlaceholder": "Good morning — review the board and report what is blocked.",
+      "messageHint": "What the agent receives in the channel. Supports {{payload.xxx}}, {{topic}}, {{now.*}} (execution date/time) and {{a || b || \"text\"}} fallbacks. Required.",
+      "inputMapping": "Input mapping",
+      "inputMappingHint": "Optional JSON object: flow input → dot-path into the payload.",
+      "inputMappingInvalid": "Input mapping must be a JSON object",
+      "onceAt": "When",
+      "onceAtHint": "ISO 8601 date and time, e.g. 2026-10-15T09:00. Fires once, then the automation disables itself.",
+      "onceAtRequired": "Pick a date and time (ISO 8601)",
+      "onceAtPast": "That time is in the past",
+      "eventTopic": "Event",
+      "selectTopic": "Pick an event, or type a pattern below",
+      "patternFields": "Payload fields you can filter on: {{fields}}",
+      "instructionsTemplate": "Instructions template",
+      "instructionsPlaceholder": "Qualify the lead {{payload.fromName || payload.fromId}} and reply in the same chat.",
+      "instructionsHint": "What the agent has to do. The whole payload also reaches the task as its input artifact.",
+      "descriptionTemplate": "Description template",
+      "descriptionPlaceholder": "Telegram: message from {{payload.fromName}} in {{payload.chatTitle}}",
+      "descriptionHint": "Optional one-line summary shown on the card. Leave empty for none.",
+      "titleTemplateRequired": "A title template is required",
+      "instructionsTemplateRequired": "An instructions template is required",
+      "messageRequired": "A message is required",
+      "templateInvalid": "Unsupported template syntax: {{error}}",
+      "cronQuotaWarning": "This schedule fires about {{runs}} times a day, but your plan allows {{limit}} Automate runs a day across all automations. Runs beyond the limit are skipped. Space it out, or upgrade your plan.",
+      "channelHint": "The message lands in this conversation and wakes its agent."
+    },
+    "webhook": {
+      "section": "Webhook",
+      "urlTitle": "Secret URL",
+      "urlHint": "Hidden after creation. Regenerating invalidates the old one immediately.",
+      "regenerate": "Regenerate URL",
+      "calls": "Recent calls",
+      "noCalls": "No calls yet. Send a test or point an external system at the URL.",
+      "discriminator": "discriminator {{value}}",
+      "noDiscriminator": "no discriminator",
+      "created": "created",
+      "updated": "updated"
+    },
+    "test": {
+      "label": "Test payload",
+      "send": "Send test",
+      "invalid": "The payload must be a JSON object",
+      "created": "Fired — {{target}}",
+      "updated": "Appended to task {{target}}",
+      "failed": "Test failed"
+    },
+    "url": {
+      "title": "Webhook URL",
+      "warning": "This URL is shown only once. Copy it now — regenerating it later replaces it.",
+      "copyFailed": "Clipboard unavailable — select the URL and copy it manually.",
+      "done": "Done"
+    },
+    "runs": {
+      "section": "Recent runs",
+      "none": "No runs yet.",
+      "ok": "ok",
+      "failed": "failed",
+      "skipped": "skipped",
+      "skippedQuota": "Skipped: the daily Automate budget of your plan was spent",
+      "skippedBilling": "Skipped: agent hours or payment blocked it"
+    },
+    "quota": {
+      "usage": "{{used}} of {{limit}} runs today · {{plan}} plan · resets at {{time}}",
+      "exhausted": "Today's {{limit}} runs of your {{plan}} plan are used up · runs resume at {{time}}",
+      "busiest": "“{{name}}” ran {{count}} times today",
+      "review": "Review",
+      "upgrade": "Upgrade plan"
+    }
+  },
+  "permissions": {
+    "waitTitleAny": "Waiting for you.",
+    "waitTitle": "Waiting for your permission.",
+    "openChat": "Open the chat"
+  },
+  "markdownViewer": {
+    "share": {
+      "button": "Share",
+      "published": "Published",
+      "linkCopied": "Link copied",
+      "linkLabel": "Public link",
+      "copy": "Copy",
+      "copyByHand": "Copy it by hand",
+      "open": "Open",
+      "revoke": "Revoke",
+      "share": "Share…"
+    },
+    "view": {
+      "formatted": "Show formatted",
+      "source": "Show source"
+    }
+  },
+  "pendingApprovals": {
+    "headline": "Waiting for your permission.",
+    "headlineAccent": "permission.",
+    "lead": "Sensitive tools ask for permission (Ask) by default. Nothing expires: they stay here until you decide.",
+    "loading": "Loading permissions…",
+    "emptyTitle": "No pending permissions",
+    "emptyText": "When an agent needs a permission, it shows up here for you to approve.",
+    "summary": "{{tools}} tools in {{convs}} conversations",
+    "hint": "Each permission is decided separately",
+    "toolCount_one": "{{count}} tool",
+    "toolCount_other": "{{count}} tools",
+    "openChat": "Open chat"
+  },
+  "authPanel": {
+    "title": "Authentication",
+    "oauthTitle": "OAuth connection",
+    "credentials": "Credentials",
+    "refresh": "Refresh",
+    "connect": "Connect {{provider}}",
+    "reconnect": "Reconnect {{provider}}",
+    "connectNote": "Connect your {{provider}} account so the agent can use this service.",
+    "expiredNote": "Your session has expired. Reconnect your account to continue.",
+    "expiredAccount": "Session expired — reconnect your account",
+    "errorValidating": "Couldn't check the credentials.",
+    "status": {
+      "connected": "connected",
+      "disconnected": "not connected",
+      "expired": "expired",
+      "error": "error"
+    },
+    "badge": {
+      "adminRequired": "admin needed",
+      "connect": "connect",
+      "configure": "set up"
+    },
+    "github": {
+      "legacy": "This OAuth connection is deprecated. Install the Teros GitHub App once to keep using this integration; your repositories stay the same.",
+      "connectNote": "Connect your GitHub account. Then install the Teros GitHub App on your account or on the organizations whose repositories agents should use. Commits, pull requests and comments are signed as you.",
+      "notInstalled": "Connected, but the Teros GitHub App is not installed on any account or organization yet, so agents can't reach any repository. Install it where your repositories live.",
+      "installationsTitle": "Installed on",
+      "organization": "organization",
+      "suspended": "suspended",
+      "manage": "Manage on GitHub",
+      "manageA11y": "Manage {{account}} on GitHub",
+      "pendingPermissions": "GitHub is waiting for an owner of {{account}} to accept a new permission: {{permissions}}. Until then agents can't change those files.",
+      "permission": {
+        "workflows": "Workflows (GitHub Actions files)"
+      },
+      "review": "Review on GitHub",
+      "reviewA11y": "Review the new permissions for {{account}} on GitHub",
+      "installHint": "Don't see a repository? The Teros GitHub App must be installed on the account or organization that owns it, with that repository selected.",
+      "install": "Install on GitHub",
+      "addAccount": "Add an account or choose repositories",
+      "installA11y": "Install the Teros GitHub App",
+      "cloneVisibility": "Agents' clones are kept in this workspace's files, where other agents in this workspace with Terminal or Bash can read them. Clones are removed when they are no longer used; work that wasn't on GitHub yet is first pushed to a teros/saved/… branch in the same repository.",
+      "savedTitle": "Work saved from removed clones",
+      "savedMeta": "{{repo}} · saved {{date}} UTC",
+      "savedOpen": "Open",
+      "savedOpenA11y": "Open {{branch}} on GitHub"
+    },
+    "disconnectConfirm": {
+      "title": "Disconnect {{provider}}?",
+      "message": "This removes your {{provider}} connection for every agent that uses this app in this workspace. They stop working with {{provider}} until you connect again."
+    }
+  },
+  "githubCards": {
+    "verbs": {
+      "-health-check": {
+        "running": "Checking",
+        "completed": "Checked",
+        "failed": "Couldn't check"
+      },
+      "list-repos": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-repo": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "create-repo": {
+        "running": "Creating",
+        "completed": "Created",
+        "failed": "Couldn't create"
+      },
+      "search-repos": {
+        "running": "Searching",
+        "completed": "Searched",
+        "failed": "Couldn't search"
+      },
+      "list-issues": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-issue": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "create-issue": {
+        "running": "Creating",
+        "completed": "Created",
+        "failed": "Couldn't create"
+      },
+      "update-issue": {
+        "running": "Updating",
+        "completed": "Updated",
+        "failed": "Couldn't update"
+      },
+      "add-issue-comment": {
+        "running": "Commenting",
+        "completed": "Commented",
+        "failed": "Couldn't comment"
+      },
+      "add-labels-to-issue": {
+        "running": "Adding labels",
+        "completed": "Labels added",
+        "failed": "Couldn't add labels"
+      },
+      "search-issues": {
+        "running": "Searching",
+        "completed": "Searched",
+        "failed": "Couldn't search"
+      },
+      "list-pulls": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-pull": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "create-pull": {
+        "running": "Opening",
+        "completed": "Opened",
+        "failed": "Couldn't open"
+      },
+      "merge-pull": {
+        "running": "Merging",
+        "completed": "Merged",
+        "failed": "Couldn't merge"
+      },
+      "list-pr-files": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "list-pr-commits": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "list-pr-review-comments": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "request-reviewers": {
+        "running": "Requesting review",
+        "completed": "Review requested",
+        "failed": "Couldn't request review"
+      },
+      "create-pr-review": {
+        "running": "Sending review",
+        "completed": "Review sent",
+        "failed": "Couldn't send review"
+      },
+      "list-branches": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-branch": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "create-branch": {
+        "running": "Creating",
+        "completed": "Created",
+        "failed": "Couldn't create"
+      },
+      "list-commits": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-commit": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "compare-commits": {
+        "running": "Comparing",
+        "completed": "Compared",
+        "failed": "Couldn't compare"
+      },
+      "list-workflows": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "list-workflow-runs": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "get-workflow-run": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "list-workflow-run-jobs": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "trigger-workflow": {
+        "running": "Triggering",
+        "completed": "Triggered",
+        "failed": "Couldn't trigger"
+      },
+      "rerun-workflow-run": {
+        "running": "Re-running",
+        "completed": "Re-ran",
+        "failed": "Couldn't re-run"
+      },
+      "cancel-workflow-run": {
+        "running": "Cancelling",
+        "completed": "Cancelled",
+        "failed": "Couldn't cancel"
+      },
+      "list-releases": {
+        "running": "Loading",
+        "completed": "Listed",
+        "failed": "Couldn't load"
+      },
+      "create-release": {
+        "running": "Creating",
+        "completed": "Created",
+        "failed": "Couldn't create"
+      },
+      "get-file-content": {
+        "running": "Reading",
+        "completed": "Read",
+        "failed": "Couldn't read"
+      },
+      "create-or-update-file": {
+        "running": "Writing",
+        "completed": "Wrote",
+        "failed": "Couldn't write"
+      },
+      "search-code": {
+        "running": "Searching",
+        "completed": "Searched",
+        "failed": "Couldn't search"
+      },
+      "get-user": {
+        "running": "Checking",
+        "completed": "Checked",
+        "failed": "Couldn't check"
+      },
+      "get-installation-context": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "clone-repo": {
+        "running": "Cloning",
+        "completed": "Cloned",
+        "failed": "Couldn't clone"
+      },
+      "get-rate-limit": {
+        "running": "Checking",
+        "completed": "Checked",
+        "failed": "Couldn't check"
+      },
+      "dispatch-event": {
+        "running": "Dispatching",
+        "completed": "Dispatched",
+        "failed": "Couldn't dispatch"
+      },
+      "create-check-run": {
+        "running": "Creating check",
+        "completed": "Check created",
+        "failed": "Couldn't create check"
+      },
+      "update-check-run": {
+        "running": "Updating check",
+        "completed": "Check updated",
+        "failed": "Couldn't update check"
+      },
+      "git-status": {
+        "running": "Checking",
+        "completed": "Checked",
+        "failed": "Couldn't check"
+      },
+      "git-add": {
+        "running": "Staging",
+        "completed": "Staged",
+        "failed": "Couldn't stage"
+      },
+      "git-commit": {
+        "running": "Committing",
+        "completed": "Committed",
+        "failed": "Couldn't commit"
+      },
+      "git-push": {
+        "running": "Pushing",
+        "completed": "Pushed",
+        "failed": "Couldn't push"
+      },
+      "git-checkout": {
+        "running": "Switching to",
+        "completed": "Switched to",
+        "failed": "Couldn't switch to"
+      },
+      "git-rm": {
+        "running": "Removing",
+        "completed": "Removed",
+        "failed": "Couldn't remove"
+      },
+      "git-mv": {
+        "running": "Moving",
+        "completed": "Moved",
+        "failed": "Couldn't move"
+      },
+      "git-read-file": {
+        "running": "Reading",
+        "completed": "Read",
+        "failed": "Couldn't read"
+      },
+      "git-write-file": {
+        "running": "Writing",
+        "completed": "Wrote",
+        "failed": "Couldn't write"
+      },
+      "git-list-files": {
+        "running": "Listing",
+        "completed": "Listed",
+        "failed": "Couldn't list"
+      },
+      "git-pull": {
+        "running": "Pulling",
+        "completed": "Pulled",
+        "failed": "Couldn't pull"
+      },
+      "git-diff": {
+        "running": "Comparing",
+        "completed": "Compared",
+        "failed": "Couldn't compare"
+      },
+      "git-log": {
+        "running": "Loading",
+        "completed": "Loaded",
+        "failed": "Couldn't load"
+      },
+      "git-batch-commit": {
+        "running": "Committing",
+        "completed": "Committed",
+        "failed": "Couldn't commit"
+      },
+      "git-stash": {
+        "running": "Stashing",
+        "completed": "Stashed",
+        "failed": "Couldn't stash"
+      },
+      "git-merge": {
+        "running": "Merging",
+        "completed": "Merged",
+        "failed": "Couldn't merge"
+      },
+      "git-rebase": {
+        "running": "Rebasing",
+        "completed": "Rebased",
+        "failed": "Couldn't rebase"
+      },
+      "git-reset": {
+        "running": "Resetting",
+        "completed": "Reset",
+        "failed": "Couldn't reset"
+      },
+      "git-cherry-pick": {
+        "running": "Cherry-picking",
+        "completed": "Cherry-picked",
+        "failed": "Couldn't cherry-pick"
+      },
+      "git-config": {
+        "running": "Configuring",
+        "completed": "Configured",
+        "failed": "Couldn't configure"
+      },
+      "git-tag": {
+        "running": "Tagging",
+        "completed": "Tagged",
+        "failed": "Couldn't tag"
+      },
+      "git-remote": {
+        "running": "Configuring remote",
+        "completed": "Remote configured",
+        "failed": "Couldn't configure remote"
+      },
+      "git-blame": {
+        "running": "Analysing",
+        "completed": "Analysed",
+        "failed": "Couldn't analyse"
+      },
+      "git-bisect": {
+        "running": "Bisecting",
+        "completed": "Bisected",
+        "failed": "Couldn't bisect"
+      },
+      "git-fetch": {
+        "running": "Fetching",
+        "completed": "Fetched",
+        "failed": "Couldn't fetch"
+      },
+      "_default": {
+        "running": "Loading",
+        "completed": "Done",
+        "failed": "Failed"
+      }
+    },
+    "nouns": {
+      "branches": "branches",
+      "gitOperation": "git operation",
+      "files": "files",
+      "prFiles": "PR files",
+      "installationContext": "installation context",
+      "file": "file",
+      "code": "code",
+      "repositories": "repositories",
+      "repository": "repository",
+      "user": "GitHub user"
+    },
+    "details": {
+      "files": "{{count}} files",
+      "matches": "{{count}} matches",
+      "found": "{{count}} found",
+      "reused": "reused, nothing fetched",
+      "binary": "Binary file, {{size}} bytes; its content is not shown.",
+      "truncated": "Showing the first part of the file.",
+      "lines": "{{count}} lines"
+    }
+  },
+  "caps": {
+    "sectionTitle": "System capabilities",
+    "powerHint": "Off by default — activate explicitly. These give the agent deep access.",
+    "ambientToggle": "{{count}} ambient capabilities · always on",
+    "alwaysOn": "always on",
+    "defaultOn": "default on",
+    "defaultOff": "default off",
+    "terminalHint": "bash + sessions",
+    "memory": {
+      "name": "Memory",
+      "desc": "Long-term memory with vector search — the agent remembers across conversations."
+    },
+    "tasks": {
+      "name": "Tasks",
+      "desc": "Hierarchical to-do list the agent can plan, track and complete."
+    },
+    "boards": {
+      "name": "Boards",
+      "desc": "Kanban projects with tasks, dependencies and agent runners."
+    },
+    "automate": {
+      "name": "Automate",
+      "desc": "Reminders, schedules, webhooks and event triggers."
+    },
+    "workflows": {
+      "name": "Workflows",
+      "desc": "Visual flows of connected steps the agent can execute."
+    },
+    "terminal": {
+      "name": "Terminal",
+      "desc": "Run shell commands and drive visible terminal sessions."
+    },
+    "filesystem": {
+      "name": "Filesystem",
+      "desc": "Read and write files in the workspace volume."
+    },
+    "browser": {
+      "name": "Browser",
+      "desc": "Real browser automation — navigate, click, screenshot, extract."
+    },
+    "ui": {
+      "name": "UI Control",
+      "desc": "See and drive the user’s screen — windows, focus, desktops."
+    },
+    "messaging": {
+      "name": "Messaging",
+      "desc": "How the agent sends you images, audio, files and widgets."
+    },
+    "conversations": {
+      "name": "Conversations",
+      "desc": "Search across past conversations and messages."
+    },
+    "guide": {
+      "name": "Guide",
+      "desc": "Platform self-knowledge — the agent looks up how Teros works."
+    },
+    "file-processor": {
+      "name": "File processor",
+      "desc": "OCR, transcription and file conversion pipelines."
+    },
+    "datetime": {
+      "name": "DateTime",
+      "desc": "Clock, calendar and timezone utilities."
+    },
+    "feedback": {
+      "name": "Feedback",
+      "desc": "Report bugs and suggestions to the Teros team."
+    }
+  },
+  "terosProvider": {
+    "title": "Teros provider",
+    "sub": "Which upstream and model serve each size — per config, no flags",
+    "upstreams": "Upstreams",
+    "keyPresent": "key present",
+    "keyMissing": "no key",
+    "zdr": "zero retention",
+    "notZdr": "not ZDR — never routed",
+    "sizeL": "Model L",
+    "sizeM": "Model M",
+    "sizeS": "Model S",
+    "sizeLSub": "default · the working model",
+    "sizeMSub": "fast with reasoning",
+    "sizeSSub": "short tasks, summaries, voice",
+    "laneInteractive": "Interactive",
+    "laneInteractiveSub": "someone is waiting — user messages, voice",
+    "laneBackground": "Background",
+    "laneBackgroundSub": "nobody watching — automations, scheduled runs, internal tasks",
+    "upstream": "Upstream",
+    "model": "Model",
+    "effort": "Reasoning",
+    "vision": "vision",
+    "noVision": "no vision",
+    "failover": "Failover",
+    "failoverSub": "On a transient error before output, retry once on this upstream (on-error) or run everything there (cutover)",
+    "off": "Off",
+    "onError": "On error",
+    "cutover": "Cutover",
+    "test": "Test",
+    "testing": "Testing…",
+    "testOk": "{{model}} answered in {{ms}} ms",
+    "testImageOk": "sees the image",
+    "testImageNo": "did not describe the image",
+    "testImageRerouted": "images go to {{model}}",
+    "testCatalogueStale": "the catalogue says no vision — tell Pablo",
+    "testFailed": "Failed: {{error}}",
+    "save": "Save",
+    "saved": "Saved",
+    "dirty": "Unsaved changes",
+    "default": "Default",
+    "assigned": "assigned per user from Billing",
+    "noConfigs": "No Teros provider configs",
+    "loadError": "Could not load the Teros provider settings"
   }
 }

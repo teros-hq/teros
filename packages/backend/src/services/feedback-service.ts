@@ -7,6 +7,7 @@
  */
 
 import type { Db, Collection } from 'mongodb'
+import { COLLECTIONS, ensureCollectionIndexes } from '../db'
 import type { MessageFeedback, MessageAction, ConversationFeedback } from '../types/database'
 import type { PubSubService } from './pubsub-service'
 import { createLogger } from '../lib/logger'
@@ -71,41 +72,11 @@ export class FeedbackService {
   // ============================================================================
 
   async ensureIndexes(): Promise<void> {
-    // Message feedback: one row per (messageId, userId)
-    await this.feedbackCollection.createIndex(
-      { messageId: 1, userId: 1 },
-      { unique: true, background: true },
-    )
-    await this.feedbackCollection.createIndex(
-      { conversationId: 1, createdAt: -1 },
-      { background: true },
-    )
-    await this.feedbackCollection.createIndex(
-      { agentId: 1, createdAt: -1 },
-      { background: true },
-    )
-
-    // Message actions: append-only log
-    await this.actionsCollection.createIndex(
-      { messageId: 1, createdAt: -1 },
-      { background: true },
-    )
-    await this.actionsCollection.createIndex(
-      { conversationId: 1, createdAt: -1 },
-      { background: true },
-    )
-
-    // Conversation feedback: one row per (conversationId, userId)
-    await this.conversationFeedbackCollection.createIndex(
-      { conversationId: 1, userId: 1 },
-      { unique: true, background: true },
-    )
-    await this.conversationFeedbackCollection.createIndex(
-      { workspaceId: 1, createdAt: -1 },
-      { background: true },
-    )
-
-    log.info('FeedbackService indexes ensured')
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.feedbackCollection, COLLECTIONS.messageFeedback)
+    await ensureCollectionIndexes(this.actionsCollection, COLLECTIONS.messageActions)
+    await ensureCollectionIndexes(this.conversationFeedbackCollection, COLLECTIONS.conversationFeedback)
   }
 
   // ============================================================================

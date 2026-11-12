@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import type { GitResult } from '../../src/lib/git-local';
 import { classifyGitError, throwClassifiedGitError } from '../../src/tools/_git-error';
 
 function err(code: number, stderr: string, stdout = '') {
@@ -7,10 +8,8 @@ function err(code: number, stderr: string, stdout = '') {
 }
 
 describe('classifyGitError', () => {
-  it('maps exit -1 with timeout/enoent stderr to GIT_TIMEOUT or GIT_NOT_INSTALLED', () => {
-    // -1 + no further info → treated as timeout (defensive).
+  it('maps a bare exit -1 (no spawn error recorded) to GIT_TIMEOUT (legacy fallback)', () => {
     expect(classifyGitError(err(-1, '')).code).toBe('GIT_TIMEOUT');
-    expect(classifyGitError(err(-1, 'ENOENT git not found')).code).toBe('GIT_NOT_INSTALLED');
   });
 
   it('maps "not a git repository" to GIT_NOT_A_REPO', () => {
@@ -88,7 +87,97 @@ describe('classifyGitError', () => {
   });
 });
 
+// bug-git-github: runGit used to drop spawnSync's `error`/`signal`, so every
+// abnormal termination became GIT_TIMEOUT. Each failure shape now has its own
+// code, keyed on the spawn error code (never its message: Bun and Node differ).
+describe('classifyGitError — abnormal termination (bug-git-github)', () => {
+  const abnormal = (extra: Partial<GitResult>): GitResult => ({
+    code: -1,
+    stdout: '',
+    stderr: '',
+    ...extra,
+  });
+
+  it('ETIMEDOUT → GIT_TIMEOUT naming the command and the budget', () => {
+    const c = classifyGitError(
+      abnormal({ error: { code: 'ETIMEDOUT', message: 'x' }, signal: 'SIGTERM', command: 'status', timeoutMs: 90_000 }),
+    );
+    expect(c.code).toBe('GIT_TIMEOUT');
+    expect(c.message).toContain('git status');
+    expect(c.message).toContain('90 s');
+    expect(c.action.description).toMatch(/untracked|gitignore/);
+  });
+
+  it('a timed-out network op suggests a shallow/narrow transfer instead of a blind retry', () => {
+    const c = classifyGitError(
+      abnormal({ error: { code: 'ETIMEDOUT', message: 'x' }, command: 'clone', timeoutMs: 110_000, stderr: 'Receiving objects:  42%' }),
+    );
+    expect(c.code).toBe('GIT_TIMEOUT');
+    expect(c.action.description).toContain('depth');
+    expect(c.message).toContain('Receiving objects:  42%');
+  });
+
+  it('a network op cut by the call budget keeps the shallow/narrow transfer advice', () => {
+    const c = classifyGitError(
+      abnormal({ error: { code: 'ETIMEDOUT', message: 'x' }, command: 'clone', timeoutMs: 109_900, budgetCapped: true }),
+    );
+    expect(c.code).toBe('GIT_TIMEOUT');
+    expect(c.message).toContain('110 s');
+    expect(c.message).toContain('budget');
+    expect(c.action.description).toContain('depth');
+  });
+
+  it('a command the call budget left no time for says it never started', () => {
+    const c = classifyGitError(
+      abnormal({ error: { code: 'ETIMEDOUT', message: 'x' }, command: 'push', timeoutMs: 0, budgetCapped: true }),
+    );
+    expect(c.code).toBe('GIT_TIMEOUT');
+    expect(c.message).toMatch(/not started/);
+    expect(c.action.description).toMatch(/other agents/);
+  });
+
+  it('ENOENT → GIT_NOT_INSTALLED (was GIT_TIMEOUT)', () => {
+    expect(classifyGitError(abnormal({ error: { code: 'ENOENT', message: 'spawn git ENOENT' } })).code).toBe(
+      'GIT_NOT_INSTALLED',
+    );
+  });
+
+  it('ENOBUFS → GIT_OUTPUT_TOO_LARGE (was GIT_TIMEOUT)', () => {
+    const c = classifyGitError(
+      abnormal({ error: { code: 'ENOBUFS', message: 'over limit' }, signal: 'SIGTERM', command: 'log' }),
+    );
+    expect(c.code).toBe('GIT_OUTPUT_TOO_LARGE');
+    expect(c.action.description).toContain('maxCount');
+  });
+
+  it('EAGAIN → GIT_SPAWN_FAILED with a resource hint (was GIT_TIMEOUT)', () => {
+    const c = classifyGitError(abnormal({ error: { code: 'EAGAIN', message: 'spawn EAGAIN' }, command: 'add' }));
+    expect(c.code).toBe('GIT_SPAWN_FAILED');
+    expect(c.message).toContain('EAGAIN');
+    expect(c.action.description).toMatch(/processes|memory/);
+  });
+
+  it('killed by a signal with no spawn error → GIT_KILLED (OOM killer, container stop)', () => {
+    const c = classifyGitError(abnormal({ signal: 'SIGKILL', command: 'clone' }));
+    expect(c.code).toBe('GIT_KILLED');
+    expect(c.message).toContain('SIGKILL');
+    expect(c.action.description).toMatch(/memory/);
+  });
+});
+
 describe('throwClassifiedGitError', () => {
+  it('puts the action and git stderr in the message: the SDK sends the agent only error.message', () => {
+    try {
+      throwClassifiedGitError(err(128, "fatal: unable to access 'https://github.com/o/r.git/': Could not resolve host: github.com"));
+      expect.unreachable();
+    } catch (e) {
+      const lines = (e as Error).message.split('\n');
+      expect(lines[0]).toBe('[GIT_NETWORK_ERROR] Could not reach the remote.');
+      expect(lines[1]).toBe('What to do: Check network and retry.');
+      expect(lines[2]).toContain('git stderr: fatal: unable to access');
+    }
+  });
+
   it('throws with [CODE] prefix and attaches the classified fields', () => {
     try {
       throwClassifiedGitError(err(128, 'fatal: not a git repository'));

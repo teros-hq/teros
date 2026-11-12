@@ -2,8 +2,8 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.railway",
   "name": "Railway",
-  "version": "1.0.0",
-  "description": "Deploy projects to Railway directly from Teros workspaces. Supports automatic deployments, environment management, and database provisioning.",
+  "version": "1.1.0",
+  "description": "Deploy projects to Railway directly from Teros workspaces. Supports automatic deployments, environment management, and database provisioning. Accepts both workspace-scoped tokens (full account access) and project-scoped tokens (restricted to a single project — some list operations will return empty by design).",
   "type": "integration",
   "icon": "icon.png",
   "category": "development",
@@ -26,7 +26,9 @@
     "permissions": false,
     "auth": {
       "type": "api-key",
-      "userSecrets": ["RAILWAY_TOKEN"]
+      "userSecrets": [
+        "RAILWAY_TOKEN"
+      ]
     },
     "agent": false
   },
@@ -36,12 +38,34 @@
     "port": 3000,
     "healthCheck": "/health"
   },
-  "keywords": ["railway", "deploy", "paas", "hosting", "docker", "deployment", "staging", "production"],
-  "changelog": [
-    {
-      "version": "1.0.0",
-      "date": "2026-01-29",
-      "notes": "Initial release — create and deploy projects, manage services, environments, variables, domains and volumes, and watch deployment logs"
+  "keywords": [
+    "railway",
+    "deploy",
+    "paas",
+    "hosting",
+    "docker",
+    "deployment",
+    "staging",
+    "production"
+  ],
+  "setup": {
+    "userSecrets": {
+      "RAILWAY_TOKEN": {
+        "description": "Railway API token. Two flavours: **Account/Workspace token** (full access to all projects in the workspace) or **Project token** (scoped to a single project). Get yours at https://railway.app/account/tokens (account/workspace) or Project → Settings → Tokens (project-scoped).",
+        "url": "https://railway.app/account/tokens",
+        "scopes": [
+          {
+            "kind": "workspace",
+            "label": "Account / Workspace token",
+            "notes": "Full access. railway-list-projects and railway-list-workspaces return data."
+          },
+          {
+            "kind": "project",
+            "label": "Project-scoped token",
+            "notes": "Restricted to a single project. railway-list-projects will return empty — use railway-get-project with the project ID directly."
+          }
+        ]
+      }
     }
-  ]
+  }
 }

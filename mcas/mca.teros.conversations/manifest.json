@@ -22,7 +22,8 @@
   "systemSecrets": [],
   "runtime": {
     "transport": "http",
-    "containerMode": "per-app"
+    "containerMode": "per-app",
+    "workspaceMount": true
   },
   "keywords": ["conversations", "history", "search", "messages", "memory"],
   "layers": {

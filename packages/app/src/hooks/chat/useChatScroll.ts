@@ -1,27 +1,27 @@
 /**
  * useChatScroll
  *
- * Manages scroll state for the inverted FlatList chat.
- * With inverted=true, "scroll to bottom" means scrollToOffset({ offset: 0 }).
+ * Scroll handle for the chat thread. The thread is CHRONOLOGICAL from here
+ * on; MessageList decides per platform how "the bottom" is reached.
  */
 
 import { useCallback, useRef } from "react"
-import type { FlatList } from "react-native"
+import type { MessageListHandle } from "../../components/chat/MessageList"
 
 export interface ChatScrollState {
-  flatListRef: React.RefObject<FlatList | null>
+  listRef: React.RefObject<MessageListHandle | null>
   scrollToBottom: (animated?: boolean) => void
 }
 
 export function useChatScroll(): ChatScrollState {
-  const flatListRef = useRef<FlatList>(null)
+  const listRef = useRef<MessageListHandle>(null)
 
   const scrollToBottom = useCallback((animated = true) => {
-    flatListRef.current?.scrollToOffset({ offset: 0, animated })
+    listRef.current?.scrollToBottom(animated)
   }, [])
 
   return {
-    flatListRef,
+    listRef,
     scrollToBottom,
   }
 }

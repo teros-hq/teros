@@ -9,7 +9,7 @@
  * which is consistent across all instances (e.g., mca.teros.bash).
  */
 
-import * as Sentry from '@sentry/react-native';
+import { captureMessage } from '../../lib/sentry';
 import { DefaultToolCallRenderer } from './DefaultToolCallRenderer';
 import type { RegisteredMca, ToolCallRendererComponent } from './types';
 import { withPermissionSupport } from './withPermissionSupport';
@@ -102,17 +102,16 @@ class McaRegistryClass {
 
     // Send to Sentry as a warning (not an error)
     try {
-      Sentry.captureMessage(message, {
-        level: 'warning',
-        tags: {
+      captureMessage(
+        message,
+        'warning',
+        { registeredMcas: Array.from(this.mcas.keys()) },
+        {
           type: 'missing_renderer',
           mcaId: mcaId || 'undefined',
           toolName: toolName || 'unknown',
         },
-        extra: {
-          registeredMcas: Array.from(this.mcas.keys()),
-        },
-      });
+      );
     } catch (e) {
       // Sentry might not be initialized in dev, ignore
     }

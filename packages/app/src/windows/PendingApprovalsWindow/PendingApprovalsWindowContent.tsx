@@ -1,33 +1,48 @@
 /**
- * PendingApprovalsWindow - Vista centralizada de permisos pendientes
+ * PendingApprovalsWindow — every pending permission, grouped by conversation.
  *
  * Features:
  * - List of all pending permissions grouped by conversation
- * - Approve/deny individually or in batch
- * - View tool details and parameters
+ * - Each request drawn as the tool's own card (detail + ControlsBar), the same
+ *   widget as the chat (PERMW-REQ-1); Deny all / Allow all under a group of
+ *   two or more (PERMW-REQ-3)
  * - Real-time updates
  *
  * Now uses the shared usePendingPermissions hook (same source of truth
  * as the navbar PermissionIndicator dropdown).
+ *
+ * Look: the OS prototype's "Esperan tu permiso." page — one Card per
+ * conversation (Avatar, serif title, agent · time, mint "Open chat" pill),
+ * the tools' own cards under it.
+ *
+ * Terminals waiting for an answer (useTerminalNeeds, every workspace the
+ * person can write in) come first, as the chat's needs-you card.
  */
 
-import { ChevronRight, Shield, User } from '@tamagui/lucide-icons';
-import React from 'react';
-import { ScrollView, TouchableOpacity, View } from 'react-native';
-import { Avatar, Button, Circle, Text, XStack, YStack } from 'tamagui';
-import { useTilingStore } from '../../store/tilingStore';
-import { useWorkspaceStore } from '../../store/workspaceStore';
-import type { PendingApprovalsWindowProps } from './definition';
-import { AppSpinner } from '../../components/ui';
-import { useColors } from '../../components/mca/primitives/useColors';
-import { colors as semanticColors, surface, controlsBar, indicators } from '../../components/mca/primitives/colors';
-import { usePendingPermissions } from '../../hooks/usePendingPermissions';
+import React from "react"
+import { useTranslation } from "react-i18next"
+import { View } from "react-native"
+import { useTilingStore } from "../../store/tilingStore"
+import { useWorkspaceStore } from "../../store/workspaceStore"
+import type { PendingApprovalsWindowProps } from "./definition"
+import { AppSpinner } from "../../components/ui"
+import { Avatar } from "../../components/Avatar"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { usePendingPermissions } from "../../hooks/usePendingPermissions"
+import { usePendingPermissionCallbacks } from "../../hooks/usePendingPermissionCallbacks"
+import { PermissionContext } from "../../components/mca/types"
+import { PendingPermissionCards } from "../../components/permissions/PendingPermissionCards"
+import { TerminalNeedCard } from "../../components/needsYou/TerminalNeedCard"
+import { useTerminalNeeds } from "../../components/needsYou/useTerminalNeeds"
+import { getDateLocale } from "../../i18n"
+import { Btn, Card, EmptyState, Page, PageHead, Ph, T } from "../../components/ui/ds"
 
+/** @spec PERMW-REQ-1 */
 export function PendingApprovalsWindowContent({
   windowId,
 }: PendingApprovalsWindowProps & { windowId: string }) {
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
+  const { t } = useTranslation()
+  const c = useColors()
 
   const {
     pendingPermissions,
@@ -35,302 +50,176 @@ export function PendingApprovalsWindowContent({
     isLoading,
     handleApprove,
     handleDeny,
-    handleApproveAll,
-  } = usePendingPermissions();
+  } = usePendingPermissions()
+  const permissionCallbacks = usePendingPermissionCallbacks({ handleApprove, handleDeny })
+  const terminalNeeds = useTerminalNeeds()
 
-  const { openWindow, findWindow, focusWindow } = useTilingStore();
+  const { openWindow, findWindow, focusWindow } = useTilingStore()
 
   const handleOpenChat = (channelId: string, agentName?: string) => {
-    const existingWindow = findWindow('chat', (props) => props.channelId === channelId);
+    const existingWindow = findWindow("chat", (props) => props.channelId === channelId)
 
     if (existingWindow) {
-      focusWindow(existingWindow.id);
+      focusWindow(existingWindow.id)
     } else {
-      openWindow('chat', {
-        channelId,
-        agentName,
-        workspaceId: useWorkspaceStore.getState().activeWorkspaceId ?? undefined,
-      }, false, windowId);
-    }
-  };
-
-  const formatInput = (input: Record<string, any>): string => {
-    try {
-      const formatted = JSON.stringify(
-        input,
-        (key, value) => {
-          if (typeof value === 'string' && value.length > 200) {
-            return value.substring(0, 200) + '...';
-          }
-          return value;
+      openWindow(
+        "chat",
+        {
+          channelId,
+          agentName,
+          workspaceId: useWorkspaceStore.getState().activeWorkspaceId ?? undefined,
         },
-        2,
-      );
-      return formatted;
-    } catch {
-      return String(input);
+        false,
+        windowId,
+      )
     }
-  };
+  }
 
-  // ── Theme-adaptive tint helpers ──────────────────────────────────────────────
-  const subtleBorder = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
-  const amberTint = (alpha: number) =>
-    isDark ? `rgba(245,158,11,${alpha})` : `rgba(245,158,11,${(alpha * 0.8).toFixed(2)})`;
+  const formatTime = (ts?: number): string => {
+    if (!ts) return ""
+    const d = new Date(ts)
+    const now = new Date()
+    const sameDay = d.toDateString() === now.toDateString()
+    return sameDay
+      ? d.toLocaleTimeString(getDateLocale(), { hour: "2-digit", minute: "2-digit" })
+      : d.toLocaleDateString(getDateLocale(), {
+          day: "numeric",
+          month: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+  }
+
+  const convCount = groupedArray.length
+  const toolCount = pendingPermissions.length
+  // Terminals waiting but no approvals: no empty state under them.
+  const onlyTerminals = toolCount === 0 && terminalNeeds.length > 0
+
+  const lead = t("pendingApprovals.lead")
 
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Header */}
-      <XStack
-        height={40}
-        paddingHorizontal={12}
-        alignItems="center"
-        justifyContent="space-between"
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-      >
-        <XStack gap={8} alignItems="center">
-          <Shield size={16} color={semanticColors.amber} />
-          <Text fontSize={12} fontWeight="600" color={c.text}>
-            Permisos pendientes
-          </Text>
-        </XStack>
+    <Page>
+      <PageHead
+        eyebrow={t("windows.pendingApprovals")}
+        title={t("pendingApprovals.headline")}
+        accent={t("pendingApprovals.headlineAccent")}
+        lead={lead}
+      />
 
-        <XStack
-          paddingHorizontal={8}
-          paddingVertical={4}
-          borderRadius={12}
-          backgroundColor={indicators.risk.bg}
-        >
-          <Text fontSize={11} fontWeight="600" color={semanticColors.amber}>
-            {pendingPermissions.length}
-          </Text>
-        </XStack>
-      </XStack>
-
-      {/* Content */}
-      {isLoading ? (
-        <YStack flex={1} justifyContent="center" alignItems="center">
-          <AppSpinner variant="warning" />
-          <Text fontSize={12} color={c.text3} marginTop={12}>
-            Cargando permisos...
-          </Text>
-        </YStack>
-      ) : pendingPermissions.length === 0 ? (
-        <YStack flex={1} justifyContent="center" alignItems="center" padding={20}>
-          <Circle size={64} backgroundColor={amberTint(0.1)} marginBottom={16}>
-            <Shield size={32} color={semanticColors.amber} />
-          </Circle>
-          <Text fontSize={14} fontWeight="600" color={c.text} marginBottom={6}>
-            Sin permisos pendientes
-          </Text>
-          <Text fontSize={12} color={c.text3} textAlign="center">
-            When an agent needs permissions,{'\n'}they will appear here for approval
-          </Text>
-        </YStack>
-      ) : (
-        <ScrollView style={{ flex: 1 }}>
-          <YStack padding={12} gap={12}>
-            {groupedArray.map((group) => (
-              <YStack
-                key={group.channelId}
-                borderRadius={8}
-                borderWidth={1}
-                borderColor={indicators.risk.border}
-                backgroundColor={c.bgCard}
-                overflow="hidden"
-              >
-                {/* Channel header */}
-                <XStack
-                  padding={12}
-                  alignItems="center"
-                  gap={10}
-                  backgroundColor={amberTint(0.05)}
-                  borderBottomWidth={1}
-                  borderBottomColor={amberTint(0.1)}
-                >
-                  {/* Avatar */}
-                  <Circle size={36} backgroundColor={c.bgCardHover} overflow="hidden">
-                    {group.agentAvatarUrl ? (
-                      <Avatar circular size={36}>
-                        <Avatar.Image src={group.agentAvatarUrl} />
-                      </Avatar>
-                    ) : (
-                      <User size={18} color={c.text3} />
-                    )}
-                  </Circle>
-
-                  {/* Info */}
-                  <YStack flex={1}>
-                    <Text fontSize={13} fontWeight="600" color={c.text}>
-                      {group.agentName || 'Agente'}
-                    </Text>
-                    <Text fontSize={11} color={c.text2}>
-                      {group.channelName}
-                    </Text>
-                  </YStack>
-
-                  {/* Badge */}
-                  <XStack
-                    paddingHorizontal={8}
-                    paddingVertical={4}
-                    borderRadius={12}
-                    backgroundColor={indicators.risk.bg}
-                  >
-                    <Text fontSize={11} fontWeight="600" color={semanticColors.amber}>
-                      {group.permissions.length}
-                    </Text>
-                  </XStack>
-
-                  {/* Open chat button */}
-                  <TouchableOpacity
-                    onPress={() => handleOpenChat(group.channelId, group.agentName)}
-                    activeOpacity={0.7}
-                    style={{
-                      padding: 6,
-                      borderRadius: 6,
-                      backgroundColor: subtleBorder,
-                    }}
-                  >
-                    <ChevronRight size={16} color={c.text2} />
-                  </TouchableOpacity>
-                </XStack>
-
-                {/* Permissions list */}
-                <YStack>
-                  {group.permissions.map((perm, idx) => (
-                    <YStack
-                      key={perm.requestId}
-                      padding={12}
-                      gap={10}
-                      borderBottomWidth={idx < group.permissions.length - 1 ? 1 : 0}
-                      borderBottomColor={subtleBorder}
-                    >
-                      {/* Tool name */}
-                      <XStack alignItems="center" gap={8}>
-                        <View
-                          style={{
-                            paddingHorizontal: 8,
-                            paddingVertical: 4,
-                            borderRadius: 4,
-                            backgroundColor: semanticColors.indigoGlow,
-                          }}
-                        >
-                          <Text fontSize={11} fontWeight="600" color={semanticColors.indigo} fontFamily="$mono">
-                            {perm.toolName}
-                          </Text>
-                        </View>
-                      </XStack>
-
-                      {/* Parameters */}
-                      {perm.input && Object.keys(perm.input).length > 0 && (
-                        <YStack gap={6}>
-                          <Text fontSize={10} color={c.text3} fontWeight="500">
-                            PARAMETERS
-                          </Text>
-                          <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            style={{ maxHeight: 120 }}
-                          >
-                            <View
-                              style={{
-                                backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : c.bgInner,
-                                borderRadius: 6,
-                                padding: 10,
-                              }}
-                            >
-                              <Text
-                                fontSize={11}
-                                color={c.text2}
-                                fontFamily="$mono"
-                                style={{ lineHeight: 16 }}
-                              >
-                                {formatInput(perm.input)}
-                              </Text>
-                            </View>
-                          </ScrollView>
-                        </YStack>
-                      )}
-
-                      {/* Actions */}
-                      <XStack gap={8} marginTop={4}>
-                        {/* Deny */}
-                        <Button
-                          flex={1}
-                          size="$2"
-                          backgroundColor={controlsBar.deny.bg}
-                          borderWidth={1}
-                          borderColor={controlsBar.deny.border}
-                          hoverStyle={{
-                            backgroundColor: isDark
-                              ? 'rgba(239,68,68,0.2)'
-                              : 'rgba(239,68,68,0.15)',
-                            borderColor: semanticColors.red,
-                          }}
-                          onPress={() => handleDeny(perm.requestId)}
-                        >
-                          <Text fontSize={11} color={controlsBar.deny.fg} fontWeight="600">
-                            Denegar
-                          </Text>
-                        </Button>
-
-                        {/* Approve */}
-                        <Button
-                          flex={1}
-                          size="$2"
-                          backgroundColor={controlsBar.allow.bg}
-                          borderWidth={1}
-                          borderColor={controlsBar.allow.border}
-                          hoverStyle={{
-                            backgroundColor: isDark
-                              ? 'rgba(34,197,94,0.2)'
-                              : 'rgba(34,197,94,0.15)',
-                            borderColor: semanticColors.green,
-                          }}
-                          onPress={() => handleApprove(perm.requestId)}
-                        >
-                          <Text fontSize={11} color={controlsBar.allow.fg} fontWeight="600">
-                            Aprobar
-                          </Text>
-                        </Button>
-                      </XStack>
-                    </YStack>
-                  ))}
-                </YStack>
-
-                {/* Approve all button */}
-                {group.permissions.length > 1 && (
-                  <XStack
-                    padding={10}
-                    borderTopWidth={1}
-                    borderTopColor={subtleBorder}
-                    backgroundColor={isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)'}
-                  >
-                    <Button
-                      flex={1}
-                      size="$2"
-                      backgroundColor={controlsBar.allow.bg}
-                      borderWidth={1}
-                      borderColor={controlsBar.allow.border}
-                      hoverStyle={{
-                        backgroundColor: isDark
-                          ? 'rgba(34,197,94,0.25)'
-                          : 'rgba(34,197,94,0.18)',
-                        borderColor: semanticColors.green,
-                      }}
-                      onPress={() => handleApproveAll(group.channelId)}
-                    >
-                      <Text fontSize={11} color={controlsBar.allow.fg} fontWeight="600">
-                        Aprobar todas ({group.permissions.length})
-                      </Text>
-                    </Button>
-                  </XStack>
-                )}
-              </YStack>
+      {terminalNeeds.length ? (
+        <Card pad={20} testID="approvals-terminals" style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+            <Ph name="terminal" size={22} color={c.accent} />
+            <View style={{ flex: 1, minWidth: 160 }}>
+              <T step="xl" ellipsis>
+                {t("terminal.notices.title", { defaultValue: "Terminals" })}
+              </T>
+              <T step="sm" tone="text3">
+                {t("terminal.notices.lead", {
+                  defaultValue:
+                    "Claude Code is waiting for your answer. Click an option and it is typed for you.",
+                })}
+              </T>
+            </View>
+          </View>
+          <View style={{ gap: 4, marginTop: 10 }}>
+            {terminalNeeds.map((need) => (
+              <TerminalNeedCard key={need.session.terminalId} need={need} />
             ))}
-          </YStack>
-        </ScrollView>
+          </View>
+        </Card>
+      ) : null}
+
+      {isLoading && !terminalNeeds.length ? (
+        <View style={{ alignItems: "center", paddingVertical: 48, gap: 12 }}>
+          <AppSpinner variant="warning" />
+          <T step="sm" tone="text3">
+            {t("pendingApprovals.loading")}
+          </T>
+        </View>
+      ) : onlyTerminals ? null : pendingPermissions.length === 0 ? (
+        <Card pad={8}>
+          <EmptyState
+            icon="shield-check"
+            title={t("pendingApprovals.emptyTitle")}
+            text={t("pendingApprovals.emptyText")}
+          />
+        </Card>
+      ) : (
+        <>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            <T step="sm" tone="text2">
+              {t("pendingApprovals.summary", { tools: toolCount, convs: convCount })}
+            </T>
+            <T step="sm" tone="text3">
+              {t("pendingApprovals.hint")}
+            </T>
+          </View>
+
+          <PermissionContext.Provider value={permissionCallbacks}>
+            <View style={{ gap: 16 }}>
+              {groupedArray.map((group) => {
+                const latest = group.permissions.reduce((m, p) => Math.max(m, p.timestamp ?? 0), 0)
+                return (
+                  // The testID sits on a wrapper: a non-interactive Card drops it.
+                  <View key={group.channelId} testID={`approvals-group-${group.channelId}`}>
+                    <Card pad={20}>
+                      {/* Conversation header */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 14,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <Avatar
+                          name={group.agentName || t("conversation.agent")}
+                          imageUrl={group.agentAvatarUrl}
+                          size={40}
+                          isAgent
+                        />
+                        <View style={{ flex: 1, minWidth: 160 }}>
+                          <T step="xl" ellipsis>
+                            {group.channelName || t("conversation.newChat")}
+                          </T>
+                          <T step="sm" tone="text3" ellipsis>
+                            {group.agentName || t("conversation.agent")}
+                            {latest ? ` · ${formatTime(latest)}` : ""}
+                            {` · ${t("pendingApprovals.toolCount", { count: group.permissions.length })}`}
+                          </T>
+                        </View>
+                        <Btn
+                          variant="mint"
+                          icon="chat-circle"
+                          onPress={() => handleOpenChat(group.channelId, group.agentName)}
+                        >
+                          {t("pendingApprovals.openChat")}
+                        </Btn>
+                      </View>
+
+                      {/* The tools' own cards, with Deny all / Allow all under two or more
+                          (PERMW-REQ-1, PERMW-REQ-3). */}
+                      <View style={{ marginTop: 16 }}>
+                        <PendingPermissionCards permissions={group.permissions} />
+                      </View>
+                    </Card>
+                  </View>
+                )
+              })}
+            </View>
+          </PermissionContext.Provider>
+        </>
       )}
-    </YStack>
-  );
+    </Page>
+  )
 }

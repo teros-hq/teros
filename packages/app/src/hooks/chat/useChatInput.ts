@@ -12,7 +12,6 @@
 import { useCallback } from "react"
 import { Platform } from "react-native"
 import { getTerosClient } from "../../services/terosClientSingleton"
-import { track } from "../../lib/analytics"
 import { buildFirstMessageContent } from "./first-message-content"
 import type { Message } from "../../store/chatStore"
 import { useChatStore } from "../../store/chatStore"
@@ -28,6 +27,7 @@ export interface ChatInputHandlers {
     text: string,
     audio?: { uri?: string; blob?: Blob; duration: number; url?: string },
     files?: { fileId: string; url: string; originalName: string; mimeType: string; size: number }[],
+    skillIds?: string[],
   ) => Promise<{ success: boolean }>
   handleRetryMessage: (message: Message) => Promise<void>
   handleRenameChannel: (newTitle: string) => Promise<void>
@@ -179,20 +179,21 @@ export function useChatInput({
       text: string,
       audio?: { uri?: string; blob?: Blob; duration: number; url?: string },
       files?: { fileId: string; url: string; originalName: string; mimeType: string; size: number }[],
+      skillIds?: string[],
     ) => {
       if (!text.trim() && !audio && (!files || files.length === 0)) return { success: true }
       if (!client) return { success: true }
 
       const messageText = text.trim()
 
-      // ---- /private command ----
-      if (messageText === "/private" && channelId) {
+      // ---- /scope command ----
+      if (messageText === "/scope" && channelId) {
         try {
           const currentChannel = useChatStore.getState().channels[channelId]
-          const newPrivateState = !currentChannel?.isPrivate
-          await client.channel.setPrivate(channelId, newPrivateState)
+          const newScope = currentChannel?.scope === 'shared' ? 'personal' : 'shared'
+          await client.channel.setScope(channelId, newScope)
         } catch (error) {
-          console.error("[useChatInput] Error toggling private mode:", error)
+          console.error("[useChatInput] Error toggling scope:", error)
           return { success: false }
         }
         return { success: true }
@@ -231,6 +232,7 @@ export function useChatInput({
             content: createContent,
             workspaceId: resolvedWorkspaceId,
             ...(hasFollowUpFiles ? { wakeUpAgent: false } : {}),
+            skillIds,
           })
 
           if (files && files.length > 1) {
@@ -253,7 +255,7 @@ export function useChatInput({
               await client.channel.sendMessage(result.channelId, {
                 type: "text",
                 text: messageText,
-              })
+              }, { skillIds })
             }
           }
 
@@ -262,11 +264,6 @@ export function useChatInput({
           if (resultChannel?.modelName) setModelName(resultChannel.modelName)
           if (resultChannel?.providerName) setProviderName(resultChannel.providerName)
 
-          track("message_sent", {
-            channelId: result.channelId,
-            isNewChannel: true,
-            type: audio ? "voice" : files && files.length > 0 ? "file" : "text",
-          })
           onChannelCreated?.(result.channelId)
           return { success: true }
         } catch (error) {
@@ -398,6 +395,13 @@ export function useChatInput({
 
       useChatStore.getState().upsertMessage(userMessage)
 
+      // v1.4.4: the user just sent (or queued) a message — the old suggestion
+      // chips are stale the instant this happens. Suppress them until the
+      // agent's turn completes and a fresh set arrives (channel_status) or the
+      // turn ends without one (agentPhase idle). Covers both `sending` and
+      // `queued` optimistic statuses.
+      useChatStore.getState().setSuggestedPromptsSuppressed(channelId, true)
+
       // If audio read failed, mark as failed — retry button will re-read from persistedUri
       if (audio && !base64Data) {
         useChatStore.getState().updateMessage(tempId, { status: "failed" })
@@ -451,16 +455,11 @@ export function useChatInput({
 
           // If there's text alongside files, send it as the final message
           if (messageText) {
-            await client.channel.sendMessage(channelId, { type: "text", text: messageText })
+            await client.channel.sendMessage(channelId, { type: "text", text: messageText }, { skillIds })
           }
         } else {
-          await client.channel.sendMessage(channelId, { type: "text", text: messageText })
+          await client.channel.sendMessage(channelId, { type: "text", text: messageText }, { skillIds })
         }
-        track("message_sent", {
-          channelId,
-          isNewChannel: false,
-          type: audio ? "voice" : files && files.length > 0 ? "file" : "text",
-        })
         // Status updated to 'sent' in handleMessageSent when backend confirms
         return { success: true }
       } catch (error) {
@@ -503,6 +502,26 @@ export function useChatInput({
             return
           }
         }
+        // Fallback (2026-09-30): retryData is client-memory-only and is lost on
+        // reload — the classic reason the Retry button "did nothing". The user
+        // message's text is already persisted in the store (it came from the
+        // server on channel load), so fall back to it and resend.
+        for (let i = idx - 1; i >= 0; i--) {
+          const prev = s.messages[ids[i]]
+          if (
+            prev?.sender === "user" &&
+            prev.content.type === "text" &&
+            prev.content.text?.trim()
+          ) {
+            // v1.4.4: re-running a failed turn — same rule as a fresh send.
+            useChatStore.getState().setSuggestedPromptsSuppressed(channelId, true)
+            await client.channel.sendMessage(channelId, {
+              type: "text",
+              text: prev.content.text,
+            })
+            return
+          }
+        }
         return
       }
 
@@ -529,6 +548,9 @@ export function useChatInput({
       if (!message.retryData) return
 
       useChatStore.getState().updateMessage(message.id, { status: "sending" })
+      // v1.4.4: retrying a failed message re-sends it and starts a new turn —
+      // same suppression rule as a fresh send.
+      useChatStore.getState().setSuggestedPromptsSuppressed(channelId, true)
 
       try {
         if (message.retryData.audioData || message.retryData.audioUri) {

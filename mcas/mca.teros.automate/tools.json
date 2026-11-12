@@ -1,0 +1,904 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-tools.json",
+  "mcaId": "mca.teros.automate",
+  "tools": [
+    {
+      "name": "-health-check",
+      "description": "Internal health check. Verifies the connection to the Teros backend.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-automations",
+      "description": "List the automations of the workspace: name, trigger (schedule / once / webhook / event), action (create-task / channel-event / start-flow), status, next run and 7-day stats. Filter by trigger, action, status or a name search; paginate with limit + cursor.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "once",
+              "webhook",
+              "event"
+            ],
+            "description": "Only this trigger kind."
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "create-task",
+              "channel-event",
+              "start-flow"
+            ],
+            "description": "Only this action kind."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "description": "Only active or only disabled automations."
+          },
+          "search": {
+            "type": "string",
+            "description": "Case-insensitive substring of the name."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Page size (1-200, default: all)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor from the previous page."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for the human-readable times (default: env)."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-automation",
+      "description": "Get one automation by id: full trigger and action configuration, resolved target names and stats. Webhook tokens are never returned.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for human-readable times."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-executions",
+      "description": "Execution history of an automation, newest first: what fired it (schedule / once / webhook / event), whether it succeeded, the task or flow run it produced, the error if any. Rows with skipped:true never ran: a guard refused them. error starting with \"quota-automate_daily_limit\" means the user had used up their plan's Automate runs for that UTC day (see get-quota: explain the limit, the reset at 00:00 UTC, and the ways out — space the schedule out, disable a noisy automation, or upgrade the plan); error starting with \"billing-\" means their agent-hours or payment blocked it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Page size (1-200, default 50)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "nextCursor from the previous page."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "get-quota",
+      "description": "The user's daily Automate budget: how many runs their plan allows per UTC day (all automations and trigger kinds together — schedules, reminders, webhooks and events), how many ran today, how many are left, when it resets (00:00 UTC) and which automations ran most. Use it before creating a frequent schedule, and whenever an automation \"did not fire\": if used >= limit the runs are being skipped until the reset. Ways out: space the schedule out, disable a noisy automation, or upgrade the plan (Profile → Plan). limit 0 means unlimited.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-webhook-calls",
+      "description": "Recent payloads received by a webhook automation, newest first (max 50): when, discriminator, whether a task was created or updated, the payload.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Webhook automation id (starter_…)."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max calls (1-50, default 50)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-upcoming",
+      "description": "What will fire next: active schedule and once automations ordered by next run, within a window (default 7 days). Optionally only those that message a given channel.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "days": {
+            "type": "number",
+            "description": "Window in days (1-90, default 7)."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Only automations whose action targets this channel."
+          },
+          "limit": {
+            "type": "number",
+            "description": "Max items (default 50)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone for human-readable times."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "list-event-topics",
+      "description": "The event catalog of the workspace: every topic the installed apps declare they emit (Telegram messages, board task changes, …) with the payload fields usable in filters and templates, plus templateSyntax — the exact template grammar. Call it before creating an event automation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "Only topics of this installed app."
+          },
+          "search": {
+            "type": "string",
+            "description": "Substring of the topic or app name."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "parse-time-expression",
+      "description": "Preview a time expression without creating anything. Accepts natural language — recurring (\"cada lunes a las 9\", \"weekdays a las 8\", \"every 2 hours\" → cron + human description) or one-shot (\"tomorrow at 9am\", \"in 2 hours\", \"mañana a las 9\") — ISO 8601, or a 5-field cron. Returns kind (once | cron), the resolved time / cron description and the next occurrences. Use this to tell the user when an automation will run, in plain language.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "description": "Natural language, ISO 8601, or 5-field cron."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone (default: env)."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Natural-language locale (default en)."
+          },
+          "previewCount": {
+            "type": "number",
+            "description": "How many occurrences to preview (1-10, default 3)."
+          },
+          "reference": {
+            "type": "string",
+            "description": "ISO reference instant for relative expressions (default now)."
+          }
+        },
+        "required": [
+          "expression"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "create-automation",
+      "description": "Create an automation: one trigger (schedule, once, webhook or event) coupled with one action (create a task, message a channel, start a flow). Returns the automation and, for webhooks, the secret URL — shown only once. For event triggers it also returns the payload fields of the topic and warns about filters/templates that use fields the event does not carry. Use idempotencyKey to make retries safe.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short name shown in the Automate window."
+          },
+          "trigger": {
+            "type": "object",
+            "description": "When it fires. {type:\"schedule\", schedule, timezone?, locale?} (natural language, PRIMARY: \"cada lunes a las 9\", \"weekdays a las 8\", \"cada 2 horas\", \"el primer día de mes\") | {type:\"schedule\", cron, timezone?} (advanced: 5-field cron) | {type:\"once\", at, timezone?, locale?} (natural language or ISO; fires once) | {type:\"webhook\"} (a secret URL is generated) | {type:\"event\", topic, filters?} (topic from list-event-topics; filters = array of {field: value} objects, OR-ed).",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "schedule",
+                  "once",
+                  "webhook",
+                  "event"
+                ]
+              },
+              "schedule": {
+                "type": "string",
+                "description": "schedule (PRIMARY): natural language, e.g. \"cada lunes a las 9\", \"weekdays a las 8\", \"cada 15 minutos\", \"el primer día de mes\", \"todos los días a las 9:30\"."
+              },
+              "cron": {
+                "type": "string",
+                "description": "schedule (advanced): 5-field cron \"min hour day month weekday\"."
+              },
+              "at": {
+                "type": "string",
+                "description": "once: \"tomorrow at 9am\", \"in 2 hours\", or ISO 8601."
+              },
+              "timezone": {
+                "type": "string",
+                "description": "IANA timezone for schedule / once (default: env)."
+              },
+              "locale": {
+                "type": "string",
+                "enum": [
+                  "en",
+                  "es"
+                ],
+                "description": "once: natural-language locale."
+              },
+              "topic": {
+                "type": "string",
+                "description": "event: topic pattern, e.g. \"telegram.message.received\" or \"board.*\". Call list-event-topics first: it lists the real topics and their payload fields."
+              },
+              "filters": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                },
+                "description": "event: payload filters ({field: value}, fields from list-event-topics), OR across objects, AND within one."
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "action": {
+            "type": "object",
+            "description": "What happens. {type:\"create-todo-item\", parentId?, assignee?, state?, plannedDay?, plannedTime?, textTemplate, descriptionTemplate?, instructionsTemplate?} (creates a task in the to-do list / Tasks tree — parent group optional, assignee {kind:\"agent\"|\"user\", id}, plannedDay \"YYYY-MM-DD\") | {type:\"create-task\", projectId, agentId?, columnId?, titleTemplate, instructionsTemplate, descriptionTemplate?} (creates a task on a project board) | {type:\"channel-event\", channelId?, agentId?, messageTemplate} (defaults: current channel and agent) | {type:\"start-flow\", flowId, projectId, inputMapping?}. Templates: {{field}} / {{payload.field}} / {{topic}} / {{payload}} (JSON) / {{a || b || \"literal\"}} (first non-empty wins); nothing else ({{#if}} etc. is rejected). Required templates (title/instructions/message/text) must not render empty; the trigger payload becomes the task input artifact.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "create-todo-item",
+                  "create-task",
+                  "channel-event",
+                  "start-flow"
+                ]
+              },
+              "parentId": {
+                "type": "string",
+                "description": "create-todo-item: parent group node ID (omit for root). Get IDs with the todo-list get-tree tool."
+              },
+              "assignee": {
+                "type": "object",
+                "description": "create-todo-item: { kind: \"agent\" | \"user\", id } — who does the task."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "planning",
+                  "pending",
+                  "working",
+                  "review",
+                  "done"
+                ],
+                "description": "create-todo-item: initial state (default pending; blocked not allowed)."
+              },
+              "plannedDay": {
+                "type": "string",
+                "description": "create-todo-item: \"YYYY-MM-DD\" — the day the task is planned for."
+              },
+              "plannedTime": {
+                "type": "string",
+                "description": "create-todo-item: \"HH:MM\" — planned time (requires plannedDay)."
+              },
+              "textTemplate": {
+                "type": "string",
+                "description": "create-todo-item (required): task title, e.g. \"Responder a {{payload.fromName}}\". Must not render empty."
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "agentId": {
+                "type": "string",
+                "description": "Defaults to the agent running the tool."
+              },
+              "columnId": {
+                "type": "string",
+                "description": "create-task: board column (default: To Do)."
+              },
+              "titleTemplate": {
+                "type": "string",
+                "description": "create-task (required): task title, e.g. \"Lead: {{fromName || fromId}}\". Must not render empty."
+              },
+              "instructionsTemplate": {
+                "type": "string",
+                "description": "create-task (required): what the agent has to do. Must not render empty. The payload is also available to the agent as the task input artifact."
+              },
+              "descriptionTemplate": {
+                "type": "string",
+                "description": "create-task (optional): one-line human summary; empty render → no description."
+              },
+              "channelId": {
+                "type": "string",
+                "description": "channel-event: defaults to the current channel."
+              },
+              "messageTemplate": {
+                "type": "string",
+                "description": "channel-event (required): what the agent receives. Must not render empty."
+              },
+              "flowId": {
+                "type": "string"
+              },
+              "inputMapping": {
+                "type": "object",
+                "description": "start-flow: flow input → dot-path into the payload."
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Default true."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Same key twice → the first automation is returned, nothing duplicated."
+          }
+        },
+        "required": [
+          "name",
+          "trigger",
+          "action"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "schedule-reminder",
+      "description": "Remind at a given time: the message is delivered once to the channel (default: this conversation) and the agent acts on it. time: natural language (\"tomorrow at 9am\", \"in 2 hours\", \"el lunes a las 10\") or ISO 8601.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "description": "Natural language or ISO 8601, in the future."
+          },
+          "message": {
+            "type": "string",
+            "description": "What the agent receives when it fires (max 4000 chars)."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Target channel (default: the current one)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone the time is expressed in (default: env)."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Natural-language locale (default en)."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Retry-safe key."
+          }
+        },
+        "required": [
+          "time",
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "create-recurring-task",
+      "description": "Deliver a message to a channel on a recurring schedule (default channel: this conversation); the agent acts on it each time. schedule: natural language, PRIMARY (\"cada lunes a las 9\", \"weekdays a las 8\", \"cada 2 horas\"); cron: 5 fields \"min hour day month weekday\" (advanced).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "schedule": {
+            "type": "string",
+            "description": "Natural language (PRIMARY): \"cada lunes a las 9\", \"weekdays a las 8\", \"cada 15 minutos\", \"el primer día de mes\"."
+          },
+          "cron": {
+            "type": "string",
+            "description": "Advanced: 5-field cron expression."
+          },
+          "locale": {
+            "type": "string",
+            "enum": [
+              "en",
+              "es"
+            ],
+            "description": "Natural-language locale (default en)."
+          },
+          "message": {
+            "type": "string",
+            "description": "What the agent receives on each run (max 4000 chars)."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Target channel (default: the current one)."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone of the cron (default: env)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name in the Automate window (default: the message)."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Retry-safe key."
+          }
+        },
+        "required": [
+          "cron",
+          "message"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.1.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "create-webhook",
+      "description": "Create a webhook: a secret URL external systems POST JSON to; each call runs the action (create a task — with discriminator dedupe —, message a channel, or start a flow). The URL is returned once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Short name, e.g. \"GitHub issues → tasks\"."
+          },
+          "action": {
+            "type": "object",
+            "description": "What happens. {type:\"create-todo-item\", parentId?, assignee?, state?, plannedDay?, plannedTime?, textTemplate, descriptionTemplate?, instructionsTemplate?} (creates a task in the to-do list / Tasks tree — parent group optional, assignee {kind:\"agent\"|\"user\", id}, plannedDay \"YYYY-MM-DD\") | {type:\"create-task\", projectId, agentId?, columnId?, titleTemplate, instructionsTemplate, descriptionTemplate?} (creates a task on a project board) | {type:\"channel-event\", channelId?, agentId?, messageTemplate} (defaults: current channel and agent) | {type:\"start-flow\", flowId, projectId, inputMapping?}. Templates: {{field}} / {{payload.field}} / {{topic}} / {{payload}} (JSON) / {{a || b || \"literal\"}} (first non-empty wins); nothing else ({{#if}} etc. is rejected). Required templates (title/instructions/message/text) must not render empty; the trigger payload becomes the task input artifact.",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "create-todo-item",
+                  "create-task",
+                  "channel-event",
+                  "start-flow"
+                ]
+              },
+              "parentId": {
+                "type": "string",
+                "description": "create-todo-item: parent group node ID (omit for root). Get IDs with the todo-list get-tree tool."
+              },
+              "assignee": {
+                "type": "object",
+                "description": "create-todo-item: { kind: \"agent\" | \"user\", id } — who does the task."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "planning",
+                  "pending",
+                  "working",
+                  "review",
+                  "done"
+                ],
+                "description": "create-todo-item: initial state (default pending; blocked not allowed)."
+              },
+              "plannedDay": {
+                "type": "string",
+                "description": "create-todo-item: \"YYYY-MM-DD\" — the day the task is planned for."
+              },
+              "plannedTime": {
+                "type": "string",
+                "description": "create-todo-item: \"HH:MM\" — planned time (requires plannedDay)."
+              },
+              "textTemplate": {
+                "type": "string",
+                "description": "create-todo-item (required): task title, e.g. \"Responder a {{payload.fromName}}\". Must not render empty."
+              },
+              "projectId": {
+                "type": "string"
+              },
+              "agentId": {
+                "type": "string",
+                "description": "Defaults to the agent running the tool."
+              },
+              "columnId": {
+                "type": "string",
+                "description": "create-task: board column (default: To Do)."
+              },
+              "titleTemplate": {
+                "type": "string",
+                "description": "create-task (required): task title, e.g. \"Lead: {{fromName || fromId}}\". Must not render empty."
+              },
+              "instructionsTemplate": {
+                "type": "string",
+                "description": "create-task (required): what the agent has to do. Must not render empty. The payload is also available to the agent as the task input artifact."
+              },
+              "descriptionTemplate": {
+                "type": "string",
+                "description": "create-task (optional): one-line human summary; empty render → no description."
+              },
+              "channelId": {
+                "type": "string",
+                "description": "channel-event: defaults to the current channel."
+              },
+              "messageTemplate": {
+                "type": "string",
+                "description": "channel-event (required): what the agent receives. Must not render empty."
+              },
+              "flowId": {
+                "type": "string"
+              },
+              "inputMapping": {
+                "type": "object",
+                "description": "start-flow: flow input → dot-path into the payload."
+              }
+            },
+            "required": [
+              "type"
+            ]
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "description": "Retry-safe key."
+          }
+        },
+        "required": [
+          "name",
+          "action"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "update-automation",
+      "description": "Change an automation: name, trigger, action and/or enabled. Trigger and action use the same shapes as create-automation and replace the previous ones; runtime state (counters, webhook token) is kept. Switching the trigger to webhook returns a new URL once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          },
+          "name": {
+            "type": "string"
+          },
+          "trigger": {
+            "type": "object",
+            "description": "New trigger (see create-automation)."
+          },
+          "action": {
+            "type": "object",
+            "description": "New action (see create-automation)."
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "enable-automation",
+      "description": "Enable (resume) an automation. Idempotent. A disabled schedule re-arms at its next cron slot.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "disable-automation",
+      "description": "Disable (pause) an automation without deleting it. Idempotent. It keeps its configuration and history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "snooze-reminder",
+      "description": "Postpone a once automation (reminder) by a delay — \"30m\", \"2h\", \"1d\" — on top of its current time. Re-arms it if it already fired.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Reminder id (starter_…)."
+          },
+          "delay": {
+            "type": "string",
+            "description": "\"30m\", \"2h\", \"1d\" (s/m/h/d)."
+          }
+        },
+        "required": [
+          "automationId",
+          "delay"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "safeWriteHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "regenerate-webhook-url",
+      "description": "Rotate the secret URL of a webhook automation. The old URL stops working immediately; the new one is returned once.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Webhook automation id (starter_…)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "test-webhook",
+      "description": "Fire a webhook automation with a test payload, exactly as an external POST would (dedupe, audit, stats). The action really runs.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Webhook automation id (starter_…)."
+          },
+          "payload": {
+            "type": "object",
+            "description": "JSON object the action receives as {{payload}}."
+          }
+        },
+        "required": [
+          "automationId",
+          "payload"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "delete-automation",
+      "description": "Permanently delete an automation. It stops firing immediately; tasks, messages and flow runs it already produced are kept. Irreversible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Automation id (starter_…)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "irreversible": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "cancel-reminder",
+      "description": "Cancel a pending reminder (once automation). Idempotent: an already fired or missing reminder returns noop.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationId": {
+            "type": "string",
+            "description": "Reminder id (starter_…)."
+          }
+        },
+        "required": [
+          "automationId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    },
+    {
+      "name": "bulk-cancel",
+      "description": "Delete several automations at once: by ids, or every automation that targets a channel, optionally only a trigger kind and only those whose next run is before an ISO date. Max 100 per call. Irreversible.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "automationIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Explicit ids (max 100)."
+          },
+          "channelId": {
+            "type": "string",
+            "description": "Every automation whose action targets this channel."
+          },
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "schedule",
+              "once",
+              "webhook",
+              "event"
+            ],
+            "description": "Restrict to one trigger kind."
+          },
+          "before": {
+            "type": "string",
+            "description": "ISO date: only automations whose next run is before it."
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "irreversible": true,
+        "version": "1.0.0",
+        "stability": "stable"
+      }
+    }
+  ]
+}

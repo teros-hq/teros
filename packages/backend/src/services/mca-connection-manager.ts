@@ -28,7 +28,11 @@ import {
   type WsMcaEvent,
   type WsMcaToBackendMessage,
 } from '@teros/shared';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
+import { deriveMailboxPassword } from './agent-mailbox-service';
+import type { AgentMailbox } from '../types/database';
 import type { WsRouter } from '../ws-framework/WsRouter';
+import type { WsHandlerActor } from '@teros/shared';
 import { EventEmitter } from 'events';
 import type { Server as HttpServer, IncomingMessage } from 'http';
 import type { Collection, Db } from 'mongodb';
@@ -50,6 +54,8 @@ import type { VolumeService } from './volume-service';
 import type { SessionManager } from './session-manager';
 import type { PubSubService } from './pubsub-service';
 import type { MCAEventSubscriptionService } from './mca-event-subscription-service';
+import type { BoardSubscriptionService } from './board-subscription-service';
+import type { ActionBridgeManager } from './workflow-action-bridge';
 import type {
   AppInfo,
   ActiveConnection,
@@ -58,6 +64,8 @@ import type {
 } from './mca-connection-manager.types';
 export type { McaConnectionManagerEvents, McaConnectionManagerConfig } from './mca-connection-manager.types';
 import { handleQueryConversations } from './mca-connection-manager.queries';
+import type { McaStreamRelay } from './mca-stream-relay';
+import { isBackendActionAllowed } from './mca-backend-actions';
 
 // MCA CONNECTION MANAGER
 // ============================================================================
@@ -81,12 +89,17 @@ export class McaConnectionManager extends EventEmitter {
   private authManager?: AuthManager;
   private channelManager?: ChannelManager;
   private boardService?: BoardService;
+  private reviewClaimService?: import('./review-claim-service').ReviewClaimService;
   private sessionManager?: SessionManager;
   private wsRouter?: WsRouter;
   private pubSubService?: PubSubService;
   private mcaEventSubscriptionService?: MCAEventSubscriptionService;
+  private boardSubscriptionService?: BoardSubscriptionService;
   private workspaceService?: WorkspaceService;
   private volumeService?: VolumeService;
+  private actionBridgeManager?: ActionBridgeManager;
+  /** MCA streams relay (spec MCS). Null until wired: stream frames are then dropped. */
+  private streamRelay: McaStreamRelay | null = null;
 
   constructor(
     private db: Db,
@@ -102,18 +115,43 @@ export class McaConnectionManager extends EventEmitter {
     this.authManager = config?.authManager;
     this.channelManager = config?.channelManager;
     this.boardService = config?.boardService;
+    this.reviewClaimService = config?.reviewClaimService;
     this.sessionManager = config?.sessionManager;
     this.wsRouter = config?.wsRouter;
     this.pubSubService = config?.pubSubService;
     this.mcaEventSubscriptionService = config?.mcaEventSubscriptionService;
+    this.boardSubscriptionService = config?.boardSubscriptionService;
     this.workspaceService = config?.workspaceService;
     this.volumeService = config?.volumeService;
+    this.actionBridgeManager = config?.actionBridgeManager;
     this.subscriptionsCollection = db.collection('mca_subscriptions');
   }
 
   // ==========================================================================
   // INITIALIZATION
   // ==========================================================================
+
+  /** Wire the MCA streams relay (spec MCS-REQ-3/6). */
+  setStreamRelay(relay: McaStreamRelay | null): void {
+    this.streamRelay = relay;
+  }
+
+  /** Whether the MCA behind `appId` declares `layers.streams` (catalog `streams`, MCS-REQ-1). */
+  async declaresStreams(appId: string): Promise<boolean> {
+    const connection = this.connections.get(appId);
+    if (!connection) return false;
+    if (connection.streams !== undefined) return connection.streams;
+    try {
+      const entry = await this.db
+        .collection<{ streams?: boolean }>('mca_catalog')
+        .findOne({ mcaId: connection.mcaId }, { projection: { streams: 1 } });
+      connection.streams = entry?.streams === true;
+    } catch (err) {
+      console.error(`[McaConnectionManager] failed to load layers.streams for ${connection.mcaId}:`, err);
+      return false;
+    }
+    return connection.streams;
+  }
 
   /**
    * Initialize WebSocket server (noServer mode - upgrade handled externally)
@@ -153,15 +191,9 @@ export class McaConnectionManager extends EventEmitter {
    * Ensure MongoDB indexes exist for subscriptions collection
    */
   async ensureIndexes(): Promise<void> {
-    await this.subscriptionsCollection.createIndex({ appId: 1, status: 1 });
-    await this.subscriptionsCollection.createIndex({ subscriptionId: 1 }, { unique: true });
-    await this.subscriptionsCollection.createIndex({ 'subscriber.channelId': 1 });
-    // TTL index for auto-expiry
-    await this.subscriptionsCollection.createIndex(
-      { 'options.expiresAt': 1 },
-      { expireAfterSeconds: 0 },
-    );
-    console.log('[McaConnectionManager] MongoDB indexes created for mca_subscriptions');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    await ensureCollectionIndexes(this.subscriptionsCollection, COLLECTIONS.mcaSubscriptions);
   }
 
   // ==========================================================================
@@ -258,7 +290,8 @@ export class McaConnectionManager extends EventEmitter {
       existing.ws.close(4005, 'Replaced by new connection');
     }
 
-    // Register new connection
+    // Register new connection. The WS bridge allowlist comes from the
+    // catalog (manifest `backend.actions`), loaded once per connection.
     const connection: ActiveConnection = {
       ws,
       appId,
@@ -268,6 +301,9 @@ export class McaConnectionManager extends EventEmitter {
       status: 'ready',
     };
     this.connections.set(appId, connection);
+    // Allowlist is loaded in the background; a request that arrives before
+    // it lands loads it on demand (getBackendActions) — never fails open.
+    void this.getBackendActions(connection);
 
     console.log(
       `[McaConnectionManager] MCA connected: ${appId} (mcaId: ${mcaId}, ownerId: ${ownerId})`,
@@ -281,7 +317,12 @@ export class McaConnectionManager extends EventEmitter {
     });
 
     // Setup message handler
-    ws.on('message', (data) => {
+    ws.on('message', (data, isBinary) => {
+      if (isBinary) {
+        // MCA streams (MCS-REQ-3): binary frames never go through the JSON parser.
+        this.streamRelay?.frame(appId, toBytes(data));
+        return;
+      }
       this.handleMessage(appId, data);
     });
 
@@ -387,6 +428,29 @@ export class McaConnectionManager extends EventEmitter {
           message.params ?? {},
         );
         break;
+
+      case 'stream_open':
+        void this.streamRelay?.open(appId, message);
+        break;
+
+      case 'stream_state':
+        this.streamRelay?.state(appId, message);
+        break;
+
+      case 'stream_close':
+        this.streamRelay?.close(appId, message);
+        break;
+
+      case 'domain_request':
+        this.handleDomainRequest(
+          appId,
+          connection,
+          message.requestId,
+          message.action,
+          message.params ?? {},
+          message.actor,
+        );
+        break;
     }
   }
 
@@ -435,6 +499,13 @@ export class McaConnectionManager extends EventEmitter {
 
   /**
    * Handle get_user_secrets request
+   *
+   * For mca.teros.email the mailbox identity is resolved PER AGENT (one
+   * mailbox per agent, tn_PcquTN30AawbK8uE): if an effective agentId is
+   * available for this connection and the agent has a provisioned mailbox,
+   * its MAIL_ACCOUNT/MAIL_PASSWORD/MAIL_FROM_NAME are returned (password
+   * derived deterministically, never stored). Legacy per-user credentials
+   * still take precedence so existing manual mailboxes keep working.
    */
   private async handleGetUserSecrets(
     appId: string,
@@ -445,18 +516,8 @@ export class McaConnectionManager extends EventEmitter {
       `[McaConnectionManager] get_user_secrets request from ${appId} (ownerId: ${connection.ownerId})`,
     );
 
-    if (!this.authManager) {
-      this.send(appId, {
-        type: 'user_secrets',
-        requestId,
-        secrets: null,
-        error: 'AuthManager not available',
-      });
-      return;
-    }
-
     try {
-      const credentials = await this.authManager.get(connection.ownerId, appId);
+      const credentials = await this.authManager?.get(connection.ownerId, appId);
       console.log(
         `[McaConnectionManager] Sending user secrets to ${appId}: ${credentials ? Object.keys(credentials).join(', ') : 'null'}`,
       );
@@ -468,6 +529,28 @@ export class McaConnectionManager extends EventEmitter {
         for (const [key, value] of Object.entries(credentials)) {
           if (value !== undefined && value !== null) {
             secrets[key] = String(value);
+          }
+        }
+      }
+
+      // Per-agent mailbox identity for the email MCA (tn_PcquTN30AawbK8uE).
+      // Only fills keys the legacy credentials don't already provide, so a
+      // manually configured mailbox (user_credentials) wins over the
+      // auto-provisioned one.
+      if (connection.mcaId === 'mca.teros.email') {
+        const agentId = await this.resolveEffectiveAgentId(connection);
+        if (agentId) {
+          const mailbox = await this.db
+            .collection<AgentMailbox>(COLLECTIONS.agentMailboxes)
+            .findOne({ agentId });
+          if (mailbox) {
+            const masterSecret = this.secretsManager?.getMcaFresh('mca.teros.email')?.STALWART_MASTER_SECRET as string | undefined;
+            if (masterSecret) {
+              secrets = secrets ?? {};
+              secrets.MAIL_ACCOUNT ??= mailbox.address;
+              secrets.MAIL_PASSWORD ??= deriveMailboxPassword(mailbox.address, masterSecret);
+              secrets.MAIL_FROM_NAME ??= mailbox.fromName ?? mailbox.address;
+            }
           }
         }
       }
@@ -556,10 +639,13 @@ export class McaConnectionManager extends EventEmitter {
       db: this.db,
       channelManager: this.channelManager,
       boardService: this.boardService,
+      reviewClaimService: this.reviewClaimService,
       pubSubService: this.pubSubService,
       mcaEventSubscriptionService: this.mcaEventSubscriptionService,
+      boardSubscriptionService: this.boardSubscriptionService,
       workspaceService: this.workspaceService,
       volumeService: this.volumeService,
+      actionBridgeManager: this.actionBridgeManager,
       wsRouter: this.wsRouter,
       send: this.send.bind(this),
       emit: this.emit.bind(this),
@@ -587,6 +673,7 @@ export class McaConnectionManager extends EventEmitter {
       return;
     }
     this.connections.delete(appId);
+    this.streamRelay?.closeApp(appId);
     console.log(
       `[McaConnectionManager] MCA disconnected: ${appId} (code: ${code}, reason: ${reason})`,
     );
@@ -998,6 +1085,17 @@ export class McaConnectionManager extends EventEmitter {
       return;
     }
 
+    if (!isBackendActionAllowed(await this.getBackendActions(connection), action)) {
+      console.warn(`[McaConnectionManager] admin_request ${action} refused for ${connection.mcaId}: not in manifest backend.actions`);
+      this.send(appId, {
+        type: 'admin_response',
+        requestId,
+        error: `Action ${action} is not allowed for ${connection.mcaId} (declare it in manifest backend.actions)`,
+        code: 'ACTION_NOT_ALLOWED',
+      });
+      return;
+    }
+
     if (!this.wsRouter.has(action)) {
       this.send(appId, {
         type: 'admin_response',
@@ -1060,6 +1158,110 @@ export class McaConnectionManager extends EventEmitter {
         error: error instanceof Error ? error.message : 'Internal error',
         code: 'INTERNAL_ERROR',
       });
+    }
+  }
+
+  /** Manifest `backend.actions` of the connection's MCA (synced catalog), cached per connection. */
+  private async getBackendActions(connection: ActiveConnection): Promise<string[]> {
+    if (connection.backendActions) return connection.backendActions;
+    try {
+      const entry = await this.db
+        .collection<{ backendActions?: string[] }>('mca_catalog')
+        .findOne({ mcaId: connection.mcaId }, { projection: { backendActions: 1 } });
+      connection.backendActions = entry?.backendActions ?? [];
+    } catch (err) {
+      console.error(`[McaConnectionManager] failed to load backend.actions for ${connection.mcaId}:`, err);
+      return [];
+    }
+    return connection.backendActions;
+  }
+
+  /**
+   * Resolve who is acting for a domain_request. The MCA reports the turn's
+   * user/agent from its execution context; the backend only honours them
+   * when they belong to the connection's workspace. Otherwise the call runs
+   * as the workspace owner, like admin_request and dispatchToRouter.
+   */
+  private async resolveDomainActor(
+    connection: ActiveConnection,
+    actor: { userId?: string; agentId?: string; channelId?: string } | undefined,
+  ): Promise<{ userId: string; actor: WsHandlerActor }> {
+    const workspaceId =
+      connection.ownerId?.startsWith('ws_') || connection.ownerId?.startsWith('work_')
+        ? connection.ownerId
+        : connection.currentWorkspaceId;
+
+    let userId = connection.ownerId;
+    if (workspaceId) {
+      const workspace = await this.db
+        .collection<{ ownerId?: string; members?: Array<{ userId: string }> }>('workspaces')
+        .findOne({ workspaceId }, { projection: { ownerId: 1, members: 1 } });
+      if (workspace?.ownerId) userId = workspace.ownerId;
+      const isMember =
+        !!actor?.userId &&
+        (workspace?.ownerId === actor.userId || !!workspace?.members?.some((m) => m.userId === actor.userId));
+      if (isMember && actor?.userId) userId = actor.userId;
+    }
+
+    const agentId = await this.resolveEffectiveAgentId(connection, actor?.agentId);
+    return {
+      userId,
+      actor: {
+        kind: agentId ? 'agent' : 'user',
+        ...(agentId ? { agentId } : {}),
+        ...(workspaceId ? { workspaceId } : {}),
+        appId: connection.appId,
+        ...(actor?.channelId ? { channelId: actor.channelId } : {}),
+      },
+    };
+  }
+
+  /**
+   * domain_request: invoke a WsRouter domain action from an MCA tool, within
+   * the manifest allowlist, with the acting identity in the handler context.
+   */
+  private async handleDomainRequest(
+    appId: string,
+    connection: ActiveConnection,
+    requestId: string,
+    action: string,
+    params: Record<string, unknown>,
+    actorHint: { userId?: string; agentId?: string; channelId?: string } | undefined,
+  ): Promise<void> {
+    const fail = (error: string, code: string): void => {
+      this.send(appId, { type: 'domain_response', requestId, error, code });
+    };
+
+    if (!this.wsRouter) return fail('WsRouter not available', 'ROUTER_UNAVAILABLE');
+    if (!isBackendActionAllowed(await this.getBackendActions(connection), action)) {
+      console.warn(`[McaConnectionManager] domain_request ${action} refused for ${connection.mcaId}: not in manifest backend.actions`);
+      return fail(`Action ${action} is not allowed for ${connection.mcaId} (declare it in manifest backend.actions)`, 'ACTION_NOT_ALLOWED');
+    }
+    if (!this.wsRouter.has(action)) return fail(`Unknown action: ${action}`, 'UNKNOWN_ACTION');
+
+    try {
+      const { userId, actor } = await this.resolveDomainActor(connection, actorHint);
+      const self = this;
+      const fakeWs = {
+        readyState: 1,
+        send(payload: string) {
+          try {
+            const msg = JSON.parse(payload);
+            if (msg.type === 'response') {
+              self.send(appId, { type: 'domain_response', requestId, data: msg.data });
+            } else if (msg.type === 'error') {
+              self.send(appId, { type: 'domain_response', requestId, error: msg.message, code: msg.code });
+            }
+          } catch {
+            // ignore parse errors
+          }
+        },
+      } as unknown as import('ws').WebSocket;
+      const ctx = { userId, sessionId: `mca:${appId}`, ip: `mca:${connection.mcaId}`, actor };
+      await this.wsRouter.dispatch(fakeWs, ctx, requestId, action, params);
+    } catch (error) {
+      console.error(`[McaConnectionManager] domain_request error for ${appId} (${action}):`, error);
+      fail(error instanceof Error ? error.message : 'Domain request failed', 'INTERNAL_ERROR');
     }
   }
 
@@ -1130,4 +1332,11 @@ export class McaConnectionManager extends EventEmitter {
       connections,
     };
   }
+}
+
+/** ws RawData → bytes (a Buffer, a Buffer[] or an ArrayBuffer). */
+function toBytes(data: RawData): Uint8Array {
+  if (Buffer.isBuffer(data)) return data;
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return new Uint8Array(data as ArrayBuffer);
 }

@@ -1,7 +1,6 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import {
   ALL_DRIVES_LIST,
-  ensureAuthenticated,
   initializeGoogleClients,
   withAuthRetry,
 } from '../lib';
@@ -42,7 +41,6 @@ export const listFiles: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const {
       folderId,

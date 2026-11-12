@@ -35,7 +35,10 @@ test.describe("board — acciones registradas (move-my-task) @infra", () => {
         const { project, board } = await window.teros.board.createProject(wid, `Move ${Date.now()}`)
         const cols = board.columns ?? []
         const task = (
-          await window.teros.board.createTask(project.projectId, { title: "Movable" })
+          await window.teros.board.createTask(project.projectId, {
+            title: "Movable",
+            instructions: "Move this task to another column.",
+          })
         ).task
         await window.teros.board.assignTask(task.taskId, aid)
         return {

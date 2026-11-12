@@ -15,8 +15,8 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -25,11 +25,13 @@ import {
   type GitHubWorkflow,
   type GitHubWorkflowRun,
   GitHubToolShell,
+  actionLabel,
   formatDuration,
   relativeTime,
   runStatusChipProps,
   scrollStyle,
   shortSha,
+  listItems,
 } from './shared';
 
 // list-workflows
@@ -40,14 +42,10 @@ interface WorkflowsPayload {
 
 export function ListWorkflowsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
   const parsed = output ? parseOutput<WorkflowsPayload | GitHubWorkflow[]>(output) : null;
-  const workflows: GitHubWorkflow[] = Array.isArray(parsed)
-    ? parsed
-    : parsed && 'workflows' in (parsed as object)
-      ? (parsed as WorkflowsPayload).workflows ?? []
-      : [];
+  const workflows = listItems<GitHubWorkflow>(parsed, 'workflows');
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${workflows.length} workflow${workflows.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'workflows', `${workflows.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && workflows.length === 0 && <Empty message="No workflows." />}
       {!error && status === 'completed' && workflows.length > 0 && (
@@ -77,14 +75,10 @@ interface RunsPayload {
 
 export function ListWorkflowRunsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
   const parsed = output ? parseOutput<RunsPayload | GitHubWorkflowRun[]>(output) : null;
-  const runs: GitHubWorkflowRun[] = Array.isArray(parsed)
-    ? parsed
-    : parsed && 'workflow_runs' in (parsed as object)
-      ? (parsed as RunsPayload).workflow_runs ?? []
-      : [];
+  const runs = listItems<GitHubWorkflowRun>(parsed, 'workflow_runs');
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${runs.length} run${runs.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'workflow runs', `${runs.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && runs.length === 0 && <Empty message="No workflow runs." />}
       {!error && status === 'completed' && runs.length > 0 && (
@@ -158,7 +152,7 @@ export function GetWorkflowRunRenderer({ toolName, status, output, error, durati
   const chip = run ? runStatusChipProps(run) : null;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={run ? actionLabel(toolName, status, `Run #${run.run_number ?? '?'}`, run.display_title ?? run.name) : actionLabel(toolName, status, 'workflow run')}>
       {error && <ErrorBlock error={error} />}
       {!error && run && (
         <ResourceCard
@@ -182,14 +176,10 @@ interface JobsPayload {
 
 export function ListWorkflowRunJobsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
   const parsed = output ? parseOutput<JobsPayload | GitHubJob[]>(output) : null;
-  const jobs: GitHubJob[] = Array.isArray(parsed)
-    ? parsed
-    : parsed && 'jobs' in (parsed as object)
-      ? (parsed as JobsPayload).jobs ?? []
-      : [];
+  const jobs = listItems<GitHubJob>(parsed, 'jobs');
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${jobs.length} job${jobs.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'jobs', `${jobs.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && jobs.length === 0 && <Empty message="No jobs." />}
       {!error && status === 'completed' && jobs.length > 0 && (
@@ -219,10 +209,11 @@ export function ListWorkflowRunJobsRenderer({ toolName, status, output, error, d
 
 // trigger-workflow
 export function TriggerWorkflowRenderer({ toolName, status, output, error, duration, input }: ToolCallRendererProps) {
+  const c = useColors();
   const workflowId = input?.workflow_id as string | undefined;
   const ref = (input?.ref as string | undefined) ?? 'main';
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, workflowId ?? 'workflow', `on ${ref}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
         <ResourceCard
@@ -232,7 +223,7 @@ export function TriggerWorkflowRenderer({ toolName, status, output, error, durat
           verb="created"
           meta={<IconChip text="dispatched" accent={GITHUB_PALETTE.queued} />}
         >
-          <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+          <Text color={c.text2} fontSize={9} fontFamily="$mono">
             workflow_dispatch event sent — runs may take a moment to appear.
           </Text>
         </ResourceCard>
@@ -246,7 +237,7 @@ export function RerunWorkflowRunRenderer({ toolName, status, output, error, dura
   const runId = input?.run_id as number | undefined;
   const mode = (input?.mode as string | undefined) ?? 'failed';
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, `Run #${runId ?? '?'}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
         <ResourceCard
@@ -264,7 +255,7 @@ export function RerunWorkflowRunRenderer({ toolName, status, output, error, dura
 export function CancelWorkflowRunRenderer({ toolName, status, output, error, duration, input }: ToolCallRendererProps) {
   const runId = input?.run_id as number | undefined;
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, `Run #${runId ?? '?'}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && (
         <ResourceCard

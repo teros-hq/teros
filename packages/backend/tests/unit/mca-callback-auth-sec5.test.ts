@@ -30,6 +30,9 @@ function fakeContainerManager(
   infos: Record<string, { mcaId: string }> = {},
 ) {
   const map = new Map(Object.entries(tokens));
+  // stdio registrations: token + mcaId per key, mirroring
+  // McaContainerManager.registerCallbackToken (401 storm fix).
+  const stdioMcaIds = new Map<string, string>();
   return {
     verifyCallbackToken(key: string, token: string): boolean {
       const expected = map.get(key);
@@ -41,6 +44,17 @@ function fakeContainerManager(
     },
     getInfo(key: string) {
       return infos[key];
+    },
+    getCallbackTokenMcaId(key: string): string | undefined {
+      return infos[key]?.mcaId ?? stdioMcaIds.get(key);
+    },
+    registerCallbackToken(key: string, token: string, mcaId: string): void {
+      map.set(key, token);
+      stdioMcaIds.set(key, mcaId);
+    },
+    unregisterCallbackToken(key: string): void {
+      map.delete(key);
+      stdioMcaIds.delete(key);
     },
     touch() {},
     // biome-ignore lint/suspicious/noExplicitAny: minimal structural fake of McaContainerManager
@@ -115,6 +129,56 @@ describe('authenticateCallback (SEC-5 / A6)', () => {
     const auth = authenticateCallback(req, cm);
     expect(auth?.verifiedKey).toBe('mca.shared');
     expect(auth?.mcaId).toBe('mca.shared');
+  });
+
+  // ── 401 storm fix (2026-09-20..24): stdio MCAs authenticate too ──────────
+  // Stdio MCAs (the retired mca.teros.admin.filesystem was the canonical case) run as child processes (no container).
+  // Its token is registered via registerCallbackToken(appId, token, mcaId) —
+  // there is NO ContainerInfo, so identity must resolve from the registration.
+  test('stdio MCA (registered token, no ContainerInfo) authenticates and resolves its mcaId', () => {
+    const cmStdio = fakeContainerManager({});
+    cmStdio.registerCallbackToken('app_stdio_fs', 'tokStdioFs', 'mca.test.stdio-fs');
+
+    // Without a token → 401 (the 4-day failure mode)
+    const noAuth = mockReq('POST', '/x', { 'x-app-id': 'app_stdio_fs' });
+    expect(authenticateCallback(noAuth, cmStdio)).toBeNull();
+
+    // With the registered token → authenticated, mcaId from the registration
+    const req = mockReq('POST', '/x', {
+      'x-app-id': 'app_stdio_fs',
+      'x-mca-id': 'mca.forged', // forged — must be ignored, identity is from the verified key
+      authorization: 'Bearer tokStdioFs',
+    });
+    expect(authenticateCallback(req, cmStdio)).toEqual({
+      verifiedKey: 'app_stdio_fs',
+      mcaId: 'mca.test.stdio-fs',
+      headerAppId: 'app_stdio_fs',
+    });
+
+    // After kill (unregister) the token stops validating
+    cmStdio.unregisterCallbackToken('app_stdio_fs');
+    const stale = mockReq('POST', '/x', {
+      'x-app-id': 'app_stdio_fs',
+      authorization: 'Bearer tokStdioFs',
+    });
+    expect(authenticateCallback(stale, cmStdio)).toBeNull();
+  });
+
+  test('older structural fakes without getCallbackTokenMcaId still work (optional-call)', () => {
+    // The production method is optional-chained so legacy fakes that only
+    // implement verifyCallbackToken/getInfo keep resolving identity.
+    // biome-ignore lint/suspicious/noExplicitAny: minimal legacy fake
+    const legacyCm = {
+      verifyCallbackToken: (key: string, token: string) => key === 'app_att' && token === 'tokAtt',
+      getInfo: (key: string) => (key === 'app_att' ? { mcaId: 'mca.attacker' } : undefined),
+      touch() {},
+    } as any;
+    const req = mockReq('POST', '/x', { 'x-app-id': 'app_att', authorization: 'Bearer tokAtt' });
+    expect(authenticateCallback(req, legacyCm)).toEqual({
+      verifiedKey: 'app_att',
+      mcaId: 'mca.attacker',
+      headerAppId: 'app_att',
+    });
   });
 });
 

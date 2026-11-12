@@ -3,6 +3,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { assertAppVisible, assertAppManageable } from './app-visibility'
 import type { AppAuthInfo } from '@teros/core'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaService } from '../../../services/mca-service'
@@ -27,9 +28,11 @@ export function createDisconnectAuthHandler(
       throw new HandlerError('AUTH_NOT_CONFIGURED', 'MCA OAuth not configured')
     }
 
-    await mcaOAuth.disconnect(ctx.userId, appId)
-
+    // MUW-REQ-13: only the owner (or a workspace admin) disconnects an app's credentials.
     const app = await mcaService.getApp(appId)
+    if (app) await assertAppManageable(mcaService, app, ctx.userId)
+
+    await mcaOAuth.disconnect(ctx.userId, appId)
     let auth: AppAuthInfo = { status: 'needs_user_auth', authType: 'none' }
 
     if (app) {

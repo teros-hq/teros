@@ -1,14 +1,25 @@
-#!/bin/bash
-set -e
+#!/bin/sh
+# Update Teros: fetch the latest compose file and release images, restart.
+#
+# Images come from ghcr.io (see docker-compose.yml); nothing is built here. Pin
+# a version with TEROS_IMAGE_TAG in .env. To run from a modified working tree
+# instead, use `docker compose up -d --build`.
+set -eu
 cd "$(dirname "$0")/.."
-if [ ! -r .env ]; then
-  echo "  ✗  .env file is missing or not readable"
-  exit 1
+
+if [ -d .git ]; then
+  echo "Updating the repository..."
+  git pull --ff-only --quiet
 fi
-source .env
-[ -z "$APP_URL" ] && echo "  ✗  APP_URL is not set in .env" && exit 1
-echo "  →  Pulling latest changes..."
-git pull
-echo "  →  Rebuilding containers..."
-docker compose up -d --build
-echo "  ✓  Teros updated → ${APP_URL}"
+
+echo "Pulling release images..."
+docker compose pull
+./docker/pull-runtimes.sh
+
+echo "Restarting with the new images..."
+docker compose up -d --remove-orphans
+
+echo "Removing superseded images..."
+docker image prune -f >/dev/null
+
+echo "Teros updated. Frontend: http://localhost:${FRONTEND_PORT:-10002}"

@@ -7,6 +7,7 @@
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { randomBytes } from 'crypto';
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { delimiter, dirname, join } from 'path';
 import { createInterface } from 'readline';
@@ -19,7 +20,7 @@ import { McaHttpClient } from './mca-http-client';
 import type { ManagedMca, ToolDefinition, ExecutionConfig } from './mca-manager.types';
 import type { SpawnContext } from './mca-manager.spawn';
 import { setupWatchdog } from './mca-manager.spawn';
-import { resolveDockerNetwork } from './mca-network-policy';
+import { resolveDockerNetworks } from './mca-network-policy';
 
 // This package is ESM ("type": "module") — __dirname must be derived, same as config.ts
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,7 +69,7 @@ function rewriteMongoUriHost(uri: string, host: string): string {
 /**
  * Resolves the host-side path of the workspace volume for the app owner.
  * Used by MCAs that need to translate /workspace paths for Docker bind mounts
- * (e.g. mca.teros.docker-env) or to provision persistent app-data directories.
+ * (e.g. mca.teros.bash) or to provision persistent app-data directories.
  *
  * Returns undefined if the volume cannot be resolved (logs a warning).
  */
@@ -130,7 +131,9 @@ export async function spawnContainer(
         app.volumes,
         app.ownerId,
       );
-      volumes.push(...resolvedMounts);
+      volumes.push(...resolvedMounts.filter(
+        (mount) => mount.containerPath !== '/workspace' && mount.containerPath !== '/app-data',
+      ));
       log.debug({ appId, volumeCount: volumes.length }, 'Resolved volume mounts');
     }
 
@@ -201,9 +204,20 @@ export async function spawnContainer(
     const backendUrl = staticBaseUrl.replace('/static', '');
     environment.MCA_BACKEND_URL = backendUrl;
 
+    // Callback URL for containerized (HTTP) MCAs so they can reach the backend
+    // at boot, not just during tool calls (per-call callbackUrl still arrives in
+    // the execution context). Needed by MCAs with native events — e.g. Telegram
+    // auto-starts its event watcher on startup and emits telegram.message.*
+    // without any tool call. Same container-reachable host used for the per-call
+    // callbackUrl (mca-manager.tools.ts) and the WS URL above. Auth is the
+    // per-container MCA_CALLBACK_TOKEN, injected by the docker backend.
+    environment.MCA_CALLBACK_URL = `http://${ctx.containerBackendHost}:${ctx.config.serverPort}/mca/callback/${appId}`;
+
     // Inject MCA secrets as SECRET_MCA_* env vars so HTTP containerized MCAs can read them.
     // This mirrors what buildExecutionConfig() does for stdio MCAs.
-    const mcaSecrets = ctx.config.secretsManager?.mca(app.mcaId);
+    // @fixme nira - 2026.10.18 : use getMcaFresh so credentials created/edited after
+    // backend boot are visible without restart (was secretsManager.mca which reads cache)
+    const mcaSecrets = ctx.config.secretsManager?.getMcaFresh(app.mcaId);
     const mcaSecretEnv: Record<string, string> = {};
     if (mcaSecrets) {
       for (const [k, v] of Object.entries(mcaSecrets)) {
@@ -227,25 +241,6 @@ export async function spawnContainer(
         });
         environment[key] = resolved;
       }
-      log.debug({ appId }, 'McaManager operation');
-    }
-
-    // Inject WORKSPACE_HOST_PATH for MCAs that need to translate /workspace paths for Docker.
-    // The value is the real host-side path of the owner's volume so that Docker
-    // bind mounts work correctly (the Docker daemon runs on the host, not in the container).
-    if (app.mcaId === 'mca.teros.docker-env') {
-      if (!ctx.config.volumeService) {
-        throw new Error(
-          'Cannot start mca.teros.docker-env: VolumeService is not available. WORKSPACE_HOST_PATH cannot be resolved.',
-        );
-      }
-      const workspaceHostPath = await resolveWorkspaceHostPath(ctx, app);
-      if (!workspaceHostPath) {
-        throw new Error(
-          `Cannot start mca.teros.docker-env: failed to resolve workspace host path for owner ${app.ownerId}`,
-        );
-      }
-      environment.WORKSPACE_HOST_PATH = workspaceHostPath;
       log.debug({ appId }, 'McaManager operation');
     }
 
@@ -303,7 +298,7 @@ export async function spawnContainer(
     // WAHA sessions are now persisted via appDataMount (workspaceHostPath/.apps/{app.name})
     // mounted at /app-data, with WAHA_SESSIONS_FOLDER=/app-data set in the manifest.
 
-    // Add system-level volume mounts from manifest (e.g. Docker socket for docker-env)
+    // Add system-level volume mounts from manifest (e.g. a Docker socket)
     if (mca.runtime?.systemVolumes?.length) {
       for (const sv of mca.runtime.systemVolumes) {
         volumes.push({
@@ -315,17 +310,18 @@ export async function spawnContainer(
       log.debug({ appId }, 'McaManager operation');
     }
 
-    // Pick the container's Docker network. Internal-access MCAs join the network
-    // with Mongo/Qdrant; egress MCAs (mca.teros.http / mca.netlify / mca.make) join
-    // the DEDICATED, internal-service-free `teros_egress` network (so a compromised
+    // Pick the container's Docker network(s). Every MCA joins its workspace
+    // network (workspace isolation — incident-2026-08-14, Capa A). Internal-access
+    // MCAs also join the platform network (Mongo/Qdrant); egress MCAs also join
+    // the dedicated, internal-service-free `teros_egress` network (so a compromised
     // egress MCA can't reach Mongo/Qdrant at the network layer — defence beyond the
-    // app SSRF guard). Everything else gets no network (default-deny). In prod,
+    // app SSRF guard). Everything else gets only the workspace network. In prod,
     // host iptables on the egress subnet also drop metadata + RFC1918. See
     // mca-network-policy.ts + scripts/setup-egress-firewall.sh.
-    const dockerNetwork = resolveDockerNetwork(app.mcaId);
+    const dockerNetworks = resolveDockerNetworks(app.mcaId, app.ownerId);
 
     // Start container with resolved volumes, container mode, custom image, and environment
-    const containerInfo = await ctx.containerManager.getOrStart(app.mcaId, {
+    let containerInfo = await ctx.containerManager.getOrStart(app.mcaId, {
       volumes: volumes.map((v) => ({
         hostPath: v.hostPath,
         containerPath: v.containerPath,
@@ -335,7 +331,7 @@ export async function spawnContainer(
       containerMode,
       image: mca.runtime?.dockerImage,
       environment,
-      dockerNetwork,
+      dockerNetworks,
       // Per-MCA runtime resource caps from the manifest. Without these, the
       // container backend falls back to fleet-wide defaults (or unlimited), so a
       // memory-hungry/runaway MCA can exhaust host resources. Honored by the
@@ -349,12 +345,45 @@ export async function spawnContainer(
     // For shared mode: mcpId, for per-app mode: appId
     managed.containerKey = containerMode === 'per-app' ? appId : app.mcaId;
 
-    // Create HTTP client
-    const httpClient = new McaHttpClient({ baseUrl: containerInfo.baseUrl });
-    ctx.httpClients.set(appId, httpClient);
+    // Create HTTP client with the per-container callback token as the
+    // HMAC signing secret (incident-2026-08-14, Layer B). The same token
+    // is injected into the container via MCA_CALLBACK_TOKEN, so both sides
+    // can sign/verify without transmitting the secret in the request.
+    const signingSecret = ctx.containerManager.getCallbackToken(managed.containerKey);
+    // Defensive: if signingSecret is undefined (e.g. a container entry somehow
+    // survived without its token registration), the HTTP client cannot sign
+    // requests and the container would reject them with "missing signature or
+    // toolCallId". Restart the container to obtain a fresh token.
+    if (!signingSecret) {
+      log.warn({ appId, containerKey: managed.containerKey }, 'No callback token for container — forcing restart to get fresh token');
+      await ctx.containerManager.stop(managed.containerKey);
+      containerInfo = await ctx.containerManager.getOrStart(app.mcaId, {
+        volumes: volumes.map((v) => ({
+          hostPath: v.hostPath,
+          containerPath: v.containerPath,
+          readOnly: v.readOnly,
+        })),
+        appId,
+        containerMode,
+        image: mca.runtime?.dockerImage,
+        environment,
+        dockerNetworks,
+        cpus: mca.runtime?.resources?.cpus,
+        memoryMb: mca.runtime?.resources?.memoryMb,
+      });
+      const freshSecret = ctx.containerManager.getCallbackToken(managed.containerKey);
+      if (!freshSecret) {
+        throw new Error(`Failed to obtain callback token for container ${managed.containerKey} even after restart`);
+      }
+      const freshHttpClient = new McaHttpClient({ baseUrl: containerInfo.baseUrl, signingSecret: freshSecret });
+      ctx.httpClients.set(appId, freshHttpClient);
+    } else {
+      const existingHttpClient = new McaHttpClient({ baseUrl: containerInfo.baseUrl, signingSecret });
+      ctx.httpClients.set(appId, existingHttpClient);
+    }
 
     // Discover tools via HTTP
-    const toolsResponse = await httpClient.listTools();
+    const toolsResponse = await ctx.httpClients.get(appId)!.listTools();
     const toolNameMapping = new Map<string, string>();
     const tools: ToolDefinition[] = [];
 
@@ -389,6 +418,7 @@ export async function spawnContainer(
     managed.toolNameMapping = toolNameMapping;
     managed.status = 'ready';
     managed.restartCount = 0; // started OK — clear the retry counter (TER-559)
+    managed.errorAt = undefined; // clear error timestamp on successful start
 
     return managed;
   } catch (error: any) {
@@ -396,6 +426,7 @@ export async function spawnContainer(
     captureException(error, { context: 'spawnContainer', appId, mcaId: app.mcaId });
     managed.status = 'error';
     managed.lastError = error.message;
+    managed.errorAt = new Date();
     throw error;
   }
 }
@@ -527,6 +558,8 @@ export async function spawnStdio(
     managed.tools = tools;
     managed.toolNameMapping = toolNameMapping;
     managed.status = 'ready';
+    managed.restartCount = 0; // started OK — clear the retry counter
+    managed.errorAt = undefined; // clear error timestamp on successful start
 
     // Setup watchdog for this process
     setupWatchdog(ctx, appId, transport);
@@ -543,6 +576,7 @@ export async function spawnStdio(
     captureException(error, { context: 'spawnStdio', appId, mcaId: app.mcaId });
     managed.status = 'error';
     managed.lastError = error.message;
+    managed.errorAt = new Date();
     throw error;
   }
 }
@@ -569,6 +603,43 @@ export async function buildExecutionConfig(
     MCA_OWNER_ID: app.ownerId,
     MCA_OWNER_TYPE: app.ownerType || 'workspace',
   };
+
+  // ── Callback token for stdio MCAs (401 storm fix, 2026-09-20..24) ────────
+  //
+  // The SDK signs every MCA→backend callback with MCA_CALLBACK_TOKEN
+  // (Bearer) and authenticateCallback rejects any request without a valid
+  // registered token (SEC-5). Container MCAs get theirs injected by the
+  // Docker backend; stdio MCAs had NONE — so every ctx.volume call from a
+  // stdio MCA 401'd for 4 days (the canonical case was the now-retired
+  // mca.teros.admin.filesystem).
+  //
+  // Register a fresh token under the appId (the key authenticateCallback
+  // tries first, mirroring per-app container mode). The registration and the
+  // child process are born and die together: a backend restart kills the
+  // children (PM2 fork) and the next spawn re-registers, so the in-memory
+  // map can never hold a token for a process that isn't ours.
+  const callbackToken = randomBytes(32).toString('hex');
+  try {
+    ctx.containerManager.registerCallbackToken(app.appId, callbackToken, app.mcaId);
+  } catch (error: any) {
+    // Never break spawn over registration: log and still inject the token —
+    // if the manager truly lacks the method, callbacks will 401 visibly
+    // (same failure mode as before, no worse), and the manager is always
+    // constructed with the real class in production.
+    log.warn(
+      { appId: app.appId, err: error?.message },
+      'Failed to register stdio callback token — MCA→backend callbacks may 401',
+    );
+  }
+  environment.MCA_CALLBACK_TOKEN = callbackToken;
+
+  // The SDK resolves the workspace scope for volume/storage callbacks from
+  // MCA_WORKSPACE_ID || MCA_USER_ID (stdio-server.ts). Neither was set for
+  // stdio MCAs, so ctx.volume would resolve 'unknown' even with valid auth.
+  // In the unified model app.ownerId IS the workspaceId.
+  if (app.ownerType === 'workspace' || !app.ownerType) {
+    environment.MCA_WORKSPACE_ID = app.ownerId;
+  }
 
   // Catalog commands are bare names (`tsx`) resolved via PATH. Runners like
   // `bun run`/`yarn` prepend node_modules/.bin automatically, but a directly
@@ -631,8 +702,10 @@ export async function buildExecutionConfig(
   // Add callback URL for stdio MCAs to access secrets via HTTP
   environment.MCA_CALLBACK_URL = `http://localhost:${ctx.config.serverPort}/mca/callback/${app.appId}`;
 
-  // Add secrets as SECRET_MCA_* (loaded from filesystem via SecretsManager)
-  const secrets = ctx.config.secretsManager?.mca(app.mcaId);
+  // Add secrets as SECRET_MCA_* (loaded fresh from filesystem via SecretsManager)
+  // @fixme nira - 2026.10.18 : use getMcaFresh so credentials created/edited after
+  // backend boot are visible without restart (was secretsManager.mca which reads cache)
+  const secrets = ctx.config.secretsManager?.getMcaFresh(app.mcaId);
   if (secrets) {
     for (const [key, value] of Object.entries(secrets)) {
       if (value !== undefined && value !== null) {
@@ -642,13 +715,19 @@ export async function buildExecutionConfig(
   }
 
   // Add user auth as SECRET_USER_* (loaded from AuthManager or fallback to app.auth)
+  // REQ-11: For personal apps, skip workspace-level credential loading here —
+  // per-user credentials are resolved at tool execution time from `app_user_auth`.
   let userAuth = app.auth; // Fallback to legacy app.auth
 
-  // Try to load from AuthManager if available
+  // Try to load from AuthManager if available (shared apps only). Personal
+  // apps skip this: their credentials are resolved per user at tool execution
+  // time from app_user_auth (MUW-REQ-11).
   const authManager = ctx.mcaService['authManager'];
   log.debug({ appId: app.appId }, 'Loading credentials');
 
-  if (authManager && app.ownerId) {
+  const isPersonalApp = app.scope === 'personal';
+
+  if (authManager && app.ownerId && !isPersonalApp) {
     try {
       const credentials = await authManager.get(app.ownerId, app.appId);
       log.debug({ appId: app.appId, ownerId: app.ownerId, keys: credentials ? Object.keys(credentials) : null }, 'Loaded credentials');

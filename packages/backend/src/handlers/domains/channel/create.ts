@@ -2,6 +2,7 @@
  * channel.create — Create a new channel for the user
  */
 
+import { channelListScope } from '@teros/shared'
 import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import { assertCanCreateChannel } from '../../../services/channel-authz'
@@ -75,7 +76,8 @@ export function createCreateChannelHandler(
       status: channel.status,
       createdAt: channel.createdAt,
       updatedAt: channel.updatedAt,
-      workspaceId: channel.workspaceId,
+      // Where the channel belongs, so each client decides whether to list it (CHAN-REQ-11)
+      ...channelListScope(channel),
     }
 
     // Enrich with agent info and model

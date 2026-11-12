@@ -11,10 +11,9 @@
  * by Model Health, plus recent sessions — no new backend action.
  */
 
-import { Activity, AlertTriangle, BarChart3, Clock, DollarSign, Gauge, RefreshCw, TrendingUp, Zap } from "@tamagui/lucide-icons"
 import { seriesColor } from "@teros/shared"
 import { useEffect, useMemo, useState } from "react"
-import { Button, ScrollView, Text, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import {
   type BucketUnit,
   type Column,
@@ -40,20 +39,41 @@ import {
   fmtUSD,
   metricTone,
   pctDeltaOverTime,
-  scrollbarThin,
   shortModel,
   statusMeta,
   unitForPeriodMs,
   useAutoRefresh,
 } from "../../components/monitoring"
 import { useColors } from "../../components/mca/primitives/useColors"
-import { colors as semanticColors, surface } from "../../components/mca/primitives/colors"
+import { colors as semanticColors } from "../../components/mca/primitives/colors"
 import { FullscreenLoader } from "../../components/ui"
-import type { AgentUsageBucket, AgentUsageSessionSummary, ModelHealthHourBucket } from "../../services/AdminApi"
+import {
+  Badge,
+  Card,
+  ChipBtn,
+  EmptyState,
+  IconBtn,
+  Page,
+  Ph,
+  T,
+  Tile,
+  type TileTone,
+} from "../../components/ui/ds"
+import type {
+  AgentUsageBucket,
+  AgentUsageSessionSummary,
+  ModelHealthHourBucket,
+} from "../../services/AdminApi"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { useTilingStore } from "../../store/tilingStore"
 import { useDirectory } from "../AgentUsageWindow/hooks/useDirectory"
-import { errorRateLevel, type HealthLevel, latencyLevel, LEVEL_LABELS, worseLevel } from "../ModelHealthWindow/format"
+import {
+  errorRateLevel,
+  type HealthLevel,
+  latencyLevel,
+  LEVEL_LABELS,
+  worseLevel,
+} from "../ModelHealthWindow/format"
 import { useInflightGauge } from "../ModelHealthWindow/hooks/useInflightGauge"
 import { useModelHealthData } from "../ModelHealthWindow/hooks/useModelHealthData"
 import { bucketRange, drillToAgentUsageProps } from "./drill"
@@ -111,7 +131,10 @@ function toSeries(
       if (!label.has(k)) label.set(k, shortModel(m.modelId))
     }
   }
-  const topKeys = [...totals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7).map((e) => e[0])
+  const topKeys = [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 7)
+    .map((e) => e[0])
   const topSet = new Set(topKeys)
   const labels = buckets.map((b) => bucketLabel(b.hourBucket, unit, withDate))
   const series: Series[] = topKeys.map((k) => ({
@@ -120,8 +143,11 @@ function toSeries(
     color: seriesColor(k),
     values: buckets.map((b) => b.models.find((m) => key(m) === k)?.requestCount ?? 0),
   }))
-  const other = buckets.map((b) => b.models.filter((m) => !topSet.has(key(m))).reduce((a, m) => a + m.requestCount, 0))
-  if (other.some((v) => v > 0)) series.push({ key: "other", label: "Other", color: semanticColors.text3, values: other })
+  const other = buckets.map((b) =>
+    b.models.filter((m) => !topSet.has(key(m))).reduce((a, m) => a + m.requestCount, 0),
+  )
+  if (other.some((v) => v > 0))
+    series.push({ key: "other", label: "Other", color: semanticColors.text3, values: other })
   return { series, labels }
 }
 
@@ -139,7 +165,6 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
   const client = getTerosClient()
   const openWindow = useTilingStore((s) => s.openWindow)
   const c = useColors()
-  const isDark = c.bgPage === surface.dark.bgPage
   const [period, setPeriod] = useState<Period>(coercePeriod(initialPeriod))
   // Sliding window (P1/N2): each tick recomputes `to = now` and reloads all data.
   const { tick, bump } = useAutoRefresh()
@@ -156,7 +181,11 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
     // eslint-disable-next-line react-hooks/exhaustive-deps -- tick slides the window to now
   }, [period, tick])
 
-  const { models, series, periodMinutes, loading, refreshing, error } = useModelHealthData({ client, range, groupBy: range.unit })
+  const { models, series, periodMinutes, loading, refreshing, error } = useModelHealthData({
+    client,
+    range,
+    groupBy: range.unit,
+  })
   const inflight = useInflightGauge(client)
   // Names for the Recent-traces rows (P6) — the Hub rendered raw agent ids.
   const directory = useDirectory(client, {})
@@ -207,22 +236,36 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
     // ONE dense point per time bucket (P7/N6): the raw rows come per
     // (bucket × groupKey), which made the Spend/Agent-hours sparklines carry
     // several points per hour and the deltas split by row count.
-    const points = fillTimeBuckets(aggregateBucketsByTime(buckets), range.from, range.to, range.unit)
+    const points = fillTimeBuckets(
+      aggregateBucketsByTime(buckets),
+      range.from,
+      range.to,
+      range.unit,
+    )
     const cost = points.map((b) => b.costUsd)
     const hours = points.map((b) => b.activeHours)
     const totalCost = cost.reduce((a, b) => a + b, 0)
     const totalHours = hours.reduce((a, b) => a + b, 0)
-    const denseSeries = fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({ hourBucket: iso, models: [] }))
+    const denseSeries = fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({
+      hourBucket: iso,
+      models: [],
+    }))
     const thrSeries = denseSeries.map((bk) => bk.models.reduce((a, m) => a + m.requestCount, 0))
     const errSeries = denseSeries.map((bk) => {
       const req = bk.models.reduce((a, m) => a + m.requestCount, 0)
-      const err = bk.models.reduce((a, m) => a + (m.statusCounts.errored ?? 0) + (m.statusCounts.timed_out ?? 0), 0)
+      const err = bk.models.reduce(
+        (a, m) => a + (m.statusCounts.errored ?? 0) + (m.statusCounts.timed_out ?? 0),
+        0,
+      )
       return req > 0 ? err / req : 0
     })
     // Per-provider worst level → "N/M providers OK".
     const provLevels = new Map<string, HealthLevel>()
     for (const m of models) {
-      const lvl = worseLevel(latencyLevel("latency", m.latency.p95, m.modelId), errorRateLevel(m.errorRate))
+      const lvl = worseLevel(
+        latencyLevel("latency", m.latency.p95, m.modelId),
+        errorRateLevel(m.errorRate),
+      )
       provLevels.set(m.actualProvider, worseLevel(provLevels.get(m.actualProvider) ?? "ok", lvl))
     }
     return {
@@ -242,7 +285,10 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
   }, [buckets, series, models, range])
 
   const chart = useMemo(() => {
-    const dense = fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({ hourBucket: iso, models: [] }))
+    const dense = fillSeriesBuckets(series, range.from, range.to, range.unit, (iso) => ({
+      hourBucket: iso,
+      models: [],
+    }))
     // `isos` (bucket start per bar) lets a bar tap drill to that bucket's range.
     return { ...toSeries(dense, range.unit, range.withDate), isos: dense.map((d) => d.hourBucket) }
   }, [series, range])
@@ -255,14 +301,14 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
       flex: 2,
       align: "left",
       render: (s) => (
-        <YStack minWidth={0} flex={1}>
-          <Text fontSize={13} fontWeight="600" color={c.text} numberOfLines={1}>
+        <View style={{ minWidth: 0, flex: 1 }}>
+          <T step="sm" ellipsis>
             {directory.agentIdToName.get(s.agentId) ?? s.agentId}
-          </Text>
-          <Text fontSize={11} fontFamily="$mono" color={c.text3} numberOfLines={1}>
+          </T>
+          <T step="code" tone="text3" ellipsis>
             #{s.channelId.replace(/^ch_(demo_)?/, "")}
-          </Text>
-        </YStack>
+          </T>
+        </View>
       ),
     },
     {
@@ -272,12 +318,21 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
       flex: 1,
       align: "left",
       render: (s) => (
-        <XStack ai="center" gap={7} flex={1} minWidth={0}>
-          <YStack width={9} height={9} borderRadius={3} backgroundColor={seriesColor(`${s.actualProvider ?? s.provider}::${s.actualModel ?? s.modelId}`)} />
-          <Text fontSize={12} fontFamily="$mono" color={c.text2} numberOfLines={1} ellipsizeMode="tail">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 7, flex: 1, minWidth: 0 }}>
+          <View
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: 3,
+              backgroundColor: seriesColor(
+                `${s.actualProvider ?? s.provider}::${s.actualModel ?? s.modelId}`,
+              ),
+            }}
+          />
+          <T step="code" tone="text2" ellipsis style={{ flexShrink: 1 }}>
             {s.provider} · {shortModel(s.modelId)}
-          </Text>
-        </XStack>
+          </T>
+        </View>
       ),
     },
     {
@@ -286,25 +341,48 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
       width: 128,
       align: "left",
       render: (s) => (
-        <XStack ai="center" gap={6}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
           <StatusDot status={s.status} size={14} />
-          <Text fontSize={12} fontWeight="560" color={statusMeta(s.status).color} numberOfLines={1}>
+          <T step="12" color={statusMeta(s.status).color} numberOfLines={1}>
             {statusMeta(s.status).label}
-          </Text>
-        </XStack>
+          </T>
+        </View>
       ),
     },
-    { key: "tokens", header: "Tokens", width: 92, align: "right", mono: true, render: (s) => fmtCount(s.totalTokens) },
-    { key: "dur", header: "Duration", width: 92, align: "right", mono: true, render: (s) => (s.durationMs == null ? "—" : fmtDur(s.durationMs / 1000)) },
-    { key: "cost", header: "Cost", width: 84, align: "right", mono: true, color: () => c.text3, render: (s) => fmtUSD(s.costUsd) },
+    {
+      key: "tokens",
+      header: "Tokens",
+      width: 92,
+      align: "right",
+      mono: true,
+      render: (s) => fmtCount(s.totalTokens),
+    },
+    {
+      key: "dur",
+      header: "Duration",
+      width: 92,
+      align: "right",
+      mono: true,
+      render: (s) => (s.durationMs == null ? "—" : fmtDur(s.durationMs / 1000)),
+    },
+    {
+      key: "cost",
+      header: "Cost",
+      width: 84,
+      align: "right",
+      mono: true,
+      color: () => c.text3,
+      render: (s) => fmtUSD(s.costUsd),
+    },
   ]
 
   if (loading) return <FullscreenLoader />
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <Page>
       <MonitoringHeader
         title="Monitoring Hub"
+        lead="Salud global, gasto y actividad de los agentes en un solo sitio."
         activeView="hub"
         statusLevel={kpis ? HEADER_LEVEL[kpis.global] : "ok"}
         statusText={kpis && kpis.global !== "ok" ? LEVEL_LABELS[kpis.global] : undefined}
@@ -312,14 +390,25 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
         controls={
           <>
             {PERIODS.map((p) => (
-              <Button key={p.value} size="$1" theme={period === p.value ? "blue" : undefined} onPress={() => setPeriod(p.value)}>
-                {p.label}
-              </Button>
+              <ChipBtn key={p.value} on={period === p.value} onPress={() => setPeriod(p.value)}>
+                <T step="code" color={period === p.value ? c.accent : c.text2}>
+                  {p.label}
+                </T>
+              </ChipBtn>
             ))}
-            <Button size="$1" icon={RefreshCw} disabled={refreshing} onPress={bump} aria-label="Refresh" />
-            <Text fontSize={10} fontFamily="$mono" color={c.text3}>
+            <IconBtn
+              icon="arrows-clockwise"
+              plain
+              sm
+              disabled={refreshing}
+              onPress={bump}
+              title="Refresh"
+              accessibilityLabel="Refresh"
+              {...({ "aria-label": "Refresh" } as any)}
+            />
+            <T step="codenote" tone="text3">
               auto 60s · {new Date(range.to).toLocaleTimeString("en-US", { hour12: false })}
-            </Text>
+            </T>
           </>
         }
       />
@@ -329,116 +418,181 @@ export function MonitoringWindowContent({ initialPeriod }: MonitoringWindowProps
         <KpiTile
           label="Global health"
           value={kpis ? LEVEL_LABELS[kpis.global] : "—"}
-          statusColor={kpis ? statusMeta(kpis.global === "critical" ? "error" : kpis.global === "warn" ? "warn" : "ok").color : c.text3}
+          statusColor={
+            kpis
+              ? statusMeta(
+                  kpis.global === "critical" ? "error" : kpis.global === "warn" ? "warn" : "ok",
+                ).color
+              : c.text3
+          }
+          statusIcon={
+            kpis
+              ? kpis.global === "critical"
+                ? "x-circle"
+                : kpis.global === "warn"
+                  ? "warning"
+                  : "check-circle"
+              : undefined
+          }
           sub={kpis ? `${hub.providersOk}/${hub.providerCount} providers OK` : undefined}
         />
         <KpiTile
-          icon={DollarSign}
+          icon="currency-dollar"
           label="Spend"
           value={fmtUSD(hub.totalCost)}
           unit={period}
           delta={hub.dCost?.text}
           deltaColor={semanticColors.amber}
-          sparkline={hub.cost.length > 1 ? <Sparkline values={hub.cost} color={semanticColors.amber} /> : undefined}
+          sparkline={
+            hub.cost.length > 1 ? (
+              <Sparkline values={hub.cost} color={semanticColors.amber} />
+            ) : undefined
+          }
         />
         <KpiTile
-          icon={Clock}
+          icon="clock"
           label="Agent-hours"
           value={hub.totalHours >= 1 ? hub.totalHours.toFixed(1) : hub.totalHours.toFixed(2)}
           unit="h"
           delta={hub.dHours?.text}
           deltaColor={hub.dHours?.up ? semanticColors.green : semanticColors.amber}
-          sparkline={hub.hours.length > 1 ? <Sparkline values={hub.hours} color={semanticColors.green} /> : undefined}
+          sparkline={
+            hub.hours.length > 1 ? (
+              <Sparkline values={hub.hours} color={semanticColors.green} />
+            ) : undefined
+          }
         />
         <KpiTile
-          icon={AlertTriangle}
+          icon="warning"
           label="Error rate"
           value={kpis ? fmtPct(kpis.errorRate) : "—"}
           valueColor={kpis ? metricTone("err", kpis.errorRate * 100) : undefined}
           delta={hub.dErr?.text}
           deltaColor={hub.dErr?.up ? semanticColors.red : semanticColors.green}
-          sparkline={hub.errSeries.length > 1 ? <Sparkline values={hub.errSeries} color={semanticColors.red} /> : undefined}
+          sparkline={
+            hub.errSeries.length > 1 ? (
+              <Sparkline values={hub.errSeries} color={semanticColors.red} />
+            ) : undefined
+          }
         />
-        <KpiTile icon={Gauge} label="In-flight" value={fmtInt(inflight.total)} unit="req" />
+        <KpiTile icon="gauge" label="In-flight" value={fmtInt(inflight.total)} unit="req" />
         <KpiTile
-          icon={Zap}
+          icon="lightning"
           label="Throughput"
           value={kpis ? fmtInt(kpis.throughput) : "—"}
           unit="req/min"
           delta={hub.dThr?.text}
           deltaColor={hub.dThr?.up ? semanticColors.green : semanticColors.amber}
-          sparkline={hub.thrSeries.length > 1 ? <Sparkline values={hub.thrSeries} color={semanticColors.indigo} /> : undefined}
+          sparkline={
+            hub.thrSeries.length > 1 ? (
+              <Sparkline values={hub.thrSeries} color={c.accent} />
+            ) : undefined
+          }
         />
       </KpiStrip>
 
-      <ScrollView style={scrollbarThin as never}>
-        <YStack padding={24} gap={24}>
-          {/* drill cards */}
-          <XStack gap={16} flexWrap="wrap">
-            <DrillCard icon={Activity} iconBg={isDark ? "rgba(34,197,94,0.14)" : "rgba(34,197,94,0.10)"} iconColor={semanticColors.green} title="Agent Activity" desc="Live sessions, tokens, drill to traces" metric={`${sessions.length}`} metricSub="latest traces shown" onPress={() => nav("agent-usage")} />
-            <DrillCard icon={BarChart3} iconBg={isDark ? "rgba(245,158,11,0.14)" : "rgba(245,158,11,0.10)"} iconColor={semanticColors.amber} title="Model Health" desc="Reliability by provider × model" metric={kpis ? fmtMs(kpis.worstP95) : "—"} metricSub="worst p95" onPress={() => nav("model-health")} />
-          </XStack>
+      <View style={{ gap: 16, marginTop: 16 }}>
+        {/* drill cards */}
+        <View style={{ flexDirection: "row", gap: 10, flexWrap: "wrap" }}>
+          <DrillCard
+            icon="pulse"
+            tone="mint"
+            title="Agent Activity"
+            desc="Live sessions, tokens, drill to traces"
+            metric={`${sessions.length}`}
+            metricSub="latest traces shown"
+            onPress={() => nav("agent-usage")}
+          />
+          <DrillCard
+            icon="chart-bar"
+            tone="amber"
+            title="Model Health"
+            desc="Reliability by provider × model"
+            metric={kpis ? fmtMs(kpis.worstP95) : "—"}
+            metricSub="worst p95"
+            onPress={() => nav("model-health")}
+          />
+        </View>
 
-          {error ? (
-            <Text fontSize={13} color={semanticColors.amber}>
-              {error}
-            </Text>
-          ) : null}
+        {error ? (
+          <Badge tone="a" icon="warning">
+            {error}
+          </Badge>
+        ) : null}
 
-          {chart.series.length > 0 ? (
-            <SectionCard
-              title="Requests by model"
-              right={<Text fontSize={11} fontFamily="$mono" color={c.text3}>{period} · tap a bar to drill</Text>}
-            >
-              <TimeSeriesChart
-                series={chart.series}
-                labels={chart.labels}
-                unit="req"
-                format={fmtInt}
-                onBarPress={(i) => {
-                  const r = bucketRange(chart.isos, i, range.to)
-                  if (r) openWindow("agent-usage", drillToAgentUsageProps(r, period), false)
-                }}
-              />
-            </SectionCard>
-          ) : null}
-
+        {chart.series.length > 0 ? (
           <SectionCard
-            title="Recent traces"
-            right={<Text fontSize={11} color={c.text3}>each row opens its Session Trace →</Text>}
+            title="Requests by model"
+            right={
+              <T step="codenote" tone="text3">
+                {period} · tap a bar to drill
+              </T>
+            }
           >
-            {sessions.length > 0 ? (
-              <DataTable
-                columns={sessionColumns}
-                rows={sessions}
-                rowKey={(s) => s.sessionUsageId}
-                onRowPress={(s) => openWindow("session-trace", { sessionUsageId: s.sessionUsageId }, false)}
-              />
-            ) : (
-              <Text fontSize={13} color={c.text3}>
-                No recent sessions in this range.
-              </Text>
-            )}
+            <TimeSeriesChart
+              series={chart.series}
+              labels={chart.labels}
+              unit="req"
+              format={fmtInt}
+              onBarPress={(i) => {
+                const r = bucketRange(chart.isos, i, range.to)
+                if (r) openWindow("agent-usage", drillToAgentUsageProps(r, period), false)
+              }}
+            />
           </SectionCard>
-        </YStack>
-      </ScrollView>
-    </YStack>
+        ) : null}
+
+        <View>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <T step="base">Recent traces</T>
+            <T step="12" tone="text3">
+              each row opens its Session Trace →
+            </T>
+          </View>
+          {sessions.length > 0 ? (
+            <DataTable
+              columns={sessionColumns}
+              rows={sessions}
+              rowKey={(s) => s.sessionUsageId}
+              onRowPress={(s) =>
+                openWindow("session-trace", { sessionUsageId: s.sessionUsageId }, false)
+              }
+            />
+          ) : (
+            <Card>
+              <EmptyState
+                icon="tree-structure"
+                title="Sin sesiones recientes"
+                text="No recent sessions in this range."
+              />
+            </Card>
+          )}
+        </View>
+      </View>
+    </Page>
   )
 }
 
 function DrillCard({
-  icon: Icon,
-  iconBg,
-  iconColor,
+  icon,
+  tone,
   title,
   desc,
   metric,
   metricSub,
   onPress,
 }: {
-  icon: typeof Activity
-  iconBg: string
-  iconColor: string
+  icon: string
+  tone: TileTone
   title: string
   desc: string
   metric?: string
@@ -447,43 +601,25 @@ function DrillCard({
 }) {
   const c = useColors()
   return (
-    <YStack
-      flex={1}
-      minWidth={240}
-      gap={12}
-      padding={16}
-      borderWidth={1}
-      borderColor={c.border}
-      borderRadius={12}
-      backgroundColor={c.bgCard}
-      cursor="pointer"
-      hoverStyle={{ borderColor: c.borderStrong, backgroundColor: c.bgCardHover }}
-      onPress={onPress}
-    >
-      <XStack ai="center" jc="space-between">
-        <XStack ai="center" jc="center" width={34} height={34} borderRadius={9} backgroundColor={iconBg}>
-          <Icon size={18} color={iconColor} />
-        </XStack>
-        <TrendingUp size={15} color={c.text3} />
-      </XStack>
-      <YStack gap={3}>
-        <Text fontSize={16} fontWeight="640" color={c.text}>
-          {title}
-        </Text>
-        <Text fontSize={12} color={c.text2}>
+    <Card pad hov onPress={onPress} style={{ flex: 1, minWidth: 240, gap: 12 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <Tile icon={icon} tone={tone} size="sm" />
+        <Ph name="arrow-up-right" size={15} color={c.text3} />
+      </View>
+      <View style={{ gap: 3 }}>
+        <T step="base">{title}</T>
+        <T step="12" tone="text2">
           {desc}
-        </Text>
-      </YStack>
+        </T>
+      </View>
       {metric ? (
-        <XStack ai="flex-end" gap={10}>
-          <Text fontFamily="$mono" fontSize={22} fontWeight="600" color={c.text}>
-            {metric}
-          </Text>
-          <Text fontSize={12} color={c.text2} paddingBottom={3}>
+        <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 10 }}>
+          <T step="xl">{metric}</T>
+          <T step="12" tone="text2" style={{ paddingBottom: 3 }}>
             {metricSub}
-          </Text>
-        </XStack>
+          </T>
+        </View>
       ) : null}
-    </YStack>
+    </Card>
   )
 }

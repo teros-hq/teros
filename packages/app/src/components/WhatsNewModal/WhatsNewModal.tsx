@@ -4,639 +4,444 @@
  * Features:
  * - One card at a time, swipe/drag right for next, left for previous
  * - Progress dots + "N de M" indicator
- * - Category-colored header with icon, date, title
+ * - Category-toned icon tile, mono "CATEGORY · DATE" note, serif title
  * - Markdown body rendered via ChangelogMarkdownRenderer (supports images)
+ * - When several entries are pending, an index list (LGroup) with mono dates
+ *   sits above the body so the whole batch is visible at a glance
  * - "Entendido" button on last card, "Siguiente" on others, X to close anytime
  * - Close (X) button updates tracking (marks latest entry as seen)
- * - Responsive: web (drag/click arrows) + mobile (swipe gestures)
+ * - Responsive: web (drag/click arrows/keyboard) + mobile (swipe gestures)
  * - Overlay/modal — not part of the tiling window system
+ *
+ * Visual: the OS prototype's hero card (radius 24, no border, raised lift)
+ * on a blurred scrim; pills for the actions; Phosphor glyphs; 400 weight.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import {
+  Animated,
+  Dimensions,
+  Modal as RNModal,
+  PanResponder,
   Platform,
+  Pressable,
   ScrollView,
   View,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  Dimensions,
-  Animated,
-  PanResponder,
-  Modal as RNModal,
-} from 'react-native';
-import { XStack, YStack } from 'tamagui';
-import { Rocket, TrendingUp, Wrench, AlertTriangle, X } from '@tamagui/lucide-icons';
+  useWindowDimensions,
+} from "react-native"
 
-import { useColors, useMcaTheme } from '../mca/primitives/useColors';
-import { colors as semanticColors } from '../mca/primitives/colors';
+import { useColors, useMcaTheme } from "../mca/primitives/useColors"
 import {
   type ChangelogEntry,
   CATEGORY_META,
   type CategoryMeta,
   getLocalizedEntry,
-} from '../../changelog';
-import i18n from '../../i18n';
-import { useAuthStore } from '../../store';
-import { ChangelogMarkdownRenderer } from './ChangelogMarkdownRenderer';
+} from "../../changelog"
+import i18n from "../../i18n"
+import { useAuthStore } from "../../store"
+import { Btn, IconBtn, Ph, T, Tile, type TileTone } from "../ui/ds"
+import { ChangelogMarkdownRenderer } from "./ChangelogMarkdownRenderer"
 
-// ─── Design system constants ──────────────────────────────────────────────────
-// Font stacks aligned with tamagui.config.ts and tokens.css.
-//   DM Sans       → UI / body text
-//   Newsreader    → display / card titles
-//   JetBrains Mono → code / data (used by ChangelogMarkdownRenderer)
-const FONT_SANS = "'DM Sans', system-ui, -apple-system, sans-serif";
-const FONT_SERIF = "'Newsreader', Georgia, serif";
-
-// Radius tokens (from tokens.css --radius-xl / --radius / --radius-sm)
-const RADIUS_XL = 20;   // modal container
-const RADIUS = 10;       // icon badge, buttons
-const RADIUS_SM = 6;     // close button
-
-// ─── Category SVG icons (no emojis) ───────────────────────────────────────────
-// Lucide-style stroke icons, rendered with currentColor.
-
-// ─── Category color mapping ───────────────────────────────────────────────────
-// Maps changelog category colorKey → design system semantic color.
-// 'orange' (fix) maps to amber (#F59E0B) — the DS warm/warning accent.
-function getCategoryColor(colorKey: CategoryMeta['colorKey']): string {
+// ─── Category → tile tone / text tint ─────────────────────────────────────────
+// Maps changelog category colorKey → the theme's status tints.
+//   green → mint tile · orange (fix) → amber · blue → violet · red → pink
+function getCategoryTone(colorKey: CategoryMeta["colorKey"]): {
+  tile: TileTone
+  tint: "g" | "a" | "i" | "r"
+} {
   switch (colorKey) {
-    case 'green': return semanticColors.green;
-    case 'orange': return semanticColors.amber;
-    case 'blue': return semanticColors.indigo;
-    case 'red': return semanticColors.red;
-    default: return semanticColors.indigo;
+    case "green":
+      return { tile: "mint", tint: "g" }
+    case "orange":
+      return { tile: "amber", tint: "a" }
+    case "red":
+      return { tile: "pink", tint: "r" }
+    case "blue":
+    default:
+      return { tile: "accent", tint: "i" }
+  }
+}
+
+// Maps icon key → Phosphor glyph
+const ICON_NAMES: Record<string, string> = {
+  rocket: "rocket-launch",
+  "trending-up": "trend-up",
+  wrench: "wrench",
+  "alert-triangle": "warning",
+}
+
+function formatDate(date: string): string {
+  try {
+    const d = new Date(date)
+    return d.toLocaleDateString(i18n.language || "en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  } catch {
+    return date
   }
 }
 
 // ─── Progress dots ────────────────────────────────────────────────────────────
 
-interface ProgressDotsProps {
-  current: number;
-  total: number;
-  color: string;
-  /** Inactive dot color — design system border-strong token */
-  inactiveColor: string;
-}
-
-function ProgressDots({ current, total, color, inactiveColor }: ProgressDotsProps) {
-  if (Platform.OS === 'web') {
-    return (
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontFamily: FONT_SANS }}>
-        {Array.from({ length: total }).map((_, i) => (
-          <div
-            key={i}
-            style={{
-              width: i === current ? 24 : 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: i === current ? color : inactiveColor,
-              transition: 'width 0.2s, background-color 0.2s',
-            }}
-          />
-        ))}
-      </div>
-    );
-  }
-
+function ProgressDots({ current, total }: { current: number; total: number }) {
+  const c = useColors()
   return (
-    <XStack gap={6} alignItems="center">
+    <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
       {Array.from({ length: total }).map((_, i) => (
         <View
           key={i}
-          style={{
-            width: i === current ? 24 : 8,
-            height: 8,
-            borderRadius: 4,
-            backgroundColor: i === current ? color : inactiveColor,
-          }}
+          style={[
+            {
+              width: i === current ? 22 : 6,
+              height: 6,
+              borderRadius: 3,
+              backgroundColor:
+                i === current ? c.accent : i < current ? c.borderAccent : c.borderStrong,
+              opacity: i < current ? 0.5 : 1,
+            },
+            Platform.OS === "web"
+              ? ({ transition: "width 0.25s, background-color 0.25s" } as any)
+              : null,
+          ]}
         />
       ))}
-    </XStack>
-  );
+    </View>
+  )
 }
 
 // ─── Single card ──────────────────────────────────────────────────────────────
 
-interface ChangelogCardProps {
-  entry: Omit<ChangelogEntry, 'title' | 'content'> & { title: string; content: string };
-  c: ReturnType<typeof useColors>;
-}
+type LocalizedEntry = Omit<ChangelogEntry, "title" | "content"> & { title: string; content: string }
 
+function ChangelogCard({ entry }: { entry: LocalizedEntry }) {
+  const c = useColors()
+  const meta = CATEGORY_META[entry.category] ?? CATEGORY_META.feature
+  const tone = getCategoryTone(meta.colorKey)
+  const icon = ICON_NAMES[entry.icon ?? meta.icon] ?? "rocket-launch"
 
-// Maps icon key → lucide icon component
-const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
-  'rocket': Rocket,
-  'trending-up': TrendingUp,
-  'wrench': Wrench,
-  'alert-triangle': AlertTriangle,
-};
-
-
-function ChangelogCard({ entry, c }: ChangelogCardProps) {
-  const meta = CATEGORY_META[entry.category] ?? CATEGORY_META.feature;
-  const color = getCategoryColor(meta.colorKey);
-  const icon = entry.icon ?? meta.icon;
-
-  // Format date: "Jul 19, 2026"
-  const formattedDate = (() => {
-    try {
-      const d = new Date(entry.date);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    } catch {
-      return entry.date;
-    }
-  })();
-
-  if (Platform.OS === 'web') {
-    return (
-      <div
-        className="changelog-card-inner"
+  return (
+    <View style={{ flex: 1, minHeight: 0 }}>
+      {/* Header */}
+      <View
         style={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          width: '100%',
-          boxSizing: 'border-box',
-          fontFamily: FONT_SANS,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 14,
+          paddingTop: 24,
+          paddingHorizontal: 28,
+          paddingBottom: 16,
+          paddingRight: 64,
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            padding: '20px 24px 16px',
-            borderBottom: `1px solid ${c.border}`,
-          }}
-        >
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: RADIUS,
-              backgroundColor: `${color}22`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {(() => { const Icon = ICON_COMPONENTS[icon] ?? Rocket; return <Icon size={20} color={color} />; })()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 11,
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                  color,
-                }}
-              >
-                {i18n.t(`whatsNew.category.${entry.category}`)}
-              </span>
-              <span style={{ fontSize: 11, color: c.text3 }}>·</span>
-              <span style={{ fontSize: 11, color: c.text3 }}>{formattedDate}</span>
-            </div>
-            <h2
-              style={{
-                fontFamily: FONT_SERIF,
-                fontSize: 20,
-                fontWeight: 400,
-                color: c.text,
-                margin: '4px 0 0',
-                lineHeight: 1.3,
-                letterSpacing: '-0.01em',
-              }}
-            >
-              {entry.title}
-            </h2>
-          </div>
-        </div>
-
-        {/* Markdown body — scrollable */}
-        <div
-          style={{
-            flex: 1,
-            overflow: 'auto',
-            padding: '16px 24px 20px',
-            minHeight: 0,
-          }}
-        >
-          <ChangelogMarkdownRenderer content={entry.content} />
-        </div>
-      </div>
-    );
-  }
-
-  // Native
-  return (
-    <View style={{ flex: 1, height: '100%' }}>
-      {/* Header */}
-      <XStack
-        alignItems="center"
-        gap={12}
-        padding={20}
-        borderBottomWidth={1}
-        borderBottomColor={c.border}
-      >
-        <View
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: RADIUS,
-            backgroundColor: `${color}22`,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          {(() => { const Icon = ICON_COMPONENTS[icon] ?? Rocket; return <Icon size={20} color={color} />; })()}
-        </View>
-        <YStack flex={1} gap={2}>
-          <XStack alignItems="center" gap={6}>
-            <Text style={{ fontSize: 11, fontWeight: '600', textTransform: 'uppercase', color }}>
+        <Tile icon={icon} tone={tone.tile} size="md" />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <T step="codenote" color={c.tint[tone.tint].tx}>
               {i18n.t(`whatsNew.category.${entry.category}`)}
-            </Text>
-            <Text style={{ fontSize: 11, color: c.text3 }}>·</Text>
-            <Text style={{ fontSize: 11, color: c.text3 }}>{formattedDate}</Text>
-          </XStack>
-          <Text style={{ fontSize: 20, fontWeight: '400', color: c.text, lineHeight: 26, fontFamily: FONT_SERIF }}>
+            </T>
+            <T step="codenote" tone="text3">
+              · {formatDate(entry.date)}
+            </T>
+          </View>
+          <T step="xl" style={{ marginTop: 4 }}>
             {entry.title}
-          </Text>
-        </YStack>
-      </XStack>
+          </T>
+        </View>
+      </View>
 
       {/* Markdown body — scrollable */}
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ padding: 16 }}
+        style={{ flex: 1, minHeight: 0 }}
+        contentContainerStyle={{ paddingHorizontal: 28, paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
+        {...(Platform.OS === "web" ? ({ className: "chat-scroll" } as any) : {})}
       >
         <ChangelogMarkdownRenderer content={entry.content} />
       </ScrollView>
     </View>
-  );
+  )
+}
+
+// ─── Entry index (several pending entries) ────────────────────────────────────
+
+function EntryIndex({
+  entries,
+  current,
+  onPick,
+}: {
+  entries: ChangelogEntry[]
+  current: number
+  onPick: (i: number) => void
+}) {
+  const c = useColors()
+  const locale = useAuthStore.getState().user?.locale || i18n.language
+  return (
+    <View
+      style={{
+        marginHorizontal: 28,
+        marginBottom: 14,
+        borderRadius: 12,
+        backgroundColor: c.nest,
+        overflow: "hidden",
+      }}
+    >
+      {entries.map((e, i) => {
+        const l = getLocalizedEntry(e, locale)
+        const on = i === current
+        return (
+          <Pressable
+            key={e.id}
+            onPress={() => onPick(i)}
+            accessibilityRole="button"
+            accessibilityState={{ selected: on }}
+            style={({ pressed }) => [
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderTopWidth: i > 0 ? 1 : 0,
+                borderTopColor: c.border,
+                backgroundColor: on ? c.navActive : pressed ? c.nestHover : "transparent",
+              },
+              Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+            ]}
+          >
+            <Ph name={on ? "caret-right" : "dot"} size={12} color={on ? c.accent : c.text3} />
+            <T step="12" color={on ? c.text : c.text2} ellipsis style={{ flex: 1 }}>
+              {l.title}
+            </T>
+            <T step="codenote" tone="text3">
+              {formatDate(e.date)}
+            </T>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
 }
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
 
 export interface WhatsNewModalProps {
   /** Entries to show (already filtered to unseen ones) */
-  entries: ChangelogEntry[];
+  entries: ChangelogEntry[]
   /** Called when the user dismisses the modal (X, "Entendido") */
-  onDismiss: (lastSeenEntryId: string) => void;
+  onDismiss: (lastSeenEntryId: string) => void
   /** Whether this is a manual re-open (shows all entries, not just unseen) */
-  isManualReopen?: boolean;
+  isManualReopen?: boolean
 }
 
 export function WhatsNewModal({ entries, onDismiss, isManualReopen = false }: WhatsNewModalProps) {
-  const c = useColors();
-  const theme = useMcaTheme();
-  const isDark = theme === 'dark';
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const pan = useRef(new Animated.Value(0)).current;
-  const screenWidth = Dimensions.get('window').width;
+  const c = useColors()
+  const theme = useMcaTheme()
+  const isDark = theme === "dark"
+  const { width: winW, height: winH } = useWindowDimensions()
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const pan = useRef(new Animated.Value(0)).current
+  const screenWidth = Dimensions.get("window").width
 
-  const total = entries.length;
+  const total = entries.length
   const currentEntry = entries[currentIndex]
-    ? getLocalizedEntry(entries[currentIndex], useAuthStore.getState().user?.locale || i18n.language)
-    : undefined;
-  const isLast = currentIndex === total - 1;
+    ? getLocalizedEntry(
+        entries[currentIndex],
+        useAuthStore.getState().user?.locale || i18n.language,
+      )
+    : undefined
+  const isLast = currentIndex === total - 1
 
   // The ID to mark as seen when dismissing = the LAST entry in the list
   // (not the current one — if the user dismisses from card 2 of 5, we still
   // mark all as seen so the modal doesn't reappear)
-  const lastEntryId = entries[total - 1]?.id ?? '';
+  const lastEntryId = entries[total - 1]?.id ?? ""
 
   const handleDismiss = useCallback(() => {
-    onDismiss(lastEntryId);
-  }, [onDismiss, lastEntryId]);
+    onDismiss(lastEntryId)
+  }, [onDismiss, lastEntryId])
 
   const goNext = useCallback(() => {
     if (currentIndex < total - 1) {
-      setCurrentIndex(currentIndex + 1);
+      setCurrentIndex(currentIndex + 1)
     }
-  }, [currentIndex, total]);
+  }, [currentIndex, total])
 
   const goPrev = useCallback(() => {
     if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+      setCurrentIndex(currentIndex - 1)
     }
-  }, [currentIndex]);
+  }, [currentIndex])
 
   // Pan responder for swipe/drag gestures
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 40;
+        return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dy) < 40
       },
       onPanResponderMove: (_, gestureState) => {
-        pan.setValue(gestureState.dx);
+        pan.setValue(gestureState.dx)
       },
       onPanResponderRelease: (_, gestureState) => {
-        const threshold = screenWidth * 0.2;
+        const threshold = screenWidth * 0.2
         if (gestureState.dx < -threshold && currentIndex < total - 1) {
           // Swipe left → next
-          goNext();
+          goNext()
         } else if (gestureState.dx > threshold && currentIndex > 0) {
           // Swipe right → prev
-          goPrev();
+          goPrev()
         }
-        Animated.spring(pan, { toValue: 0, useNativeDriver: false }).start();
+        Animated.spring(pan, { toValue: 0, useNativeDriver: false }).start()
       },
       onPanResponderTerminate: () => {
-        Animated.spring(pan, { toValue: 0, useNativeDriver: false }).start();
+        Animated.spring(pan, { toValue: 0, useNativeDriver: false }).start()
       },
     }),
-  ).current;
+  ).current
 
   // Keyboard navigation (web only)
   useEffect(() => {
-    if (Platform.OS !== 'web') return;
+    if (Platform.OS !== "web") return
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleDismiss();
-      } else if (e.key === 'ArrowRight' && currentIndex < total - 1) {
-        goNext();
-      } else if (e.key === 'ArrowLeft' && currentIndex > 0) {
-        goPrev();
+      if (e.key === "Escape") {
+        handleDismiss()
+      } else if (e.key === "ArrowRight" && currentIndex < total - 1) {
+        goNext()
+      } else if (e.key === "ArrowLeft" && currentIndex > 0) {
+        goPrev()
       }
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [currentIndex, total, handleDismiss, goNext, goPrev]);
+    }
+    window.addEventListener("keydown", handleKey)
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [currentIndex, total, handleDismiss, goNext, goPrev])
 
-  if (!currentEntry) return null;
+  if (!currentEntry) return null
 
-  const meta = CATEGORY_META[currentEntry.category] ?? CATEGORY_META.feature;
-  const color = getCategoryColor(meta.colorKey);
+  const phone = winW <= 620
+  const cardW = Math.min(560, winW - (phone ? 24 : 48))
+  const cardH = Math.min(Platform.OS === "web" ? 640 : winH * 0.78, winH - (phone ? 48 : 96))
+
+  const card = (
+    <Animated.View
+      {...panResponder.panHandlers}
+      testID="whats-new-modal"
+      style={[
+        {
+          width: cardW,
+          height: cardH,
+          backgroundColor: c.bgStep,
+          borderRadius: 24,
+          overflow: "hidden",
+          transform: [{ translateX: pan }],
+        },
+        Platform.OS === "web" ? ({ boxShadow: c.elevRaised } as any) : null,
+      ]}
+    >
+      {/* Close button */}
+      <View style={{ position: "absolute", top: 14, right: 14, zIndex: 10 }}>
+        <IconBtn icon="x" plain onPress={handleDismiss} title={i18n.t("whatsNew.actions.close")} />
+      </View>
+
+      {/* Card content */}
+      <View style={{ flex: 1, minHeight: 0 }}>
+        {total > 1 && !phone ? (
+          <View style={{ paddingTop: 24 }}>
+            <View style={{ paddingHorizontal: 28, marginBottom: 8 }}>
+              <T step="xs" tone="accent">
+                {i18n.t("whatsNew.title", { defaultValue: "What's new" })}
+              </T>
+            </View>
+            <EntryIndex entries={entries} current={currentIndex} onPick={setCurrentIndex} />
+          </View>
+        ) : null}
+        <ChangelogCard entry={currentEntry} />
+      </View>
+
+      {/* Footer */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          paddingHorizontal: 20,
+          paddingVertical: 14,
+          borderTopWidth: 1,
+          borderTopColor: c.border,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <ProgressDots current={currentIndex} total={total} />
+          <T step="codenote" tone="text3">
+            {i18n.t("whatsNew.actions.progress", { current: currentIndex + 1, total })}
+          </T>
+        </View>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {currentIndex > 0 && (
+            <Btn variant="ghost" size="md" icon="caret-left" onPress={goPrev}>
+              {i18n.t("whatsNew.actions.prev")}
+            </Btn>
+          )}
+          {isLast ? (
+            <Btn variant="primary" size="md" icon="check" onPress={handleDismiss}>
+              {isManualReopen
+                ? i18n.t("whatsNew.actions.close")
+                : i18n.t("whatsNew.actions.dismiss")}
+            </Btn>
+          ) : (
+            <Btn variant="primary" size="md" iconRight="caret-right" onPress={goNext}>
+              {i18n.t("whatsNew.actions.next")}
+            </Btn>
+          )}
+        </View>
+      </View>
+    </Animated.View>
+  )
+
+  const scrim = isDark ? "rgba(10,8,14,0.7)" : "rgba(32,28,39,0.35)"
 
   // ─── Web render ──────────────────────────────────────────────────────────────
 
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return (
-      <div
+      <Pressable
+        onPress={handleDismiss}
         style={{
-          position: 'fixed',
+          position: "fixed" as any,
           top: 0,
           left: 0,
           right: 0,
           bottom: 0,
           zIndex: 10000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          // Theme-aware overlay: darker in dark mode, lighter in light mode
-          backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(10,10,15,0.35)',
-          backdropFilter: 'blur(4px)',
-          fontFamily: FONT_SANS,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: scrim,
+          ...({
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            cursor: "default",
+          } as any),
         }}
-        onClick={handleDismiss}
       >
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            width: '90%',
-            maxWidth: 560,
-            height: '80vh',
-            maxHeight: 640,
-            backgroundColor: c.bgCard,
-            borderRadius: RADIUS_XL,
-            border: `1px solid ${c.borderStrong}`,
-            boxShadow: c.shadow,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            position: 'relative',
-            fontFamily: FONT_SANS,
-          }}
-        >
-          {/* Close button */}
-          <button
-            onClick={handleDismiss}
-            style={{
-              position: 'absolute',
-              top: 12,
-              right: 12,
-              width: 32,
-              height: 32,
-              borderRadius: RADIUS_SM,
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: c.text3,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 10,
-              fontFamily: FONT_SANS,
-            }}
-            aria-label="Close"
-          >
-            <X size={14} color={c.text3} />
-          </button>
-
-          {/* Card content */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-            <ChangelogCard entry={currentEntry} c={c} />
-          </div>
-
-          {/* Footer: navigation + progress */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 24px 16px',
-              borderTop: `1px solid ${c.border}`,
-              fontFamily: FONT_SANS,
-            }}
-          >
-            {/* Left: progress dots */}
-            <ProgressDots current={currentIndex} total={total} color={color} inactiveColor={c.borderStrong} />
-
-            {/* Right: navigation buttons */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: FONT_SANS }}>
-              {/* Previous */}
-              {currentIndex > 0 && (
-                <button
-                  onClick={goPrev}
-                  style={{
-                    padding: '8px 16px',
-                    borderRadius: RADIUS_SM,
-                    border: `1px solid ${c.borderStrong}`,
-                    backgroundColor: 'transparent',
-                    color: c.text2,
-                    fontSize: 13,
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: FONT_SANS,
-                  }}
-                >
-                  ← {i18n.t('whatsNew.actions.prev')}
-                </button>
-              )}
-
-              {/* Next / Entendido */}
-              {isLast ? (
-                <button
-                  onClick={handleDismiss}
-                  style={{
-                    padding: '8px 20px',
-                    borderRadius: RADIUS_SM,
-                    border: 'none',
-                    backgroundColor: semanticColors.indigo,
-                    color: '#fff',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: FONT_SANS,
-                  }}
-                >
-                  {isManualReopen ? i18n.t('whatsNew.actions.close') : i18n.t('whatsNew.actions.dismiss')}
-                </button>
-              ) : (
-                <button
-                  onClick={goNext}
-                  style={{
-                    padding: '8px 20px',
-                    borderRadius: RADIUS_SM,
-                    border: 'none',
-                    backgroundColor: semanticColors.indigo,
-                    color: '#fff',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    fontFamily: FONT_SANS,
-                  }}
-                >
-                  {i18n.t('whatsNew.actions.next')} →
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+        <Pressable onPress={(e) => e.stopPropagation()} style={{ cursor: "default" } as any}>
+          {card}
+        </Pressable>
+      </Pressable>
+    )
   }
 
   // ─── Native render ───────────────────────────────────────────────────────────
 
   return (
-    <RNModal
-      visible={true}
-      transparent
-      animationType="fade"
-      onRequestClose={handleDismiss}
-    >
-      <TouchableWithoutFeedback onPress={handleDismiss}>
-        <View
-          style={{
-            flex: 1,
-            // Theme-aware overlay: darker in dark mode, lighter in light mode
-            backgroundColor: isDark ? 'rgba(0,0,0,0.65)' : 'rgba(10,10,15,0.35)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
-          <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
-            <Animated.View
-              {...panResponder.panHandlers}
-              style={{
-                width: '90%',
-                maxWidth: 560,
-                height: '75%',
-                backgroundColor: c.bgCard,
-                borderRadius: RADIUS_XL,
-                borderWidth: 1,
-                borderColor: c.borderStrong,
-                overflow: 'hidden',
-                transform: [{ translateX: pan }],
-              }}
-            >
-              {/* Close button */}
-              <TouchableOpacity
-                onPress={handleDismiss}
-                style={{
-                  position: 'absolute',
-                  top: 12,
-                  right: 12,
-                  width: 32,
-                  height: 32,
-                  borderRadius: RADIUS_SM,
-                  zIndex: 10,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                }}
-              >
-                <X size={14} color={c.text3} />
-              </TouchableOpacity>
-
-              {/* Card content */}
-              <ChangelogCard entry={currentEntry} c={c} />
-
-              {/* Footer */}
-              <YStack
-                padding={12}
-                borderTopWidth={1}
-                borderTopColor={c.border}
-                gap={10}
-              >
-                <XStack alignItems="center" justifyContent="space-between">
-                  <ProgressDots current={currentIndex} total={total} color={color} inactiveColor={c.borderStrong} />
-                  <Text style={{ fontSize: 12, color: c.text3 }}>
-                    {i18n.t('whatsNew.actions.progress', { current: currentIndex + 1, total })}
-                  </Text>
-                </XStack>
-
-                <XStack gap={8} justifyContent="flex-end">
-                  {currentIndex > 0 && (
-                    <TouchableOpacity onPress={goPrev}>
-                      <Text style={{ padding: 8, color: c.text2, fontSize: 13 }}>← {i18n.t('whatsNew.actions.prev')}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {isLast ? (
-                    <TouchableOpacity onPress={handleDismiss}>
-                      <Text
-                        style={{
-                          padding: 8,
-                          color: '#fff',
-                          fontSize: 13,
-                          fontWeight: '600',
-                          backgroundColor: semanticColors.indigo,
-                          borderRadius: RADIUS_SM,
-                          paddingHorizontal: 16,
-                        }}
-                      >
-                        {isManualReopen ? i18n.t('whatsNew.actions.close') : i18n.t('whatsNew.actions.dismiss')}
-                      </Text>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity onPress={goNext}>
-                      <Text
-                        style={{
-                          padding: 8,
-                          color: '#fff',
-                          fontSize: 13,
-                          fontWeight: '600',
-                          backgroundColor: semanticColors.indigo,
-                          borderRadius: RADIUS_SM,
-                          paddingHorizontal: 16,
-                        }}
-                      >
-                        {i18n.t('whatsNew.actions.next')} →
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </XStack>
-              </YStack>
-            </Animated.View>
-          </TouchableWithoutFeedback>
-        </View>
-      </TouchableWithoutFeedback>
+    <RNModal visible transparent animationType="fade" onRequestClose={handleDismiss}>
+      <Pressable
+        onPress={handleDismiss}
+        style={{ flex: 1, backgroundColor: scrim, justifyContent: "center", alignItems: "center" }}
+      >
+        <Pressable onPress={(e) => e.stopPropagation()}>{card}</Pressable>
+      </Pressable>
     </RNModal>
-  );
+  )
 }

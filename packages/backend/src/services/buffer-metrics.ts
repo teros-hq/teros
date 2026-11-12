@@ -13,7 +13,7 @@
  * (sliding window of the last 1000). Cheap enough for the per-flush call
  * site; if the volume grows we'd switch to a sketch (HDR / t-digest).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §7 — Bus de eventos (métricas)
  */
 
 import type { UsageEventBufferMetrics } from "./usage-event-buffer.js"

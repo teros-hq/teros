@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { ensureAuthenticated, initializeGoogleClients, processEscapeSequences, withAuthRetry } from '../lib';
+import { initializeGoogleClients, processEscapeSequences, withAuthRetry } from '../lib';
 
 export const insertText: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -26,7 +26,6 @@ export const insertText: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const { documentId, text: rawText, index } = args as {
       documentId: string;

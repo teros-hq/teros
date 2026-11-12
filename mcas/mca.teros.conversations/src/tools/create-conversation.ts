@@ -2,7 +2,10 @@ import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { type CreateChannelResult, getWsClient, isWsConnected } from '../lib';
 
 export const createConversation: ToolConfig = {
-  annotations: { readOnlyHint: false },
+  // safeWriteHint: creates a conversation owned by the caller — reversible
+  // (deletable) and private. send-message is deliberately NOT safe-write: it has
+  // a visible effect in another channel.
+  annotations: { readOnlyHint: false, safeWriteHint: true },
   description:
     'Create a new conversation with a specific agent. Returns the new channel ID that can be used to send messages.',
   parameters: {

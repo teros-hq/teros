@@ -2,12 +2,12 @@
   "$schema": "https://teros.ai/schemas/mca-manifest.json",
   "id": "mca.teros.datetime",
   "name": "DateTime",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Date and time utilities with timezone support. Provides clock, calendar, and time conversion tools.",
   "type": "utility",
   "icon": "icon.png",
   "category": "development",
-  "entrypoint": "mcp/src/index.ts",
+  "entrypoint": "src/index.ts",
   "author": {
     "name": "Alice Evergreen",
     "email": "alice@teros.ai"
@@ -33,6 +33,11 @@
     "agent": false
   },
   "changelog": [
+    {
+      "version": "0.9.1",
+      "date": "2026-10-01",
+      "notes": "Fix: rewrite on @teros/mca-sdk McaServer — the old StdioServerTransport implementation never opened the HTTP port the manifest declared, so containers died at the health check. All 8 tools now annotated readOnlyHint (they are pure functions)."
+    },
     {
       "version": "0.9.0",
       "date": "2026-01-23",

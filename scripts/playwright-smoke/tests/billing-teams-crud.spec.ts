@@ -10,7 +10,7 @@
  * (team_demo) stays pristine. beforeEach/afterAll best-effort delete it.
  */
 import { expect, test } from "../fixtures"
-import { deleteTeam, getTeam, TEAM_ID } from "../helpers/billing"
+import { deleteTeam, getTeam, resetTeamBaseline, TEAM_ID } from "../helpers/billing"
 import { closeDb } from "../helpers/db"
 import { attemptAction, wsRequest } from "../helpers/teros"
 
@@ -29,8 +29,8 @@ async function dropCrudTeam(page: import("@playwright/test").Page): Promise<void
   await attemptAction(page, "admin.delete-billing-team", { teamId: CRUD_TEAM_ID })
 }
 
-test.beforeEach(async ({ terosPage }) => {
-  await dropCrudTeam(terosPage)
+test.beforeEach(async ({ superPage }) => {
+  await dropCrudTeam(superPage)
 })
 test.afterAll(async () => {
   // afterAll can't use test-scoped page fixtures → clean up via Mongo directly.
@@ -40,12 +40,12 @@ test.afterAll(async () => {
 
 test.describe("billing — CRUD de equipos por contrato T1 @billing", () => {
   test("crear un equipo lo añade al listado + Mongo; borrarlo lo elimina", async ({
-    terosPage,
+    superPage,
   }) => {
     test.setTimeout(60_000)
 
     // CREATE — el admin crea el equipo (id derivado del slug: team_smoke-crud).
-    const created = await wsRequest<CreatedTeam>(terosPage, "admin.create-billing-team", {
+    const created = await wsRequest<CreatedTeam>(superPage, "admin.create-billing-team", {
       name: "Smoke CRUD",
       slug: CRUD_SLUG,
       planId: "plan_pro",
@@ -57,7 +57,7 @@ test.describe("billing — CRUD de equipos por contrato T1 @billing", () => {
     expect(created.team.maxSeats).toBe(3)
 
     // LIST — aparece en el listado que consume la ventana de equipos.
-    const list1 = await wsRequest<TeamsList>(terosPage, "admin.list-billing-teams", {})
+    const list1 = await wsRequest<TeamsList>(superPage, "admin.list-billing-teams", {})
     expect(
       list1.teams.some((t) => t._id === CRUD_TEAM_ID),
       "el equipo creado está en list-billing-teams",
@@ -66,13 +66,13 @@ test.describe("billing — CRUD de equipos por contrato T1 @billing", () => {
     expect(await getTeam(CRUD_TEAM_ID), "el equipo existe en Mongo").toBeTruthy()
 
     // DELETE — sin miembros, el borrado procede.
-    const del = await wsRequest<{ deleted: boolean }>(terosPage, "admin.delete-billing-team", {
+    const del = await wsRequest<{ deleted: boolean }>(superPage, "admin.delete-billing-team", {
       teamId: CRUD_TEAM_ID,
     })
     expect(del.deleted).toBe(true)
 
     // LIST — ya no aparece. Mongo crudo: se eliminó.
-    const list2 = await wsRequest<TeamsList>(terosPage, "admin.list-billing-teams", {})
+    const list2 = await wsRequest<TeamsList>(superPage, "admin.list-billing-teams", {})
     expect(
       list2.teams.some((t) => t._id === CRUD_TEAM_ID),
       "el equipo borrado desaparece del listado",
@@ -95,6 +95,9 @@ test.describe("billing — CRUD de equipos por contrato T1 @billing", () => {
     expect(await getTeam("team_hacker-team"), "no se creó ningún equipo").toBeNull()
 
     // DELETE de un equipo real (team_demo) como no-admin → FORBIDDEN, sin tocarlo.
+    // team_demo must exist for "it survives" to mean anything (upserted on a fresh stack).
+    await resetTeamBaseline()
+    expect(await getTeam(TEAM_ID), "fixture: team_demo existe").toBeTruthy()
     const deleteAttempt = await attemptAction(user2Page, "admin.delete-billing-team", {
       teamId: TEAM_ID,
     })

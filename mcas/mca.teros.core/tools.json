@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -171,7 +174,7 @@
     },
     {
       "name": "get-agent-providers",
-      "description": "Get the LLM provider configuration for an agent. Returns the agent's available providers, preferred provider, and selected model.",
+      "description": "Get the LLM model configuration for an agent. Returns ALL of the owner's active providers (each with isDefault, defaultModelId and its models), the agent pin (selectedProviderId/selectedModelId, null = System Default), the resolved provider/model a run would actually use (source: agent_pin | user_default_provider | unresolved), and warnings for any orphaned or inconsistent configuration. System Default = the user default provider (isDefault) + its defaultModelId.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -189,35 +192,8 @@
       }
     },
     {
-      "name": "set-agent-providers",
-      "description": "Set the available LLM providers for an agent. This determines which providers the agent can use. Requires workspace access or agent ownership.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "agentId": {
-            "type": "string",
-            "description": "The agent ID to configure"
-          },
-          "providerIds": {
-            "type": "array",
-            "description": "Array of provider IDs to make available to this agent",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "agentId",
-          "providerIds"
-        ]
-      },
-      "annotations": {
-        "readOnlyHint": false
-      }
-    },
-    {
-      "name": "set-agent-preferred-provider",
-      "description": "Set the preferred LLM provider for an agent. The provider must be in the agent's available providers list. Pass null to clear the preference.",
+      "name": "set-agent-model",
+      "description": "Pin an agent to an exact LLM model. Atomically sets the agent's selected provider + model, a single pin — there is no per-agent provider list anymore. Validates that the model is served by the provider and enforces the billing gate. Changing another agent's model is a considered decision (platform policy) — pass `reason` to document why. The change broadcasts live to the UI.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -227,7 +203,45 @@
           },
           "providerId": {
             "type": "string",
-            "description": "Provider ID to set as preferred (must be in availableProviders), or null to clear"
+            "description": "Provider ID that serves the model (e.g. a Teros or Helmcode provider)"
+          },
+          "modelId": {
+            "type": "string",
+            "description": "Exact model ID to pin (must be in the provider's model list)"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why this model change is being made. Recorded in the audit log (who/when/why)."
+          },
+          "allowReserved": {
+            "type": "boolean",
+            "description": "Set true only with an explicit operator decision to pin a reserved model (e.g. teros-glm-5p3-fast, exclusive to Alice)."
+          }
+        },
+        "required": [
+          "agentId",
+          "providerId",
+          "modelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "reset-agent-model",
+      "description": "Reset an agent's model to System Default by clearing its explicit provider/model pin. This is the preferred state: the user's default provider/model wins unless there is a considered reason to pin. Broadcasts live to the UI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "description": "The agent ID to reset"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the pin is being cleared. Recorded in the audit log."
           }
         },
         "required": [
@@ -235,7 +249,8 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": false,
+        "alwaysAsk": true
       }
     },
     {
@@ -343,7 +358,7 @@
     },
     {
       "name": "add-workspace-member",
-      "description": "Add a member to a workspace.",
+      "description": "Add a member to a workspace by email. If the email belongs to an existing Teros account, the member is added as active immediately. If not, a pending membership is created and an invitation email is sent. Only workspace admins can use this tool.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -351,9 +366,10 @@
             "type": "string",
             "description": "The workspace ID"
           },
-          "userId": {
+          "email": {
             "type": "string",
-            "description": "The user ID to add"
+            "description": "The email address of the person to invite",
+            "format": "email"
           },
           "role": {
             "type": "string",
@@ -362,12 +378,12 @@
               "write",
               "read"
             ],
-            "description": "Role for the member"
+            "description": "Role for the member (owner is not allowed)"
           }
         },
         "required": [
           "workspaceId",
-          "userId",
+          "email",
           "role"
         ]
       },
@@ -434,22 +450,6 @@
       }
     },
     {
-      "name": "list-apps",
-      "description": "List apps owned by the user.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "workspaceId": {
-            "type": "string",
-            "description": "Optional: Filter apps by workspace ID. If not provided, lists all apps owned by the user across all workspaces."
-          }
-        }
-      },
-      "annotations": {
-        "readOnlyHint": true
-      }
-    },
-    {
       "name": "get-app",
       "description": "Get detailed information about a specific app.",
       "inputSchema": {
@@ -492,8 +492,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
-        "alwaysAsk": true
+        "readOnlyHint": false
       }
     },
     {
@@ -578,6 +577,117 @@
       }
     },
     {
+      "name": "set-app-secret",
+      "description": "Store an API key or other secret for an app so it becomes authenticated, WITHOUT the secret staying in the conversation. Use it when you already have the value (the user pasted it, or it appeared in a tool output like SSH/terminal) and the app needs it as a credential — e.g. saving MAKE_API_TOKEN for Make. After saving, every message in this conversation that contains the value is automatically redacted (including this call itself), and the app picks the new value up live (no restart). NEVER echo the secret in your reply — reference it only by the returned mask (e.g. 'ya la tengo: …4f2a'). The key must be one of the app's declared secret fields (the response lists the valid ones if you get it wrong).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app to store the secret for"
+          },
+          "key": {
+            "type": "string",
+            "description": "Secret field name as declared by the app (e.g. 'MAKE_API_TOKEN', 'OPENWEATHER_API_KEY'). Use get-app or check-app-auth to discover the valid field names."
+          },
+          "value": {
+            "type": "string",
+            "description": "The secret value to store. It will be redacted from this conversation right after saving."
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user"
+            ],
+            "description": "Credential scope. Only 'user' (default): the user's own credential for this app. System-level secrets are admin-only."
+          },
+          "alsoRedact": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional message ids to also redact when the exact value match misses them (e.g. the key was split across lines or transformed)."
+          }
+        },
+        "required": [
+          "appId",
+          "key",
+          "value"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
+      "name": "get-app-secret",
+      "description": "Check whether an app has a stored secret, and see a masked preview of it (e.g. 'sk_live_…4f2a') — the full value is NEVER returned. Use it to verify a key was already saved (after set-app-secret, or by the user from the panel) without exposing it. The mask matches the one shown in redacted messages, so 'the …4f2a key' is a stable reference across the conversation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "string",
+            "description": "The app whose secret to preview"
+          },
+          "key": {
+            "type": "string",
+            "description": "Secret field name (e.g. MAKE_API_TOKEN)"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "user",
+              "app"
+            ],
+            "description": "Credential scope — 'user' (default) or 'app'."
+          }
+        },
+        "required": [
+          "appId",
+          "key"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "copy-app-auth",
+      "description": "Copy the COMPLETE authentication of one app instance (user secrets + OAuth tokens with refresh) to another instance of the same app type — e.g. replicate your connected Make credentials to the Make instance in another workspace. Full replace on the target (set semantics, not merge); the target picks the credentials up live, no restart needed. The response lists only the copied field names and their masks (e.g. '…4f2a') — values are NEVER exposed. OAuth caveat: afterwards both instances share the same tokens; if the provider rotates refresh tokens, one instance can invalidate the other. Cross-app-type copies (different mcaId) are blocked, and credentials always stay within the calling user's own apps.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sourceAppId": {
+            "type": "string",
+            "description": "App instance to copy the credentials FROM (must already be connected)."
+          },
+          "targetAppId": {
+            "type": "string",
+            "description": "App instance to copy the credentials TO — same app type (mcaId) as the source, typically the same MCA installed in another workspace."
+          },
+          "sourceWorkspaceId": {
+            "type": "string",
+            "description": "Required: the workspace the source app lives in — cross-workspace tools always name their workspaces (Teros infra is sharded by workspaceId, so the tool must know which infrastructure it hits). Validated against the app's actual workspace; catches wrong-appId mistakes before any write."
+          },
+          "targetWorkspaceId": {
+            "type": "string",
+            "description": "Required: the workspace the target app lives in — cross-workspace tools always name their workspaces (Teros infra is sharded by workspaceId). Validated against the app's actual workspace."
+          }
+        },
+        "required": [
+          "sourceAppId",
+          "targetAppId",
+          "sourceWorkspaceId",
+          "targetWorkspaceId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
       "name": "list-app-access",
       "description": "List all agents that have access to an app.",
       "inputSchema": {
@@ -612,7 +722,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     },
     {
@@ -631,7 +741,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     },
     {
@@ -666,6 +776,35 @@
       }
     },
     {
+      "name": "set-default-provider",
+      "description": "Set the user's System Default provider + model — what EVERY agent without an explicit model pin runs on. This is the highest-blast-radius model setting: changing it switches the model of ALL unpinned agents at once (agents pinned via set-agent-model are NOT affected). Use list-providers first to see current providers, their models and which one is the current default. The switch is atomic (only one default at a time) and the change is live — no restart needed, the next run resolves the new default. Broadcasts live to the UI.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "description": "Provider ID to set as System Default (from list-providers). Must be active and owned by the user."
+          },
+          "modelId": {
+            "type": "string",
+            "description": "Exact model ID to use as the provider's default model (must be in the provider's model list from list-providers)."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the System Default is being changed. Recorded in the audit log (who/when/why) — this affects every unpinned agent."
+          }
+        },
+        "required": [
+          "providerId",
+          "modelId"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "alwaysAsk": true
+      }
+    },
+    {
       "name": "grant-app-access",
       "description": "Grant an agent access to an app.",
       "inputSchema": {
@@ -686,8 +825,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
-        "alwaysAsk": true
+        "readOnlyHint": false
       }
     },
     {
@@ -772,8 +910,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
-        "alwaysAsk": true
+        "readOnlyHint": false
       }
     },
     {
@@ -792,7 +929,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     },
     {
@@ -900,8 +1037,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false,
-        "alwaysAsk": true
+        "readOnlyHint": false
       }
     },
     {
@@ -973,7 +1109,7 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "readOnlyHint": true
       }
     }
   ]

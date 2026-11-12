@@ -412,43 +412,15 @@
     },
     "get-installation-context": {
       "name": "get-installation-context",
-      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs."
+      "description": "List the Teros GitHub App installations reachable by the authenticated user (own account + orgs/collabs) — NOT the user identity; use get-user for that. Includes accessible repos, granted permissions, and manage/install URLs."
     },
     "get-user": {
       "name": "get-user",
-      "description": "List the Teros GitHub App installations reachable by the current user, with accessible repos, granted permissions, and manage/install URLs."
-    },
-    "create-check-run": {
-      "name": "create-check-run",
-      "description": "Create a check run on a commit (exclusive to GitHub Apps). The check appears in the PR/commit sidebar. Use status:in_progress while the check runs, then update with conclusion when done.",
-      "params": {
-        "owner": "Repository owner",
-        "repo": "Repository name",
-        "name": "Display name of the check (e.g. \"Teros review\")",
-        "head_sha": "Commit SHA the check applies to",
-        "status": "Status (default: queued)",
-        "conclusion": "Required when status is `completed`",
-        "output": "Rich output with title, summary (markdown), optional text body",
-        "details_url": "Optional URL with more detail (shown as link in the check)",
-        "external_id": "Reference ID controlled by the App (idempotency on App side)"
-      }
-    },
-    "update-check-run": {
-      "name": "update-check-run",
-      "description": "Update an existing check run — typically to set status:completed + conclusion when work finishes. Pass only the fields you want to change.",
-      "params": {
-        "owner": "Repository owner",
-        "repo": "Repository name",
-        "check_run_id": "Check run id (returned by create-check-run)",
-        "name": "New display name (optional)",
-        "status": "New status",
-        "conclusion": "Required when status is `completed`",
-        "output": "Updated output"
-      }
+      "description": "Get the authenticated GitHub user of the current token (real identity: login, name, profile URL, account type). Use this — not get-installation-context — to answer \"who am I / which account is connected?\"."
     },
     "get-rate-limit": {
       "name": "get-rate-limit",
-      "description": "Read the current GitHub API rate-limit budget for the installation token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search."
+      "description": "Read the current GitHub API rate-limit budget for the authenticated user token. Returns per-bucket {limit, remaining, reset, used} — core, search, graphql, code_search."
     },
     "dispatch-event": {
       "name": "dispatch-event",
@@ -462,19 +434,20 @@
     },
     "clone-repo": {
       "name": "clone-repo",
-      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Returns {path, branch, sha, recentCommits[]}.",
+      "description": "Clone a GitHub repository to the local filesystem (uses the current user access token from the Teros GitHub App). Idempotent: if the destination already holds a working clone of the same repo it is returned as-is (`reused: true`, nothing is fetched or checked out); a clone left broken by an interrupted clone is replaced. Returns {path, branch, sha, recentCommits[]}.",
       "params": {
         "owner": "Repository owner (user or org)",
         "repo": "Repository name",
-        "destination": "Local path where the repo will be cloned (default: /workspace/<repo>)",
-        "branch": "Branch to checkout after cloning (default: default branch)"
+        "destination": "Local path where the repo will be cloned (default: <workspace>/<owner>/<repo>, or an existing <workspace>/<repo> clone of the same repo)",
+        "branch": "Branch to checkout after cloning (default: default branch)",
+        "depth": "Shallow clone with the last N commits (implies a single branch; fetch others later with git-fetch). Use it for large repos that time out."
       }
     },
     "git-status": {
       "name": "git-status",
       "description": "Local git status: branch, ahead/behind vs upstream, and lists of staged, modified, untracked, and conflicted files.",
       "params": {
-        "repoPath": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<repo>`.",
+        "repoPath": "Absolute path to the cloned repo. If omitted, resolved as `<workspace>/<owner>/<repo>` (or a legacy `<workspace>/<repo>` clone).",
         "owner": "Repository owner (used to resolve default repoPath).",
         "repo": "Repository name (used to resolve default repoPath)."
       }
@@ -499,7 +472,7 @@
     },
     "git-push": {
       "name": "git-push",
-      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive).",
+      "description": "Push commits to the remote. `force: true` uses `--force-with-lease`; `forceUnsafe: true` uses raw `--force` (destructive). GitHub refuses pushes that add or change files under .github/workflows/ (the Teros GitHub App has no Workflows permission): keep workflow edits out of pushed commits.",
       "params": {
         "remote": "Remote name. Defaults to `origin`.",
         "branch": "Local branch to push. Defaults to current branch.",
@@ -668,10 +641,10 @@
     },
     "git-remote": {
       "name": "git-remote",
-      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs.",
+      "description": "List, add, remove, or update git remotes. `list` returns name + fetch/push URLs. `add`/`set-url` only accept clean https://github.com/<owner>/<repo>(.git) URLs — no embedded credentials, no other hosts.",
       "params": {
         "name": "Remote name (required for add/remove/set-url).",
-        "url": "Remote URL (required for add/set-url)."
+        "url": "Remote URL (required for add/set-url). Must be https://github.com/<owner>/<repo>(.git)."
       }
     },
     "git-blame": {
@@ -704,8 +677,14 @@
     }
   },
   "name": "GitHub",
-  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user actúa con su propia identidad de GitHub).",
+  "description": "GitHub repository management + local git development environment - repos, issues, pull requests, actions, commits, branches, releases, plus local git operations on cloned repos (status/add/commit/push/checkout). Auth via the Teros GitHub App with user-to-server OAuth (each user acts with their own GitHub identity).",
   "changelog": [
+    {
+      "notes": "Git reliability release (Discord bugs: GIT_TIMEOUT on most git ops, broken/shared clones, workflow pushes). git runs asynchronously (one slow command no longer freezes the container for every agent) and spawn failures are classified (missing git, oversized output, resource exhaustion, OOM kill) instead of all reading GIT_TIMEOUT; per-operation timeouts (90 s local, 110 s network); errors now carry the action and git's stderr. Mutating git tools take a per-repo lock shared across containers and git lockfile contention is retried. clone-repo clones to <workspace>/<owner>/<repo>, reuses an existing working clone, replaces clones broken by an interrupted clone (moved aside), never leaves partial clones, and gains depth. Pushes rejected for the missing Workflows permission, 403s and inaccessible repos get their own explained errors. App permissions unchanged."
+    },
+    {
+      "notes": "Hardening + correctness release: get-user now returns the real token identity (GET /user) instead of the installation context; get-installation-context returns an org-scoped manage_url for org installations; create-repo works via administration:write (App permission aligned). Security: clones no longer persist the user token in .git/config (http.extraheader) and legacy remotes are sanitized, git-remote only accepts clean github.com HTTPS URLs, REST tool URLs validate owner/repo/org path segments, agent-supplied refs are validated against git-option injection, and clone destinations are sandboxed to the workspace volume. Reliability: githubRequest gains timeout + retry/backoff (AbortController, 429 Retry-After, 5xx). Least-privilege App permissions (members/workflows dropped) and dead create-check-run/update-check-run tools removed (the App never had the checks permission — they always 403'd)."
+    },
     {
       "notes": "Manage repos, issues, pull requests and reviews, run Actions and releases, plus full local git on cloned repos"
     }

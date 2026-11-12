@@ -149,8 +149,7 @@ export function FloatingWindow({ window }: Props) {
 interface ResizeHandleProps {
   direction: ResizeDirection;
   getProps: (direction: ResizeDirection) => {
-    onMouseDown: (e: React.MouseEvent) => void;
-    onTouchStart: (e: React.TouchEvent) => void;
+    onPointerDown: (e: React.PointerEvent) => void;
     style: React.CSSProperties;
   };
 }
@@ -187,5 +186,5 @@ function ResizeHandle({ direction, getProps }: ResizeHandleProps) {
     }
   }, [direction, props.style]);
 
-  return <div style={style} onMouseDown={props.onMouseDown} onTouchStart={props.onTouchStart} />;
+  return <div style={style} onPointerDown={props.onPointerDown} />;
 }

@@ -14,8 +14,8 @@ import {
   KeyValueGrid,
   type KeyValueRow,
   ResourceCard,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import { CANVA_BRAND, CanvaToolShell, narrowObject } from './shared';
@@ -102,6 +102,7 @@ export function GetUserCapabilitiesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const data = narrowObject<CapabilitiesShape>(parsed);
   const caps: string[] = data?.capabilities ?? [];
@@ -129,7 +130,7 @@ export function GetUserCapabilitiesRenderer({
             <Empty message="Account has no special capabilities (free tier)." />
           ) : (
             <YStack gap={4}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 granted
               </Text>
               <XStack flexWrap="wrap" gap={4}>

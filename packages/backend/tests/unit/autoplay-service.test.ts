@@ -320,10 +320,11 @@ function makeG3Service(opts: { workspaceOwnerId?: string }) {
       createChannelCalls.push({ userId, agentId })
       return { channelId: 'ch_new' }
     },
-    // _startNewTask persists the initial message before waking the agent.
+    // Required since 618f8b6b2 (get-my-task instruction in the initial message):
+    // _startNewTask saves the initial message to channel_messages BEFORE waking
+    // the agent — without these the wake path throws and the callback never fires.
     createMessageId: () => 'msg_test_1',
-    getUserSender: async () => null,
-    saveMessage: async () => {},
+    saveMessage: async (_m: any) => {},
   } as any
   const pubSub = { broadcastToTopic: () => {} } as any
   const svc = new AutoplayService(db, pubSub, channelManager)
@@ -429,5 +430,153 @@ describe('_rewakeTask — auto-wake cap (TER-650/G2)', () => {
     const { svc, wakeCalls } = makeG2Service(5)
     await (svc as any)._rewakeTask({ taskId: 't1', title: 'T', channelId: 'ch_1' }, 'agent_1', 'board_1')
     expect(wakeCalls).toHaveLength(1)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// _cleanupZombieTasks — periodic safety net for stuck running=true tasks
+// ─────────────────────────────────────────────────────────────────────────────
+
+function makeZombieCleanupService(opts: {
+  tasks: any[]
+  channels: any[]
+  activeRels?: any[]
+}) {
+  const taskDocs = opts.tasks.map(t => ({ ...t }))
+  const channelDocs = opts.channels.map(c => ({ ...c }))
+  const relDocs = opts.activeRels ?? [{ projectId: 'proj_1', agentId: 'agent_1', slots: 2, playEnabled: true }]
+
+  const db = {
+    collection: (name: string) => {
+      if (name === 'tasks') {
+        const tasksFind = (f: any) => {
+          const filtered = taskDocs.filter(d => matches(d, f))
+          const chainable = {
+            toArray: async () => filtered,
+            project: () => chainable,
+            sort: () => ({ limit: () => ({ toArray: async () => filtered }) }),
+          }
+          return chainable
+        }
+        return {
+          find: tasksFind,
+          updateOne: async (f: any, u: any) => {
+            const d = taskDocs.find(x => matches(x, f))
+            if (d) Object.assign(d, u.$set ?? {})
+          },
+          countDocuments: async (f: any) => taskDocs.filter(d => matches(d, f)).length,
+        }
+      }
+      if (name === 'channels') {
+        return {
+          find: (f: any) => ({
+            project: () => ({
+              toArray: async () => channelDocs.filter(d => matches(d, f)),
+            }),
+          }),
+        }
+      }
+      if (name === 'agent_project_relationships') {
+        return {
+          find: (f: any) => ({ toArray: async () => relDocs.filter(d => matches(d, f)) }),
+          findOne: async (f: any) => relDocs.find(d => matches(d, f)) ?? null,
+        }
+      }
+      if (name === 'projects') {
+        return { findOne: async () => PROJECT }
+      }
+      if (name === 'boards') {
+        return { findOne: async () => BOARD }
+      }
+      return { find: () => ({ toArray: async () => [] }) }
+    },
+  } as any
+
+  const svc = new AutoplayService(db, {} as any, {} as any)
+  const started: any[] = []
+  const rewoken: any[] = []
+  ;(svc as any)._startNewTask = mock(async (t: any) => started.push(t.taskId))
+  ;(svc as any)._rewakeTask = mock(async (t: any) => rewoken.push(t.taskId))
+  return { svc, taskDocs, started, rewoken }
+}
+
+describe('_cleanupZombieTasks — periodic zombie task cleanup', () => {
+  it('resets running=false on tasks whose linked channel is NOT running', async () => {
+    const { svc, taskDocs } = makeZombieCleanupService({
+      tasks: [
+        task({ taskId: 't_zombie', columnId: 'c_prog', channelId: 'ch_1', running: true }),
+        task({ taskId: 't_healthy', columnId: 'c_prog', channelId: 'ch_2', running: true }),
+      ],
+      channels: [
+        { channelId: 'ch_1', running: false }, // channel NOT running → zombie task
+        { channelId: 'ch_2', running: true },  // channel IS running → healthy
+      ],
+    })
+
+    await (svc as any)._cleanupZombieTasks()
+
+    const zombie = taskDocs.find(t => t.taskId === 't_zombie')!
+    const healthy = taskDocs.find(t => t.taskId === 't_healthy')!
+    expect(zombie.running).toBe(false)
+    expect(healthy.running).toBe(true) // unchanged
+  })
+
+  it('does nothing when all running tasks have running channels', async () => {
+    const { svc, taskDocs } = makeZombieCleanupService({
+      tasks: [
+        task({ taskId: 't1', columnId: 'c_prog', channelId: 'ch_1', running: true }),
+      ],
+      channels: [{ channelId: 'ch_1', running: true }],
+    })
+
+    await (svc as any)._cleanupZombieTasks()
+
+    expect(taskDocs[0].running).toBe(true) // unchanged
+  })
+
+  it('does nothing when there are no running tasks', async () => {
+    const { svc, taskDocs } = makeZombieCleanupService({
+      tasks: [task({ taskId: 't1', running: false })],
+      channels: [],
+    })
+
+    await (svc as any)._cleanupZombieTasks()
+
+    expect(taskDocs[0].running).toBe(false) // unchanged
+  })
+
+  it('skips archived tasks (they should not be in the cleanup query)', async () => {
+    const { svc, taskDocs } = makeZombieCleanupService({
+      tasks: [
+        task({ taskId: 't_archived', columnId: 'c_prog', channelId: 'ch_1', running: true, archived: true }),
+      ],
+      channels: [{ channelId: 'ch_1', running: false }],
+    })
+
+    await (svc as any)._cleanupZombieTasks()
+
+    // Archived task should not be touched by the cleanup (it's excluded by the query filter)
+    expect(taskDocs[0].running).toBe(true)
+  })
+
+  it('frees zombie slots so scheduleAgentTasks can pick up new tasks', async () => {
+    // Scenario: 2 slots, 1 zombie task (running=true, channel not running),
+    // 1 eligible todo task. Without cleanup, the zombie occupies the slot
+    // and the todo task never starts. With cleanup, the zombie is cleared
+    // and the todo task gets started.
+    const { svc, started } = makeZombieCleanupService({
+      tasks: [
+        task({ taskId: 't_zombie', columnId: 'c_prog', channelId: 'ch_dead', running: true }),
+        task({ taskId: 't_new', columnId: 'c_todo', running: false }),
+      ],
+      channels: [{ channelId: 'ch_dead', running: false }],
+    })
+
+    // Run the full periodic schedule (cleanup + scheduling)
+    await (svc as any)._runPeriodicSchedule()
+
+    // Zombie should be cleaned up, and the new task should be started
+    expect(started).toContain('t_new')
   })
 })

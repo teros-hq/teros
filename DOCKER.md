@@ -69,8 +69,18 @@ nano .env
 
 ### 2. Start All Services
 
+Every release publishes `ghcr.io/teros-hq/teros-backend` and `ghcr.io/teros-hq/teros-frontend`
+(linux/amd64 and linux/arm64). The compose file names them, so a normal start is a pull, not a build.
+Pin a version with `TEROS_IMAGE_TAG=1.4.7` in `.env` (default `latest`).
+
+The same release publishes the MCA runtimes (`teros-mca-runtime`, `-bash`, `-playwright`) that apps
+run in. Compose does not fetch them, because the container-agent starts app containers directly;
+`./docker/pull-runtimes.sh` pulls them and tags them as `teros/mca-runtime*:latest`.
+
 ```bash
-# Build and start all containers
+# Pull the release images and start all containers
+docker compose pull
+./docker/pull-runtimes.sh
 docker compose up -d
 
 # View logs
@@ -157,6 +167,9 @@ docker compose logs --since 10m backend
 ```
 
 ### Rebuild
+
+Only needed when you run a modified working tree: the `build:` blocks produce images with the same
+names as the published ones, so a later `docker compose pull` replaces them with the release again.
 
 ```bash
 # Rebuild all services

@@ -2,18 +2,23 @@
  * Console Window Type Definition
  */
 
-import { Terminal } from '@tamagui/lucide-icons';
-import i18n from '../../i18n';
-import type { WindowTypeDefinition } from '../../services/windowRegistry';
-import { ConsoleWindowContent } from './ConsoleWindowContent';
+import { Terminal } from "@tamagui/lucide-icons"
+import i18n from "../../i18n"
+import type { WindowTypeDefinition } from "../../services/windowRegistry"
+import { lazyWithRetry } from "../../lib/lazyWithRetry"
+const ConsoleWindowContent = lazyWithRetry(() =>
+  import("./ConsoleWindowContent").then((m) => ({ default: m.ConsoleWindowContent })),
+)
 
-export type ConsoleWindowProps = {};
+export type ConsoleWindowProps = {}
 
 export const consoleWindowDefinition: WindowTypeDefinition<ConsoleWindowProps> = {
-  type: 'console',
-  displayName: 'Console',
+  type: "console",
+  audience: "admin",
+  displayName: "Console",
   icon: Terminal,
-  color: '#06B6D4',
+  phIcon: "terminal-window",
+  color: "#6F27FF",
   component: ConsoleWindowContent,
 
   defaultSize: { width: 600, height: 400 },
@@ -25,4 +30,4 @@ export const consoleWindowDefinition: WindowTypeDefinition<ConsoleWindowProps> =
 
   serialize: () => ({}),
   deserialize: () => ({}),
-};
+}

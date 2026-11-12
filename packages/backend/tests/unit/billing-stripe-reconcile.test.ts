@@ -118,3 +118,24 @@ describe('BillingReconciliationCron Stripe pass', () => {
     expect((await db.collection('billing_invoices').findOne({ _id: 'i1' }))?.status).toBe('overdue')
   })
 })
+
+describe('BillingReconciliationCron — held one-off charges (BIL-5)', () => {
+  it('flags a failed one-off charge later paid in Stripe, without granting or flipping it', async () => {
+    const db = new InMemoryDb()
+    db.seed('billing_invoices', [
+      inv({ _id: 'boost-purchase:user_1:r1', kind: 'boost', status: 'held', externalReference: 'in_held' }),
+      inv({ _id: 'boost-purchase:user_1:r2', kind: 'boost', status: 'held', externalReference: 'in_open' }),
+    ])
+    const stripe = new FakeStripe()
+    stripe.seedInvoice('in_held', { status: 'paid', paid: true })
+    stripe.seedInvoice('in_open', { status: 'open', paid: false })
+    const svc = new StripePaymentService(db as unknown as Db, stripe)
+
+    const res = await new BillingReconciliationCron(db as unknown as Db, SILENT, null, svc).runOnce({ now: NOW })
+
+    expect(res.stripeChecked).toBe(2)
+    expect(res.stripeDrift).toBe(1) // only the paid one
+    expect(res.stripeHealed).toBe(0) // never auto-granted
+    expect((await db.collection('billing_invoices').findOne({ _id: 'boost-purchase:user_1:r1' }))?.status).toBe('held')
+  })
+})

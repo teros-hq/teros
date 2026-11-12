@@ -25,8 +25,8 @@ import {
   ResourceCard,
   Specsheet,
   type SpecsheetSection,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -37,11 +37,14 @@ import {
   type GitHubReviewComment,
   type GitHubUserRef,
   GitHubToolShell,
+  actionLabel,
   labelChipProps,
   prStateChipProps,
   relativeTime,
   scrollStyle,
   shortSha,
+  listItems,
+  noun,
 } from './shared';
 
 // =============================================================================
@@ -49,6 +52,7 @@ import {
 // =============================================================================
 
 function PrRow({ pr }: { pr: GitHubPull }) {
+  const c = useColors();
   const stateChip = prStateChipProps(pr);
   const author = pr.user?.login ? `@${pr.user.login}` : '';
   const head = pr.head?.ref ?? '?';
@@ -67,7 +71,7 @@ function PrRow({ pr }: { pr: GitHubPull }) {
       badges={<IconChip icon={stateChip.icon} text={stateChip.text} accent={stateChip.accent} />}
       meta={
         typeof pr.commits === 'number' && pr.commits > 0 ? (
-          <IconChip icon={<GitCommit size={9} color={globalColors.muted} />} text={String(pr.commits)} accent={globalColors.muted} />
+          <IconChip icon={<GitCommit size={9} color={c.text3} />} text={String(pr.commits)} accent={c.text3} />
         ) : null
       }
     />
@@ -75,10 +79,10 @@ function PrRow({ pr }: { pr: GitHubPull }) {
 }
 
 export function ListPullsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubPull[]>(output) : null;
-  const items = Array.isArray(parsed) ? parsed : [];
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const items = listItems<GitHubPull>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${items.length} pull request${items.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'pull requests')}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && items.length === 0 && <Empty message="No pull requests." />}
       {!error && status === 'completed' && items.length > 0 && (
@@ -145,6 +149,7 @@ function pullSpecsheet(pr: GitHubPull): SpecsheetSection[] {
 }
 
 export function GetPullRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubPull>(output) : null;
   const pr = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'number' in (parsed as object)
     ? (parsed as GitHubPull)
@@ -153,8 +158,12 @@ export function GetPullRenderer({ toolName, status, output, error, duration }: T
   const reviewers = pr?.requested_reviewers ?? [];
   const labels = pr?.labels ?? [];
 
+  const description = pr
+    ? actionLabel(toolName, status, `PR #${pr.number}`, pr.title)
+    : actionLabel(toolName, status, 'pull request');
+
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={pr ? `PR #${pr.number}` : 'Pull request'} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={description}>
       {error && <ErrorBlock error={error} />}
       {!error && pr && (
         <ResourceCard
@@ -181,7 +190,7 @@ export function GetPullRenderer({ toolName, status, output, error, duration }: T
           )}
           {reviewers.length > 0 && (
             <XStack gap={6} alignItems="center" flexWrap="wrap">
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono">
                 requested:
               </Text>
               {reviewers.map((r) => (
@@ -205,12 +214,13 @@ export function GetPullRenderer({ toolName, status, output, error, duration }: T
 // =============================================================================
 
 export function CreatePullRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubPull>(output) : null;
   const pr = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'number' in (parsed as object)
     ? (parsed as GitHubPull)
     : null;
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, pr ? `PR #${pr.number}` : 'pull request', pr?.title)}>
       {error && <ErrorBlock error={error} />}
       {!error && pr && (
         <ResourceCard
@@ -221,7 +231,7 @@ export function CreatePullRenderer({ toolName, status, output, error, duration }
           meta={<IconChip {...prStateChipProps(pr)} />}
         >
           {pr.html_url && (
-            <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+            <Text color={c.text2} fontSize={9} fontFamily="$mono">
               {pr.html_url}
             </Text>
           )}
@@ -248,7 +258,7 @@ export function MergePullRenderer({ toolName, status, output, error, duration, i
   const number = input?.pull_number;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, number ? `PR #${number}` : 'pull request')}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard
@@ -277,10 +287,11 @@ const FILE_STATUS_ACCENT: Record<GitHubFileChange['status'], string> = {
 };
 
 export function ListPrFilesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubFileChange[]>(output) : null;
-  const files = Array.isArray(parsed) ? parsed : [];
+  const c = useColors();
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const files = listItems<GitHubFileChange>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${files.length} file${files.length === 1 ? '' : 's'} changed`} defaultExpanded={files.length > 0}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, noun('prFiles'), `${files.length} changed`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && files.length === 0 && <Empty message="No files changed." />}
       {!error && status === 'completed' && files.length > 0 && (
@@ -294,13 +305,13 @@ export function ListPrFilesRenderer({ toolName, status, output, error, duration 
                   subtitle={f.previous_filename ? `was ${f.previous_filename}` : undefined}
                   badges={<IconChip text={f.status} accent={FILE_STATUS_ACCENT[f.status]} />}
                   meta={
-                    <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                    <Text color={c.text2} fontSize={9} fontFamily="$mono">
                       +{f.additions} / −{f.deletions}
                     </Text>
                   }
                 />
                 {f.patch && (
-                  <YStack borderRadius={5} borderWidth={1} borderColor={globalColors.border} overflow="hidden">
+                  <YStack borderRadius={5} borderWidth={1} borderColor={c.border} overflow="hidden">
                     <DiffViewer diff={f.patch} maxHeight={240} />
                   </YStack>
                 )}
@@ -318,10 +329,10 @@ export function ListPrFilesRenderer({ toolName, status, output, error, duration 
 // =============================================================================
 
 export function ListPrCommitsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubCommit[]>(output) : null;
-  const commits = Array.isArray(parsed) ? parsed : [];
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const commits = listItems<GitHubCommit>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${commits.length} commit${commits.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'commits de PR', `${commits.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && commits.length === 0 && <Empty message="No commits." />}
       {!error && status === 'completed' && commits.length > 0 && (
@@ -360,10 +371,11 @@ export function CommitRow({ commit }: { commit: GitHubCommit }) {
 // =============================================================================
 
 export function ListPrReviewCommentsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubReviewComment[]>(output) : null;
-  const comments = Array.isArray(parsed) ? parsed : [];
+  const palette = useColors();
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const comments = listItems<GitHubReviewComment>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${comments.length} review comment${comments.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'review comments', `${comments.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && comments.length === 0 && <Empty message="No review comments." />}
       {!error && status === 'completed' && comments.length > 0 && (
@@ -375,15 +387,15 @@ export function ListPrReviewCommentsRenderer({ toolName, status, output, error, 
                 gap={4}
                 padding={8}
                 borderWidth={1}
-                borderColor={globalColors.border}
+                borderColor={palette.border}
                 borderRadius={5}
               >
                 <XStack gap={6} alignItems="center">
                   {c.user?.avatar_url ? <Avatar src={c.user.avatar_url} size={18} /> : null}
-                  <Text color={globalColors.primary} fontSize={10} fontWeight="600">
+                  <Text color={palette.text} fontSize={10} fontWeight="600">
                     {c.user?.login ? `@${c.user.login}` : 'unknown'}
                   </Text>
-                  <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                  <Text color={palette.text2} fontSize={9} fontFamily="$mono">
                     {c.path}
                     {c.line ? `:${c.line}` : ''}
                   </Text>
@@ -409,9 +421,10 @@ export function RequestReviewersRenderer({ toolName, status, output, error, dura
     : null;
   const reviewers: GitHubUserRef[] = pr?.requested_reviewers ?? [];
   const requestedNames: string[] = (input?.reviewers as string[] | undefined) ?? [];
+  const number = input?.pull_number ?? pr?.number;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, number ? `PR #${number}` : 'pull request')}>
       {error && <ErrorBlock error={error} />}
       {!error && pr && (
         <DualEntity
@@ -480,7 +493,7 @@ export function CreatePrReviewRenderer({ toolName, status, output, error, durati
   const meta = REVIEW_STATE[stateKey] ?? REVIEW_STATE.COMMENTED;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, number ? `PR #${number}` : 'pull request')}>
       {error && <ErrorBlock error={error} />}
       {!error && review && (
         <ResourceCard

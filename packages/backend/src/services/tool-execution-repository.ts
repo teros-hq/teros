@@ -1,7 +1,7 @@
 /**
  * Repository for `tool_executions` (append-only, one per tool invocation).
  *
- *
+ * Design doc: docs/usage-instrumentation.md §3.4
  */
 
 import type { Collection, Db, Filter, UpdateFilter } from "mongodb"

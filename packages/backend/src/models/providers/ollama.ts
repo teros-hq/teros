@@ -38,6 +38,8 @@ export const MODELS_OLLAMA: ModelDefinition[] = [
       targetSize: 16000,
       protectRecent: 8000,
     },
+    // Local inference — data never leaves the host. ZDR by design.
+    providerConfig: { zdr: true },
     status: 'active',
   },
   {
@@ -70,6 +72,8 @@ export const MODELS_OLLAMA: ModelDefinition[] = [
       targetSize: 16000,
       protectRecent: 8000,
     },
+    // Local inference — data never leaves the host. ZDR by design.
+    providerConfig: { zdr: true },
     status: 'active',
   },
   {
@@ -102,6 +106,8 @@ export const MODELS_OLLAMA: ModelDefinition[] = [
       targetSize: 16000,
       protectRecent: 8000,
     },
+    // Local inference — data never leaves the host. ZDR by design.
+    providerConfig: { zdr: true },
     status: 'active',
   },
 

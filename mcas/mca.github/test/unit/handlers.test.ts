@@ -5,19 +5,21 @@ import {
   addLabelsToIssue,
   cancelWorkflowRun,
   compareCommits,
-  createCheckRun,
   createOrUpdateFile,
   createPrReview,
   createRelease,
+  createRepo,
   dispatchEvent,
   getRateLimit,
+  getRepo,
   getWorkflowRun,
   listPrFiles,
   listReleases,
+  listWorkflowRuns,
   rerunWorkflowRun,
   requestReviewers,
   searchIssues,
-  updateCheckRun,
+  triggerWorkflow,
 } from '../../src/tools';
 
 interface MockContext {
@@ -27,10 +29,8 @@ interface MockContext {
 
 // v5+ uses user-to-server access tokens. Tests inject USER_ACCESS_TOKEN
 // directly so the resolver returns it without hitting the GitHub OAuth flow.
-// INSTALLATION_ID is also present (legacy + autorun fallbacks may use it).
 const ctx: MockContext = {
   getUserSecrets: async () => ({
-    INSTALLATION_ID: '12345',
     USER_ACCESS_TOKEN: 'ghu_test_user_access_token_123',
     USER_REFRESH_TOKEN: 'ghr_test_refresh_token',
     USER_TOKEN_EXPIRES_AT: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
@@ -206,63 +206,6 @@ describe('handler URLs and methods', () => {
 // =============================================================================
 
 describe('App-native tools', () => {
-  it('create-check-run requires conclusion when status is completed', async () => {
-    expect(
-      createCheckRun.handler(
-        { owner: 'o', repo: 'r', name: 'Teros', head_sha: 'abc123', status: 'completed' },
-        ctx as never,
-      ),
-    ).rejects.toThrow(/conclusion.*required/i);
-  });
-
-  it('create-check-run rejects empty name', async () => {
-    expect(
-      createCheckRun.handler(
-        { owner: 'o', repo: 'r', name: '   ', head_sha: 'abc' },
-        ctx as never,
-      ),
-    ).rejects.toThrow(/non-empty/);
-  });
-
-  it('create-check-run defaults status to queued and POSTs to /check-runs', async () => {
-    mockFetch({ status: 201, body: { id: 99, name: 'Teros', head_sha: 'abc', status: 'queued' } });
-    await createCheckRun.handler(
-      { owner: 'o', repo: 'r', name: 'Teros', head_sha: 'abc' },
-      ctx as never,
-    );
-    expect(lastRequest?.url).toContain('/repos/o/r/check-runs');
-    expect(lastRequest?.init?.method).toBe('POST');
-  });
-
-  it('update-check-run requires conclusion when transitioning to completed', async () => {
-    expect(
-      updateCheckRun.handler(
-        { owner: 'o', repo: 'r', check_run_id: 1, status: 'completed' },
-        ctx as never,
-      ),
-    ).rejects.toThrow(/conclusion.*required/i);
-  });
-
-  it('update-check-run sends only the provided fields', async () => {
-    mockFetch({ status: 200, body: { id: 5, status: 'completed', conclusion: 'success' } });
-    await updateCheckRun.handler(
-      {
-        owner: 'o',
-        repo: 'r',
-        check_run_id: 5,
-        status: 'completed',
-        conclusion: 'success',
-      },
-      ctx as never,
-    );
-    expect(lastRequest?.url).toContain('/repos/o/r/check-runs/5');
-    expect(lastRequest?.init?.method).toBe('PATCH');
-    const body = lastRequest?.init?.body ? JSON.parse(lastRequest.init.body as string) : {};
-    expect(body.status).toBe('completed');
-    expect(body.conclusion).toBe('success');
-    expect('name' in body).toBe(false);
-  });
-
   it('get-rate-limit GETs /rate_limit with no params', async () => {
     mockFetch({ body: { resources: { core: { limit: 5000, remaining: 4980, used: 20, reset: 0 } } } });
     await getRateLimit.handler({}, ctx as never);
@@ -302,5 +245,95 @@ describe('error propagation', () => {
       expect(err.status).toBe(422);
       expect(err.message).toBe('Validation Failed');
     }
+  });
+});
+
+// =============================================================================
+// owner/repo/org/workflow_id path-segment validation — audit
+// task_a8f981f535d6b3c3 (parity with clone-repo's OWNER_REPO_RE)
+// =============================================================================
+
+describe('owner/repo/org path-segment validation', () => {
+  it('rejects an owner with "../" before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(getRepo.handler({ owner: '../../user', repo: 'r' }, ctx as any)).rejects.toThrow(
+      /\[GITHUB_INVALID_INPUT\].*Invalid owner "\.\.\/\.\.\/user"/,
+    );
+    expect(lastRequest).toBeNull(); // rejected before the network
+  });
+
+  it('rejects a repo with "?" before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(
+      getRepo.handler({ owner: 'o', repo: 'x?access_token=evil' }, ctx as any),
+    ).rejects.toThrow(/Invalid repo "x\?access_token=evil"/);
+    expect(lastRequest).toBeNull();
+  });
+
+  it('rejects an owner with whitespace before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(getRepo.handler({ owner: 'octo cat', repo: 'r' }, ctx as any)).rejects.toThrow(
+      /Invalid owner "octo cat"/,
+    );
+    expect(lastRequest).toBeNull();
+  });
+
+  it('rejects a create-repo org with "?" before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(
+      createRepo.handler({ name: 'ok-name', org: 'x?access_token=evil' }, ctx as any),
+    ).rejects.toThrow(/Invalid org "x\?access_token=evil"/);
+    expect(lastRequest).toBeNull();
+  });
+
+  it('rejects a create-repo name with path metacharacters before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(createRepo.handler({ name: '../escape' }, ctx as any)).rejects.toThrow(
+      /Invalid name "\.\.\/escape"/,
+    );
+    expect(lastRequest).toBeNull();
+  });
+
+  it('rejects a trigger-workflow workflow_id with ".." before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(
+      triggerWorkflow.handler(
+        { owner: 'o', repo: 'r', workflow_id: '../dispatches', ref: 'main' },
+        ctx as any,
+      ),
+    ).rejects.toThrow(/Invalid workflow_id "\.\.\/dispatches"/);
+    expect(lastRequest).toBeNull();
+  });
+
+  it('rejects a list-workflow-runs workflow_id with "?" before any fetch', async () => {
+    mockFetch({ body: {} });
+    await expect(
+      listWorkflowRuns.handler({ owner: 'o', repo: 'r', workflow_id: 'ci.yml?x=1' }, ctx as any),
+    ).rejects.toThrow(/Invalid workflow_id "ci\.yml\?x=1"/);
+    expect(lastRequest).toBeNull();
+  });
+
+  it('accepts legitimate owner/repo and builds the expected URL', async () => {
+    mockFetch({ body: { id: 1 } });
+    await getRepo.handler({ owner: 'octocat', repo: 'hello-world' }, ctx as any);
+    expect(lastRequest?.url).toBe('https://api.github.com/repos/octocat/hello-world');
+  });
+
+  it('accepts a legitimate org in create-repo and hits /orgs/{org}/repos', async () => {
+    mockFetch({ body: { id: 1 } });
+    await createRepo.handler({ name: 'new-repo', org: 'my-org_2' }, ctx as any);
+    expect(lastRequest?.url).toBe('https://api.github.com/orgs/my-org_2/repos');
+  });
+
+  it('accepts a legitimate workflow filename in trigger-workflow', async () => {
+    mockFetch({ status: 204, body: '' });
+    await triggerWorkflow.handler(
+      { owner: 'o', repo: 'r', workflow_id: 'deploy.yml', ref: 'main' },
+      ctx as any,
+    );
+    expect(lastRequest?.url).toBe(
+      'https://api.github.com/repos/o/r/actions/workflows/deploy.yml/dispatches',
+    );
+    expect(lastRequest?.init?.method).toBe('POST');
   });
 });

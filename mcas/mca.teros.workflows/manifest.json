@@ -1,0 +1,54 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.workflows",
+  "name": "Workflows",
+  "version": "1.0.0",
+  "description": "Create, execute, and query visual workflows. Flows are directed graphs of nodes (start, action, end, gate, parallel, condition) connected by typed gates. The engine creates board tasks for action nodes and validates outputs against gate schemas.",
+  "type": "system",
+  "icon": "icon.svg",
+  "category": "productivity",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user"
+  },
+  "runtime": {
+    "transport": "http",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "workflows",
+    "flows",
+    "automation",
+    "engine",
+    "graph",
+    "tasks"
+  ],
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": false,
+    "agent": false
+  },
+  "changelog": [
+    {
+      "version": "1.0.0",
+      "date": "2026-08-31",
+      "notes": "Initial release — create flows, start executions, get execution status. Integrates with the WorkflowEngine and board tasks."
+    }
+  ],
+  "backend": {
+    "actions": [
+      "automate.sync-flow-triggers"
+    ]
+  }
+}

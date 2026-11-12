@@ -1,0 +1,301 @@
+{
+  "tools": {
+    "browser-view": {
+      "name": "browser-view",
+      "description": "Show a visible browser tab to the user: ensures the tab (yours) and the live stream the Browser window attaches to. Used by the Teros UI; answers { streamId, tabId, state }.",
+      "params": {
+        "tabId": "The Browser window id (stable per window)",
+        "url": "URL to load when the tab is new (optional)",
+        "width": "Viewer width in CSS px (optional)",
+        "height": "Viewer height in CSS px (optional)"
+      }
+    },
+    "browser-open-tab": {
+      "name": "browser-open-tab",
+      "description": "Open a VISIBLE browser tab for the user (it appears as a Browser window in Teros) and point the other browser tools at it. The user must enable \"Agent control\" in that window before you can act in it; reading (snapshot, screenshot) always works.",
+      "params": {
+        "url": "URL to open",
+        "tabId": "Optional stable id; generated when absent"
+      }
+    },
+    "browser-list-tabs": {
+      "name": "browser-list-tabs",
+      "description": "List the visible browser tabs of the current user, with who is watching and whether agent control is on."
+    },
+    "browser-close-tab": {
+      "name": "browser-close-tab",
+      "description": "Close a visible browser tab (the Browser window shows it as closed)."
+    },
+    "browser-use-tab": {
+      "name": "browser-use-tab",
+      "description": "Point every other browser tool at a VISIBLE tab the user can see (from browser-list-tabs / browser-open-tab), or pass tabId null to go back to your own headless page. Answers the tab's state and who controls it.",
+      "params": {
+        "tabId": "A visible tab id, or null for the headless page"
+      }
+    },
+    "browser-control": {
+      "name": "browser-control",
+      "description": "Who controls the current visible tab: status, or take/release advisory agent priority. The person at the tab always wins; consent is the user's toggle."
+    },
+    "browser-suggest": {
+      "name": "browser-suggest",
+      "description": "Address-bar suggestions for the Browser window: the user's visit history here + search completions. Used by the Teros UI."
+    },
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Internal health check tool. Verifies browser availability."
+    },
+    "browser-close": {
+      "name": "browser-close",
+      "description": "Close the page"
+    },
+    "browser-resize": {
+      "name": "browser-resize",
+      "description": "Resize the browser window",
+      "params": {
+        "width": "Width of the browser window",
+        "height": "Height of the browser window"
+      }
+    },
+    "browser-console-messages": {
+      "name": "browser-console-messages",
+      "description": "Returns console messages with filtering options",
+      "params": {
+        "level": "Level of the console messages to return. Each level includes the messages of more severe levels. Defaults to \"info\".",
+        "limit": "Max messages to return (default: 50)",
+        "offset": "Skip first N messages (for pagination)",
+        "search": "Filter messages containing this text (case-insensitive)",
+        "sinceTimestamp": "Only messages after this timestamp (ms). Use lastTimestamp from previous response to iterate.",
+        "since": "Preset filters: all, since last navigation, since last action (click/type/etc)"
+      }
+    },
+    "browser-console-errors": {
+      "name": "browser-console-errors",
+      "description": "Returns only error messages (shortcut for level=error)",
+      "params": {
+        "limit": "Max errors to return (default: 20)",
+        "search": "Filter errors containing this text (case-insensitive)",
+        "sinceTimestamp": "Only errors after this timestamp (ms)",
+        "since": "Preset filters"
+      }
+    },
+    "browser-console-clear": {
+      "name": "browser-console-clear",
+      "description": "Clear all captured console messages"
+    },
+    "browser-handle-dialog": {
+      "name": "browser-handle-dialog",
+      "description": "Handle a dialog",
+      "params": {
+        "accept": "Whether to accept the dialog.",
+        "promptText": "The text of the prompt in case of a prompt dialog."
+      }
+    },
+    "browser-evaluate": {
+      "name": "browser-evaluate",
+      "description": "Evaluate JavaScript expression on page or element",
+      "params": {
+        "function": "() => { /* code */ } or (element) => { /* code */ } when element is provided",
+        "element": "Human-readable element description used to obtain permission to interact with the element",
+        "ref": "Exact target element reference from the page snapshot"
+      }
+    },
+    "browser-file-upload": {
+      "name": "browser-file-upload",
+      "description": "Upload one or multiple files",
+      "params": {
+        "paths": "The absolute paths to the files to upload. Can be single file or multiple files. If omitted, file chooser is cancelled."
+      }
+    },
+    "browser-fill-form": {
+      "name": "browser-fill-form",
+      "description": "Fill multiple form fields",
+      "params": {
+        "fields": "Fields to fill in"
+      }
+    },
+    "browser-install": {
+      "name": "browser-install",
+      "description": "Install the browser specified in the config. Call this if you get an error about the browser not being installed."
+    },
+    "browser-press-key": {
+      "name": "browser-press-key",
+      "description": "Press a key on the keyboard",
+      "params": {
+        "key": "Name of the key to press or a character to generate, such as `ArrowLeft` or `a`"
+      }
+    },
+    "browser-type": {
+      "name": "browser-type",
+      "description": "Type text into editable element",
+      "params": {
+        "element": "Human-readable element description used to obtain permission to interact with the element",
+        "ref": "Exact target element reference from the page snapshot",
+        "text": "Text to type into the element",
+        "submit": "Whether to submit entered text (press Enter after)",
+        "slowly": "Whether to type one character at a time. Useful for triggering key handlers in the page. By default entire text is filled in at once."
+      }
+    },
+    "browser-navigate": {
+      "name": "browser-navigate",
+      "description": "Navigate to a URL",
+      "params": {
+        "url": "The URL to navigate to",
+        "waitUntil": "When to consider navigation complete: \"load\" (full page load), \"domcontentloaded\" (DOM ready, default), \"networkidle\" (no network activity for 500ms). Use \"networkidle\" for pages that load content dynamically."
+      }
+    },
+    "browser-navigate-back": {
+      "name": "browser-navigate-back",
+      "description": "Go back to the previous page"
+    },
+    "browser-network-requests": {
+      "name": "browser-network-requests",
+      "description": "Returns all network requests since loading the page",
+      "params": {
+        "includeStatic": "Whether to include successful static resources like images, fonts, scripts, etc. Defaults to false."
+      }
+    },
+    "browser-run-code": {
+      "name": "browser-run-code",
+      "description": "Run browser automation code snippet",
+      "params": {
+        "code": "A JavaScript function containing browser automation code to execute. It will be invoked with a single argument containing { page, context, browser }. For example: `async ({ page, context, browser }) => { await page.getByRole('button', { name: 'Submit' }).click(); return await page.title(); }`"
+      }
+    },
+    "browser-take-screenshot": {
+      "name": "browser-take-screenshot",
+      "description": "Take a screenshot of the current page. You can't perform actions based on the screenshot, use browser_snapshot for actions. The screenshot is saved to /workspace/ (shared volume) and persisted to the object store (permanent URL in the result).",
+      "params": {
+        "type": "Image format for the screenshot. Default is png.",
+        "filename": "File name for the screenshot (e.g., \"screenshot.png\"). Saved to /workspace/. Defaults to screenshot-{timestamp}.{png|jpeg}.",
+        "element": "Human-readable element description used to obtain permission to screenshot the element. If not provided, the screenshot will be taken of viewport. If element is provided, ref must be provided too.",
+        "ref": "Exact target element reference from the page snapshot. If not provided, the screenshot will be taken of viewport. If ref is provided, element must be provided too.",
+        "fullPage": "When true, takes a screenshot of the full scrollable page, instead of the currently visible viewport. Cannot be used with element screenshots."
+      }
+    },
+    "browser-snapshot": {
+      "name": "browser-snapshot",
+      "description": "Capture accessibility snapshot of the current page, this is better than screenshot",
+      "params": {
+        "filename": "Save snapshot to markdown file in /workspace/ instead of returning it in the response (e.g., \"snapshot.md\")."
+      }
+    },
+    "browser-click": {
+      "name": "browser-click",
+      "description": "Perform click on a web page",
+      "params": {
+        "element": "Human-readable element description used to obtain permission to interact with the element",
+        "ref": "Exact target element reference from the page snapshot",
+        "doubleClick": "Whether to perform a double click instead of a single click",
+        "button": "Button to click, defaults to left",
+        "modifiers": "Modifier keys to press"
+      }
+    },
+    "browser-drag": {
+      "name": "browser-drag",
+      "description": "Perform drag and drop between two elements",
+      "params": {
+        "startElement": "Human-readable source element description used to obtain the permission to interact with the element",
+        "startRef": "Exact source element reference from the page snapshot",
+        "endElement": "Human-readable target element description used to obtain the permission to interact with the element",
+        "endRef": "Exact target element reference from the page snapshot"
+      }
+    },
+    "browser-hover": {
+      "name": "browser-hover",
+      "description": "Hover over element on page",
+      "params": {
+        "element": "Human-readable element description used to obtain permission to interact with the element",
+        "ref": "Exact target element reference from the page snapshot"
+      }
+    },
+    "browser-select-option": {
+      "name": "browser-select-option",
+      "description": "Select an option in a dropdown",
+      "params": {
+        "element": "Human-readable element description used to obtain permission to interact with the element",
+        "ref": "Exact target element reference from the page snapshot",
+        "values": "Array of values to select in the dropdown. This can be a single value or multiple values."
+      }
+    },
+    "browser-tabs": {
+      "name": "browser-tabs",
+      "description": "List, create, close, or select a browser tab.",
+      "params": {
+        "action": "Operation to perform",
+        "index": "Tab index, used for close/select. If omitted for close, current tab is closed."
+      }
+    },
+    "browser-wait-for": {
+      "name": "browser-wait-for",
+      "description": "Wait for text to appear or disappear, a URL to load, network idle, or a specified time to pass",
+      "params": {
+        "time": "The time to wait in seconds",
+        "text": "The text to wait for",
+        "textGone": "The text to wait for to disappear",
+        "url": "Wait for the page URL to contain or match this string (partial match). Useful for OAuth redirects.",
+        "networkIdle": "Wait until there are no network connections for at least 500ms. Useful for SPA content loading."
+      }
+    },
+    "browser-start-recording": {
+      "name": "browser-start-recording",
+      "description": "Start recording a video of the browser. Creates a new browser context with video recording enabled. Use browser-stop-recording to finalize and save the video file. All navigation and interaction tools will be captured in the recording.",
+      "params": {
+        "width": "Video width in pixels (default: 1280)",
+        "height": "Video height in pixels (default: 720)",
+        "outputDir": "Directory to save the video file (default: /workspace/videos)"
+      }
+    },
+    "browser-stop-recording": {
+      "name": "browser-stop-recording",
+      "description": "Stop recording and save the video file. Closes the current browser context (which finalizes the video) and returns the path to the saved .webm file. The video is saved to /workspace/videos/ (or /workspace/<path> when the filename includes one) and persisted to the object store (permanent URL in the result). A new non-recording context is created automatically so the browser remains usable.",
+      "params": {
+        "filename": "Optional custom filename for the video (e.g., \"gmail-tutorial.webm\"). Saved to /workspace/videos/ (or /workspace/<path> when it includes one). Defaults to the Playwright temp name."
+      }
+    },
+    "browser-emulate-device": {
+      "name": "browser-emulate-device",
+      "description": "Emulate a specific device or custom viewport. Recreates the browser context with the specified device settings. Useful for recording tutorials on mobile vs desktop views.",
+      "params": {
+        "device": "Preset device to emulate. Selecting a preset sets viewport, user agent, and touch settings automatically.",
+        "width": "Custom viewport width (used when device is not specified)",
+        "height": "Custom viewport height (used when device is not specified)",
+        "userAgent": "Custom user agent string (used when device is not specified)",
+        "isMobile": "Whether to emulate a mobile device (used when device is not specified)",
+        "hasTouch": "Whether to enable touch events (used when device is not specified)"
+      }
+    },
+    "browser-html-to-pdf": {
+      "name": "browser-html-to-pdf",
+      "description": "Generate a high-fidelity PDF from a local HTML file or URL. Renders with real Chromium: full CSS, web fonts and backgrounds preserved, with painted margins on every page (dark-background safe).",
+      "params": {
+        "inputPath": "Path to a local HTML file (mutually exclusive with url)",
+        "url": "http(s) URL to render (mutually exclusive with inputPath)",
+        "outputPath": "Destination path for the PDF file",
+        "format": "Paper format (default A4)",
+        "margin": "Inner margin painted with the page background, e.g. \"12mm\" (default 12mm)",
+        "waitForFonts": "Wait for web fonts before printing (default true)",
+        "printCss": "Optional extra CSS injected for per-document pagination rules"
+      }
+    }
+  },
+  "name": "Browser",
+  "description": "Browser automation and web scraping. Navigate, interact, take screenshots, and extract data from web pages.",
+  "changelog": [
+    {
+      "notes": "Renamed: the MCA id is mca.teros.browser (was mca.teros.playwright); existing installs are migrated by the backend (BRN) and keep their app name"
+    },
+    {
+      "notes": "Visible tabs: the Browser window on web shows a tab of this MCA streamed with MCA streams; browser-view / browser-open-tab / browser-list-tabs / browser-close-tab / browser-use-tab / browser-control / browser-suggest; input tools gated by the user's consent toggle and the take-over fence; persistent per-user profiles under /app-data"
+    },
+    {
+      "notes": "Optional residential proxy for the browser (BROWSER_PROXY_SERVER + credentials from .secrets/mcas/mca.teros.playwright) — shared with the cloud browser the backend streams to the web Browser window"
+    },
+    {
+      "notes": "Add browser-html-to-pdf — high-fidelity PDF from local HTML or URL with painted margins on every page (dark-background safe)"
+    },
+    {
+      "notes": "Initial release — browse pages, click and fill forms, capture screenshots, run scripts, and read console and network activity"
+    }
+  ]
+}

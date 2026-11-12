@@ -28,11 +28,14 @@ export const archiveProject: ToolConfig = {
     }
 
     const actor = context?.execution?.agentId || 'unknown';
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
 
     const result = await withTimeout(
       wsClient.queryConversations<any>('archive_project', {
         projectId,
         archiveNote: args?.archiveNote,
+        callerAgentId,
         actor,
       }),
       15_000,

@@ -8,6 +8,8 @@ import type { ProviderService } from '../../../services/provider-service'
 
 interface TestProviderData {
   providerId: string
+  /** ONB-REQ-8: also run one real completion and return its text as `reply`. */
+  probe?: boolean
 }
 
 export function createTestProviderHandler(providerService: ProviderService) {
@@ -26,13 +28,14 @@ export function createTestProviderHandler(providerService: ProviderService) {
       throw new HandlerError('PROVIDER_NOT_FOUND', 'Provider not found or not owned by user')
     }
 
-    const result = await providerService.testProvider(providerId)
+    const result = await providerService.testProvider(providerId, { probe: data.probe === true })
 
     return {
       providerId,
       ok: result.ok,
       models: result.models,
       error: result.error,
+      ...(result.reply !== undefined ? { reply: result.reply } : {}),
     }
   }
 }

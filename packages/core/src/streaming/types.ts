@@ -72,6 +72,7 @@ export interface ToolProgressMessage extends BaseStreamMessage {
 export interface ToolCompleteMessage extends BaseStreamMessage {
   type: 'tool_complete';
   toolId: string;
+  toolName?: string;
   status: 'completed' | 'failed';
   output?: string;
   error?: string;

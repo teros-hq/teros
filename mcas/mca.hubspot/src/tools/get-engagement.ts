@@ -1,5 +1,5 @@
 import type { ToolConfig } from '@teros/mca-sdk';
-import { hubspotRequest, formatEngagement } from '../lib';
+import { hubspotRequest, formatEngagement, formatTask } from '../lib';
 
 export const getEngagement: ToolConfig = {
   annotations: { readOnlyHint: true },
@@ -45,7 +45,7 @@ export const getEngagement: ToolConfig = {
       email: ['hs_email_subject', 'hs_email_text', 'hs_email_status', 'hs_email_direction', 'hs_timestamp'],
       meeting: ['hs_meeting_title', 'hs_meeting_body', 'hs_meeting_status', 'hs_meeting_start_time', 'hs_timestamp'],
       note: ['hs_note_body', 'hs_timestamp'],
-      task: ['hs_task_subject', 'hs_task_body', 'hs_task_status', 'hs_task_priority', 'hs_task_type', 'hs_timestamp'],
+      task: ['hs_task_subject', 'hs_task_body', 'hs_task_status', 'hs_task_priority', 'hs_task_type', 'hs_timestamp', 'hubspot_owner_id'],
     };
 
     const allProps = properties
@@ -58,6 +58,7 @@ export const getEngagement: ToolConfig = {
       { params: { properties: allProps.join(',') } },
     )) as any;
 
-    return formatEngagement(data);
+    // Tasks use formatTask: formatEngagement never reads hs_task_* properties.
+    return type === 'task' ? formatTask(data) : formatEngagement(data);
   },
 };

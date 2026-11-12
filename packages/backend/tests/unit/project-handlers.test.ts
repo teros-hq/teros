@@ -251,7 +251,28 @@ describe('project.delete handler', () => {
     const result = await handler(ctx(USER_ALICE), { projectId: PROJECT_ALICE });
 
     expect(result).toEqual({ ok: true });
-    expect(deleteMock).toHaveBeenCalledWith(PROJECT_ALICE);
+    expect(deleteMock).toHaveBeenCalledWith(PROJECT_ALICE, USER_ALICE);
+  });
+
+  it('FORBIDDEN: a non-admin member cannot delete (same rule as board.delete-project)', async () => {
+    const deleteMock = mock(async () => true);
+    const svc = makeProjectService({ get: mock(async () => makeProject()), delete: deleteMock });
+    const db = makeDb();
+    const base = db.collection;
+    db.collection = (name: string) =>
+      name === 'workspace_members'
+        ? {
+            findOne: mock(async (filter: any) =>
+              filter.userId === USER_BOB
+                ? { workspaceId: WORKSPACE_ALICE, userId: USER_BOB, role: 'write', status: 'active' }
+                : null,
+            ),
+          }
+        : base(name);
+    const handler = createDeleteProjectHandler(svc, db);
+
+    await expect(handler(ctx(USER_BOB), { projectId: PROJECT_ALICE })).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    expect(deleteMock).not.toHaveBeenCalled();
   });
 });
 

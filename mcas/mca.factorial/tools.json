@@ -4,21 +4,24 @@
   "tools": [
     {
       "name": "-health-check",
-      "description": "Internal health check tool. Verifies OAuth credentials and connectivity to Factorial API.",
+      "description": "Internal health check tool. Verifies OAuth credentials and connectivity.",
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
       "name": "list-employees",
-      "description": "List all employees in the company with optional filters (active status, team, location, etc.).",
+      "description": "List all employees in the company with optional filters.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "active": {
             "type": "boolean",
-            "description": "Filter by active status (default: true)"
+            "description": "Filter by active status"
           },
           "teamIds": {
             "type": "array",
@@ -36,7 +39,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -100,7 +103,7 @@
     },
     {
       "name": "list-leaves",
-      "description": "List time-off requests (leaves) with optional filters (employee, status, date range, etc.).",
+      "description": "List time-off requests (leaves) with optional filters.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -130,7 +133,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -173,7 +176,7 @@
           },
           "leaveTypeId": {
             "type": "number",
-            "description": "The leave type ID (e.g., vacation, sick leave)"
+            "description": "The leave type ID"
           },
           "startOn": {
             "type": "string",
@@ -193,7 +196,7 @@
           },
           "comment": {
             "type": "string",
-            "description": "Optional comment or reason for the leave"
+            "description": "Optional comment or reason"
           }
         },
         "required": [
@@ -241,7 +244,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -276,7 +279,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -312,7 +315,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -381,7 +384,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -427,7 +430,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",
@@ -454,7 +457,7 @@
           },
           "limit": {
             "type": "number",
-            "description": "Maximum number of results (default: 50)"
+            "description": "Maximum results (default: 50)"
           },
           "offset": {
             "type": "number",

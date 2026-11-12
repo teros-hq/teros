@@ -16,11 +16,11 @@ import {
   EntityCard,
   EntityRow,
   ErrorBlock,
-  colors as globalColors,
   IconChip,
   IconTile,
   parseOutput,
   ResourceCard,
+  useColors,
 } from "../../primitives"
 import type { ToolCallRendererProps } from "../../types"
 import {
@@ -46,6 +46,7 @@ export function GetCommentsRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const palette = useColors()
   const { t } = useTranslation()
   const parsed = output ? parseOutput(output) : null
   const { items, count } = unwrapList<FigmaComment>(parsed, "comments")
@@ -72,11 +73,11 @@ export function GetCommentsRenderer({
                   badges={
                     <XStack gap={3}>
                       {c.parentId && <IconChip text={t('mca.figma.reply')} accent={FIGMA_PALETTE.purple} />}
-                      {c.resolved && <IconChip text={t('mca.figma.resolved')} accent={globalColors.muted} />}
+                      {c.resolved && <IconChip text={t('mca.figma.resolved')} accent={palette.text3} />}
                     </XStack>
                   }
                   meta={
-                    <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+                    <Text color={palette.text2} fontSize={9} fontFamily="$mono">
                       {formatDate(c.createdAt)}
                     </Text>
                   }
@@ -102,6 +103,7 @@ export function CreateCommentRenderer({
   duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const comment = output ? (parseOutput<FigmaComment>(output) as FigmaComment | null) : null
 
@@ -119,16 +121,16 @@ export function CreateCommentRenderer({
           subtitle={comment.parentId ? `Reply to ${comment.parentId}` : t('mca.figma.newComment')}
           verb="created"
           meta={
-            <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+            <Text color={c.text2} fontSize={9} fontFamily="$mono">
               {formatDateTime(comment.createdAt)}
             </Text>
           }
         >
-          <Text color={globalColors.primary} fontSize={11}>
+          <Text color={c.text} fontSize={11}>
             {comment.message}
           </Text>
           {input?.fileKey && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               file: {String(input.fileKey)}
             </Text>
           )}
@@ -150,6 +152,7 @@ export function DeleteCommentRenderer({
   duration,
   input,
 }: ToolCallRendererProps) {
+  const c = useColors()
   const { t } = useTranslation()
   const result = output
     ? (parseOutput<{ ok?: boolean; commentId?: string; fileKey?: string }>(output) as {
@@ -173,10 +176,10 @@ export function DeleteCommentRenderer({
               size={28}
             />
             <YStack flex={1} gap={2}>
-              <Text color={globalColors.primary} fontSize={11} fontWeight="500">
+              <Text color={c.text} fontSize={11} fontWeight="500">
                 {t('mca.figma.commentDeleted')}
               </Text>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono">
                 {commentId} · file {fileKey}
               </Text>
             </YStack>

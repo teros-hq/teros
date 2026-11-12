@@ -1,10 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'bun:test';
 import {
   createStallGuard,
   OperationTimeoutError,
   runWithStall,
   withOperationTimeout,
 } from './operationTimeout';
+
+/**
+ * Advance the fake clock, then let the promise callbacks it triggered run.
+ * (bun:test has no `advanceTimersByTimeAsync`.)
+ */
+/**
+ * Capture `p`'s rejection without waiting for it yet: bun's `expect(p).rejects`
+ * blocks until `p` settles, so it cannot be set up before the trigger.
+ */
+function rejectionOf(p: Promise<unknown>): Promise<unknown> {
+  return p.then(
+    () => {
+      throw new Error('expected a rejection, got a resolution');
+    },
+    (err) => err,
+  );
+}
+
+async function advance(ms: number): Promise<void> {
+  vi.advanceTimersByTime(ms);
+  for (let i = 0; i < 10; i++) await Promise.resolve();
+}
 
 describe('OperationTimeoutError', () => {
   it('does NOT classify as a user abort (name has no abort/interrupt; errorClass=connection)', () => {
@@ -32,9 +54,9 @@ describe('withOperationTimeout', () => {
   it('rejects with OperationTimeoutError when the operation never settles', async () => {
     // Operation that never resolves — the whole point of the guard.
     const p = withOperationTimeout('hang', 1000, () => new Promise<never>(() => {}));
-    const assertion = expect(p).rejects.toBeInstanceOf(OperationTimeoutError);
-    await vi.advanceTimersByTimeAsync(1000);
-    await assertion;
+    const rejection = rejectionOf(p);
+    await advance(1000);
+    expect(await rejection).toBeInstanceOf(OperationTimeoutError);
   });
 
   it('aborts the signal handed to the operation on timeout', async () => {
@@ -44,11 +66,11 @@ describe('withOperationTimeout', () => {
       return new Promise<never>(() => {});
     });
     expect(captured?.aborted).toBe(false);
-    // Attach the rejection handler BEFORE advancing so there is no window where
-    // the rejected promise looks unhandled to the runner.
-    const assertion = expect(p).rejects.toBeInstanceOf(OperationTimeoutError);
-    await vi.advanceTimersByTimeAsync(1000);
-    await assertion;
+    // Capture the rejection BEFORE advancing so there is no window where the
+    // rejected promise looks unhandled to the runner.
+    const rejection = rejectionOf(p);
+    await advance(1000);
+    expect(await rejection).toBeInstanceOf(OperationTimeoutError);
     expect(captured?.aborted).toBe(true);
   });
 
@@ -210,10 +232,10 @@ describe('runWithStall', () => {
           setTimeout(onProgress, 500); // one chunk, then silence forever
         }),
     );
-    const assertion = expect(p).rejects.toBeInstanceOf(OperationTimeoutError);
-    await vi.advanceTimersByTimeAsync(500); // first chunk → inter-token window armed
-    await vi.advanceTimersByTimeAsync(200); // inter-token silence → trip
-    await assertion;
+    const rejection = rejectionOf(p);
+    await advance(500); // first chunk → inter-token window armed
+    await advance(200); // inter-token silence → trip
+    expect(await rejection).toBeInstanceOf(OperationTimeoutError);
     await p.catch((e) => expect((e as OperationTimeoutError).timeoutMs).toBe(200));
   });
 
@@ -221,9 +243,9 @@ describe('runWithStall', () => {
     // A provider that never settles AND never honours abort — pre-TER-650 this
     // hung the turn for ~20 min. runWithStall must reject anyway.
     const p = runWithStall('hang', 1000, () => new Promise<never>(() => {}));
-    const assertion = expect(p).rejects.toBeInstanceOf(OperationTimeoutError);
-    await vi.advanceTimersByTimeAsync(1000);
-    await assertion;
+    const rejection = rejectionOf(p);
+    await advance(1000);
+    expect(await rejection).toBeInstanceOf(OperationTimeoutError);
   });
 
   it('does not trip while onProgress keeps resetting the timer', async () => {
@@ -238,7 +260,7 @@ describe('runWithStall', () => {
         setTimeout(tick, 500);
       });
     });
-    await vi.advanceTimersByTimeAsync(3000);
+    await advance(3000);
     await expect(p).resolves.toBe('done');
   });
 
@@ -254,9 +276,9 @@ describe('runWithStall', () => {
         }),
       parent.signal,
     );
-    const assertion = expect(p).rejects.toBe(userErr);
+    const rejection = rejectionOf(p);
     parent.abort(userErr);
-    await assertion;
+    expect(await rejection).toBe(userErr);
     // NOT an OperationTimeoutError → will classify as aborted_by_user.
     await p.catch((e) => expect(e).not.toBeInstanceOf(OperationTimeoutError));
   });

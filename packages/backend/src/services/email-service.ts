@@ -6,6 +6,7 @@
  */
 
 import * as fs from "fs"
+import { COLLECTIONS, ensureCollectionIndexes } from "../db"
 import { createRequire } from "module"
 import * as path from "path"
 import type { Collection, Db } from "mongodb"
@@ -20,18 +21,28 @@ const require = createRequire(import.meta.url)
 export type EmailTemplate =
   | "welcome-founding-partner"
   | "welcome-registered"
+  | "welcome"
   | "access-granted"
   | "changelog-update"
   | "feedback-notification"
+  | "feedback-resolved"
+  | "workspace-invitation"
+  | "email-verification"
+  | "password-reset"
 
 interface SendEmailOptions {
   to: string
   subject: string
   template: EmailTemplate
   variables?: Record<string, string>
+  /**
+   * Variables that must not reach email_audit_log (e.g. one-time codes).
+   * They are still rendered into the email.
+   */
+  secretVariables?: string[]
 }
 
-interface SendEmailResult {
+export interface SendEmailResult {
   success: boolean
   messageId?: string
   error?: string
@@ -59,6 +70,20 @@ export interface WelcomeFoundingPartnerVars {
 
 export interface WelcomeRegisteredVars {
   USER_NAME: string
+}
+
+export interface WelcomeVars {
+  USER_NAME: string
+}
+
+export interface EmailVerificationVars {
+  USER_NAME: string
+  CODE: string
+}
+
+export interface PasswordResetVars {
+  USER_NAME: string
+  CODE: string
 }
 
 export interface AccessGrantedVars {
@@ -91,6 +116,23 @@ export interface FeedbackNotificationVars {
   DESCRIPTION: string
   FEEDBACK_ID: string
   DATE: string
+}
+
+export interface FeedbackResolvedVars {
+  FEEDBACK_ID: string
+  TITLE: string
+  TYPE: string
+  TYPE_LABEL: string
+  /** Optional admin note explaining what was done. May be empty. */
+  RESOLUTION_NOTE: string
+  DATE: string
+}
+
+/** options.variables without the ones marked secret, for the audit log. */
+function auditableVariables(options: SendEmailOptions): Record<string, string> | undefined {
+  if (!options.variables || !options.secretVariables?.length) return options.variables
+  const secret = new Set(options.secretVariables)
+  return Object.fromEntries(Object.entries(options.variables).filter(([key]) => !secret.has(key)))
 }
 
 const MAX_RETRIES = 3
@@ -130,7 +172,9 @@ export class EmailService {
 
   async ensureIndexes(): Promise<void> {
     if (this.auditCollection) {
-      await this.auditCollection.createIndex({ "attempts.sentAt": -1 })
+      // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+      // ensureAllIndexes after migrations. Kept for tests and scripts.
+      await ensureCollectionIndexes(this.auditCollection, COLLECTIONS.emailAuditLog)
     }
   }
 
@@ -153,7 +197,9 @@ export class EmailService {
   private replaceVariables(html: string, variables: Record<string, string>): string {
     let result = html
     for (const [key, value] of Object.entries(variables)) {
-      result = result.replace(new RegExp(`{{${key}}}`, "g"), value)
+      // Function replacement: values are data, so `$&` / `$\`` inside a
+      // user-supplied display name must not act as replacement patterns.
+      result = result.replace(new RegExp(`{{${key}}}`, "g"), () => value)
     }
     return result
   }
@@ -192,7 +238,7 @@ export class EmailService {
           to: options.to,
           subject: options.subject,
           template: options.template,
-          variables: options.variables,
+          variables: auditableVariables(options),
           attempts: [attempt],
         })
       }
@@ -296,6 +342,50 @@ export class EmailService {
   }
 
   /**
+   * Send welcome email to a new user who already has platform access
+   * (no waitlist). Distinct from sendWelcomeRegistered, which is the
+   * legacy "you're on the list" email.
+   */
+  async sendWelcome(to: string, vars: WelcomeVars): Promise<SendEmailResult> {
+    return this.send({
+      to,
+      subject: "Welcome to Teros",
+      template: "welcome",
+      variables: vars as unknown as Record<string, string>,
+    })
+  }
+
+  /**
+   * Send the 6-digit code that confirms a password account's email.
+   * The code is rendered into the email but kept out of the audit log.
+   */
+  async sendEmailVerification(to: string, vars: EmailVerificationVars): Promise<SendEmailResult> {
+    return this.send({
+      to,
+      // Fixed subject: the audit log stores subjects, so the code can't go here.
+      subject: "Your Teros verification code",
+      template: "email-verification",
+      variables: vars as unknown as Record<string, string>,
+      secretVariables: ["CODE"],
+    })
+  }
+
+  /**
+   * Send the 6-digit code that lets the owner of an address set a new password.
+   * The code is rendered into the email but kept out of the audit log.
+   */
+  async sendPasswordReset(to: string, vars: PasswordResetVars): Promise<SendEmailResult> {
+    return this.send({
+      to,
+      // Fixed subject: the audit log stores subjects, so the code can't go here.
+      subject: "Your Teros password reset code",
+      template: "password-reset",
+      variables: vars as unknown as Record<string, string>,
+      secretVariables: ["CODE"],
+    })
+  }
+
+  /**
    * Send access granted email
    */
   async sendAccessGranted(to: string, vars: AccessGrantedVars): Promise<SendEmailResult> {
@@ -340,6 +430,27 @@ export class EmailService {
       to,
       subject: `[${vars.TYPE_LABEL}] ${vars.TITLE}`,
       template: "feedback-notification",
+      variables,
+    })
+  }
+
+  /**
+   * Send "your report is done" email to the reporter of a feedback item.
+   * Used by FeedbackAdminService when an item transitions to resolved.
+   */
+  async sendFeedbackResolved(to: string, vars: FeedbackResolvedVars): Promise<SendEmailResult> {
+    // Convert newlines to <br> for email HTML rendering across all clients
+    const noteHtml = vars.RESOLUTION_NOTE.replace(/\n/g, "<br>")
+
+    const variables: Record<string, string> = {
+      ...vars as unknown as Record<string, string>,
+      RESOLUTION_NOTE: noteHtml,
+    }
+
+    return this.send({
+      to,
+      subject: `Re: [${vars.TYPE_LABEL}] ${vars.TITLE} — completed`,
+      template: "feedback-resolved",
       variables,
     })
   }

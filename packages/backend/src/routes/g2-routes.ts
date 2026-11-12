@@ -21,27 +21,20 @@
  *   6. Return response in OpenAI format
  */
 
-import { randomBytes } from 'crypto';
 import type { IncomingMessage, ServerResponse } from 'http';
 import type { Db } from 'mongodb';
 import { generateMessageId } from '@teros/core';
+import type { ChannelId, UserId } from '@teros/shared';
 import type { AgentWakeUpCallback } from '../handlers/event-handler';
 import type { ChannelManager } from '../services/channel-manager';
 import type { AuthService } from '../auth/auth-service';
 import type { ProviderService } from '../services/provider-service';
+import { canAccessAgent } from '../auth/workspace-access';
 import { UpgradeRequiredError, HoursExhaustedError, PaymentDueError } from '../services/billing-gate';
+import { type ApiTokenDoc, createApiToken, hashApiToken, resolveApiToken } from '../auth/api-tokens';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface G2Token {
-  token: string;
-  agentId: string;
-  userId: string;
-  channelId?: string;      // persisted channel for this token (one per token)
-  label?: string;          // friendly name e.g. "My G2 glasses"
-  createdAt: string;
-  lastUsedAt?: string;
-}
 
 interface OpenAIMessage {
   role: 'system' | 'user' | 'assistant';
@@ -51,6 +44,7 @@ interface OpenAIMessage {
 interface OpenAIRequest {
   model?: string;
   messages: OpenAIMessage[];
+  channelId?: string;      // target channel for this message (multi-session mode)
 }
 
 export interface G2RoutesConfig {
@@ -59,6 +53,7 @@ export interface G2RoutesConfig {
   getWakeUpCallback: () => AgentWakeUpCallback;
   authService: AuthService;
   providerService: ProviderService;
+  pubSubService?: { broadcastToTopic: (topic: string, event: Record<string, unknown>) => void };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -77,10 +72,6 @@ function json(res: ServerResponse, status: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
-function generateToken(): string {
-  // Use cryptographically-secure randomness (fixes C-4 — Math.random() is predictable)
-  return 'g2_' + randomBytes(24).toString('hex');
-}
 
 /**
  * Poll channel_messages for a new assistant message after a given timestamp.
@@ -147,11 +138,9 @@ async function waitForAgentReply(
 // ─── Route factory ────────────────────────────────────────────────────────────
 
 export function createG2Routes(config: G2RoutesConfig) {
-  const { db, channelManager, getWakeUpCallback, authService, providerService } = config;
-  const tokens = db.collection<G2Token>('g2_tokens');
-
-  // Ensure index on token field
-  tokens.createIndex({ token: 1 }, { unique: true }).catch(() => {}); // intentional: index may already exist — cleanup only
+  const { db, channelManager, getWakeUpCallback, authService, providerService, pubSubService } = config;
+  // Tokens are stored hashed (SEC-4); indexes live in migration 20261017_007
+  const tokens = db.collection<ApiTokenDoc>('api_tokens');
 
   /**
    * Validate user session Bearer token. Returns userId or null (and sends 401).
@@ -227,8 +216,8 @@ export function createG2Routes(config: G2RoutesConfig) {
       }
       const rawToken = match[1].trim();
 
-      // 2. Look up token in DB
-      const tokenDoc = await tokens.findOne({ token: rawToken });
+      // 2. Look up token in DB (unknown token or deleted/suspended user → 401)
+      const tokenDoc = await resolveApiToken(db, rawToken);
       if (!tokenDoc) {
         return json(res, 401, { error: { message: 'Invalid token', type: 'auth_error' } });
       }
@@ -251,6 +240,9 @@ export function createG2Routes(config: G2RoutesConfig) {
       // 3b. Billing hard gate (pre-dispatch): block before creating any channel
       // or message so the client gets a clean 402 instead of a buried error
       // bubble. resolveProviderForAgent throws on tier/hours violations.
+      // NOTE: agentId may be overridden by payload.channelId — but we gate early
+      // on the token's agent. If the target channel has a different agent, the
+      // gate for that agent runs when the agent processes the message.
       try {
         // Gate the token actor's hours (the channel is created with tokenDoc.userId),
         // not the agent owner's (TER-650/G6).
@@ -268,39 +260,79 @@ export function createG2Routes(config: G2RoutesConfig) {
         throw gateErr;
       }
 
-      // 4. Get or create a persistent channel for this token
-      let channelId = tokenDoc.channelId;
-      if (!channelId) {
+      // 4. Determine target channel — use channelId from body (multi-session) or token's channelId
+      let channelId = payload.channelId || tokenDoc.channelId;
+      let agentId = tokenDoc.agentId;
+
+      // The token acts as its user: it may only drive agents that user can still reach.
+      if (!(await canAccessAgent(db, tokenDoc.userId, tokenDoc.agentId))) {
+        return json(res, 403, { error: { message: 'Token agent is not accessible', type: 'auth_error' } });
+      }
+
+      if (payload.channelId) {
+        // Multi-session mode: verify the channel exists and get its agentId
+        const targetChannel = await db.collection('channels').findOne({ channelId: payload.channelId });
+        if (!targetChannel) {
+          return json(res, 404, { error: { message: 'Channel not found', type: 'invalid_request' } });
+        }
+        // The channel must be one the token's user can access (SEC-2: any channelId
+        // used to be accepted, letting a token drive another user's conversation).
+        // No agentId is passed: being the channel's agent must not grant access.
+        if (!(await channelManager.canAccessChannel(payload.channelId as ChannelId, tokenDoc.userId as UserId))) {
+          return json(res, 404, { error: { message: 'Channel not found', type: 'invalid_request' } });
+        }
+        // If token has a workspaceId, verify the channel belongs to it
+        if (tokenDoc.workspaceId && targetChannel.workspaceId !== tokenDoc.workspaceId) {
+          return json(res, 403, { error: { message: 'Channel not in token workspace', type: 'auth_error' } });
+        }
+        channelId = payload.channelId;
+        agentId = targetChannel.agentId;
+      } else if (!channelId) {
+        // No channel specified and token has no persisted channel — create one
         const channel = await channelManager.createChannel(
           tokenDoc.userId,
           tokenDoc.agentId,
-          { name: `G2 — ${tokenDoc.label || rawToken.slice(0, 12)}` },
+          { name: `G2 — ${tokenDoc.label || tokenDoc.tokenPrefix}` },
           { headless: true },
         );
         channelId = channel.channelId;
-        await tokens.updateOne({ token: rawToken }, { $set: { channelId } });
+        await tokens.updateOne({ tokenHash: tokenDoc.tokenHash }, { $set: { channelId } });
       }
 
       // 5. Save user message as visible bubble in the channel
       const beforeTimestamp = new Date().toISOString();
-      await db.collection('channel_messages').insertOne({
+      
+      // Get sender info for the user (same as WS handleSendMessage)
+      const sender = await channelManager.getUserSender(tokenDoc.userId);
+      
+      const userMessage = {
         messageId: generateMessageId(),
         channelId,
-        role: 'user',
-        content: lastUserMsg.content,
+        role: 'user' as const,
+        userId: tokenDoc.userId,
+        sender: sender || { type: 'user' as const, id: tokenDoc.userId, name: 'Unknown' },
+        content: { type: 'voice' as const, transcription: lastUserMsg.content, url: '' },
         timestamp: beforeTimestamp,
         metadata: { source: 'g2' },
-      });
+      };
+      // Through saveMessage so the channel's lastMessageAt moves too (MOD-4)
+      await channelManager.saveMessage(userMessage as never);
+
+      // 5b. Broadcast to WebSocket subscribers so frontends update in real time
+      if (pubSubService) {
+        pubSubService.broadcastToTopic(`channel:${channelId}`, {
+          type: 'message',
+          channelId,
+          message: userMessage,
+        });
+      }
 
       // 6. Wake up agent with the user message
-      console.log(`[G2] Waking up agent ${tokenDoc.agentId} on channel ${channelId} with: "${lastUserMsg.content}"`);
+      console.log(`[G2] Waking up agent ${agentId} on channel ${channelId} with: "${lastUserMsg.content}"`);
       const wakeUp = getWakeUpCallback();
-      await wakeUp(channelId, tokenDoc.agentId, lastUserMsg.content);
+      await wakeUp(channelId, agentId, lastUserMsg.content);
 
-      // 7. Update lastUsedAt
-      await tokens.updateOne({ token: rawToken }, { $set: { lastUsedAt: new Date().toISOString() } });
-
-      // 8. Poll for agent reply (max 60s)
+      // 7. Poll for agent reply (max 60s)
       const reply = await waitForAgentReply(db, channelId, beforeTimestamp, 60000);
 
       if (!reply) {
@@ -310,12 +342,13 @@ export function createG2Routes(config: G2RoutesConfig) {
 
       console.log(`[G2] Sending reply to G2: "${reply.substring(0, 100)}"`);
 
-      // 9. Return in OpenAI format
+      // 8. Return in OpenAI format
       return json(res, 200, {
         id: `g2-${Date.now()}`,
         object: 'chat.completion',
         created: Math.floor(Date.now() / 1000),
         model: payload.model || 'teros',
+        channelId, // Include channelId so terminal knows which channel was used/created
         choices: [
           {
             index: 0,
@@ -340,30 +373,23 @@ export function createG2Routes(config: G2RoutesConfig) {
         return json(res, 400, { error: 'agentId is required' });
       }
 
-      // Verify agent exists
-      const agent = await db.collection('agents').findOne({ agentId });
-      if (!agent) {
+      // Verify the agent exists and the caller can use it (SEC-2: any agentId was accepted)
+      if (!(await canAccessAgent(db, callerId, agentId))) {
         return json(res, 404, { error: `Agent not found: ${agentId}` });
       }
 
-      // userId is always the authenticated caller — ignore any userId in body
-      const token = generateToken();
-      const doc: G2Token = {
-        token,
-        agentId,
-        userId: callerId,
-        label: label || undefined,
-        createdAt: new Date().toISOString(),
-      };
-
-      await tokens.insertOne(doc);
+      // userId is always the authenticated caller — ignore any userId in body.
+      // Only the hash is stored: this response is the one time the token is shown.
+      const { token, doc } = await createApiToken(db, { userId: callerId, agentId, label });
 
       return json(res, 201, {
         token,
+        tokenId: doc.tokenId,
         agentId,
         userId: callerId,
         label: doc.label,
         createdAt: doc.createdAt,
+        expiresAt: doc.expiresAt,
       });
     } catch (err) {
       console.error('[G2] Error creating token:', err);
@@ -376,8 +402,11 @@ export function createG2Routes(config: G2RoutesConfig) {
       // Always filter by the authenticated caller's userId — never expose other users' tokens
       const list = await tokens.find({ userId: callerId }).sort({ createdAt: -1 }).toArray();
 
+      // The raw token is never listed (it isn't stored): id + prefix identify it
       return json(res, 200, list.map(t => ({
-        token: t.token,
+        tokenId: t.tokenId,
+        tokenPrefix: t.tokenPrefix,
+        expiresAt: t.expiresAt,
         agentId: t.agentId,
         userId: t.userId,
         label: t.label,
@@ -393,8 +422,12 @@ export function createG2Routes(config: G2RoutesConfig) {
 
   async function handleDeleteToken(req: IncomingMessage, res: ServerResponse, token: string, callerId: string) {
     try {
-      // Only allow deleting own tokens
-      const result = await tokens.deleteOne({ token, userId: callerId });
+      // Only allow deleting own tokens. Accepts the public tokenId or, for
+      // clients that kept the raw token, the token itself (matched by hash).
+      const result = await tokens.deleteOne({
+        userId: callerId,
+        $or: [{ tokenId: token }, { tokenHash: hashApiToken(token) }],
+      });
       if (result.deletedCount === 0) {
         return json(res, 404, { error: 'Token not found' });
       }

@@ -8,6 +8,9 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true
       }
     },
     {
@@ -24,13 +27,17 @@
     },
     {
       "name": "admin-infra-restart-backend",
-      "description": "Restart the Teros backend server. This will gracefully shutdown all MCA processes and restart the backend. Use with caution - this will temporarily interrupt service.",
+      "description": "Restart the Teros backend server. Runs a fast pre-flight (audit who holds the backend port, kill any orphan non-pm2 listener left over from a previous restart), triggers the graceful restart, and returns IMMEDIATELY on 200 — it does NOT wait or poll, because this MCA dies with the backend seconds after the restart starts. The conversation resumes automatically when the backend is back (system_resume); FIRST ACTION on wake: call admin-infra-backend-status and verify the listener (pm2 descent) and, when expectedCommit was passed, that the served commit matches. Use with caution - this will temporarily interrupt service.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "confirm": {
             "type": "boolean",
             "description": "Confirmation flag - must be true to proceed with restart"
+          },
+          "expectedCommit": {
+            "type": "string",
+            "description": "Optional git commit (sha) the restarted backend is expected to serve — pass it after a git pull/checkout. It is NOT verified in-call (impossible: the MCA dies with the backend); it is echoed back so the agent can verify it via admin-infra-backend-status as its first action on wake."
           }
         },
         "required": [
@@ -67,13 +74,13 @@
     },
     {
       "name": "admin-infra-mca-kill",
-      "description": "Kill a running MCA process by ID. Super admin only. DESTRUCTIVE — use with caution.",
+      "description": "Kill a running MCA process by appId. Super admin only. DESTRUCTIVE — use with caution.",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "id": {
+          "appId": {
             "type": "string",
-            "description": "MCA process ID to kill"
+            "description": "The appId of the MCA process to kill (e.g., 'app_51a87881c58035ce', from admin-infra-mca-status)"
           },
           "confirm": {
             "type": "boolean",
@@ -81,7 +88,7 @@
           }
         },
         "required": [
-          "id",
+          "appId",
           "confirm"
         ]
       },
@@ -110,10 +117,15 @@
     },
     {
       "name": "admin-infra-mca-health",
-      "description": "Run health checks on all MCA processes. Super admin only.",
+      "description": "Run health checks on all MCA processes. Super admin only. By default force-spawns dormant (standby) MCAs so the check is real — set forceSpawn:false for a cheap read-only snapshot of already-running MCAs.",
       "inputSchema": {
         "type": "object",
-        "properties": {},
+        "properties": {
+          "forceSpawn": {
+            "type": "boolean",
+            "description": "Spawn dormant (standby) MCAs before checking them. Default true. With false, dormant MCAs are reported as unknown and are NOT started."
+          }
+        },
         "required": []
       },
       "annotations": {

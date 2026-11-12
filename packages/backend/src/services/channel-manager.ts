@@ -4,19 +4,21 @@
  */
 
 import { RandomIdGenerator, type IdGenerator } from '@teros/core';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 import type {
-  AgentConfig,
   AgentId,
   Channel,
   ChannelId,
   ChannelMetadata,
   Message,
-  UserApp,
   UserId,
 } from '@teros/shared';
 import type { Collection, Db } from 'mongodb';
 import { buildAvatarUrl } from '../lib/avatar-url';
 import { isOwnSyntheticTestChannel } from '../lib/mca-test-context';
+import { canAccessWorkspace } from '../auth/workspace-access';
+import { withTransaction } from '../lib/mongo-transaction';
+import { DeletionService } from './deletion-service';
 
 interface Agent {
   agentId: string;
@@ -26,7 +28,6 @@ interface Agent {
   ownerId?: string;
   selectedModelId?: string | null;
   selectedProviderId?: string | null;
-  availableProviders?: string[];
 }
 
 interface Workspace {
@@ -49,7 +50,7 @@ const log = createLogger('ChannelManager');
 const DEFAULT_PAGE_SIZE = 30;
 
 interface ChannelCursor {
-  updatedAt: string;
+  lastMessageAt: string;
   channelId: string;
 }
 
@@ -67,8 +68,6 @@ function decodeCursor(cursor: string): ChannelCursor | null {
 
 export class ChannelManager {
   private channels: Collection<Channel>;
-  private agentConfigs: Collection<AgentConfig>;
-  private userApps: Collection<UserApp>;
   private messages: Collection<Message>;
   private agents: Collection<Agent>;
   private models: Collection<any>;
@@ -87,8 +86,6 @@ export class ChannelManager {
     this.channelIds = idGenerator.fork('ch');
     this.messageIds = idGenerator.fork('msg');
     this.channels = db.collection<Channel>('channels');
-    this.agentConfigs = db.collection<AgentConfig>('agent_configs');
-    this.userApps = db.collection<UserApp>('user_apps');
     this.messages = db.collection<Message>('channel_messages');
     this.agents = db.collection<Agent>('agents');
     this.models = db.collection('models');
@@ -101,25 +98,11 @@ export class ChannelManager {
    * Ensure required indexes exist for optimal query performance
    */
   async ensureIndexes(): Promise<void> {
-    // Messages: query by channelId, sorted by createdAt (most common query)
-    await this.messages.createIndex(
-      { channelId: 1, createdAt: -1 },
-      { name: 'channelId_1_createdAt_-1', background: true },
-    );
-
-    // Channels: query by userId, sorted by updatedAt
-    await this.channels.createIndex(
-      { userId: 1, updatedAt: -1 },
-      { name: 'userId_1_updatedAt_-1', background: true },
-    );
-
-    // Channels: query by channelId (for lookups)
-    await this.channels.createIndex(
-      { channelId: 1 },
-      { name: 'channelId_1', unique: true, background: true },
-    );
-
-    log.debug('ChannelManager indexes ensured');
+    // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+    // ensureAllIndexes after migrations. Kept for tests and scripts.
+    // That includes the sort-first `workspaceId_1_lastMessageAt_-1_channelId_1`
+    // (NFR-1) behind listUserChannels; message indexes come from migration 20261017_002.
+    await ensureCollectionIndexes(this.channels, COLLECTIONS.channels);
   }
 
   /**
@@ -170,6 +153,7 @@ export class ChannelManager {
       agentId,
       status: 'active',
       workspaceId,
+      scope: 'personal', // REQ-1: new channels are personal by default
       metadata: {
         transport: metadata.transport || 'websocket',
         name: metadata.name || defaultName,
@@ -177,15 +161,13 @@ export class ChannelManager {
       },
       createdAt: now,
       updatedAt: now,
+      lastMessageAt: now,
       ...(options?.headless && { headless: true }),
       ...(options?.originChannelId && { originChannelId: options.originChannelId }),
     };
 
     await this.channels.insertOne(channel as any);
     log.info({ channelId, name: channel.metadata.name, workspaceId }, 'Channel created');
-
-    // Create default agent config for this channel
-    await this.createDefaultAgentConfig(channelId, agentId);
 
     return channel;
   }
@@ -230,14 +212,17 @@ export class ChannelManager {
     // Agent is the assigned agent for this channel
     if (agentId && channel.agentId === agentId) return true;
 
-    // Channel belongs to a workspace - check workspace access
+    // Channel belongs to a workspace - check workspace access (active membership only)
     if (channel.workspaceId) {
-      const workspace = await this.workspaces.findOne({
-        workspaceId: channel.workspaceId,
-        status: 'active',
-        $or: [{ ownerId: userId }, { 'members.userId': userId }],
-      });
-      return workspace !== null;
+      if (!(await canAccessWorkspace(this.db, userId, channel.workspaceId))) return false;
+
+      // SEC-3 / MUW-REQ-4: another member's channel is only reachable once
+      // shared — the same rule listUserChannels applies. A missing scope
+      // counts as personal (MUW-NFR-3).
+      if (channel.scope !== 'shared') {
+        return false;
+      }
+      return true;
     }
 
     return false;
@@ -245,7 +230,7 @@ export class ChannelManager {
 
   /**
    * List user's channels with unread counts (paginated)
-   * Note: Private channels are included but marked with isPrivate: true
+   * Note: Personal channels are included but marked with scope: 'personal'
    * The frontend should filter them from the conversation list UI
    *
    * @param userId - User ID
@@ -267,14 +252,22 @@ export class ChannelManager {
 
     if (options?.workspaceId === null || options?.workspaceId === undefined) {
       // Return ALL channels in accessible workspaces
-      const accessibleWorkspaces = await this.workspaces
-        .find({
-          status: 'active',
-          $or: [{ ownerId: userId }, { 'members.userId': userId }],
-        })
+      // Owned workspaces
+      const ownedWorkspaces = await this.workspaces
+        .find({ ownerId: userId, status: 'active' })
         .toArray();
+      const ownedIds = ownedWorkspaces.map((w) => w.workspaceId);
 
-      const workspaceIds = accessibleWorkspaces.map((w) => w.workspaceId);
+      // Member workspaces (via workspace_members collection — single source of truth).
+      // Pending invitations don't grant access; rows without status are active.
+      const memberships = await this.db
+        .collection('workspace_members')
+        .find({ userId, status: { $ne: 'pending' } })
+        .toArray();
+      const memberWorkspaceIds = memberships.map((m) => m.workspaceId);
+
+      // Combine and dedupe
+      const workspaceIds = [...new Set([...ownedIds, ...memberWorkspaceIds])];
 
       baseFilter = {
         workspaceId: { $in: workspaceIds },
@@ -289,40 +282,67 @@ export class ChannelManager {
       baseFilter.status = status;
     }
 
-    // Apply cursor for keyset pagination (updatedAt DESC, channelId ASC as tiebreaker)
+    // ─── Visibility filter (REQ-1, REQ-2, NFR-3 rev2) ────────────────────────
+    // A user sees:
+    //   1. Their own non-public channels (private conversations they created)
+    //   2. ALL public channels in the workspace (shared by any member)
+    //
+    // NFR-3 (revised 2026-09-15 per Pablo's decision): channels without a
+    // `scope` field are treated as 'personal' (defense in depth).
+    // The migration script backfills all legacy channels with
+    // `scope: "personal"`, so no channels should lack the field.
+    // But if any slip through, the first $or branch catches them:
+    // $ne 'public' is true for undefined, so the owner still sees their
+    // own legacy channels. Non-owners do NOT see them — undefined is
+    // never treated as 'public'.
+    //
+    // MUW-REQ-4/5: the scope filter always applies — a member sees their own
+    // channels plus the shared ones.
+    {
+      const scopeFilter = {
+        $or: [
+          // My own channels that are not public (includes 'private' and undefined)
+          { userId, scope: { $ne: 'shared' } },
+          // All public channels (explicit 'public' only)
+          { scope: 'shared' },
+        ],
+      };
+
+      // Merge scope filter into baseFilter
+      if (baseFilter.$or) {
+        // workspaceId=null case already has $or — wrap both in $and
+        baseFilter = { $and: [baseFilter, scopeFilter] };
+      } else {
+        // Specific workspace case — add $or alongside workspaceId
+        baseFilter = { ...baseFilter, ...scopeFilter };
+      }
+    }
+
+    // Apply cursor for keyset pagination (lastMessageAt DESC, channelId ASC as tiebreaker)
     let filter = baseFilter;
     if (options?.cursor) {
       const decoded = decodeCursor(options.cursor);
       if (decoded) {
-        filter = {
-          ...baseFilter,
+        const cursorCondition = {
           $or: [
-            { updatedAt: { $lt: decoded.updatedAt } },
-            { updatedAt: decoded.updatedAt, channelId: { $gt: decoded.channelId } },
+            { lastMessageAt: { $lt: decoded.lastMessageAt } },
+            { lastMessageAt: decoded.lastMessageAt, channelId: { $gt: decoded.channelId } },
           ],
         };
-        // Merge with existing $or if present (workspaceId=null case)
-        if (baseFilter.$or) {
-          filter = {
-            $and: [
-              { $or: baseFilter.$or },
-              {
-                $or: [
-                  { updatedAt: { $lt: decoded.updatedAt } },
-                  { updatedAt: decoded.updatedAt, channelId: { $gt: decoded.channelId } },
-                ],
-              },
-              ...(status ? [{ status }] : []),
-            ],
-          };
-        }
+        // Wrap everything in $and to preserve both the scope $or and cursor $or
+        filter = {
+          $and: [
+            baseFilter,
+            cursorCondition,
+          ],
+        };
       }
     }
 
     // Fetch one extra to detect if there's a next page
     const rawChannels = await this.channels
       .find(filter)
-      .sort({ updatedAt: -1, channelId: 1 })
+      .sort({ lastMessageAt: -1, channelId: 1 })
       .limit(limit + 1)
       .toArray();
 
@@ -333,17 +353,30 @@ export class ChannelManager {
     let nextCursor: string | null = null;
     if (hasMore && pageChannels.length > 0) {
       const last = pageChannels[pageChannels.length - 1];
-      nextCursor = encodeCursor({ updatedAt: last.updatedAt, channelId: last.channelId });
+      nextCursor = encodeCursor({ lastMessageAt: last.lastMessageAt ?? last.updatedAt, channelId: last.channelId });
     }
+
+    // Agent info (agent + model + provider: 2-4 queries) once per distinct
+    // agent on the page, not once per channel — most conversations share a
+    // handful of agents (MOD-9 N+1).
+    const agentIds = [...new Set(pageChannels.map((c) => c.agentId))];
+    const agentInfos = new Map(
+      await Promise.all(agentIds.map(async (id) => [id, await this.getAgentInfo(id)] as const)),
+    );
+
+    // Unread counts and last-message previews for the whole page in batched
+    // aggregations (2-3 queries per page instead of 3 per channel — MOD-9 N+1).
+    const [unreadCounts, lastMessages] = await Promise.all([
+      this.getUnreadCounts(pageChannels),
+      this.getLastMessages(pageChannels.map((c) => c.channelId)),
+    ]);
 
     // Enrich channels with unread counts, last message, agent info, and model
     const enrichedChannels = await Promise.all(
       pageChannels.map(async (channel) => {
-        const [unreadCount, lastMessage, agentInfo] = await Promise.all([
-          this.getUnreadCount(channel.channelId, (channel as any).lastReadAt),
-          this.getLastMessage(channel.channelId),
-          this.getAgentInfo(channel.agentId),
-        ]);
+        const unreadCount = unreadCounts.get(channel.channelId) ?? 0;
+        const lastMessage = lastMessages.get(channel.channelId);
+        const agentInfo = agentInfos.get(channel.agentId) ?? null;
 
         return {
           ...channel,
@@ -368,75 +401,113 @@ export class ChannelManager {
   }
 
   /**
-   * Get count of unread messages for a channel
+   * Count unread messages (assistant messages after the channel's lastReadAt,
+   * or all of them when it was never read) for a page of channels in one
+   * aggregation. Each $or branch is an IXSCAN on {channelId, timestamp}, the
+   * same plan the old per-channel countDocuments used. Channels without
+   * unread messages are absent from the map (count 0).
    */
-  private async getUnreadCount(channelId: ChannelId, lastReadAt?: string): Promise<number> {
-    const filter: any = {
-      channelId,
-      role: 'assistant',
-    };
+  private async getUnreadCounts(
+    channels: Array<{ channelId: ChannelId; lastReadAt?: string }>,
+  ): Promise<Map<string, number>> {
+    if (channels.length === 0) return new Map();
 
-    if (lastReadAt) {
-      filter.timestamp = { $gt: lastReadAt };
-    }
+    const rows = await this.messages
+      .aggregate<{ _id: string; count: number }>([
+        {
+          $match: {
+            role: 'assistant',
+            $or: channels.map((channel) =>
+              channel.lastReadAt
+                ? { channelId: channel.channelId, timestamp: { $gt: channel.lastReadAt } }
+                : { channelId: channel.channelId },
+            ),
+          },
+        },
+        { $group: { _id: '$channelId', count: { $sum: 1 } } },
+      ])
+      .toArray();
 
-    return this.messages.countDocuments(filter);
+    return new Map(rows.map((row) => [row._id, row.count]));
   }
 
   /**
-   * Get last message preview for a channel
-   * Prioritizes text messages for better previews
+   * Last message preview for a page of channels.
+   * Prioritizes text messages for better previews; channels without any text
+   * message fall back to their most recent message of any type.
+   *
+   * $sort + $group/$first on an index prefix runs as a DISTINCT_SCAN: one
+   * index seek and one document per channel — {channelId, content.type,
+   * timestamp} for the text pass, {channelId, timestamp, messageId} for the
+   * fallback.
    */
-  private async getLastMessage(
-    channelId: ChannelId,
-  ): Promise<{ content: string; timestamp: string; role?: 'user' | 'assistant' } | undefined> {
-    // First try to find the last text message for a meaningful preview
-    const textMessage = await this.messages.findOne(
-      {
-        channelId,
-        'content.type': 'text',
-      } as any,
-      { sort: { timestamp: -1 } },
-    );
+  private async getLastMessages(
+    channelIds: ChannelId[],
+  ): Promise<Map<string, { content: string; timestamp: string; role?: 'user' | 'assistant' }>> {
+    const previews = new Map<
+      string,
+      { content: string; timestamp: string; role?: 'user' | 'assistant' }
+    >();
+    if (channelIds.length === 0) return previews;
 
-    if (textMessage) {
+    // First try to find the last text message for a meaningful preview
+    const textMessages = await this.messages
+      .aggregate<{ _id: string; message: Message }>([
+        { $match: { channelId: { $in: channelIds }, 'content.type': 'text' } },
+        { $sort: { channelId: 1, 'content.type': 1, timestamp: -1 } },
+        { $group: { _id: '$channelId', message: { $first: '$$ROOT' } } },
+      ])
+      .toArray();
+
+    for (const { _id, message: textMessage } of textMessages) {
       const content = (textMessage.content as any).text || '';
       const truncated = content.length > 100 ? content.substring(0, 100) + '...' : content;
 
-      return {
+      previews.set(_id, {
         content: truncated,
         timestamp: textMessage.timestamp,
         role: textMessage.role as 'user' | 'assistant',
-      };
+      });
     }
 
     // Fallback to the most recent message of any type
-    const message = await this.messages.findOne({ channelId } as any, { sort: { timestamp: -1 } });
+    const withoutText = channelIds.filter((id) => !previews.has(id));
+    if (withoutText.length === 0) return previews;
 
-    if (!message) return undefined;
+    const lastMessages = await this.messages
+      .aggregate<{ _id: string; message: Message }>([
+        { $match: { channelId: { $in: withoutText } } },
+        { $sort: { channelId: 1, timestamp: -1 } },
+        { $group: { _id: '$channelId', message: { $first: '$$ROOT' } } },
+      ])
+      .toArray();
 
-    // For non-text messages, show a friendly description
-    let content = '';
-    const contentType = message.content?.type;
+    for (const { _id, message } of lastMessages) {
+      // For non-text messages, show a friendly description
+      let content = '';
+      const contentType = message.content?.type;
 
-    if (contentType === 'image') {
-      content = '📷 Imagen';
-    } else if (contentType === 'audio') {
-      content = '🎵 Audio';
-    } else if (contentType === 'video') {
-      content = '🎬 Video';
-    } else if (contentType === 'file') {
-      content = '📎 Archivo';
-    } else {
-      // For tool_execution and other types, just show empty to avoid clutter
-      content = '';
+      if (contentType === 'image') {
+        content = '📷 Imagen';
+      } else if (contentType === 'audio') {
+        content = '🎵 Audio';
+      } else if (contentType === 'video') {
+        content = '🎬 Video';
+      } else if (contentType === 'file') {
+        content = '📎 Archivo';
+      } else {
+        // For tool_execution and other types, just show empty to avoid clutter
+        content = '';
+      }
+
+      previews.set(_id, {
+        content,
+        timestamp: message.timestamp,
+        role: message.role as 'user' | 'assistant',
+      });
     }
 
-    return {
-      content,
-      timestamp: message.timestamp,
-      role: message.role as 'user' | 'assistant',
-    };
+    return previews;
   }
 
   /**
@@ -482,12 +553,11 @@ export class ChannelManager {
       // Resolve the user's default provider to show what model will actually be used
       const userId = agent.ownerId;
       if (userId) {
-        // Try isDefault first, then fall back to first by priority
+        // System Default = the user's default provider (2-level model,
+        // 2026-10-21). No silent fallback to "first by priority": if there is
+        // no default the display stays empty, mirroring the runtime resolver.
         const defaultProvider = await this.db.collection('user_providers').findOne(
           { userId, isDefault: true, status: 'active' },
-        ) ?? await this.db.collection('user_providers').findOne(
-          { userId, status: 'active' },
-          { sort: { priority: 1 } },
         );
 
         if (defaultProvider) {
@@ -572,19 +642,19 @@ export class ChannelManager {
   }
 
   /**
-   * Close a channel
-   * If the channel is private, it will be completely deleted instead
+   * Close a channel (soft-delete — marks as 'closed', preserves all data)
+   *
+   * The channel and all its messages remain in the database for history and
+   * traceability. The frontend hides closed channels from the active
+   * conversation list.
+   *
+   * NOTE: The previous implementation deleted personal channels permanently
+   * (deleteChannelCompletely). That was the original 'incognito' behaviour
+   * from Dec 2025, but after MUW made scope:'personal' the default for ALL
+   * channels, it became destructive. Removed per Pablo's directive: no
+   * conversation data should ever be deleted.
    */
   async closeChannel(channelId: ChannelId): Promise<{ deleted: boolean }> {
-    const channel = await this.getChannel(channelId);
-
-    // If private channel, delete completely
-    if (channel?.isPrivate) {
-      await this.deleteChannelCompletely(channelId);
-      return { deleted: true };
-    }
-
-    // Normal close for non-private channels
     const now = new Date().toISOString();
     await this.channels.updateOne({ channelId } as any, {
       $set: {
@@ -601,78 +671,121 @@ export class ChannelManager {
    * Completely delete a channel and all its data
    * Used for private channels on close or expiry
    */
-  async deleteChannelCompletely(channelId: ChannelId): Promise<void> {
-    // 1. Delete all messages
-    const messagesResult = await this.messages.deleteMany({ channelId } as any);
-
-    // 2. Delete agent config
-    await this.agentConfigs.deleteMany({ channelId } as any);
-
-    // 3. Delete scheduler tasks bound to this channel (TER-650/G7). A recurring
-    //    task / reminder must not outlive its channel: otherwise the scheduler
-    //    keeps firing it every cron slot (failing ownership) until the failure
-    //    cap disables it — wasted dispatches and a stray heartbeat. Root cause:
-    //    the task's lifetime is bounded by its channel's.
-    const [recurringDeleted, remindersDeleted] = await Promise.all([
-      this.db.collection('scheduler_recurring_tasks').deleteMany({ channel_id: channelId }),
-      this.db.collection('scheduler_reminders').deleteMany({ channel_id: channelId }),
-    ]);
-
-    // 4. Delete channel
-    await this.channels.deleteOne({ channelId } as any);
-
-    log.info(
-      {
-        channelId,
-        messagesDeleted: messagesResult.deletedCount,
-        recurringTasksDeleted: recurringDeleted.deletedCount,
-        remindersDeleted: remindersDeleted.deletedCount,
-      },
-      'Private channel completely deleted',
-    );
+  async deleteChannelCompletely(channelId: ChannelId, actor = 'system'): Promise<void> {
+    // The full cascade lives in DeletionService (INF-3): messages, LLM
+    // sessions/compactions, feedback, subscriptions, Automate starters
+    // (TER-650/G7), legacy agent_configs, and the channel itself last.
+    const report = await new DeletionService(this.db).deleteChannel(channelId, actor);
+    log.info({ channelId, report }, 'Channel completely deleted');
   }
 
   /**
-   * Set a channel as private or public
-   * Private channels are hidden from lists/search and deleted on close
+   * Set channel scope (personal ↔ shared) — REQ-2.
+   * Controls which workspace members can see the channel in their list.
    */
-  async setChannelPrivate(channelId: ChannelId, isPrivate: boolean): Promise<void> {
+  async setChannelScope(channelId: ChannelId, scope: 'personal' | 'shared'): Promise<void> {
     const now = new Date().toISOString();
     await this.channels.updateOne({ channelId } as any, {
       $set: {
-        isPrivate,
+        scope,
         updatedAt: now,
       },
     });
-    log.info({ channelId, isPrivate }, 'Channel privacy updated');
+    log.info({ channelId, scope }, 'Channel scope updated');
   }
 
   /**
-   * Cleanup expired private channels (older than 15 days of inactivity)
-   * Should be called periodically (e.g., every hour)
+   * Toggle redaction on a message — REQ-4.
+   *
+   * Sets redacted/redactedBy/redactedAt on the message document.
+   * When redacted is true, the message content is replaced with a placeholder
+   * for non-owners (enforced in redact-messages.ts).
+   * When redacted is false (un-redact), the content becomes visible again.
+   *
+   * @returns The updated message, or null if the message was not found.
    */
-  async cleanupExpiredPrivateChannels(): Promise<number> {
-    const fifteenDaysAgo = new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString();
+  async toggleMessageRedaction(
+    channelId: ChannelId,
+    messageId: string,
+    redacted: boolean,
+    redactedBy: string,
+  ): Promise<Message | null> {
+    const now = new Date().toISOString();
 
-    const expiredChannels = await this.channels
-      .find({
-        isPrivate: true,
-        updatedAt: { $lt: fifteenDaysAgo },
-      } as any)
-      .toArray();
-
-    let deletedCount = 0;
-    for (const channel of expiredChannels) {
-      await this.deleteChannelCompletely(channel.channelId);
-      deletedCount++;
+    if (redacted) {
+      await this.messages.updateOne(
+        { channelId, messageId } as any,
+        {
+          $set: {
+            redacted: true,
+            redactedBy,
+            redactedAt: now,
+          },
+        },
+      );
+    } else {
+      // Un-redact: clear the redaction fields
+      await this.messages.updateOne(
+        { channelId, messageId } as any,
+        {
+          $set: { redacted: false },
+          $unset: { redactedBy: "", redactedAt: "" },
+        },
+      );
     }
 
-    if (deletedCount > 0) {
-      log.info({ deletedCount }, 'Cleaned up expired private channels');
+    // MUW-F1: Propagate the redaction flag to session_messages (LLM context collection).
+    // Strategy: read the channel message to check for a turnId. If present, flag ALL
+    // session docs for that turn (channelMessageId === turnId) — whole-turn flagging.
+    // Over-redaction is the safe direction for security. Fall back to matching by
+    // channelMessageId === messageId OR info.id === messageId (legacy, pre-turnId).
+    // Uses updateMany because assistant messages can appear as multiple session_messages
+    // docs (parts-splitting).
+    const channelMsg = await this.messages.findOne({ channelId, messageId } as any);
+    const turnId = channelMsg?.turnId;
+    const sessionMessages = this.db.collection('session_messages');
+    const sessionFilter = turnId
+      ? {
+          sessionId: channelId,
+          $or: [
+            { 'info.channelMessageId': turnId },
+            { 'info.channelMessageId': messageId },
+            { 'info.id': messageId },
+          ],
+        }
+      : {
+          sessionId: channelId,
+          $or: [
+            { 'info.channelMessageId': messageId },
+            { 'info.id': messageId },
+          ],
+        };
+    if (redacted) {
+      await sessionMessages.updateMany(
+        sessionFilter as any,
+        {
+          $set: {
+            'info.redacted': true,
+            'info.redactedBy': redactedBy,
+            'info.redactedAt': now,
+          },
+        },
+      );
+    } else {
+      await sessionMessages.updateMany(
+        sessionFilter as any,
+        {
+          $set: { 'info.redacted': false },
+          $unset: { 'info.redactedBy': '', 'info.redactedAt': '' },
+        },
+      );
     }
 
-    return deletedCount;
+    const updated = await this.messages.findOne({ channelId, messageId } as any);
+    log.info({ channelId, messageId, redacted, redactedBy }, "Message redaction toggled");
+    return updated as Message | null;
   }
+
 
   /**
    * Reopen a closed channel
@@ -692,9 +805,24 @@ export class ChannelManager {
   }
 
   /**
-   * Rename a channel
+   * Rename a channel.
+   *
+   * A channel linked to a board task (task.channelId) CANNOT be renamed:
+   * its title is the task's title by invariant — rename the task instead
+   * (BoardService.updateTask syncs the linked channel). Enforced here so
+   * every rename path is covered: MCA tool, WS handler, autoname.
    */
   async renameChannel(channelId: ChannelId, name: string): Promise<void> {
+    // Block task-linked channels — the task owns the title. Strict: any task
+    // (active or archived) holding the channelId link blocks the rename, so the
+    // "task title = conversation title" invariant can never drift.
+    const linkedTask = await this.db.collection('tasks').findOne({ channelId });
+    if (linkedTask) {
+      throw new Error(
+        `This conversation is linked to the task "${linkedTask.title || linkedTask.taskId}" — rename the task, not the conversation`,
+      );
+    }
+
     const now = new Date().toISOString();
     await this.channels.updateOne({ channelId } as any, {
       $set: {
@@ -703,6 +831,21 @@ export class ChannelManager {
       },
     });
     log.info({ channelId, name }, 'Channel renamed');
+  }
+
+  /**
+   * Persist contextual follow-up prompts on the channel (composer suggestions).
+   * Regenerated after every agent response; empty array clears them.
+   */
+  async setSuggestedPrompts(channelId: ChannelId, prompts: string[]): Promise<void> {
+    const now = new Date().toISOString();
+    await this.channels.updateOne({ channelId } as any, {
+      $set: {
+        'metadata.suggestedPrompts': prompts,
+        updatedAt: now,
+      },
+    });
+    log.info({ channelId, count: prompts.length }, 'Channel suggested prompts updated');
   }
 
   /**
@@ -779,44 +922,32 @@ export class ChannelManager {
   }
 
   /**
-   * Get channel details (channel + config + apps + recent messages)
-   */
-  async getChannelDetails(channelId: ChannelId): Promise<{
-    channel: Channel;
-    agentConfig: AgentConfig;
-    userApps: UserApp[];
-    recentMessages: Message[];
-  } | null> {
-    const channel = await this.getChannel(channelId);
-    if (!channel) return null;
-
-    const [agentConfig, userApps, recentMessages] = await Promise.all([
-      this.getAgentConfig(channelId),
-      this.getUserApps(channelId),
-      this.getRecentMessages(channelId, 50),
-    ]);
-
-    if (!agentConfig) {
-      throw new Error(`Agent config not found for channel ${channelId}`);
-    }
-
-    return {
-      channel,
-      agentConfig,
-      userApps,
-      recentMessages,
-    };
-  }
-
-  /**
    * Save message to database
    */
   async saveMessage(message: Message): Promise<void> {
-    await this.messages.insertOne(message as any);
-
-    // Update channel's updatedAt
-    await this.channels.updateOne({ channelId: message.channelId } as any, {
-      $set: { updatedAt: message.timestamp },
+    // Message + channel ordering fields in one transaction when available
+    // (MOD-4). $max keeps them monotonic: a late or out-of-order write can no
+    // longer move the conversation back in the list.
+    //
+    // Every message carries its channel's workspaceId: the future shard key
+    // (docs/architecture/sharding-by-workspace.md). Callers rarely have it at
+    // hand, so it is resolved from the channel (one indexed point read).
+    await withTransaction(this.db, async (session) => {
+      let workspaceId: string | undefined = (message as any).workspaceId;
+      if (!workspaceId) {
+        const channel = await this.channels.findOne(
+          { channelId: message.channelId } as any,
+          { projection: { workspaceId: 1 }, session },
+        );
+        workspaceId = (channel as any)?.workspaceId ?? undefined;
+      }
+      const doc = workspaceId ? { ...message, workspaceId } : message;
+      await this.messages.insertOne(doc as any, { session });
+      await this.channels.updateOne(
+        { channelId: message.channelId } as any,
+        { $max: { updatedAt: message.timestamp, lastMessageAt: message.timestamp } },
+        { session },
+      );
     });
   }
 
@@ -853,6 +984,21 @@ export class ChannelManager {
   }
 
   /**
+   * Field-level $set on `metadata.*` (same contract as
+   * updateMessageContentFields — never clobbers sibling metadata).
+   */
+  async updateMessageMetadataFields(
+    messageId: string,
+    fields: Record<string, any>,
+  ): Promise<void> {
+    const update: Record<string, any> = {};
+    for (const [key, value] of Object.entries(fields)) {
+      update[`metadata.${key}`] = value;
+    }
+    await this.messages.updateOne({ messageId } as any, { $set: update });
+  }
+
+  /**
    * Bump the message's `timestamp` to `Date.now()`. Used when a queued
    * user message transitions to `running` — the chat is sorted by
    * timestamp, so without this bump a reload would lay the bubbles in
@@ -877,16 +1023,22 @@ export class ChannelManager {
     const filter: any = { channelId };
 
     if (before) {
-      // Get message to use as cursor
-      const beforeMessage = await this.messages.findOne({ messageId: before } as any);
+      // Cursor message, looked up in THIS channel. Messages sharing the
+      // cursor's timestamp are ordered by messageId (MOD-9: filtering only on
+      // timestamp < cursor skipped them).
+      const beforeMessage = await this.messages.findOne({ messageId: before, channelId } as any);
       if (beforeMessage) {
-        filter.timestamp = { $lt: beforeMessage.timestamp };
+        filter.$or = [
+          { timestamp: { $lt: beforeMessage.timestamp } },
+          { timestamp: beforeMessage.timestamp, messageId: { $lt: beforeMessage.messageId } },
+        ];
       }
     }
 
+    // Served by channel_messages {channelId, timestamp desc, messageId desc}
     const messages = await this.messages
       .find(filter)
-      .sort({ timestamp: -1 })
+      .sort({ timestamp: -1, messageId: -1 })
       .limit(limit + 1)
       .toArray();
 
@@ -897,76 +1049,6 @@ export class ChannelManager {
       messages: results as Message[],
       hasMore,
     };
-  }
-
-  /**
-   * Get recent messages (for channel details)
-   */
-  private async getRecentMessages(channelId: ChannelId, limit: number): Promise<Message[]> {
-    const messages = await this.messages
-      .find({ channelId } as any)
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .toArray();
-
-    return messages.reverse() as Message[]; // Return in chronological order
-  }
-
-  /**
-   * Create default agent config for a channel
-   */
-  private async createDefaultAgentConfig(channelId: ChannelId, agentId: AgentId): Promise<void> {
-    // TODO: Load default config from agent definition
-    const config: AgentConfig = {
-      agentId,
-      coreVersion: 'base-v0.7',
-      config: {
-        systemPrompt: `You are ${agentId}, a helpful AI assistant.`,
-        personality: ['Professional', 'Helpful'],
-        preferences: {
-          responseStyle: 'concise',
-          temperature: 0.7,
-          maxTokens: 4000,
-        },
-      },
-    };
-
-    // Note: agentConfigs doesn't have channelId in the schema, but we need it for querying
-    // We'll extend the type or use a different approach
-    await this.agentConfigs.insertOne({ ...config, channelId } as any);
-  }
-
-  /**
-   * Get agent config for a channel
-   */
-  private async getAgentConfig(channelId: ChannelId): Promise<AgentConfig | null> {
-    const config = await this.agentConfigs.findOne({ channelId } as any);
-    return config as AgentConfig | null;
-  }
-
-  /**
-   * Get user apps available for a channel
-   */
-  private async getUserApps(channelId: ChannelId): Promise<UserApp[]> {
-    const channel = await this.getChannel(channelId);
-    if (!channel) return [];
-
-    // Get apps available for this channel:
-    // 1. Channel-specific apps
-    // 2. Agent-specific apps
-    // 3. Global apps
-    const apps = await this.userApps
-      .find({
-        $or: [
-          { channelId }, // Channel-specific
-          { agentId: channel.agentId, channelId: { $exists: false } }, // Agent-specific
-          { agentId: { $exists: false }, channelId: { $exists: false } }, // Global
-        ],
-        userId: channel.userId,
-      } as any)
-      .toArray();
-
-    return apps as UserApp[];
   }
 
   /**
@@ -1019,14 +1101,23 @@ export class ChannelManager {
   }
 
   /**
-   * Search messages across all user's channels
+   * Search messages across all channels visible to the user
    * Returns matches grouped by channel with snippets
-   * Note: Private channels are excluded from search
+   *
+   * Visibility follows the same model as listUserChannels: the user's own
+   * conversations (personal + legacy without scope) plus every shared
+   * conversation in the workspaces they belong to.
+   *
+   * @param options.includePersonal - When false, personal conversations are
+   *   excluded. Callers running inside a shared conversation MUST pass false:
+   *   the owner's personal history would otherwise leak into a
+   *   workspace-visible context. Defaults to true (user-facing search).
    */
   async searchMessages(
     userId: UserId,
     query: string,
     limit: number = 50,
+    options?: { includePersonal?: boolean },
   ): Promise<{
     results: Array<{
       channelId: string;
@@ -1042,21 +1133,47 @@ export class ChannelManager {
     }>;
     totalMatches: number;
   }> {
-    // Get all workspaces the user has access to
-    const accessibleWorkspaces = await this.workspaces
-      .find({
-        status: 'active',
-        $or: [{ ownerId: userId }, { 'members.userId': userId }],
-      })
-      .toArray();
-    const workspaceIds = accessibleWorkspaces.map((w) => w.workspaceId);
+    // ─── Search policy (documented per task spec) ────────────────────────────
+    // - Per-channel cap: MAX_MATCHES_PER_CHANNEL prevents one hot conversation
+    //   from eating the whole global limit and hiding every other channel.
+    // - Channel cap: MAX_CHANNELS cap keeps the payload bounded.
+    // - Multi-word: query is split on whitespace; a message must contain ALL
+    //   words (order-independent). Implemented as $and of per-word regexes.
+    // - Title search: channels whose metadata.name matches are included even
+    //   if no message matches, with a synthetic title-match snippet.
+    // - totalMatches: real count via countDocuments with the same filter —
+    //   not truncated by `limit`.
+    // - Regex vs $text: we keep case-insensitive $regex on content.text.
+    //   A $text index would give stemming + ranking but loses substring
+    //   matching (e.g. "port" matching "portal") and forces exact-token
+    //   semantics that feel broken in a chat UI. The channelId+timestamp
+    //   indexes bound the scan per channel, so the regex cost is acceptable
+    //   at current scale. Revisit if message volume grows an order of
+    //   magnitude.
+    const MAX_MATCHES_PER_CHANNEL = 5;
+    const MAX_CHANNELS = 20;
 
-    // Get all user's channels in accessible workspaces (excluding private ones)
+    // Get all workspaces the user has access to
+    const ownedWorkspaces = await this.workspaces
+      .find({ ownerId: userId, status: 'active' })
+      .toArray();
+    const ownedIds = ownedWorkspaces.map((w) => w.workspaceId);
+
+    // Member workspaces (via workspace_members collection — single source of truth).
+    const memberships = await this.db
+      .collection('workspace_members')
+      .find({ userId, status: { $ne: 'pending' } })
+      .toArray();
+    const memberWorkspaceIds = memberships.map((m) => m.workspaceId);
+
+    const workspaceIds = [...new Set([...ownedIds, ...memberWorkspaceIds])];
+
+    const includePersonal = options?.includePersonal !== false;
+    const scopeFilter = includePersonal
+      ? { $or: [{ userId, scope: { $ne: 'shared' } }, { scope: 'shared' }] }
+      : { scope: 'shared' };
     const userChannels = await this.channels
-      .find({
-        workspaceId: { $in: workspaceIds },
-        isPrivate: { $ne: true }, // Exclude private channels from search
-      } as any)
+      .find({ workspaceId: { $in: workspaceIds }, ...scopeFilter } as any)
       .toArray();
     const channelIds = userChannels.map((ch) => ch.channelId);
 
@@ -1064,23 +1181,43 @@ export class ChannelManager {
       return { results: [], totalMatches: 0 };
     }
 
-    // Search messages with text content matching the query
-    // Using regex for case-insensitive search
-    // Escape special regex characters in query
-    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const searchRegex = new RegExp(escapedQuery, 'i');
+    // Split query into words for multi-word AND matching. Single-word queries
+    // behave exactly as before (one regex).
+    const words = query
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
-    const matchingMessages = await this.messages
-      .find({
-        channelId: { $in: channelIds },
-        'content.type': 'text',
-        'content.text': { $regex: searchRegex },
-      } as any)
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .toArray();
+    if (words.length === 0) {
+      return { results: [], totalMatches: 0 };
+    }
 
-    // Group matches by channel
+    const wordRegexes = words.map((w) => new RegExp(w, 'i'));
+
+    // MUW-NFR-2: redacted messages never surface through search.
+    // Build message filter: all words must appear in content.text (AND).
+    const textConditions = wordRegexes.map((re) => ({ 'content.text': { $regex: re } }));
+    const searchQuery: any = {
+      channelId: { $in: channelIds },
+      'content.type': 'text',
+      ...(textConditions.length === 1
+        ? textConditions[0]
+        : { $and: textConditions }),
+    };
+    searchQuery.redacted = { $ne: true };
+
+    // Real total (not truncated by limit) + capped message fetch, in parallel.
+    const [totalMatches, matchingMessages] = await Promise.all([
+      this.messages.countDocuments(searchQuery as any),
+      this.messages
+        .find(searchQuery as any)
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .toArray(),
+    ]);
+
+    // Group matches by channel with per-channel cap.
     const channelMatches = new Map<
       string,
       Array<{
@@ -1092,12 +1229,28 @@ export class ChannelManager {
     >();
 
     for (const msg of matchingMessages) {
+      const existing = channelMatches.get(msg.channelId);
+      if (existing && existing.length >= MAX_MATCHES_PER_CHANNEL) continue;
+
       const text = (msg.content as any)?.text || '';
 
-      // Create snippet around the match (50 chars before and after)
-      const matchIndex = text.toLowerCase().indexOf(query.toLowerCase());
+      // Snippet around the FIRST word that matches (deterministic enough for UI).
+      const lower = text.toLowerCase();
+      let matchIndex = -1;
+      let matchLen = query.length;
+      for (const w of words) {
+        const idx = lower.indexOf(w.toLowerCase());
+        if (idx !== -1 && (matchIndex === -1 || idx < matchIndex)) {
+          matchIndex = idx;
+          matchLen = w.length;
+        }
+      }
+      if (matchIndex === -1) {
+        matchIndex = 0;
+        matchLen = Math.min(query.length, text.length);
+      }
       const start = Math.max(0, matchIndex - 50);
-      const end = Math.min(text.length, matchIndex + query.length + 50);
+      const end = Math.min(text.length, matchIndex + matchLen + 50);
       let snippet = text.substring(start, end);
       if (start > 0) snippet = '...' + snippet;
       if (end < text.length) snippet = snippet + '...';
@@ -1115,7 +1268,37 @@ export class ChannelManager {
       channelMatches.get(msg.channelId)!.push(match);
     }
 
-    // Build results with channel info
+    // Title matches: channels whose name matches ALL words but had no message
+    // matches. Uses the already-loaded userChannels — no extra query.
+    const titleMatchChannelIds = new Set<string>();
+    for (const ch of userChannels) {
+      if (channelMatches.has(ch.channelId)) continue;
+      const name = (ch.metadata?.name || '').toLowerCase();
+      if (!name) continue;
+      const allWordsInTitle = words.every((w) => name.includes(w.toLowerCase()));
+      if (allWordsInTitle) {
+        titleMatchChannelIds.add(ch.channelId);
+      }
+    }
+
+    // Collect all agentIds we need (message-match channels + title-match channels).
+    const involvedChannelIds = [
+      ...new Set([...channelMatches.keys(), ...titleMatchChannelIds]),
+    ].slice(0, MAX_CHANNELS);
+
+    const involvedChannels = involvedChannelIds
+      .map((id) => userChannels.find((ch) => ch.channelId === id))
+      .filter((ch): ch is NonNullable<typeof ch> => Boolean(ch));
+
+    const agentIds = [...new Set(involvedChannels.map((ch) => ch.agentId).filter(Boolean))];
+
+    // Single find for all agents — kills the N+1.
+    const agents = agentIds.length
+      ? await this.agents.find({ agentId: { $in: agentIds } } as any).toArray()
+      : [];
+    const agentById = new Map(agents.map((a: any) => [a.agentId, a]));
+
+    // Build results.
     const results: Array<{
       channelId: string;
       channelName: string;
@@ -1129,32 +1312,148 @@ export class ChannelManager {
       }>;
     }> = [];
 
-    for (const [channelId, matches] of channelMatches) {
-      const channel = userChannels.find((ch) => ch.channelId === channelId);
-      if (!channel) continue;
+    for (const channel of involvedChannels) {
+      const agent: any = agentById.get(channel.agentId);
+      const channelName = channel.metadata?.name || 'Chat';
+      const agentName = agent?.name || agent?.fullName || channel.agentId;
 
-      // Get agent name
-      const agent = await this.agents.findOne({ agentId: channel.agentId } as any);
+      const messageMatches = channelMatches.get(channel.channelId) || [];
 
-      results.push({
-        channelId,
-        channelName: channel.metadata?.name || 'Chat',
-        agentId: channel.agentId,
-        agentName: agent?.name || agent?.fullName || channel.agentId,
-        matches,
-      });
+      if (messageMatches.length > 0) {
+        results.push({
+          channelId: channel.channelId,
+          channelName,
+          agentId: channel.agentId,
+          agentName,
+          matches: messageMatches,
+        });
+      } else if (titleMatchChannelIds.has(channel.channelId)) {
+        // Synthetic title match so the UI has something to show.
+        results.push({
+          channelId: channel.channelId,
+          channelName,
+          agentId: channel.agentId,
+          agentName,
+          matches: [
+            {
+              messageId: '',
+              snippet: channelName,
+              timestamp: channel.updatedAt || channel.createdAt || '',
+              role: 'system' as const,
+            },
+          ],
+        });
+      }
     }
 
-    // Sort by most recent match
+    // Sort by most recent match.
     results.sort((a, b) => {
       const aTime = a.matches[0]?.timestamp || '';
       const bTime = b.matches[0]?.timestamp || '';
       return bTime.localeCompare(aTime);
     });
 
-    const totalMatches = matchingMessages.length;
-    log.debug({ query, totalMatches, channels: results.length }, 'Channel search results');
+    log.debug(
+      { query, totalMatches, channels: results.length, titleMatches: titleMatchChannelIds.size },
+      'Channel search results',
+    );
 
     return { results, totalMatches };
+  }
+
+  /**
+   * Move a channel (conversation) from one workspace to another.
+   *
+   * Updates the `workspaceId` on the channel document and on its messages,
+   * which carry it as the future shard key (docs/architecture/sharding-by-workspace.md).
+   * The channel moves first: a crash in between leaves messages behind with the
+   * old workspaceId, and re-running the move fixes them.
+   *
+   * Edge cases handled:
+   * - Agent may not exist in the target workspace → returned as a warning
+   *   (the conversation still moves; the agent assignment is preserved).
+   * - Board task linked via `channelId` → returned as a warning. The task
+   *   stays in its original board/project; the caller may want to unlink it.
+   *
+   * @returns The updated channel plus warnings about agent / board task.
+   */
+  async moveChannelToWorkspace(
+    channelId: ChannelId,
+    targetWorkspaceId: string,
+  ): Promise<{
+    channel: Channel | null;
+    warnings: string[];
+  }> {
+    const channel = await this.getChannel(channelId);
+    if (!channel) {
+      return { channel: null, warnings: [] };
+    }
+
+    const sourceWorkspaceId = channel.workspaceId;
+    const warnings: string[] = [];
+
+    // Nothing to do if already in the target workspace
+    if (sourceWorkspaceId === targetWorkspaceId) {
+      await this.messages.updateMany(
+        { channelId, workspaceId: { $ne: targetWorkspaceId } } as any,
+        { $set: { workspaceId: targetWorkspaceId } },
+      );
+      return { channel, warnings: ['Channel is already in the target workspace'] };
+    }
+
+    const now = new Date().toISOString();
+
+    // Check if the channel's agent exists in the target workspace
+    const agent = await this.agents.findOne({ agentId: channel.agentId } as any);
+    if (agent) {
+      const agentWorkspaceId = (agent as any).workspaceId;
+      if (agentWorkspaceId && agentWorkspaceId !== targetWorkspaceId) {
+        warnings.push(
+          `Agent "${agent.name || channel.agentId}" is not in the target workspace. ` +
+            `The conversation will still work, but the agent may not have access to ` +
+            `workspace-scoped resources (apps, files, etc.) in the new workspace.`,
+        );
+      }
+    }
+
+    // Check if there is a board task linked to this channel (tasks live in
+    // `tasks`; `board_tasks` never existed, so this warning could never fire — MOD-1)
+    const tasks = this.db.collection('tasks');
+    const linkedTask = await tasks.findOne({ channelId });
+    if (linkedTask) {
+      warnings.push(
+        `This conversation is linked to board task "${linkedTask.title || linkedTask.taskId}". ` +
+          `The task remains in its original board. Consider unlinking it if the task ` +
+          `should follow the conversation to the new workspace.`,
+      );
+    }
+
+    // Update the channel's workspaceId
+    const result = await this.channels.findOneAndUpdate(
+      { channelId },
+      {
+        $set: {
+          workspaceId: targetWorkspaceId,
+          updatedAt: now,
+        },
+      },
+      { returnDocument: 'after' },
+    );
+
+    if (!result) {
+      return { channel: null, warnings };
+    }
+
+    await this.messages.updateMany(
+      { channelId, workspaceId: { $ne: targetWorkspaceId } } as any,
+      { $set: { workspaceId: targetWorkspaceId } },
+    );
+
+    log.info(
+      { channelId, sourceWorkspaceId, targetWorkspaceId, warnings: warnings.length },
+      'Channel moved to new workspace',
+    );
+
+    return { channel: result, warnings };
   }
 }

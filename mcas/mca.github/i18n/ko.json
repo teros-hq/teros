@@ -412,43 +412,15 @@
     },
     "get-installation-context": {
       "name": "get-installation-context",
-      "description": "현재 사용자가 접근할 수 있는 Teros GitHub 앱 설치 목록을 나열하며, 접근 가능한 리포지토리, 부여된 권한 및 관리/설치 URL을 포함합니다."
+      "description": "인증된 사용자가 접근할 수 있는 Teros GitHub 앱 설치 목록(자신의 계정 + 조직/협업)을 나열합니다 — 이것은 사용자의 신원이 아니며, 신원 확인에는 get-user를 사용하십시오. 접근 가능한 리포지토리, 부여된 권한 및 관리/설치 URL을 포함합니다."
     },
     "get-user": {
       "name": "get-user",
-      "description": "현재 사용자가 접근할 수 있는 Teros GitHub 앱 설치 목록을 나열하며, 접근 가능한 리포지토리, 부여된 권한 및 관리/설치 URL을 포함합니다."
-    },
-    "create-check-run": {
-      "name": "create-check-run",
-      "description": "커밋에 대한 체크 실행을 생성합니다 (GitHub 앱 전용). 체크는 PR/커밋 사이드바에 나타납니다. 체크가 실행되는 동안 status:in_progress를 사용하고, 완료되면 conclusion으로 업데이트하십시오.",
-      "params": {
-        "owner": "리포지토리 소유자",
-        "repo": "리포지토리 이름",
-        "name": "체크의 표시 이름 (예: \"Teros review\")",
-        "head_sha": "체크가 적용되는 커밋 SHA",
-        "status": "상태 (기본값: queued)",
-        "conclusion": "상태가 `completed`일 때 필요합니다.",
-        "output": "제목, 요약 (마크다운), 선택적 텍스트 본문이 포함된 풍부한 출력",
-        "details_url": "체크에 대한 더 많은 세부 정보를 포함하는 선택적 URL (체크에서 링크로 표시됨)",
-        "external_id": "앱에서 제어하는 참조 ID (앱 측의 멱등성)"
-      }
-    },
-    "update-check-run": {
-      "name": "update-check-run",
-      "description": "기존 체크 실행을 업데이트합니다 — 일반적으로 작업이 완료되면 status:completed + conclusion을 설정합니다. 변경하려는 필드만 전달하십시오.",
-      "params": {
-        "owner": "리포지토리 소유자",
-        "repo": "리포지토리 이름",
-        "check_run_id": "체크 실행 ID (create-check-run에서 반환됨)",
-        "name": "새 표시 이름 (선택 사항)",
-        "status": "새 상태",
-        "conclusion": "상태가 `completed`일 때 필요합니다.",
-        "output": "업데이트된 출력"
-      }
+      "description": "현재 토큰의 인증된 GitHub 사용자를 반환합니다 (실제 신원: 로그인, 이름, 프로필 URL, 계정 유형). \"내가 누구인지 / 어떤 계정이 연결되어 있는지\"를 확인하려면 get-installation-context가 아닌 이 도구를 사용하십시오."
     },
     "get-rate-limit": {
       "name": "get-rate-limit",
-      "description": "설치 토큰에 대한 현재 GitHub API 속도 제한 예산을 읽습니다. 각 버킷에 대해 {limit, remaining, reset, used}를 반환합니다 — core, search, graphql, code_search."
+      "description": "인증된 사용자 토큰에 대한 현재 GitHub API 속도 제한 예산을 읽습니다. 각 버킷에 대해 {limit, remaining, reset, used}를 반환합니다 — core, search, graphql, code_search."
     },
     "dispatch-event": {
       "name": "dispatch-event",
@@ -462,19 +434,20 @@
     },
     "clone-repo": {
       "name": "clone-repo",
-      "description": "GitHub 리포지토리를 로컬 파일 시스템에 복제합니다 (Teros GitHub 앱의 현재 사용자 액세스 토큰을 사용합니다). {path, branch, sha, recentCommits[]}를 반환합니다.",
+      "description": "GitHub 리포지토리를 로컬 파일 시스템에 복제합니다 (Teros GitHub 앱의 현재 사용자 액세스 토큰을 사용합니다). 멱등적: 대상에 같은 리포지토리의 정상 클론이 이미 있으면 그대로 반환합니다 (`reused: true`, fetch나 체크아웃 없음). 중단된 복제로 손상된 클론은 교체됩니다. {path, branch, sha, recentCommits[]}를 반환합니다.",
       "params": {
         "owner": "리포지토리 소유자 (사용자 또는 조직)",
         "repo": "리포지토리 이름",
-        "destination": "리포지토리가 복제될 로컬 경로 (기본값: /workspace/<repo>)",
-        "branch": "복제 후 체크아웃할 브랜치 (기본값: 기본 브랜치)"
+        "destination": "리포지토리가 복제될 로컬 경로 (기본값: <workspace>/<owner>/<repo>, 또는 같은 리포지토리의 기존 <workspace>/<repo> 클론)",
+        "branch": "복제 후 체크아웃할 브랜치 (기본값: 기본 브랜치)",
+        "depth": "최근 N개 커밋만 얕은 복제합니다 (단일 브랜치를 의미하며, 다른 브랜치는 나중에 git-fetch로 가져옵니다). 시간 초과되는 큰 리포지토리에 사용하세요."
       }
     },
     "git-status": {
       "name": "git-status",
       "description": "로컬 git 상태: 브랜치, 업스트림 대비 앞서거나 뒤쳐진 상태, 스테이징된, 수정된, 추적되지 않은, 충돌된 파일 목록.",
       "params": {
-        "repoPath": "복제된 리포지토리에 대한 절대 경로. 생략 시 `<workspace>/<repo>`로 해결됩니다.",
+        "repoPath": "복제된 리포지토리에 대한 절대 경로. 생략 시 `<workspace>/<owner>/<repo>` (또는 기존 `<workspace>/<repo>` 클론)로 해결됩니다.",
         "owner": "리포지토리 소유자 (기본 repoPath를 해결하는 데 사용됨).",
         "repo": "리포지토리 이름 (기본 repoPath를 해결하는 데 사용됨)."
       }
@@ -499,7 +472,7 @@
     },
     "git-push": {
       "name": "git-push",
-      "description": "원격으로 커밋을 푸시합니다. `force: true`는 `--force-with-lease`를 사용하고; `forceUnsafe: true`는 원시 `--force`를 사용합니다 (파괴적).",
+      "description": "원격으로 커밋을 푸시합니다. `force: true`는 `--force-with-lease`를 사용하고; `forceUnsafe: true`는 원시 `--force`를 사용합니다 (파괴적). GitHub는 .github/workflows/ 아래 파일을 추가하거나 변경하는 푸시를 거부합니다 (Teros GitHub 앱에 Workflows 권한이 없음): 워크플로 변경은 푸시할 커밋에서 제외하세요.",
       "params": {
         "remote": "원격 이름. 기본값은 `origin`.",
         "branch": "푸시할 로컬 브랜치. 기본값은 현재 브랜치.",
@@ -668,10 +641,10 @@
     },
     "git-remote": {
       "name": "git-remote",
-      "description": "git 원격을 나열, 추가, 제거 또는 업데이트합니다. `list`는 이름 + 가져오기/푸시 URL을 반환합니다.",
+      "description": "git 원격을 나열, 추가, 제거 또는 업데이트합니다. `list`는 이름 + 가져오기/푸시 URL을 반환합니다. `add`/`set-url`은 깨끗한 https://github.com/<owner>/<repo>(.git) URL만 허용합니다 — 자격 증명 포함 불가, 다른 호스트 불가.",
       "params": {
         "name": "원격 이름 (추가/제거/설정 URL에 필요).",
-        "url": "원격 URL (추가/설정 URL에 필요)."
+        "url": "원격 URL (추가/설정 URL에 필요). https://github.com/<owner>/<repo>(.git)이어야 합니다."
       }
     },
     "git-blame": {
@@ -706,6 +679,12 @@
   "name": "GitHub",
   "description": "GitHub 리포지토리 관리 + 로컬 git 개발 환경 - 리포지토리, 이슈, 풀 리퀘스트, 액션, 커밋, 브랜치, 릴리스, 복제된 리포지토리에서의 로컬 git 작업 (상태/추가/커밋/푸시/체크아웃). Teros GitHub 앱을 통한 사용자-서버 OAuth로 인증 (각 사용자는 자신의 GitHub 아이덴티티로 작업합니다).",
   "changelog": [
+    {
+      "notes": "Git 안정성 릴리스 (Discord 버그: 대부분의 git 작업에서 GIT_TIMEOUT, 손상/공유된 클론, 워크플로 푸시). git이 비동기로 실행되어 느린 명령 하나가 더 이상 모든 에이전트의 컨테이너를 멈추지 않으며, 실행 실패(git 없음, 출력 초과, 리소스 부족, OOM 종료)가 모두 GIT_TIMEOUT으로 표시되지 않고 분류됩니다. 작업별 타임아웃(로컬 90초, 네트워크 110초)과 함께 오류에 조치 방법과 git stderr가 포함됩니다. 변경하는 git 도구는 컨테이너 간에 공유되는 리포지토리별 잠금을 사용하고 git 잠금 파일 경합은 재시도됩니다. clone-repo는 <workspace>/<owner>/<repo>에 복제하고, 정상 클론을 재사용하며, 중단된 복제로 손상된 클론을 교체(삭제하지 않고 옆으로 이동)하고, 부분 클론을 남기지 않으며, depth를 지원합니다. Workflows 권한 부족으로 거부된 푸시, 403, 접근 불가 리포지토리는 각각 설명된 오류를 반환합니다. 앱 권한은 변경되지 않았습니다."
+    },
+    {
+      "notes": "하드닝 + 정확성 릴리스: get-user가 설치 컨텍스트 대신 실제 토큰 아이덴티티(GET /user)를 반환합니다. get-installation-context는 조직 설치에 대해 조직 범위의 manage_url을 반환하며, create-repo는 administration:write로 작동합니다(App 권한 정렬). 보안: 클론 시 사용자 토큰을 .git/config(http.extraheader)에 저장하지 않고 기존 원격 저장소를 정리하며, git-remote는 깨끗한 github.com HTTPS URL만 허용하고, REST 도구 URL은 owner/repo/org 경로 세그먼트를 검증하며, 에이전트가 제공한 refs는 git 옵션 인젝션에 대해 검증되고, 클론 대상은 워크스페이스 볼륨으로 제한됩니다. 안정성: githubRequest에 타임아웃 + 재시도/백오프(AbortController, 429 Retry-After, 5xx)가 추가되었습니다. 최소 권한 App 권한(members/workflows 제거)과 작동하지 않던 create-check-run/update-check-run 도구 제거(App에 checks 권한이 없어 항상 403)."
+    },
     {
       "notes": "리포지토리, 이슈, 풀 리퀘스트 및 리뷰 관리, 액션 및 릴리스 실행, 복제된 리포지토리에서의 전체 로컬 git"
     }

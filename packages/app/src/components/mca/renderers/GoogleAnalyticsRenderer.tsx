@@ -16,6 +16,7 @@ import {
   ErrorBlock,
   JsonPreview,
   ToolCallCard,
+  useColors,
 } from '../primitives';
 import {
   BatchRunReportsRenderer,
@@ -69,6 +70,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // ============================================================================
 
 function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererProps) {
+  const c = useColors();
   const shortName = getShortToolName(toolName);
 
   const badge = __DEV__ ? (
@@ -99,7 +101,7 @@ function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererP
           <Text color={globalColors.badgeError.text} fontSize={10} fontWeight="600">
             [dev] Missing sub-renderer for "{shortName}"
           </Text>
-          <Text color={globalColors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             Register it in the RENDERERS map in GoogleAnalyticsRenderer.tsx.
           </Text>
         </YStack>

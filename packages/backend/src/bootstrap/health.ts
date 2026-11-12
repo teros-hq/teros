@@ -25,6 +25,8 @@ export interface HealthReport {
     timestamp: string
     connections: number
     mcaManager: 'active' | 'disabled'
+    /** Running commit (TEROS_RELEASE), null when the process was not started from a release. @spec DEP-REQ-7 */
+    release: string | null
   }
 }
 
@@ -32,6 +34,8 @@ export interface HealthDeps {
   db: Pick<Db, 'command'>
   sessionManager: Pick<SessionManager, 'getConnectionCount'>
   mcaManager: McaManager | null
+  /** The commit this process runs (TEROS_RELEASE). Optional so older call sites keep working. */
+  release?: string | null
 }
 
 /** Build the /health report by probing critical dependencies. Never throws. */
@@ -56,6 +60,7 @@ export async function buildHealthReport(deps: HealthDeps): Promise<HealthReport>
       timestamp: new Date().toISOString(),
       connections: deps.sessionManager.getConnectionCount(),
       mcaManager: deps.mcaManager ? 'active' : 'disabled',
+      release: deps.release ?? null,
     },
   }
 }

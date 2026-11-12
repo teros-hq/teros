@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const createPrReview: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -52,6 +52,7 @@ export const createPrReview: ToolConfig = {
       commit_id?: string;
       comments?: Array<{ path: string; position?: number; line?: number; body: string }>;
     };
+    assertOwnerRepo(owner, repo);
     if ((event === 'REQUEST_CHANGES' || event === 'COMMENT') && (!body || body.trim() === '')) {
       throw new Error(
         `\`body\` is required when event is ${event}. Provide a non-empty markdown body.`,

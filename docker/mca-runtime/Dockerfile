@@ -19,7 +19,7 @@
 # ─────────────────────────────────────────────────────────────────
 # Stage 1 — builder: bake @teros packages + the union of MCA deps
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293 AS builder
 
 # Toolchain some native modules need to build (node-gyp etc.)
 RUN apk add --no-cache python3 make g++ bash
@@ -30,6 +30,7 @@ WORKDIR /build
 # in git, so we compile it here instead of trusting the host's build output) ---
 COPY packages/shared  /opt/teros-sdk/shared
 COPY packages/mca-sdk /opt/teros-sdk/mca-sdk
+COPY packages/workflows /opt/teros-sdk/workflows
 
 # shared: install (with dev, for tsc) → build → prune to prod deps
 RUN cd /opt/teros-sdk/shared && \
@@ -50,6 +51,17 @@ RUN cd /opt/teros-sdk/mca-sdk && \
     mkdir -p node_modules/@teros && \
     ln -sfn /opt/teros-sdk/shared node_modules/@teros/shared
 
+
+# workflows depends on @teros/shared → strip it, install the rest, symlink, build, prune
+RUN cd /opt/teros-sdk/workflows && \
+    node -e "const p=require('./package.json'); if(p.dependencies) delete p.dependencies['@teros/shared']; require('fs').writeFileSync('package.json', JSON.stringify(p,null,2))" && \
+    npm install --no-audit --no-fund && \
+    mkdir -p node_modules/@teros && \
+    ln -sfn /opt/teros-sdk/shared node_modules/@teros/shared && \
+    npm run build && \
+    npm prune --omit=dev && \
+    mkdir -p node_modules/@teros && \
+    ln -sfn /opt/teros-sdk/shared node_modules/@teros/shared
 # --- Union of every MCA's external deps -> /opt/mca-deps/node_modules ---
 # The union manifest is generated on the host (scripts/gen-mca-union-deps.mjs,
 # invoked by build.sh / deploy-server.sh) and COPYd as a SINGLE file. This keeps
@@ -60,12 +72,13 @@ COPY docker/mca-runtime/deps.generated.json /opt/mca-deps/package.json
 RUN cd /opt/mca-deps && npm install --omit=dev --no-audit --no-fund && \
     mkdir -p node_modules/@teros && \
     ln -sfn /opt/teros-sdk/shared  node_modules/@teros/shared && \
-    ln -sfn /opt/teros-sdk/mca-sdk node_modules/@teros/mca-sdk
+    ln -sfn /opt/teros-sdk/mca-sdk node_modules/@teros/mca-sdk && \
+    ln -sfn /opt/teros-sdk/workflows node_modules/@teros/workflows
 
 # ─────────────────────────────────────────────────────────────────
 # Stage 2 — runtime
 # ─────────────────────────────────────────────────────────────────
-FROM node:20-alpine
+FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
 
 RUN apk add --no-cache bash curl git openssh-client && rm -rf /var/cache/apk/*
 RUN npm install -g tsx typescript

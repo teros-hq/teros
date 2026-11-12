@@ -21,6 +21,7 @@ import {
   ResourceCard,
   colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
@@ -51,6 +52,7 @@ export function CreateThreadRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<unknown>(output) : null;
   const t = unwrap<CanvaThread>(parsed, 'thread');
 
@@ -76,7 +78,7 @@ export function CreateThreadRenderer({
         >
           {t.messagePlaintext ? (
             <YStack gap={4}>
-              <Text color={globalColors.secondary} fontSize={9} fontFamily="$mono" textTransform="uppercase">
+              <Text color={c.text2} fontSize={9} fontFamily="$mono" textTransform="uppercase">
                 message
               </Text>
               <MarkdownContent text={t.messagePlaintext} />
@@ -144,6 +146,10 @@ export function ListRepliesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
+  // Hoisted above the conditional JSX below: hooks must run unconditionally,
+  // or a status/items change flips the branch and the hook count with it.
+  const scrollStyle = useScrollStyle(320);
   const parsed = output ? parseOutput<unknown>(output) : null;
   const { items, total, nextCursor } = unwrapList<CanvaReply>(parsed, 'replies');
 
@@ -159,7 +165,7 @@ export function ListRepliesRenderer({
           {items.length === 0 ? (
             <Empty message="No replies yet" />
           ) : (
-            <ScrollView style={useScrollStyle(320)} showsVerticalScrollIndicator>
+            <ScrollView style={scrollStyle} showsVerticalScrollIndicator>
               <YStack gap={6}>
                 {items.map((r) => (
                   <YStack
@@ -173,7 +179,7 @@ export function ListRepliesRenderer({
                   >
                     <XStack gap={6} alignItems="center">
                       <ReplyIcon size={10} color={CANVA_BRAND.purple} />
-                      <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                      <Text color={c.text3} fontSize={9} fontFamily="$mono">
                         {r.authorUserId ? shortId(r.authorUserId) : '—'} · {formatTimestamp(r.createdAt)}
                       </Text>
                     </XStack>
@@ -186,12 +192,12 @@ export function ListRepliesRenderer({
           {(typeof total === 'number' || nextCursor) && (
             <XStack gap={6} justifyContent="flex-end" paddingHorizontal={4} paddingTop={2}>
               {typeof total === 'number' && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   {total} shown
                 </Text>
               )}
               {nextCursor && (
-                <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                <Text color={c.text3} fontSize={9} fontFamily="$mono">
                   · cursor available
                 </Text>
               )}

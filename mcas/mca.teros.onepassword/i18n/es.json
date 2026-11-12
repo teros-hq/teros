@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "-health-check": {
+      "name": "-health-check",
+      "description": "Verificación interna. Comprueba el token de Service Account de 1Password y la conectividad listando los vaults."
+    },
+    "list-vaults": {
+      "name": "list-vaults",
+      "description": "Lista los vaults de 1Password accesibles para el Service Account conectado. Devuelve id, título, descripción, tipo y número de items activos de cada vault. Úsala primero para obtener el vault id de list-items.",
+      "params": {}
+    },
+    "list-items": {
+      "name": "list-items",
+      "description": "Lista los items de un vault de 1Password. Devuelve id, título, categoría, tags y estado (sin valores de campos). Usa list-vaults para el vault id, y esta tool para el item id de get-item-fields.",
+      "params": {
+        "vaultId": "El ID del vault del que listar los items (sácalo de list-vaults).",
+        "includeArchived": "Incluir items archivados en el listado (por defecto: false)."
+      }
+    },
+    "get-item-fields": {
+      "name": "get-item-fields",
+      "description": "Obtiene los campos de un item de 1Password, incluyendo los valores de los campos secretos (contraseñas, API keys, credenciales). Usa list-items para el item id. SEGURIDAD: trata los valores devueltos como sensibles — úsalos para la acción pedida (p. ej. escribir un fichero de secretos) y no los repitas, loguees ni persistas en ningún otro sitio.",
+      "params": {
+        "vaultId": "El ID del vault que contiene el item.",
+        "itemId": "El ID del item a leer (sácalo de list-items)."
+      }
+    }
+  }
+}

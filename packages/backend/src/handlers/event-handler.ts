@@ -29,7 +29,12 @@ export interface ScheduledEvent {
     | 'task.started'
     | 'task.state_changed'
     | 'task.progress_note_added'
-    | 'task.dependency_cancelled';
+    | 'task.dependency_cancelled'
+    // T-REM-7: Teros Remote device connectivity (offline / back online)
+    | 'remote.device_offline'
+    | 'remote.device_online'
+    // VOICE-NOTIFY-1: ElevenLabs post-call transcription — wakes the agent
+    | 'voice.post_call';
   wakeUpAgent?: boolean; // If true, trigger agent to respond to the event
   metadata?: {
     source?: string;
@@ -48,6 +53,15 @@ export interface ScheduledEvent {
     agentId?: string;
     agentName?: string;
     agentAvatar?: string;
+    /**
+     * Who caused this event (spread from the board event payload by
+     * BoardSubscriptionService._dispatch). Used by the self-wake guard below —
+     * an agent must never be woken by an event it produced itself, otherwise
+     * runner feedback loops (move → event → self-wake → react → move …) occur.
+     */
+    actorAgentId?: string;
+    /** Human user actor — manager actions carry the userId, not an agentId. */
+    actorUserId?: string;
     // For channel_* observer events (observed channel → observer channel)
     observedChannelId?: string;
     observedChannelName?: string;
@@ -63,6 +77,10 @@ export interface ScheduledEvent {
     noteText?: string;
     // For task.dependency_cancelled events
     orphanTaskIds?: string[];
+    // For automate runner events (channel-event action)
+    automateStarterId?: string;
+    automateTriggerSource?: string;
+    automateEventTopic?: string;
   };
 }
 
@@ -109,6 +127,14 @@ const EVENT_TRIGGER_KIND: Record<
   'task.state_changed': 'event_subscription',
   'task.progress_note_added': 'event_subscription',
   'task.dependency_cancelled': 'event_subscription',
+  // T-REM-7: remote device connectivity — informational, not a wake source.
+  // The agent that triggered the tool call already got the structured error;
+  // waking it again would double the turn.
+  'remote.device_offline': 'event_subscription',
+  'remote.device_online': 'event_subscription',
+  // VOICE-NOTIFY-1: post-call event WAKES the agent to report the call
+  // outcome — a wake source, unlike the informational remote events above.
+  'voice.post_call': 'event_subscription',
 };
 
 export function mapEventTypeToTriggerKind(
@@ -186,7 +212,13 @@ export class EventHandler {
                                 ? `🔄 Task State Changed: ${message}`
                                 : eventType === 'task.progress_note_added'
                                   ? `📝 Progress Note: ${message}`
-                                  : `🔄 Scheduled: ${message}`;
+                                  : eventType === 'remote.device_offline'
+                                    ? `⚠️ Remote Offline: ${message}`
+                                    : eventType === 'remote.device_online'
+                                      ? `✅ Remote Online: ${message}`
+                                      : eventType === 'voice.post_call'
+                                        ? `📞 Call Finished: ${message}`
+                                        : `🔄 Scheduled: ${message}`;
 
       // Create the event message for storage (as a message in the conversation)
       // Note: sender is omitted (not a string!) so the message passes MessageSchema
@@ -237,8 +269,28 @@ export class EventHandler {
 
       console.log(`✅ Event injected into channel ${channelId}: ${eventType}`);
 
-      // If wakeUpAgent is true, trigger the agent to respond
-      if (wakeUpAgent && this.agentWakeUpCallback) {
+      // ── Self-wake guard ────────────────────────────────────────────────
+      // An agent must not be woken by an event it caused itself: e.g. a runner
+      // does move-my-task → board.task_moved → it would be woken → reacts →
+      // moves something else → … The event is STILL injected and persisted
+      // above (the channel sees it); only the wake is suppressed.
+      // Managers populate `actorUserId` only, so a manager agent acting through
+      // its user session still wakes every subscribed channel — only the
+      // runner self-loop (the critical one) is covered by `actorAgentId`.
+      // @todo nira - 2026.09.24 : also cover manager self-wake by reverse-mapping
+      // actorUserId → agentId (agents store their userId); needs a reliable
+      // userId→agentId lookup at this point in the event path.
+      const actorAgentId = metadata?.actorAgentId;
+      const selfWake = !!actorAgentId && actorAgentId === channel.agentId;
+      if (selfWake) {
+        console.log(
+          `🔕 Self-wake guard: skipping wake for channel ${channelId} (actor ${actorAgentId})`,
+        );
+      }
+
+      // If wakeUpAgent is true (and the actor isn't the channel's own agent),
+      // trigger the agent to respond
+      if (wakeUpAgent && !selfWake && this.agentWakeUpCallback) {
         const agentPrompt = this.buildAgentPrompt(eventType, message, metadata);
 
         console.log(`🔔 Waking up agent for channel ${channelId}`);
@@ -311,6 +363,13 @@ export class EventHandler {
       const { taskTitle, orphanTaskIds } = metadata ?? {};
       const orphanCount = orphanTaskIds?.length ?? 0;
       return `[SYSTEM EVENT - BOARD]\nTask "${taskTitle ?? 'unknown'}" was cancelled. ${orphanCount} dependent task(s) are now orphaned and require your review.`;
+    } else if (eventType === 'remote.device_offline') {
+      // T-REM-7: the agent that triggered the tool call already received the
+      // structured MACHINE_UNREACHABLE error; this prompt is only used when
+      // the event is configured to wake the agent (default: no wake).
+      return `[SYSTEM EVENT - REMOTE OFFLINE]\n${message}\n\nThe remote machine is unreachable. The user has been notified in the channel. Do not retry immediately — wait for the device to come back online.`;
+    } else if (eventType === 'remote.device_online') {
+      return `[SYSTEM EVENT - REMOTE ONLINE]\n${message}\n\nThe remote machine is back online. Retrying the previous tool call is safe now.`;
     }
 
     return `[SYSTEM EVENT]\n${message}`;

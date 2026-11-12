@@ -131,42 +131,57 @@ export class TranscriptionProviderFactory {
   }
 
   /**
-   * Check what credentials are available via SecretsManager
+   * Get the configured provider from .secrets/system/transcription.json.
+   * The config is the single source of truth — no auto-detection, no fallbacks.
+   * Throws if no provider is configured.
    */
-  static hasCredentials(secretsManager: SecretsManager): {
-    whisper: boolean
-    elevenlabs: boolean
-  } {
-    return {
-      whisper: !!secretsManager.system("openai")?.apiKey,
-      elevenlabs: !!secretsManager.system("elevenlabs")?.apiKey,
-    }
-  }
-
-  /**
-   * Get the default provider based on available credentials.
-   * Reads provider preference from .secrets/system/transcription.json,
-   * then falls back to auto-detection based on available keys.
-   */
-  static getDefaultProvider(secretsManager: SecretsManager): TranscriptionProviderType | null {
-    // 1. Explicit preference from secrets
+  static getDefaultProvider(secretsManager: SecretsManager): TranscriptionProviderType {
     const transcriptionConfig = secretsManager.system("transcription")
     if (transcriptionConfig?.provider) {
       return transcriptionConfig.provider
     }
 
-    // 2. Auto-detect from available keys
-    const creds = TranscriptionProviderFactory.hasCredentials(secretsManager)
+    throw new Error(
+      "No transcription provider configured.\n" +
+        'Set .secrets/system/transcription.json: { "provider": "elevenlabs" | "whisper" }',
+    )
+  }
 
-    // Prefer ElevenLabs for better language detection
-    if (creds.elevenlabs) {
-      return "elevenlabs"
+  /**
+   * Get the default language code from transcription config.
+   * Reads from .secrets/system/transcription.json → languageCode.
+   * When set (e.g. "es"), the transcription provider will be told to use
+   * that language instead of auto-detecting — prevents Whisper from
+   * misidentifying Spanish as Catalan/Galician/Portuguese.
+   * Returns null when not configured (auto-detection mode).
+   */
+  static getDefaultLanguageCode(secretsManager: SecretsManager): string | null {
+    const transcriptionConfig = secretsManager.system("transcription")
+    if (transcriptionConfig?.languageCode) {
+      return transcriptionConfig.languageCode
     }
+    return null
+  }
 
-    if (creds.whisper) {
-      return "whisper"
+  /**
+   * Get the default custom vocabulary from transcription config.
+   * Reads from .secrets/system/transcription.json → vocabulary (string[]).
+   * These are domain-specific terms (product names, acronyms, proper nouns)
+   * that should be recognized correctly during transcription.
+   *
+   * For Whisper: joined into a comma-separated prompt string.
+   * For ElevenLabs Scribe: passed as individual keyterms entries.
+   *
+   * Returns null when not configured (no vocabulary biasing).
+   */
+  static getDefaultVocabulary(secretsManager: SecretsManager): string[] | null {
+    const transcriptionConfig = secretsManager.system("transcription")
+    if (Array.isArray(transcriptionConfig?.vocabulary)) {
+      const terms = transcriptionConfig.vocabulary.filter(
+        (t: unknown): t is string => typeof t === "string" && t.trim().length > 0,
+      )
+      return terms.length > 0 ? terms : null
     }
-
     return null
   }
 }

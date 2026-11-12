@@ -121,17 +121,89 @@ export interface BillingTeam {
   updatedAt?: string
 }
 
+export type TerosUpstream = 'fireworks' | 'together' | 'helmcode'
+export type TerosSize = 'l' | 'm' | 's'
+export type TerosReasoningEffort = 'none' | 'low' | 'medium' | 'high'
+export type TerosFailoverMode = 'off' | 'on-error' | 'cutover'
+/** Latency lane (TLANE-REQ-1): a person waits (`interactive`) or nobody watches (`background`). */
+export type TerosLane = 'interactive' | 'background'
+
+/** One size's route (TPROV-REQ-4). */
+export interface TerosSizeRoute {
+  upstream: TerosUpstream
+  modelString: string
+  reasoningEffort: TerosReasoningEffort
+}
+
+/** The two routes of a size, one per lane (TLANE-REQ-5). */
+export interface TerosSizeRoutes {
+  interactive: TerosSizeRoute
+  background: TerosSizeRoute
+}
+
+export interface TerosFailoverSetting {
+  mode: TerosFailoverMode
+  upstream: TerosUpstream
+}
+
+/** A Teros provider config on the wire — never carries a secret. */
 export interface TerosProviderConfig {
   _id: string
   name: string
   isDefault: boolean
+  hasFireworksKey?: boolean
+  sizes: Record<TerosSize, TerosSizeRoutes>
+  failover: TerosFailoverSetting
   createdAt: string
   updatedAt: string
 }
 
+/** An upstream model the admin can pick for a size (TPROV-REQ-3). */
+export interface TerosUpstreamModel {
+  modelString: string
+  name: string
+  family: string
+  vision: boolean
+  efforts: TerosReasoningEffort[]
+}
+
+/** admin.teros-upstreams (TPROV-REQ-11). */
+export interface TerosUpstreamInfo {
+  upstream: TerosUpstream
+  baseUrl: string
+  hasSecret: boolean
+  retention: 'zdr' | 'retains' | 'trains'
+  models: TerosUpstreamModel[]
+}
+
+/** admin.test-teros-size (TPROV-REQ-10). */
+export interface TerosSizeTestResult {
+  ok: boolean
+  /** The lane whose route was tested (TLANE-REQ-10). */
+  lane?: TerosLane
+  upstream: TerosUpstream
+  model: string
+  reasoningEffort?: TerosReasoningEffort
+  latencyMs?: number
+  text?: string
+  error?: string
+  image?: {
+    model: string
+    /** Did the size's own model describe the image? */
+    vision: boolean | null
+    /** What the catalogue says about that model. */
+    catalogueVision: boolean
+    /** Whether the router would send an image request elsewhere (stale catalogue flag if vision is true). */
+    rerouted: boolean
+    reroutedTo?: string
+    text: string
+    error?: string
+  }
+}
+
 /**
  * A plan row from admin.list-plans — the FULL catalogue (incl. hidden internal
- * tiers like plan_unlimited that billing.list-plans filters out). `isPublic`
+ * tiers, isPublic:false, that billing.list-plans filters out). `isPublic`
  * lets the admin picker mark the hidden ones.
  */
 export interface AdminPlanOption {
@@ -882,6 +954,15 @@ export class AdminApi {
     return this.transport.request('admin.grant-access', { targetUserId })
   }
 
+  /**
+   * Re-authenticate for sensitive operations (step-up auth, Req 2.4.1).
+   * Accepts the user's password (no MFA) or a TOTP code (MFA enabled).
+   * On success, grants a 10-minute window during which sensitive ops are allowed.
+   */
+  verifyStepUp(data: { password?: string; mfaCode?: string }): Promise<{ verified: boolean; expiresAt: string }> {
+    return this.transport.request('admin.verify-step-up', data)
+  }
+
   /** Update a user's status (admin only) */
   updateUserStatus(
     targetUserId: string,
@@ -975,7 +1056,7 @@ export class AdminApi {
 
   /**
    * Full plan catalogue incl. hidden internal tiers (admin only). The admin plan
-   * picker needs the hidden tiers (e.g. plan_unlimited) that the user-facing
+   * picker needs any hidden tier (isPublic:false) that the user-facing
    * billing.list-plans filters out by isPublic.
    */
   listPlans(): Promise<{ plans: AdminPlanOption[] }> {
@@ -1036,24 +1117,41 @@ export class AdminApi {
     return this.transport.request('admin.list-teros-provider-configs')
   }
 
-  /** Create a new Teros provider config (always non-default) */
+  /** Create a new Teros provider config (always non-default; routes default to today's reality) */
   createTerosProviderConfig(
     name: string,
-    fireworksApiKey: string,
+    fireworksApiKey?: string,
+    routing?: { sizes: Record<TerosSize, TerosSizeRoutes>; failover: TerosFailoverSetting },
   ): Promise<{ config: TerosProviderConfig }> {
-    return this.transport.request('admin.create-teros-provider-config', { name, fireworksApiKey })
+    return this.transport.request('admin.create-teros-provider-config', {
+      name,
+      ...(fireworksApiKey ? { fireworksApiKey } : {}),
+      ...(routing ?? {}),
+    })
   }
 
-  /** Update a Teros provider config */
+  /** Update a Teros provider config: name, legacy key, or the size routes + failover (TPROV-REQ-11) */
   updateTerosProviderConfig(
     configId: string,
     updates: {
       name?: string
       fireworksApiKey?: string
       isDefault?: boolean
+      sizes?: Record<TerosSize, TerosSizeRoutes>
+      failover?: TerosFailoverSetting
     },
   ): Promise<{ config: TerosProviderConfig }> {
     return this.transport.request('admin.update-teros-provider-config', { configId, ...updates })
+  }
+
+  /** The upstream catalogue + secret presence (TPROV-REQ-11) */
+  getTerosUpstreams(): Promise<{ upstreams: TerosUpstreamInfo[]; sizes: TerosSize[]; efforts: TerosReasoningEffort[] }> {
+    return this.transport.request('admin.teros-upstreams')
+  }
+
+  /** Run one lane of a size of a config against its upstream: text + image (TPROV-REQ-10, TLANE-REQ-10) */
+  testTerosSize(configId: string, size: TerosSize, lane: TerosLane, route?: TerosSizeRoute): Promise<TerosSizeTestResult> {
+    return this.transport.request('admin.test-teros-size', { configId, size, lane, ...(route ? { route } : {}) })
   }
 
   /** Delete a Teros provider config */
@@ -1236,6 +1334,23 @@ export class AdminApi {
   /** Remove a flag's rollout (super only). */
   clearFeatureFlagRollout(key: string): Promise<{ success: boolean; key: string }> {
     return this.transport.request('admin-api.feature-flags-clear-rollout', { key })
+  }
+
+  // --------------------------------------------------------------------------
+  // Channel usage (admin-only) — feeds the chat header's "View token usage"
+  // modal. The user-facing channel.get-messages no longer carries tokenBudget
+  // (Pablo, 2026-10-30: token usage is admin-only data).
+  // --------------------------------------------------------------------------
+
+  /**
+   * Token budget/usage of one conversation (admin only — backend enforces
+   * requireAdmin, users.role ∈ admin|super). `budget` is null when the
+   * channel has no recorded usage yet.
+   */
+  channelTokenBudget(
+    channelId: string,
+  ): Promise<{ channelId: string; budget: import('@teros/shared').TokenBudget | null }> {
+    return this.transport.request('admin-api.channel-token-budget', { channelId })
   }
 
   /** Audit timeline of a flag (super only): set / clear / apply rollout history. */

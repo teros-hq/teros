@@ -73,6 +73,10 @@ export interface TaskData {
   taskId: string
   boardId: string
   columnId: string
+  /** Column slug (backlog | todo | in_progress | blocked | review | done) — returned by backend, used for status counts */
+  columnSlug?: string
+  /** Column display name */
+  columnName?: string
   parentTaskId?: string
   title: string
   description?: string
@@ -186,6 +190,37 @@ export class BoardApi {
     return this.transport.request('board.unsubscribe', { boardId })
   }
 
+  /** Get the activity feed for a board (reads from board_events collection) */
+  getBoardFeed(
+    boardId: string,
+    options?: { limit?: number; cursor?: string },
+  ): Promise<{
+    boardId: string
+    events: BoardFeedEvent[]
+    nextCursor?: string
+    hasMore: boolean
+  }> {
+    return this.transport.request('board.get-board-feed', {
+      boardId,
+      ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+      ...(options?.cursor !== undefined ? { cursor: options.cursor } : {}),
+    })
+  }
+
+  // --------------------------------------------------------------------------
+  // Flow Execution Realtime
+  // --------------------------------------------------------------------------
+
+  /** Subscribe session to real-time flow execution events */
+  subscribeExecution(executionId: string): Promise<{ executionId: string }> {
+    return this.transport.request('flow.subscribe', { executionId })
+  }
+
+  /** Unsubscribe session from real-time flow execution events */
+  unsubscribeExecution(executionId: string): Promise<{ executionId: string }> {
+    return this.transport.request('flow.unsubscribe', { executionId })
+  }
+
   // --------------------------------------------------------------------------
   // Tasks
   // --------------------------------------------------------------------------
@@ -259,11 +294,13 @@ export class BoardApi {
     taskId: string,
     columnId: string,
     position?: number,
+    outputData?: unknown,
   ): Promise<{ task: TaskData }> {
     return this.transport.request('board.move-task', {
       taskId,
       columnId,
       ...(position !== undefined ? { position } : {}),
+      ...(outputData !== undefined ? { outputData } : {}),
     })
   }
 
@@ -325,6 +362,28 @@ export class BoardApi {
     return this.transport.request('board.stop-task', {
       taskId,
       ...(reason !== undefined ? { reason } : {}),
+    })
+  }
+
+  /**
+   * Save output data to task.output.data WITHOUT completing the task.
+   *
+   * Modes:
+   *   - 'replace' (default): overwrite the existing output value.
+   *   - 'append': append to existing markdown output (markdown gates only).
+   *
+   * This does NOT move the task, fire the ActionBridge, or trigger autoplay.
+   * Use moveTask/completeTask to complete the task.
+   */
+  saveTaskOutput(
+    taskId: string,
+    outputData: unknown,
+    mode?: 'replace' | 'append',
+  ): Promise<{ task: TaskData }> {
+    return this.transport.request('board.save-task-output', {
+      taskId,
+      outputData,
+      ...(mode !== undefined ? { mode } : {}),
     })
   }
 
@@ -410,4 +469,21 @@ export interface BoardAgentInfo {
   fullName?: string
   avatarUrl?: string
   boardRole: 'manager' | 'runner' | 'both'
+}
+
+// ---------------------------------------------------------------------------
+// Board feed event type (from board_events collection)
+// ---------------------------------------------------------------------------
+
+export interface BoardFeedEvent {
+  eventId: string
+  boardId: string
+  projectId: string
+  workspaceId: string
+  taskId: string | null
+  taskTitle: string | null
+  eventType: string
+  actor: string
+  timestamp: string
+  details?: Record<string, any>
 }

@@ -84,6 +84,7 @@ const server = new McaServer({
 // =============================================================================
 
 server.tool('-health-check', {
+  annotations: { readOnlyHint: true },
   description: 'Internal health check tool. Verifies HubSpot OAuth credentials and connectivity.',
   parameters: {
     type: 'object',

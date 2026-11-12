@@ -3,7 +3,7 @@
  * members` (roster + owner) and mutates via `admin.update-billing-team` (members,
  * plan, seat-price override). And request-access from a team member must route the
  * live push ONLY to the team owner, never to the requester (decision T1). Driven by
- * playwright1 (admin + owner of team_demo); the request comes from playwright2.
+ * playwright3 (admin + owner of team_demo); the request comes from playwright2.
  */
 import { closeDb } from "../helpers/db"
 import {
@@ -64,15 +64,15 @@ test.afterAll(async () => {
 
 test.describe("billing — equipos T1 @billing", () => {
   test("get-team-members resuelve el roster (miembro con plan/uso + owner)", async ({
-    terosPage,
+    superPage,
   }) => {
     // Añadir playwright2 al equipo (mete su sub en el team + suma asiento).
-    await wsRequest(terosPage, "admin.update-billing-team", {
+    await wsRequest(superPage, "admin.update-billing-team", {
       teamId: TEAM_ID,
       addMemberIds: [KIMI_USER],
     })
 
-    const view = await wsRequest<TeamView>(terosPage, "admin.get-team-members", { teamId: TEAM_ID })
+    const view = await wsRequest<TeamView>(superPage, "admin.get-team-members", { teamId: TEAM_ID })
     expect(view.owner?.userId, "owner resuelto").toBe(ADMIN_USER)
     expect(view.team.seatCount, "un asiento ocupado").toBe(1)
 
@@ -87,11 +87,11 @@ test.describe("billing — equipos T1 @billing", () => {
   })
 
   test("update-billing-team: override de seat-price aplica, sobrevive al cambio de plan, y se limpia", async ({
-    terosPage,
+    superPage,
   }) => {
     // Override manual (decisión E/F11): seatPrice = customSeatPrice.
     const r1 = await wsRequest<{ team: TeamView["team"] }>(
-      terosPage,
+      superPage,
       "admin.update-billing-team",
       { teamId: TEAM_ID, customSeatPrice: 75 },
     )
@@ -100,7 +100,7 @@ test.describe("billing — equipos T1 @billing", () => {
 
     // Cambiar el plan PRESERVA el override (antes lo pisaba con plan.price).
     const r2 = await wsRequest<{ team: TeamView["team"] }>(
-      terosPage,
+      superPage,
       "admin.update-billing-team",
       { teamId: TEAM_ID, planId: "plan_ultra" },
     )
@@ -110,7 +110,7 @@ test.describe("billing — equipos T1 @billing", () => {
 
     // Limpiar el override → vuelve al precio del plan (Ultra = 349).
     const r3 = await wsRequest<{ team: TeamView["team"] }>(
-      terosPage,
+      superPage,
       "admin.update-billing-team",
       { teamId: TEAM_ID, customSeatPrice: null },
     )
@@ -124,7 +124,7 @@ test.describe("billing — equipos T1 @billing", () => {
   })
 
   test("routing al owner: la solicitud de un miembro llega SOLO al owner, no al solicitante", async ({
-    terosPage,
+    superPage,
     user2Page,
   }) => {
     // Regresión F6a+F6b (arreglada en este stack): el realtime de billing estaba
@@ -136,7 +136,7 @@ test.describe("billing — equipos T1 @billing", () => {
     await setUsed(KIMI_USER, 80)
 
     // Interceptar el push en AMBAS sesiones ANTES del trigger (cross-user realtime).
-    await captureEvent(terosPage, "billing.access-requested") // owner (playwright1)
+    await captureEvent(superPage, "billing.access-requested") // owner (playwright3)
     await captureEvent(user2Page, "billing.access-requested") // requester (playwright2)
 
     // El miembro solicita horas al admin.
@@ -145,8 +145,8 @@ test.describe("billing — equipos T1 @billing", () => {
     // El owner recibe el push en vivo…
     let ownerGot: unknown = null
     for (let i = 0; i < 20 && !ownerGot; i++) {
-      ownerGot = await readCaptured(terosPage, "billing.access-requested")
-      if (!ownerGot) await terosPage.waitForTimeout(300)
+      ownerGot = await readCaptured(superPage, "billing.access-requested")
+      if (!ownerGot) await superPage.waitForTimeout(300)
     }
     expect(ownerGot, "el owner recibe el push billing.access-requested").toBeTruthy()
 

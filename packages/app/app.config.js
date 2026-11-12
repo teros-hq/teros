@@ -1,4 +1,4 @@
-const IS_DEV = process.env.APP_VARIANT === 'development';
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 export default {
   expo: {
@@ -37,6 +37,18 @@ export default {
     web: {
       favicon: './assets/favicon.png',
       bundler: 'metro',
+      // TEMPORARY: single bundle for all environments.
+      // With 'static' output, Metro generates a separate JS chunk per
+      // React.lazy() window. On iOS Safari mobile, when the virtual keyboard
+      // opens it can trigger a layout reflow that remounts window components.
+      // The remount fires a fresh dynamic import() for the chunk — if the
+      // network is flaky or Safari has evicted the HTTP cache, the import
+      // stalls and the Suspense fallback (TerosLoading) shows forever.
+      // 'single' bundles everything into one file, eliminating dynamic
+      // imports entirely. This trades initial load size for stability.
+      // TODO: re-enable 'static' once the mobile keyboard remount issue is
+      // fixed (prevent unnecessary remounts on viewport resize, or add
+      // service-worker precaching for hashed chunks).
       output: 'single',
       // PWA Configuration
       name: 'Teros - Customizable AI Assistants',

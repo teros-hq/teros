@@ -19,15 +19,16 @@
  * the live smoke).
  */
 
-import { Minus, Plus, X } from "@tamagui/lucide-icons"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Button, Dialog, Input, Text, TextArea, XStack, YStack } from "tamagui"
+import { Platform, View } from "react-native"
+import { Dialog } from "tamagui"
 import i18n from "../../i18n"
 import type { BoostPricingView, SubscriptionView } from "../../services/BillingApi"
 import { getTerosClient } from "../../services/terosClientSingleton"
 import { useColors } from "../mca/primitives/useColors"
-import { colors as semanticColors } from "../mca/primitives/colors"
+import { colors as semantic } from "../mca/primitives/colors"
+import { Btn, Field, FieldLabel, IconBtn, T } from "../ui/ds"
 import { useToast } from "../Toast"
 import { PaymentMethodSetup } from "./PaymentMethodSetup"
 
@@ -35,7 +36,6 @@ const MIN_HOURS = 1
 const MAX_HOURS = 10000
 const DEFAULT_HOURS = 10
 const STEP = 5
-const ACCENT = "#06B6D4"
 
 function clampHours(n: number): number {
   if (!Number.isFinite(n)) return MIN_HOURS
@@ -62,49 +62,45 @@ function HoursStepper({
   disabled?: boolean
 }) {
   const { t } = useTranslation()
-  const c = useColors()
   return (
-    <XStack alignItems="center" justifyContent="space-between" gap={12}>
-      <Text fontSize={13} color={c.text2}>
-        {t("billing.boost.hoursLabel")}
-      </Text>
-      <XStack alignItems="center" gap={10}>
-        <Button
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "flex-end",
+        justifyContent: "space-between",
+        gap: 12,
+      }}
+    >
+      <FieldLabel style={{ marginBottom: 0 }}>{t("billing.boost.hoursLabel")}</FieldLabel>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <IconBtn
           testID="boost-hours-dec"
-          size="$2"
-          circular
-          icon={Minus}
+          icon="minus"
           disabled={disabled || hours <= MIN_HOURS}
-          backgroundColor={c.bgCardHover}
           onPress={() => onChange(clampHours(hours - STEP))}
         />
-        <Input
+        <Field
           testID="boost-hours-value"
-          width={68}
-          textAlign="center"
+          mono
           keyboardType="number-pad"
           editable={!disabled}
           value={String(hours)}
           onChangeText={(v) => onChange(clampHours(Number(v.replace(/[^0-9]/g, "")) || MIN_HOURS))}
-          backgroundColor={c.bgInner}
-          borderColor={c.border}
-          color={c.text}
-          fontSize={15}
+          containerStyle={{ width: 76 }}
+          style={{ textAlign: "center", fontSize: 14 }}
         />
-        <Button
+        <IconBtn
           testID="boost-hours-inc"
-          size="$2"
-          circular
-          icon={Plus}
+          icon="plus"
           disabled={disabled || hours >= MAX_HOURS}
-          backgroundColor={c.bgCardHover}
           onPress={() => onChange(clampHours(hours + STEP))}
         />
-      </XStack>
-    </XStack>
+      </View>
+    </View>
   )
 }
 
+/** THE primary CTA of every Boost form: a full-width violet pill. */
 function PrimaryButton({
   testID,
   label,
@@ -117,48 +113,42 @@ function PrimaryButton({
   onPress: () => void
 }) {
   return (
-    <Button
+    <Btn
       testID={testID}
-      height={44}
-      borderRadius={10}
-      backgroundColor="rgba(6,182,212,0.15)"
-      borderWidth={1}
-      borderColor="rgba(6,182,212,0.4)"
-      disabled={busy}
-      opacity={busy ? 0.6 : 1}
-      pressStyle={{ backgroundColor: "rgba(6,182,212,0.25)" }}
+      full
+      variant="primary"
+      size="lg"
       onPress={onPress}
+      disabled={busy}
+      loading={busy}
     >
-      <Text color={ACCENT} fontSize={14} fontWeight="700">
-        {label}
-      </Text>
-    </Button>
+      {label}
+    </Btn>
   )
 }
 
 function DoneBlock({ message, onClose }: { message: string; onClose: () => void }) {
   const { t } = useTranslation()
-  const c = useColors()
   return (
-    <YStack gap={12}>
-      <Text testID="boost-done" fontSize={14} color={c.text} lineHeight={20}>
+    <View style={{ gap: 14 }}>
+      <T testID="boost-done" step="sm">
         {message}
-      </Text>
+      </T>
       <PrimaryButton
         testID="boost-done-close"
         label={t("billing.boost.close")}
         busy={false}
         onPress={onClose}
       />
-    </YStack>
+    </View>
   )
 }
 
 function ErrorLine({ message }: { message: string }) {
   return (
-    <Text testID="boost-error" fontSize={12} color={semanticColors.red} lineHeight={17}>
+    <T testID="boost-error" step="12" tone="danger">
       {message}
-    </Text>
+    </T>
   )
 }
 
@@ -166,7 +156,6 @@ function ErrorLine({ message }: { message: string }) {
 
 function BuyForm({ pricing, onClose }: { pricing: BoostPricingView; onClose: () => void }) {
   const { t } = useTranslation()
-  const c = useColors()
   const toast = useToast()
   const client = getTerosClient()
   const [hours, setHours] = useState(DEFAULT_HOURS)
@@ -217,30 +206,26 @@ function BuyForm({ pricing, onClose }: { pricing: BoostPricingView; onClose: () 
 
   if (status === "need_card") {
     return (
-      <YStack gap={10}>
-        <Text fontSize={13} color={c.text2} lineHeight={19}>
+      <View style={{ gap: 12 }}>
+        <T step="sm" tone="text2">
           {t("billing.boost.needCardBody")}
-        </Text>
+        </T>
         <PaymentMethodSetup
           onSuccess={() => runPurchase(reqIdRef.current ?? crypto.randomUUID())}
           onCancel={() => setStatus("idle")}
         />
-      </YStack>
+      </View>
     )
   }
 
   const busy = status === "submitting"
   return (
-    <YStack gap={14}>
+    <View style={{ gap: 16 }}>
       <HoursStepper hours={hours} onChange={setHours} disabled={busy} />
-      <XStack alignItems="center" justifyContent="space-between">
-        <Text fontSize={13} color={c.text2}>
-          {t("billing.boost.total")}
-        </Text>
-        <Text testID="boost-total" fontSize={18} fontWeight="800" color={c.text}>
-          {formatMoney(hours * pricing.hourPrice, pricing.currency)}
-        </Text>
-      </XStack>
+      <TotalRow
+        label={t("billing.boost.total")}
+        value={formatMoney(hours * pricing.hourPrice, pricing.currency)}
+      />
       {status === "error" && errorMsg && <ErrorLine message={errorMsg} />}
       <PrimaryButton
         testID="boost-buy"
@@ -251,7 +236,31 @@ function BuyForm({ pricing, onClose }: { pricing: BoostPricingView; onClose: () 
           runPurchase(reqIdRef.current)
         }}
       />
-    </YStack>
+    </View>
+  )
+}
+
+/** "Total" line: label left, serif figure right, hairline above. */
+function TotalRow({ label, value }: { label: string; value: string }) {
+  const c = useColors()
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "baseline",
+        justifyContent: "space-between",
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: c.border,
+      }}
+    >
+      <T step="sm" tone="text2">
+        {label}
+      </T>
+      <T testID="boost-total" step="xl">
+        {value}
+      </T>
+    </View>
   )
 }
 
@@ -259,7 +268,6 @@ function BuyForm({ pricing, onClose }: { pricing: BoostPricingView; onClose: () 
 
 function TeamRequestForm({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
-  const c = useColors()
   const toast = useToast()
   const client = getTerosClient()
   const [hours, setHours] = useState(DEFAULT_HOURS)
@@ -294,19 +302,15 @@ function TeamRequestForm({ onClose }: { onClose: () => void }) {
 
   const busy = status === "submitting"
   return (
-    <YStack gap={14}>
+    <View style={{ gap: 16 }}>
       <HoursStepper hours={hours} onChange={setHours} disabled={busy} />
-      <TextArea
+      <Field
         testID="boost-reason"
+        area
+        minHeight={72}
         value={reason}
         onChangeText={setReason}
         placeholder={t("billing.boost.reasonPlaceholder")}
-        placeholderTextColor={c.text3}
-        backgroundColor={c.bgInner}
-        borderColor={c.border}
-        color={c.text}
-        fontSize={13}
-        minHeight={56}
         maxLength={1000}
         editable={!busy}
       />
@@ -317,25 +321,24 @@ function TeamRequestForm({ onClose }: { onClose: () => void }) {
         busy={busy}
         onPress={submit}
       />
-    </YStack>
+    </View>
   )
 }
 
 function UnavailableNotice({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
-  const c = useColors()
   return (
-    <YStack gap={10}>
-      <Text testID="boost-unavailable" fontSize={13} color={c.text2} lineHeight={19}>
+    <View style={{ gap: 14 }}>
+      <T testID="boost-unavailable" step="sm" tone="text2">
         {t("billing.boost.unavailableBody")}
-      </Text>
+      </T>
       <PrimaryButton
         testID="boost-unavailable-close"
         label={t("billing.boost.close")}
         busy={false}
         onPress={onClose}
       />
-    </YStack>
+    </View>
   )
 }
 
@@ -374,30 +377,26 @@ export function BoostPanel({ onClose }: { onClose: () => void }) {
       : t("billing.boost.unavailableTitle")
 
   return (
-    <YStack testID="boost-panel" padding={20} gap={16} backgroundColor={c.bgPage}>
-      <XStack alignItems="center" gap={10}>
-        <Text flex={1} fontSize={17} fontWeight="700" color={c.text}>
+    <View
+      testID="boost-panel"
+      style={{ padding: 24, gap: 18, backgroundColor: c.bgStep, borderRadius: 16 }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <T step="xl" style={{ flex: 1 }}>
           {title}
-        </Text>
-        <Button
-          testID="boost-close"
-          size="$2"
-          circular
-          chromeless
-          icon={<X size={18} color={c.text2} />}
-          onPress={onClose}
-        />
-      </XStack>
+        </T>
+        <IconBtn testID="boost-close" icon="x" plain sm onPress={onClose} />
+      </View>
 
       {status === "loading" && (
-        <Text testID="boost-loading" fontSize={13} color={c.text2} paddingVertical={8}>
+        <T testID="boost-loading" step="sm" tone="text2" style={{ paddingVertical: 8 }}>
           {t("billing.boost.loading")}
-        </Text>
+        </T>
       )}
       {status === "load_error" && (
-        <Text testID="boost-load-error" fontSize={13} color={semanticColors.red} paddingVertical={8}>
+        <T testID="boost-load-error" step="sm" tone="danger" style={{ paddingVertical: 8 }}>
           {t("billing.boost.loadError")}
-        </Text>
+        </T>
       )}
       {status === "ready" &&
         (teamMode ? (
@@ -407,7 +406,7 @@ export function BoostPanel({ onClose }: { onClose: () => void }) {
         ) : (
           <UnavailableNotice onClose={onClose} />
         ))}
-    </YStack>
+    </View>
   )
 }
 
@@ -422,14 +421,12 @@ export function BoostModal({ open, onClose }: { open: boolean; onClose: () => vo
           key="overlay"
           animation="card"
           opacity={0.6}
-          backgroundColor="rgba(0,0,0,0.6)"
+          backgroundColor={semantic.main900}
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
         />
         <Dialog.Content
           key="content"
-          bordered
-          elevate
           animation="card"
           enterStyle={{ opacity: 0, scale: 0.96 }}
           exitStyle={{ opacity: 0, scale: 0.96 }}
@@ -437,8 +434,10 @@ export function BoostModal({ open, onClose }: { open: boolean; onClose: () => vo
           width={420}
           maxWidth="90vw"
           padding={0}
-          backgroundColor={c.bgPage}
-          borderColor={c.border}
+          borderRadius={16}
+          borderWidth={0}
+          backgroundColor={c.bgStep}
+          {...(Platform.OS === "web" ? ({ style: { boxShadow: c.elevRaised } } as any) : {})}
         >
           {open && <BoostPanel onClose={onClose} />}
         </Dialog.Content>

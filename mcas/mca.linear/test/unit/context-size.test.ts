@@ -211,4 +211,4 @@ describe('context-size regression — list-projects', () => {
 // breaking change for zero absolute saving (~2 KB on 16 labels). Callers that
 // want the tight shape use the existing `fields: ['id','name','color']`
 // override at the call site. The 52 % ratio is documented as P2 structural in
-//
+// docs/audit/mca-linear-assessment-2026-04-23.md §3.

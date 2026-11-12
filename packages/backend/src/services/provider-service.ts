@@ -8,12 +8,18 @@
 import type { Db } from 'mongodb';
 import { ObjectId } from 'mongodb';
 import { LLMClientFactory } from '@teros/core';
-import { decrypt, encrypt, generateKey, generateSalt } from '../auth/encryption';
-import type { EncryptedData, UserEncryptionKeyDocument } from '../auth/types';
+import type { ToolDefinition } from '@teros/core';
+import { isProviderTypeAllowedInEdition, resolveRetention } from '@teros/shared';
 import { HttpClient } from '../lib/HttpClient';
 import { getActiveModelsByProvider } from '../models/definitions';
-import { secrets } from '../secrets/secrets-manager';
-import { canUseTerosModel, getUserTerosProviderConfig, decryptTerosProviderApiKey, UpgradeRequiredError, assertTerosHoursAvailable, assertAccountNotBlocked } from './billing-gate.js';
+import { canUseTerosModel, getUserTerosProviderConfig, UpgradeRequiredError, assertTerosHoursAvailable, assertAccountNotBlocked } from './billing-gate.js';
+import { TerosRouterClient } from './teros-router-client.js';
+import { sizeForLegacyModelId, TEROS_LANES } from '../models/providers/teros.js';
+import { secrets } from '../secrets/secrets-manager.js';
+import { isMongoDuplicateKey } from '../lib/mongo-errors.js';
+import { AAD_FORMAT, decryptForUser, encryptForUser } from '../auth/user-keys';
+
+const providerScope = (providerId: string) => `user_providers:${providerId}`;
 
 // Dedicated HTTP client for local provider discovery (Ollama, OpenAI-compatible)
 const providerDiscoveryClient = new HttpClient({
@@ -44,7 +50,8 @@ export type ProviderType =
   | 'teros'
   | 'cloudflare'
   | 'fireworks'
-  | 'together';
+  | 'together'
+  | 'helmcode';
 
 /**
  * Provider types that do not require user-supplied secrets (no API key, no OAuth).
@@ -69,6 +76,8 @@ export interface ProviderCapabilities {
 
 export interface ProviderModel {
   modelId: string;
+  /** Display name from the catalogue (sizes read "Model L"); absent on old snapshots. */
+  name?: string;
   modelString: string;
   capabilities: ProviderCapabilities;
   context?: { maxTokens: number; maxOutputTokens: number };
@@ -85,6 +94,8 @@ export interface UserProviderRecord {
   encryptedData?: string;
   encryptionIv?: string;
   encryptionTag?: string;
+  /** 2 = encrypted with AAD bound to (userId, providerId); absent = legacy (GOV-7) */
+  encryptionFormat?: number;
   // Models discovered/configured
   models: ProviderModel[];
   /**
@@ -94,7 +105,7 @@ export interface UserProviderRecord {
   defaultModelId?: string;
   /**
    * If true, this is the user's default provider.
-   * Used as fallback when an agent has no availableProviders configured.
+   * Used when an agent has no pin (System Default, 2026-10-21 2-level model).
    * Only one provider per user should have isDefault: true.
    */
   isDefault?: boolean;
@@ -133,7 +144,25 @@ export interface TestResult {
   ok: boolean;
   models?: ProviderModel[];
   error?: string;
+  /** Text of the probe completion (only when `probe` was requested and succeeded). */
+  reply?: string;
 }
+
+/** Prompt of the onboarding probe (ONB-REQ-8): one short, real completion. */
+export const PROVIDER_PROBE_PROMPT =
+  'You are Iria, a personal AI agent that just got connected to a model. ' +
+  'Greet the user warmly in one short sentence (max 20 words), in the language of this message.';
+
+/**
+ * The one tool the onboarding probe offers (ONB-REQ-8). Agent turns always
+ * carry tools; a model that rejects them must fail the probe. The model is not
+ * expected to call it.
+ */
+export const PROVIDER_PROBE_TOOL: ToolDefinition = {
+  name: 'get_current_time',
+  description: 'Returns the current time. Only call it if the user asks for the time.',
+  input_schema: { type: 'object', properties: {} },
+};
 
 export interface ResolvedProvider {
   provider: UserProviderRecord;
@@ -145,7 +174,32 @@ export interface ResolvedProvider {
 // SERVICE
 // ============================================================================
 
+/**
+ * Orphan-preferred-provider WARN dedup (2026-09-24 silent-turn incident):
+ * the resolver runs per LLM turn, and a persistently orphaned
+ * selected/preferredProviderId would otherwise WARN on every single turn.
+ * Re-arm the WARN every ORPHAN_WARN_TTL_MS while the drift persists.
+ */
+const ORPHAN_WARN_TTL_MS = 10 * 60 * 1000;
+const orphanWarnLastAt = new Map<string, number>();
+
+function shouldWarnOrphan(agentId: string): boolean {
+  const last = orphanWarnLastAt.get(agentId) ?? 0;
+  const now = Date.now();
+  if (now - last < ORPHAN_WARN_TTL_MS) return false;
+  orphanWarnLastAt.set(agentId, now);
+  return true;
+}
+
 export class ProviderService {
+  /**
+   * Optional hook fired after a provider's credentials are rotated
+   * (updateProvider / setProviderSecrets). The llmClientManager registers
+   * here to invalidate cached clients built with the old API key, so a
+   * rotated key takes effect without a backend restart (TER-617 secondary).
+   */
+  onCredentialsChanged?: (providerId: string) => void;
+
   constructor(private db: Db) {}
 
   // --------------------------------------------------------------------------
@@ -214,7 +268,7 @@ export class ProviderService {
    * static catalogue, so this is a cheap, network-free write — safe to call on
    * every signup. It is what makes "Teros by default" work after onboarding
    * stopped asking users to connect a provider: a freshly-created agent has
-   * `availableProviders: []` and falls back to the user's default provider
+   * no pin and falls back to the user's default provider
    * (`resolveProviderForAgent` step 2), which without this would be absent and
    * surface as "No AI provider is configured".
    *
@@ -234,6 +288,17 @@ export class ProviderService {
     const hasDefault = await coll.findOne({ userId, isDefault: true });
     const now = new Date().toISOString();
 
+    // Default model for the shared Teros provider (decision D1, Pablo 2026-10-17):
+    // explicitly `teros-glm-5p3` — the full GLM 5.3, never a reserved model
+    // (`teros-glm-5p3-fast` is exclusive to Alice) and never whatever happens to
+    // be `models[0]` (that was the bug: the array order made the reserved fast
+    // model the silent default for every agent without a pin).
+    // TPROV-REQ-1: size L is the default of every Teros provider.
+    const DEFAULT_TEROS_MODEL_ID = 'teros-l';
+    const defaultModelId = models.some((m) => m.modelId === DEFAULT_TEROS_MODEL_ID)
+      ? DEFAULT_TEROS_MODEL_ID
+      : models[0]?.modelId;
+
     const provider: UserProviderRecord = {
       providerId: `prov_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
       userId,
@@ -241,7 +306,7 @@ export class ProviderService {
       displayName: 'Teros',
       config: {},
       models,
-      defaultModelId: models[0]?.modelId,
+      defaultModelId,
       isDefault: !hasDefault,
       priority: 100,
       status: 'active',
@@ -249,7 +314,17 @@ export class ProviderService {
       updatedAt: now,
     };
 
-    await coll.insertOne(provider);
+    try {
+      await coll.insertOne(provider);
+    } catch (err) {
+      // A concurrent call created it first (unique userId_teros_unique, MOD-5);
+      // or another provider became default meanwhile (userId_default_unique)
+      if (!isMongoDuplicateKey(err)) throw err;
+      const winner = await coll.findOne({ userId, providerType: 'teros' });
+      if (winner) return winner;
+      provider.isDefault = false;
+      await coll.insertOne(provider);
+    }
     return provider;
   }
 
@@ -320,7 +395,7 @@ export class ProviderService {
     providerId: string,
     secretsData: ProviderSecrets,
   ): Promise<void> {
-    const encrypted = await this.encryptForUser(userId, secretsData);
+    const encrypted = await encryptForUser(this.db, userId, providerScope(providerId), secretsData);
     const coll = this.db.collection<UserProviderRecord>('user_providers');
 
     await coll.updateOne(
@@ -330,10 +405,15 @@ export class ProviderService {
           encryptedData: encrypted.data,
           encryptionIv: encrypted.iv,
           encryptionTag: encrypted.tag,
+          encryptionFormat: AAD_FORMAT,
           updatedAt: new Date().toISOString(),
         },
       },
     );
+
+    // TER-617 secondary: invalidate cached LLM clients built with the old
+    // credentials so a rotated API key takes effect without a restart.
+    this.onCredentialsChanged?.(providerId);
   }
 
   /**
@@ -345,11 +425,13 @@ export class ProviderService {
     if (!provider.encryptedData || !provider.encryptionIv || !provider.encryptionTag) return null;
 
     try {
-      return await this.decryptForUser(userId, {
-        data: provider.encryptedData,
-        iv: provider.encryptionIv,
-        tag: provider.encryptionTag,
-      });
+      return await decryptForUser(
+        this.db,
+        userId,
+        providerScope(providerId),
+        { data: provider.encryptedData, iv: provider.encryptionIv, tag: provider.encryptionTag },
+        provider.encryptionFormat,
+      );
     } catch (err) {
       console.error(`[ProviderService] Failed to decrypt secrets for ${providerId}:`, err);
       return null;
@@ -363,7 +445,11 @@ export class ProviderService {
   /**
    * Test provider connection and discover models
    */
-  async testProvider(providerId: string): Promise<TestResult> {
+  /**
+   * @spec ONB-REQ-8 — with `probe`, also sends one short real completion and
+   * returns its text, so a wrong key fails here instead of in the first chat.
+   */
+  async testProvider(providerId: string, opts: { probe?: boolean } = {}): Promise<TestResult> {
     const provider = await this.getProvider(providerId);
     if (!provider) {
       return { ok: false, error: 'Provider not found' };
@@ -371,7 +457,9 @@ export class ProviderService {
 
     // Credential-free providers don't store user secrets — credentials come
     // from config (ollama: baseUrl) or from system secrets (teros: cloudflare).
-    const isCredentialFree = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType);
+    // An optional key (openai-compatible endpoints such as NaN Builders) is still used when one was stored.
+    const isCredentialFree =
+      PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType) && !provider.encryptedData;
 
     // Get decrypted secrets (not required for credential-free providers)
     const secretsData = isCredentialFree ? {} : await this.getProviderSecrets(provider.userId, providerId);
@@ -397,6 +485,7 @@ export class ProviderService {
 
       // Build factory config depending on provider type
       const cfg: any = { provider: provider.providerType };
+      let terosClient: TerosRouterClient | null = null;
       switch (provider.providerType) {
         case 'anthropic':
           cfg.anthropic = { apiKey: secretsData!.apiKey, model: modelToTest.modelString };
@@ -459,26 +548,29 @@ export class ProviderService {
           cfg.minimax = { apiKey: secretsData!.apiKey, model: modelToTest.modelString };
           break;
         case 'teros': {
-          // R8.5: `testProvider` intentionally uses the per-user admin Teros
-          // config (assigned via billing_subscriptions), NOT the runtime
-          // `secrets.system('fireworks')` path that `resolveTerosUpstream` owns
-          // (the teros-fallback-invariant lint). This is the admin "test
-          // connection" flow — a distinct, legitimate read that decrypts the
-          // per-user fireworksApiKey, so it does not route through the resolver.
+          // TPROV: the test runs through the same size router as a turn — the
+          // user's config (sizes + failover) and the system secrets, never a
+          // per-user upstream key.
           const terosConfig = await getUserTerosProviderConfig(this.db, provider.userId);
-          if (!terosConfig) {
-            return { ok: false, error: 'Teros provider not configured (no default config found)' };
+          if (!terosConfig?.sizes || !terosConfig.failover) {
+            return { ok: false, error: 'Teros provider not configured (no size routes — run migration 20261103_001_teros_sizes)' };
           }
-          let apiKey: string;
-          try {
-            apiKey = decryptTerosProviderApiKey(terosConfig.fireworksApiKey);
-          } catch (err: any) {
-            return { ok: false, error: `Failed to decrypt Teros provider API key: ${err.message}` };
+          const size = sizeForLegacyModelId(modelToTest.modelId);
+          terosClient = new TerosRouterClient({
+            size,
+            config: { sizes: terosConfig.sizes, failover: terosConfig.failover },
+            secrets,
+            maxTokens: 64,
+          });
+          // Both lanes must be able to serve (TLANE-REQ-5).
+          for (const lane of TEROS_LANES) {
+            if (!terosClient.primaryRoute(lane)) {
+              return {
+                ok: false,
+                error: `Teros size ${size.toUpperCase()} (${lane}) cannot run on ${terosConfig.sizes[size][lane].upstream}: missing system secret, unknown model or non-ZDR upstream`,
+              };
+            }
           }
-          cfg.teros = {
-            apiKey,
-            model: modelToTest.modelString,
-          };
           break;
         }
         case 'cloudflare': {
@@ -518,12 +610,23 @@ export class ProviderService {
           };
           break;
         }
+        case 'helmcode': {
+          // Helmcode: apiKey from user secrets, fixed base URL (BYOK)
+          if (!secretsData?.apiKey) {
+            return { ok: false, error: 'No API key configured for Helmcode provider' };
+          }
+          cfg.helmcode = {
+            apiKey: secretsData.apiKey,
+            model: modelToTest.modelString,
+          };
+          break;
+        }
         default:
           break;
       }
 
       // Create the client
-      const client = await LLMClientFactory.create(cfg);
+      const client = terosClient ?? (await LLMClientFactory.create(cfg));
 
       // Validate by calling getProviderInfo (should be synchronous and cheap)
       const info = client.getProviderInfo();
@@ -543,7 +646,39 @@ export class ProviderService {
         },
       );
 
-      return { ok: true, models: discoveredModels };
+      if (!opts.probe) return { ok: true, models: discoveredModels };
+
+      // Probe (ONB-REQ-8): a real round-trip. A failure is reported but does not
+      // flip the provider to 'error' — it may be transient, and the onboarding
+      // step removes the provider it added when the probe fails.
+      let reply = '';
+      let calledTool = false;
+      try {
+        await client.streamMessage({
+          messages: [
+            {
+              info: { id: 'probe', sessionID: 'probe', role: 'user', time: { created: Date.now() } },
+              parts: [{ type: 'text', id: 'p1', sessionID: 'probe', messageID: 'probe', text: PROVIDER_PROBE_PROMPT }],
+            } as any,
+          ],
+          maxTokens: 200,
+          // ONB-REQ-8: agent turns always carry tools, so the probe does too —
+          // a model that rejects tools fails here, not in the first chat.
+          tools: [PROVIDER_PROBE_TOOL],
+          // TLANE-REQ-1: the user is waiting on the onboarding step. Adapters
+          // other than Teros ignore the lane.
+          lane: 'interactive',
+          callbacks: {
+            onText: (chunk: string) => void (reply += chunk),
+            onToolCall: () => void (calledTool = true),
+          },
+        });
+      } catch (probeErr: any) {
+        return { ok: false, models: discoveredModels, error: probeErr?.message || 'The model did not answer' };
+      }
+      // A tool call instead of text still proves the model works with tools.
+      if (!reply.trim() && !calledTool) return { ok: false, models: discoveredModels, error: 'The model returned an empty answer' };
+      return { ok: true, models: discoveredModels, ...(reply.trim() ? { reply: reply.trim() } : {}) };
     } catch (err: any) {
       const errorMessage = err?.message || 'Unknown error during client creation';
 
@@ -604,6 +739,7 @@ export class ProviderService {
     // Map to ProviderModel format
     const providerModels = models.map((m) => ({
       modelId: m.modelId,
+      name: m.name,
       modelString: m.modelString,
       capabilities: {
         streaming: m.capabilities.streaming,
@@ -621,6 +757,7 @@ export class ProviderService {
       const slug = (config.customModel as string).replace(/\//g, '-').replace(/:/g, '-');
       providerModels.push({
         modelId: `${providerType}-custom-${slug}`,
+        name: config.customModel as string,
         modelString: config.customModel as string,
         capabilities: {
           streaming: true,
@@ -717,13 +854,35 @@ export class ProviderService {
 
   /**
    * Discover models from a live Ollama instance via its API
+   *
+   * Only LOCAL models (weights present on this daemon) are returned. Entries
+   * tagged `:cloud` are manifest-only placeholders (a few hundred bytes, no
+   * weights, `remote_host: https://ollama.com`): listing them here made them
+   * selectable inside the LOCAL provider, and pinning one failed at inference
+   * with 'unauthorized' — cloud inference needs a separate ollama.com
+   * credential, which is exactly what the 'ollama-cloud' provider owns. Cloud
+   * models belong there (incident 2026-10-31: Señor Lobo's agent pinned
+   * mistral-large-4:cloud on the local provider).
    */
+  /**
+   * Whether an Ollama model accepts tool calls, read from `POST /api/show`.
+   * A response without a `capabilities` list counts as not supporting tools.
+   * @spec ONB-REQ-13
+   */
+  private async ollamaModelSupportsTools(baseUrl: string, model: string): Promise<boolean> {
+    const info = await providerDiscoveryClient.post<{ capabilities?: string[] }>(`${baseUrl}/api/show`, { model });
+    return Array.isArray(info?.capabilities) && info.capabilities.includes('tools');
+  }
+
   private async discoverOllamaModels(baseUrl: string): Promise<ProviderModel[]> {
     try {
       const data = await providerDiscoveryClient.get<{
         models: Array<{
           name: string;
           model: string;
+          size?: number;
+          remote_model?: string;
+          remote_host?: string;
           details: {
             family: string;
             parameter_size: string;
@@ -736,7 +895,31 @@ export class ProviderService {
         return [];
       }
 
-      return data.models.map((m) => {
+      // A ':cloud' entry is a pointer to ollama.com, not a local model: the
+      // daemon stores only its manifest (no weights) and serving it requires
+      // the ollama.com credential that the 'ollama-cloud' provider holds. The
+      // daemon also flags cloud entries with `remote_host` — checked too so a
+      // future naming change can't leak cloud models back into this list.
+      const isCloudManifest = (m: { name: string; remote_host?: string }): boolean =>
+        m.name.endsWith(':cloud') || !!m.remote_host;
+
+      const localModels = data.models.filter((m) => !isCloudManifest(m));
+      const filteredOut = data.models.length - localModels.length;
+      if (filteredOut > 0) {
+        console.log(
+          `[ProviderService] Ollama discovery at ${baseUrl}: filtered ${filteredOut} cloud manifest(s) — cloud models are served by the 'ollama-cloud' provider`,
+        );
+      }
+
+      // ONB-REQ-13: real capabilities from /api/show. Agent turns always send
+      // tools, so a model that cannot take them is marked and listed last: the
+      // probe and the default pick (both take the first model) land on a model
+      // an agent can use.
+      const toolCapable = await Promise.all(
+        localModels.map((m) => this.ollamaModelSupportsTools(baseUrl, m.name)),
+      );
+
+      const discovered = localModels.map((m, i) => {
         // Generate a clean modelId from the model name
         const modelId = `ollama-${m.name.replace(/[:.]/g, '-')}`;
 
@@ -751,7 +934,7 @@ export class ProviderService {
           modelString: m.name,
           capabilities: {
             streaming: true,
-            tools: true,
+            tools: toolCapable[i],
             vision: hasVision,
             thinking: hasThinking,
             reasoningLevel: hasThinking ? 2 : (1 as 0 | 1 | 2 | 3),
@@ -762,6 +945,8 @@ export class ProviderService {
           },
         };
       });
+      // Stable sort: tool-capable models first, daemon order kept within each group.
+      return [...discovered.filter((m) => m.capabilities.tools), ...discovered.filter((m) => !m.capabilities.tools)];
     } catch (err: any) {
       console.error(`[ProviderService] Failed to discover Ollama models at ${baseUrl}:`, err.message);
       throw new Error(`Cannot connect to Ollama at ${baseUrl}: ${err.message}`);
@@ -773,12 +958,17 @@ export class ProviderService {
   // --------------------------------------------------------------------------
 
   /**
-   * Resolve the best provider for an agent based on:
-   * 1. Agent's availableProviders (explicit configuration)
-   * 2. User's default provider (isDefault: true) as fallback
+   * Resolve the (provider, model) pair for an agent — 2-level model (Pablo, 2026-10-21):
+   * 1. Agent pin: selectedProviderId (+ selectedModelId) → that exact pair.
+   * 2. No pin (System Default) → the user's default provider (isDefault: true)
+   *    and its defaultModelId.
+   * There is NO availableProviders list anymore — the concept was removed. An
+   * agent without a pin ALWAYS inherits the user's default, and a missing or
+   * inactive default is an explicit failure (null), never a silent fallback to
+   * "the first provider that exists".
    *
-   * Within a provider, model selection follows:
-   * - agent.selectedModelId (explicit model choice)
+   * Within the resolved provider, model selection follows:
+   * - agent.selectedModelId (explicit model choice, pin path only)
    * - provider.defaultModelId (provider's default model)
    * - First model matching requiredCapabilities
    * - First available model
@@ -823,58 +1013,141 @@ export class ProviderService {
 
   private async resolveProviderForAgentInner(
     agentId: string,
-    _workspaceId?: string,
+    workspaceId?: string,
   ): Promise<ResolvedProvider | null> {
     // Get agent
     const agent = await this.db.collection<any>('agents').findOne({ agentId });
     if (!agent) return null;
 
-    const availableProviderIds: string[] = agent.availableProviders ?? [];
-
     // Get agent core for requiredCapabilities
     const core = await this.db.collection<any>('agent_cores').findOne({ coreId: agent.coreId });
     const requiredCaps = core?.requiredCapabilities ?? {};
+
+    // ── ZDR guard (workspace settings.zdrOnly) ────────────────────────────────
+    // Defense in depth: the model picker already hides non-ZDR models when the
+    // workspace has zdrOnly on, but a stale pin (set before zdrOnly was enabled)
+    // or a direct API call must not route around it. When the flag is set, any
+    // resolution whose provider is not ZDR (provider-level tier or the model's
+    // providerConfig.zdr override) is refused — the turn fails loudly instead
+    // of silently leaking data to a retaining provider.
+    const zdrOnly = await this.isWorkspaceZdrOnly(workspaceId);
+    if (zdrOnly) {
+      const checkZdr = (providerType: string, providerConfig?: Record<string, any> | null) =>
+        resolveRetention(providerType, providerConfig).tier === 'zdr';
+
+      const pinnedZdr = agent.selectedProviderId
+        ? await this.db
+            .collection<UserProviderRecord>('user_providers')
+            .findOne({ providerId: agent.selectedProviderId })
+        : null;
+      if (pinnedZdr && !checkZdr(pinnedZdr.providerType, pinnedZdr.config)) {
+        throw new Error(
+          `ZDR violation: workspace ${workspaceId} is Zero Data Retention only, but agent ${agentId} pins non-ZDR provider ${pinnedZdr.providerType} (${agent.selectedProviderId}). Re-select a ZDR model for this agent.`,
+        );
+      }
+
+      const defaultProvider = await this.db
+        .collection<UserProviderRecord>('user_providers')
+        .findOne({ userId: agent.ownerId, isDefault: true, status: 'active' });
+      if (!pinnedZdr && defaultProvider && !checkZdr(defaultProvider.providerType, defaultProvider.config)) {
+        throw new Error(
+          `ZDR violation: workspace ${workspaceId} is Zero Data Retention only, but agent ${agentId} would fall back to the non-ZDR default provider ${defaultProvider.providerType}. Set a ZDR pin or change the default provider.`,
+        );
+      }
+    }
 
     // ── Billing gate: check if user can use teros model ───────────────────────
     const userId = agent.ownerId;
     const terosAllowed = userId ? await canUseTerosModel(this.db, userId) : true;
 
-    // ── Step 1: Try agent's explicitly configured providers ──────────────────
-    if (availableProviderIds.length > 0) {
-      const providers = await this.db
+    // ── Step 1: Agent pin (selectedProviderId + selectedModelId) ──────────────
+    // The availableProviders list is GONE (2026-10-21): a pin is a single
+    // (provider, model) pair, and an agent without a pin inherits the user's
+    // default — the list is never consulted.
+    const pinnedProviderId: string | null = agent.selectedProviderId ?? null;
+    if (pinnedProviderId) {
+      // ── Edition gate on pins (TER-EDITION, BEFORE the status-filtered lookup):
+      // the pin is fetched WITHOUT the `status: 'active'` filter first, so a
+      // cloud deployment can tell a disabled local-Ollama pin apart from a
+      // deleted/foreign one. The default lookup below filters by status and
+      // would otherwise silently fall through to the user's default provider
+      // (only a console WARN) — the exact silent breakage this gate forbids.
+      // The turn fails LOUDLY with a clear, actionable error instead.
+      const pinnedAnyStatus = await this.db
         .collection<UserProviderRecord>('user_providers')
-        .find({
-          providerId: { $in: availableProviderIds },
+        .findOne({ providerId: pinnedProviderId, ...(userId ? { userId } : {}) });
+
+      if (
+        pinnedAnyStatus &&
+        !isProviderTypeAllowedInEdition(pinnedAnyStatus.providerType)
+      ) {
+        throw new Error(
+          `Edition violation: agent ${agentId} pins provider ${pinnedProviderId} ` +
+            `of type '${pinnedAnyStatus.providerType}' (local Ollama daemon), which is disabled in the ` +
+            `cloud edition — local inference only exists in self-hosted, where the daemon runs on the ` +
+            `user's own machine. Re-pin this agent to a cloud-compatible model ` +
+            `(e.g. an 'ollama-cloud' model) to run it here.`,
+        );
+      }
+
+      // Only the agent owner's provider: an agent saved with someone else's
+      // providerId must not run on that user's credentials (MOD-8)
+      const pinned = await this.db
+        .collection<UserProviderRecord>('user_providers')
+        .findOne({
+          providerId: pinnedProviderId,
           status: 'active',
-        })
-        .toArray();
-
-      // Billing gate: filter out teros providers for Basic users
-      const filteredProviders = terosAllowed
-        ? providers
-        : providers.filter((p) => p.providerType !== 'teros');
-
-      if (filteredProviders.length > 0) {
-        // Sort by: selectedProviderId first, then by priority (lower = better)
-        const preferredId = agent.selectedProviderId;
-        filteredProviders.sort((a, b) => {
-          if (a.providerId === preferredId) return -1;
-          if (b.providerId === preferredId) return 1;
-          return a.priority - b.priority;
+          ...(userId ? { userId } : {}),
         });
 
+      if (pinned) {
+        // Billing gate: a teros pin consumes teros hours — same rule as set-agent-model
+        if (!terosAllowed && pinned.providerType === 'teros') {
+          throw new UpgradeRequiredError(
+            'teros_model',
+            'Basic',
+            'Pro',
+            'The Teros model is not available on your plan. Upgrade to Pro to use Teros AI without bringing your own API keys.',
+          );
+        }
+
         const resolved = await this.resolveModelFromProviders(
-          filteredProviders,
+          [pinned],
           agent.selectedModelId,
           requiredCaps,
         );
         if (resolved) return resolved;
+      } else if (shouldWarnOrphan(agentId)) {
+        // Orphan-pin WARN (2026-09-24 silent-turn incident): the pin points at a
+        // provider that no longer exists (or is inactive / not owned) — the run
+        // would silently fall through to the user's default. Make it visible.
+        console.warn(
+          `[ProviderService] Agent ${agentId} pins provider ${pinnedProviderId} ` +
+            `but it does not exist in user_providers (deleted, inactive or not owned) — ` +
+            `falling back to the user's default provider.`,
+        );
       }
+    } else if (agent.selectedModelId) {
+      // Legacy partial pin (model without provider): honor the model across ALL
+      // the owner's active providers — the provider list is no longer a concept.
+      const allActive = await this.db
+        .collection<UserProviderRecord>('user_providers')
+        .find({ status: 'active', ...(userId ? { userId } : {}) })
+        .toArray();
+      const candidates = (terosAllowed
+        ? allActive
+        : allActive.filter((p) => p.providerType !== 'teros')
+      ).filter((p) => isProviderTypeAllowedInEdition(p.providerType));
+
+      const resolved = await this.resolveModelFromProviders(
+        candidates,
+        agent.selectedModelId,
+        requiredCaps,
+      );
+      if (resolved) return resolved;
     }
 
-    // ── Step 2: Fall back to user's default provider ─────────────────────────
-    // Find the user who owns the channel (via agent ownership or channel.userId)
-    // We resolve by looking at who owns the agent
+    // ── Step 2: System Default — the user's default provider ─────────────────
     if (!userId) return null;
 
     const defaultProvider = await this.db
@@ -882,28 +1155,28 @@ export class ProviderService {
       .findOne({ userId, isDefault: true, status: 'active' });
 
     if (!defaultProvider) {
-      // No default set — try first active provider by priority as last resort
-      const firstProvider = await this.db
-        .collection<UserProviderRecord>('user_providers')
-        .findOne({ userId, status: 'active' }, { sort: { priority: 1 } });
-
-      if (!firstProvider) return null;
-
-      // Billing gate: skip teros provider for Basic users
-      if (!terosAllowed && firstProvider.providerType === 'teros') {
-        throw new UpgradeRequiredError(
-          'teros_model',
-          'Basic',
-          'Pro',
-          'The Teros model is not available on your plan. Upgrade to Pro to use Teros AI without bringing your own API keys.',
-        );
-      }
-
-      console.log(
-        `[ProviderService] No default provider for user ${userId}, ` +
-          `using first active provider ${firstProvider.providerId} for agent ${agentId}`,
+      // Explicit failure — NO silent fallback to "the first provider that
+      // exists" (2026-10-21): an agent without a pin must run on the user's
+      // default provider or not at all, so the drift is visible instead of a
+      // surprise provider swap.
+      console.error(
+        `[ProviderService] Agent ${agentId} has no pin and user ${userId} has no ` +
+          `active default provider (isDefault) — cannot resolve a provider.`,
       );
-      return this.resolveModelFromProviders([firstProvider], undefined, requiredCaps);
+      return null;
+    }
+
+    // ── Edition gate on the default provider (TER-EDITION): same rule as the
+    // pin gate — a cloud deployment must not resolve turns onto a local-Ollama
+    // provider, even when it is the user's default (e.g. a self-hosted import
+    // or a legacy record). Loud error, never a silent swap to another provider.
+    if (!isProviderTypeAllowedInEdition(defaultProvider.providerType)) {
+      throw new Error(
+        `Edition violation: agent ${agentId} (no pin) falls back to the user's default provider ` +
+          `${defaultProvider.providerId} of type '${defaultProvider.providerType}' (local Ollama daemon), ` +
+          `which is disabled in the cloud edition. Set the user's default to a cloud-compatible provider ` +
+          `(e.g. 'teros' or 'ollama-cloud') or pin the agent to one.`,
+      );
     }
 
     // Billing gate: skip teros provider for Basic users
@@ -917,10 +1190,23 @@ export class ProviderService {
     }
 
     console.log(
-      `[ProviderService] Agent ${agentId} has no availableProviders, ` +
-        `falling back to default provider ${defaultProvider.providerId} for user ${userId}`,
+      `[ProviderService] Agent ${agentId} has no pin (System Default), ` +
+        `using the user default provider ${defaultProvider.providerId} for user ${userId}`,
     );
     return this.resolveModelFromProviders([defaultProvider], undefined, requiredCaps);
+  }
+
+  /**
+   * `true` when the workspace has `settings.zdrOnly === true` (Zero Data
+   * Retention enforcement). Absent workspace / unset flag → false (filter off).
+   * Read per resolution — cheap single-doc read on the workspaces collection.
+   */
+  private async isWorkspaceZdrOnly(workspaceId?: string): Promise<boolean> {
+    if (!workspaceId) return false;
+    const ws = await this.db
+      .collection<{ settings?: { zdrOnly?: boolean } }>('workspaces')
+      .findOne({ workspaceId }, { projection: { settings: 1 } });
+    return ws?.settings?.zdrOnly === true;
   }
 
   /**
@@ -937,7 +1223,8 @@ export class ProviderService {
       for (const provider of providers) {
         const model = provider.models.find((m) => m.modelId === selectedModelId);
         if (model) {
-          const secretsData = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType)
+          const secretsData =
+            PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType) && !provider.encryptedData
             ? {}
             : await this.getProviderSecrets(provider.userId, provider.providerId);
           if (secretsData !== null) return { provider, model, secrets: secretsData ?? {} };
@@ -964,7 +1251,8 @@ export class ProviderService {
         model = provider.models[0];
       }
 
-      const secretsData = PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType)
+      const secretsData =
+        PROVIDER_TYPES_WITHOUT_SECRETS.includes(provider.providerType as ProviderType) && !provider.encryptedData
         ? {}
         : await this.getProviderSecrets(provider.userId, provider.providerId);
       if (secretsData !== null) return { provider, model, secrets: secretsData ?? {} };
@@ -1003,88 +1291,5 @@ export class ProviderService {
         return false;
       return true;
     });
-  }
-
-  // --------------------------------------------------------------------------
-  // Encryption Helpers (reuse pattern from AuthManager)
-  // --------------------------------------------------------------------------
-
-  private async encryptForUser(userId: string, data: any): Promise<EncryptedData> {
-    const userKey = await this.getUserEncryptionKey(userId);
-    return encrypt(data, userKey);
-  }
-
-  private async decryptForUser(userId: string, encrypted: EncryptedData): Promise<any> {
-    const userKey = await this.getUserEncryptionKey(userId);
-    return decrypt(encrypted, userKey);
-  }
-
-  private async getUserEncryptionKey(userId: string): Promise<Buffer> {
-    const keyDoc = await this.db
-      .collection<UserEncryptionKeyDocument>('user_encryption_keys')
-      .findOne({ userId });
-
-    if (keyDoc) {
-      return this.decryptMasterKey(keyDoc.encryptedMasterKey);
-    }
-
-    // Create new key for user
-    return this.createUserEncryptionKey(userId);
-  }
-
-  private async createUserEncryptionKey(userId: string): Promise<Buffer> {
-    const masterKey = generateKey();
-    const encryptedMasterKey = this.encryptMasterKey(masterKey);
-    const salt = generateSalt();
-
-    await this.db.collection<UserEncryptionKeyDocument>('user_encryption_keys').insertOne({
-      _id: new ObjectId(),
-      userId,
-      encryptedMasterKey: encryptedMasterKey.toString('hex'),
-      keyVersion: 1,
-      salt: salt.toString('hex'),
-      createdAt: new Date(),
-    });
-
-    return masterKey;
-  }
-
-  private encryptMasterKey(masterKey: Buffer): Buffer {
-    const systemKey = this.getSystemEncryptionKey();
-    const encrypted = encrypt(masterKey.toString('hex'), systemKey);
-    return Buffer.concat([
-      Buffer.from(encrypted.data, 'hex'),
-      Buffer.from(encrypted.iv, 'hex'),
-      Buffer.from(encrypted.tag, 'hex'),
-    ]);
-  }
-
-  private decryptMasterKey(encryptedMasterKey: string): Buffer {
-    const systemKey = this.getSystemEncryptionKey();
-    const combined = Buffer.from(encryptedMasterKey, 'hex');
-
-    const tagLength = 16;
-    const ivLength = 16;
-    const dataLength = combined.length - ivLength - tagLength;
-
-    const data = combined.subarray(0, dataLength);
-    const iv = combined.subarray(dataLength, dataLength + ivLength);
-    const tag = combined.subarray(dataLength + ivLength);
-
-    const decrypted = decrypt(
-      {
-        data: data.toString('hex'),
-        iv: iv.toString('hex'),
-        tag: tag.toString('hex'),
-      },
-      systemKey,
-    );
-
-    return Buffer.from(decrypted, 'hex');
-  }
-
-  private getSystemEncryptionKey(): Buffer {
-    const encryptionSecret = secrets.requireSystem('encryption');
-    return Buffer.from(encryptionSecret.masterKey, 'hex');
   }
 }

@@ -5,13 +5,14 @@
  * surfaced, not silently dropped.
  */
 
-import { seriesColor } from "@teros/shared"
 import { useMemo } from "react"
-import { Text, XStack, YStack } from "tamagui"
-import { fmtCount, SectionCard, tokens } from "../../../components/monitoring"
+import { View } from "react-native"
+import { fmtCount, SectionCard } from "../../../components/monitoring"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { T } from "../../../components/ui/ds/Text"
 import type { AgentUsageSessionSummary, SessionTokenBreakdown } from "../../../services/AdminApi"
 import { isUsageUnmeasured } from "../cache"
-import { HBar, PanelNote, Stat } from "./panelBits"
+import { BarRow, HBar, PanelNote, Stat, StatRow } from "./panelBits"
 
 const CATEGORIES: { key: keyof SessionTokenBreakdown; label: string }[] = [
   { key: "system", label: "System" },
@@ -30,25 +31,27 @@ const CATEGORIES: { key: keyof SessionTokenBreakdown; label: string }[] = [
  * table) — same categories as the aggregate panel, in miniature.
  */
 export function BreakdownMini({ breakdown }: { breakdown: SessionTokenBreakdown }) {
-  const rows = CATEGORIES.map((c) => ({ ...c, value: breakdown[c.key] || 0 })).filter((r) => r.value > 0)
+  const rows = CATEGORIES.map((c) => ({ ...c, value: breakdown[c.key] || 0 })).filter(
+    (r) => r.value > 0,
+  )
   const total = rows.reduce((a, r) => a + r.value, 0)
   if (total === 0) return null
   return (
-    <YStack gap={5} maxWidth={520}>
+    <View style={{ gap: 5, maxWidth: 520 }}>
       {rows
         .sort((a, b) => b.value - a.value)
         .map((r) => (
-          <XStack key={r.key} ai="center" gap={10}>
-            <Text width={92} fontSize={11} color={tokens.textTertiary} numberOfLines={1}>
+          <View key={r.key} style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+            <T step="12" tone="text3" numberOfLines={1} style={{ width: 92 }}>
               {r.label}
-            </Text>
-            <HBar value={r.value / total} color={seriesColor(r.key)} height={6} />
-            <Text width={62} textAlign="right" fontSize={11} fontFamily="$mono" color={tokens.textSecondary}>
+            </T>
+            <HBar value={r.value / total} height={4} />
+            <T step="code" tone="text2" style={{ width: 62, textAlign: "right" }}>
               {fmtCount(r.value)}
-            </Text>
-          </XStack>
+            </T>
+          </View>
         ))}
-    </YStack>
+    </View>
   )
 }
 
@@ -60,7 +63,8 @@ function aggregate(sessions: AgentUsageSessionSummary[]) {
     if (isUsageUnmeasured(s)) unmeasured += 1
     if (!s.tokenBreakdown) continue
     withBreakdown += 1
-    for (const c of CATEGORIES) totals[c.key] = (totals[c.key] ?? 0) + (s.tokenBreakdown[c.key] || 0)
+    for (const c of CATEGORIES)
+      totals[c.key] = (totals[c.key] ?? 0) + (s.tokenBreakdown[c.key] || 0)
   }
   const grand = Object.values(totals).reduce((a, b) => a + b, 0)
   // "without" splits honestly (P3): a session whose usage was never measured
@@ -76,7 +80,14 @@ function aggregate(sessions: AgentUsageSessionSummary[]) {
   }
 }
 
-export function TokensPanel({ sessions, atFetchLimit = false }: { sessions: AgentUsageSessionSummary[]; atFetchLimit?: boolean }) {
+export function TokensPanel({
+  sessions,
+  atFetchLimit = false,
+}: {
+  sessions: AgentUsageSessionSummary[]
+  atFetchLimit?: boolean
+}) {
+  const c = useColors()
   const agg = useMemo(() => aggregate(sessions), [sessions])
 
   if (sessions.length === 0) {
@@ -92,37 +103,52 @@ export function TokensPanel({ sessions, atFetchLimit = false }: { sessions: Agen
     )
   }
 
-  const rows = CATEGORIES.map((c) => ({ ...c, value: agg.totals[c.key] ?? 0 })).sort((a, b) => b.value - a.value)
+  const rows = CATEGORIES.map((c) => ({ ...c, value: agg.totals[c.key] ?? 0 })).sort(
+    (a, b) => b.value - a.value,
+  )
 
   return (
     <SectionCard title="Input composition">
-      <XStack gap={36} flexWrap="wrap" mb={4}>
-        <Stat label="Total tokens" value={fmtCount(agg.grand)} sub={`${agg.withBreakdown} sessions with breakdown`} />
-        {agg.unmeasured > 0 ? <Stat label="Not measured" value={fmtCount(agg.unmeasured)} sub="sessions (telemetry gap)" color={tokens.warning} /> : null}
-        {agg.noBreakdownMeasured > 0 ? <Stat label="No breakdown" value={fmtCount(agg.noBreakdownMeasured)} sub="sessions (provider gap)" color={tokens.warning} /> : null}
-      </XStack>
+      <StatRow>
+        <Stat
+          label="Total tokens"
+          value={fmtCount(agg.grand)}
+          sub={`${agg.withBreakdown} sessions with breakdown`}
+        />
+        {agg.unmeasured > 0 ? (
+          <Stat
+            label="Not measured"
+            value={fmtCount(agg.unmeasured)}
+            sub="sessions (telemetry gap)"
+            color={c.tint.a.tx}
+          />
+        ) : null}
+        {agg.noBreakdownMeasured > 0 ? (
+          <Stat
+            label="No breakdown"
+            value={fmtCount(agg.noBreakdownMeasured)}
+            sub="sessions (provider gap)"
+            color={c.tint.a.tx}
+          />
+        ) : null}
+      </StatRow>
       {atFetchLimit ? (
         <PanelNote>{`Computed over the ${sessions.length} most recent sessions in the range.`}</PanelNote>
       ) : null}
-      <YStack gap={10}>
+      <View style={{ gap: 10, marginTop: 8 }}>
         {rows.map((r) => {
           const frac = agg.grand > 0 ? r.value / agg.grand : 0
           return (
-            <XStack key={r.key} ai="center" gap={12}>
-              <Text width={110} fontSize={12} color={tokens.textSecondary} numberOfLines={1}>
-                {r.label}
-              </Text>
-              <HBar value={frac} color={seriesColor(r.key)} />
-              <Text width={72} textAlign="right" fontSize={12} fontFamily="$mono" color={tokens.textSecondary}>
-                {fmtCount(r.value)}
-              </Text>
-              <Text width={44} textAlign="right" fontSize={11} fontFamily="$mono" color={tokens.textTertiary}>
-                {(frac * 100).toFixed(0)}%
-              </Text>
-            </XStack>
+            <BarRow
+              key={r.key}
+              label={r.label}
+              value={frac}
+              valueText={fmtCount(r.value)}
+              pctText={`${(frac * 100).toFixed(0)}%`}
+            />
           )
         })}
-      </YStack>
+      </View>
     </SectionCard>
   )
 }

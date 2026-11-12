@@ -83,6 +83,21 @@ export interface BackendStatus {
   nodeVersion: string;
   platform: NodeJS.Platform;
   mcaCount: number;
+  /** Real listener on the backend port (incident 2026-11-01 08:40): the pid
+   * that actually holds :10001, with the pm2-descent verdict and the git
+   * commit it serves. Null when the audit could not run. */
+  listener?: {
+    port: number;
+    pid: number | null;
+    isSelf: boolean;
+    descendsFromPm2: boolean | null;
+    hasPm2Env: boolean | null;
+    pm2WrapperPid: number | null;
+    ok: boolean;
+    reason: string;
+    checkout: { commit: string | null; dirty: boolean | null; error?: string } | null;
+  } | null;
+  portOwnership?: Record<string, unknown>;
   timestamp: string;
 }
 

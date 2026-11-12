@@ -5,16 +5,14 @@
  * Clicking any segment navigates to that directory.
  * Includes a back button that navigates to the previous entry in history.
  *
- * Migrated to the Design System:
- * - Uses `useColors()` for theme-adaptive surface/border tokens.
- * - Uses Tamagui font tokens (`$mono`).
+ * Look: the OS prototype's window header strip (`.phead`) — a round back
+ * IconBtn, mono path segments with caret separators, the last one lifted.
  */
 
-import { ChevronLeft, ChevronRight } from '@tamagui/lucide-icons'
-import React from 'react'
-import { ScrollView } from 'react-native'
-import { Text, XStack } from 'tamagui'
-import { useColors } from '../../components/mca/primitives/useColors'
+import React from "react"
+import { Platform, Pressable, ScrollView, View } from "react-native"
+import { useColors } from "../../components/mca/primitives/useColors"
+import { IconBtn, Ph, T, usePagePadding } from "../../components/ui/ds"
 
 // ============================================================================
 // Types
@@ -25,6 +23,8 @@ interface Props {
   canGoBack: boolean
   onNavigate: (path: string) => void
   onBack: () => void
+  /** Optional right-hand note (e.g. "3 carpetas · 12 archivos"). */
+  summary?: string
 }
 
 // ============================================================================
@@ -42,10 +42,10 @@ interface Props {
  */
 function parseBreadcrumbs(path: string): Array<{ label: string; path: string }> {
   // Split and filter empty parts
-  const parts = path.split('/').filter(Boolean)
+  const parts = path.split("/").filter(Boolean)
   return parts.map((part, index) => ({
     label: part,
-    path: '/' + parts.slice(0, index + 1).join('/'),
+    path: "/" + parts.slice(0, index + 1).join("/"),
   }))
 }
 
@@ -53,80 +53,96 @@ function parseBreadcrumbs(path: string): Array<{ label: string; path: string }> 
 // Component
 // ============================================================================
 
-export function FileBrowserBreadcrumb({ currentPath, canGoBack, onNavigate, onBack }: Props) {
+export function FileBrowserBreadcrumb({
+  currentPath,
+  canGoBack,
+  onNavigate,
+  onBack,
+  summary,
+}: Props) {
   const c = useColors()
+  const pad = usePagePadding()
   const segments = parseBreadcrumbs(currentPath)
 
   return (
-    <XStack
-      backgroundColor={c.bgCard}
-      paddingHorizontal={12}
-      paddingVertical={6}
-      alignItems="center"
-      gap={4}
-      borderBottomWidth={1}
-      borderBottomColor={c.borderStrong}
-      minHeight={36}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+        minHeight: 56,
+        paddingHorizontal: pad.h,
+        paddingTop: 12,
+        paddingBottom: 4,
+        backgroundColor: c.bgSheet,
+      }}
     >
       {/* Back button */}
-      <XStack
-        paddingHorizontal={6}
-        paddingVertical={4}
-        borderRadius={4}
-        alignItems="center"
-        opacity={canGoBack ? 1 : 0.3}
-        cursor={canGoBack ? 'pointer' : 'default'}
-        hoverStyle={canGoBack ? { backgroundColor: c.bgCardHover } : undefined}
-        pressStyle={canGoBack ? { opacity: 0.7 } : undefined}
+      <IconBtn
+        icon="caret-left"
+        plain
+        sm
+        disabled={!canGoBack}
         onPress={canGoBack ? onBack : undefined}
-        flexShrink={0}
-      >
-        <ChevronLeft size={14} color={c.text3} />
-      </XStack>
+        accessibilityLabel="Back"
+        testID="file-browser-back"
+      />
 
       {/* Scrollable path segments */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ alignItems: 'center', flexDirection: 'row' }}
+        contentContainerStyle={{ alignItems: "center", flexDirection: "row" }}
         style={{ flex: 1 }}
       >
+        <Ph name="folder-open" size={14} color={c.text3} style={{ marginRight: 6 }} />
         {segments.map((segment, index) => {
           const isLast = index === segments.length - 1
-          const isRoot = segment.path === '/workspace'
 
           return (
-            <XStack key={segment.path} alignItems="center" gap={2}>
+            <View key={segment.path} style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
               {/* Separator chevron (not before the first segment) */}
-              {index > 0 && (
-                <ChevronRight size={12} color={c.text3} />
-              )}
+              {index > 0 && <Ph name="caret-right" size={11} color={c.text3} />}
 
               {/* Segment label */}
-              <Text
-                fontSize={12}
-                color={isLast ? c.text : c.text2}
-                fontFamily="$mono"
-                paddingHorizontal={4}
-                paddingVertical={2}
-                borderRadius={4}
-                cursor={isLast ? 'default' : 'pointer'}
-                hoverStyle={
-                  !isLast
-                    ? { backgroundColor: c.bgCardHover, color: c.text2 }
-                    : undefined
-                }
-                pressStyle={!isLast ? { opacity: 0.7 } : undefined}
+              <Pressable
+                disabled={isLast}
                 onPress={!isLast ? () => onNavigate(segment.path) : undefined}
-                // @ts-ignore — web only
-                userSelect="none"
+                accessibilityRole={isLast ? undefined : "button"}
+                testID={`file-breadcrumb-${segment.path}`}
+                style={({ pressed, hovered }: any) => [
+                  {
+                    height: 26,
+                    paddingHorizontal: 8,
+                    borderRadius: 100,
+                    justifyContent: "center",
+                    backgroundColor: isLast ? c.bgStep : hovered ? c.wash : "transparent",
+                  },
+                  Platform.OS === "web"
+                    ? ({
+                        cursor: isLast ? "default" : "pointer",
+                        userSelect: "none",
+                        transition: "background 0.2s",
+                        boxShadow: isLast ? c.liftSm : "none",
+                      } as any)
+                    : null,
+                  pressed && !isLast ? { opacity: 0.7 } : null,
+                ]}
               >
-                {segment.label}
-              </Text>
-            </XStack>
+                <T step="code" tone={isLast ? "text" : "text2"}>
+                  {segment.label}
+                </T>
+              </Pressable>
+            </View>
           )
         })}
       </ScrollView>
-    </XStack>
+
+      {summary ? (
+        <T step="codenote" tone="text3">
+          {summary}
+        </T>
+      ) : null}
+    </View>
   )
 }

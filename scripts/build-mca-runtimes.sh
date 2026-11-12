@@ -15,8 +15,6 @@ set -e
 # Images built: mca-runtime (default), mca-runtime-playwright, mca-runtime-bash.
 # mca-runtime-whatsapp is built only if WAHA_DOCKER_USERNAME/PASSWORD are set
 # (paid upstream base image) — otherwise it is skipped with a warning.
-# mca-runtime-docker-env is NOT built here; it is not wired into any deploy
-# script yet and is out of scope for this ticket.
 #
 # Usage:
 #   ./scripts/build-mca-runtimes.sh

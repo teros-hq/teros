@@ -8,6 +8,7 @@
 import type { FileProcessor } from '../types.js';
 import { getExtension } from './base.js';
 import { DocxProcessor } from './docx.js';
+import { ImageProcessor, isImageExtension } from './image.js';
 import { PDFProcessor } from './pdf.js';
 
 /** Legacy / unimplemented document formats, mapped to an actionable hint. */
@@ -24,8 +25,9 @@ const UNSUPPORTED_HINTS: Record<string, string> = {
  * is recognized but not (yet) supported.
  *
  * @param filePath  Absolute path to the input file.
- * @param anthropicKey  Optional. Only used as a fallback to OCR scanned PDFs;
- *   digital PDFs are extracted locally and need no key.
+ * @param anthropicKey  Optional. Only used as a last-resort LLM fallback for
+ *   scanned PDFs when local OCR fails; digital PDFs and most scanned PDFs are
+ *   handled locally and need no key.
  */
 export function createProcessor(filePath: string, anthropicKey = ''): FileProcessor {
   const ext = getExtension(filePath);
@@ -38,13 +40,17 @@ export function createProcessor(filePath: string, anthropicKey = ''): FileProces
     return new DocxProcessor();
   }
 
+  if (isImageExtension(ext)) {
+    return new ImageProcessor();
+  }
+
   const hint = UNSUPPORTED_HINTS[ext];
   if (hint) {
     throw new Error(hint);
   }
 
   throw new Error(
-    `Unsupported file type ".${ext}" for markdown conversion. Supported: PDF, DOCX. ` +
+    `Unsupported file type ".${ext}" for markdown conversion. Supported: PDF, DOCX, images (png/jpg/tiff/webp/gif/bmp). ` +
       'For other formats, export to PDF and convert that.',
   );
 }

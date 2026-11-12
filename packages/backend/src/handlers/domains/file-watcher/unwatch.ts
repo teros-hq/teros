@@ -1,8 +1,8 @@
 /**
  * file.unwatch — Stop watching a file
  *
- * Closes the fs.watch watcher and unsubscribes the client from the
- * `file:<filePath>` topic via PubSubService.
+ * Closes the fs.watch watcher and unsubscribes the client from its
+ * volume-scoped file topic (fileWatchTopic) via PubSubService.
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
@@ -51,12 +51,8 @@ export function createUnwatchFileHandler(deps: UnwatchFileDeps) {
       if (entry.debounceTimer) clearTimeout(entry.debounceTimer)
       entry.watcher.close()
       registry.delete(filePath)
+      if (sessionId) pubSubService.unsubscribeSession(sessionId, entry.topic)
       console.log(`[FileWatcher] Stopped watching ${filePath}`)
-    }
-
-    // Unsubscribe from the file topic
-    if (sessionId) {
-      pubSubService.unsubscribeSession(sessionId, `file:${filePath}`)
     }
 
     return { filePath, watching: false }

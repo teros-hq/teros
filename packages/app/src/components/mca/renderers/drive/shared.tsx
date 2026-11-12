@@ -20,12 +20,13 @@ import {
 import type React from 'react';
 import { Linking } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const DRIVE_ICON = 'https://ssl.gstatic.com/docs/doclist/images/drive_2022q3_32dp.png';
+const DRIVE_ICON = `${backendUrl()}/static/mcas/mca.google.drive/icon.svg`;
 
 // ============================================================================
 // File-type colors — semantic theme-agnostic (file format identity,

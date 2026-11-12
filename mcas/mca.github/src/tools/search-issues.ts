@@ -1,10 +1,9 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { PAGE_PARAMS, PAGED_RESULT_NOTE, type PageArgs, curateIssue, fieldPayload, pagedRequest } from '../lib/curate';
 
 export const searchIssues: ToolConfig = {
   annotations: { readOnlyHint: true },
-  description:
-    'Search issues and pull requests across GitHub. Use GitHub search syntax in `q` (e.g. `repo:owner/name is:issue is:open label:bug`). Returns {total_count, incomplete_results, items[]}.',
+  description: `Search issues and pull requests with GitHub search syntax (items with is_pull_request: true are PRs). ${PAGED_RESULT_NOTE}`,
   parameters: {
     type: 'object',
     properties: {
@@ -23,30 +22,22 @@ export const searchIssues: ToolConfig = {
         enum: ['asc', 'desc'],
         description: 'Sort direction (default: desc)',
       },
-      per_page: { type: 'number', description: 'Results per page (default: 30, max: 100)' },
-      page: { type: 'number', description: 'Page index (1-based)' },
+      ...PAGE_PARAMS,
     },
     required: ['q'],
   },
   handler: async (args, context) => {
-    const { q, sort, order, per_page, page } = args as {
-      q: string;
-      sort?: string;
-      order?: string;
-      per_page?: number;
-      page?: number;
-    };
-    if (!q || q.trim() === '') {
+    const a = args as PageArgs & { q: string; sort?: string; order?: string };
+    if (!a.q || a.q.trim() === '') {
       throw new Error('`q` must be a non-empty search query.');
     }
-    return await githubRequest(context, '/search/issues', {
-      params: {
-        q,
-        sort: sort && sort !== 'best-match' ? sort : undefined,
-        order,
-        per_page,
-        page,
-      },
-    });
+    return pagedRequest(
+      context,
+      '/search/issues',
+      a,
+      { q: a.q, sort: a.sort && a.sort !== 'best-match' ? a.sort : undefined, order: a.order },
+      fieldPayload('items'),
+      curateIssue,
+    );
   },
 };

@@ -112,7 +112,12 @@ export function readAllSourceFiles(mcaDir: string): Map<string, string> {
       } else if (entry.isFile() && entry.name.endsWith('.ts') && !entry.name.endsWith('.d.ts')) {
         try {
           result.set(full.slice(base.length + 1), readFileSync(full, 'utf-8'));
-        } catch {}
+        } catch (err) {
+          // @fixme alice - 2026.09.30 : silent catch was hiding EACCES/EMFILE —
+          // files silently dropped from quality-gate analysis. Warn until the
+          // walker retries transient fs errors properly.
+          console.warn(`[quality-gates] failed to read source file ${full}:`, err);
+        }
       }
     }
   }

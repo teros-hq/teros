@@ -4,7 +4,7 @@
   "tools": [
     {
       "name": "get-current",
-      "description": "Get current date and time in specified timezone",
+      "description": "Get current date and time in specified timezone. Returns a rich JSON with ISO, Unix timestamps, human-readable, weekday, etc. Optionally format with a custom format string.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -15,32 +15,38 @@
           },
           "format": {
             "type": "string",
-            "description": "Output format (e.g., 'yyyy-MM-dd HH:mm:ss'). Defaults to ISO",
-            "default": "iso"
+            "description": "Optional output format. Accepts Luxon tokens ('yyyy-MM-dd HH:mm:ss') or Moment.js tokens ('YYYY-MM-DD HH:mm:ss'). If omitted, returns rich JSON."
           }
         }
       },
       "annotations": {
-        "readOnlyHint": true
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "format",
-      "description": "Format a date/time string",
+      "description": "Format a date/time string. Accepts ISO 8601, Unix timestamps (seconds or ms), and common formats. Supports both Luxon and Moment.js format tokens.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "datetime": {
             "type": "string",
-            "description": "Date/time string to format"
+            "description": "Date/time to format. Accepts: ISO 8601, Unix timestamp (seconds or ms, as string or number), RFC 2822, SQL, or common formats."
           },
           "format": {
             "type": "string",
-            "description": "Output format (e.g., 'yyyy-MM-dd', 'HH:mm:ss', 'MMMM d, yyyy')"
+            "description": "Output format. Luxon tokens ('yyyy-MM-dd', 'HH:mm:ss', 'cccc, d LLLL yyyy') or Moment.js tokens ('YYYY-MM-DD', 'dddd, D MMMM YYYY')."
           },
           "inputFormat": {
             "type": "string",
-            "description": "Input format if datetime is not ISO (optional)"
+            "description": "Explicit input format (Luxon tokens) if auto-detection fails (optional)"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Target timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
           }
         },
         "required": [
@@ -49,22 +55,29 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "parse",
-      "description": "Parse a date/time string",
+      "description": "Parse a date/time string into structured data. Accepts ISO 8601, Unix timestamps (seconds or ms), RFC 2822, SQL, and common formats. Returns rich JSON with all representations.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "datetime": {
             "type": "string",
-            "description": "Date/time string to parse"
+            "description": "Date/time to parse. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats."
           },
           "format": {
             "type": "string",
-            "description": "Expected format (e.g., 'yyyy-MM-dd HH:mm:ss'). Optional if ISO"
+            "description": "Explicit input format (Luxon tokens) if auto-detection fails (optional)"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Target timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
           }
         },
         "required": [
@@ -72,22 +85,25 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "convert-timezone",
-      "description": "Convert time between timezones",
+      "description": "Convert a date/time between timezones. Accepts ISO 8601, Unix timestamps, and common formats. Returns rich JSON for both source and target.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "datetime": {
             "type": "string",
-            "description": "Date/time string"
+            "description": "Date/time to convert. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats."
           },
           "fromTimezone": {
             "type": "string",
-            "description": "Source timezone (e.g., 'Europe/Madrid')"
+            "description": "Source timezone (e.g., 'Europe/Madrid'). If input is a Unix timestamp, this is ignored (always UTC)."
           },
           "toTimezone": {
             "type": "string",
@@ -101,18 +117,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "add",
-      "description": "Add duration to a date/time",
+      "description": "Add duration to a date/time. Accepts ISO 8601, Unix timestamps, and common formats.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "datetime": {
             "type": "string",
-            "description": "Base date/time string"
+            "description": "Base date/time. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats."
           },
           "duration": {
             "type": "object",
@@ -124,6 +143,9 @@
               "months": {
                 "type": "number"
               },
+              "weeks": {
+                "type": "number"
+              },
               "days": {
                 "type": "number"
               },
@@ -137,6 +159,10 @@
                 "type": "number"
               }
             }
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
           }
         },
         "required": [
@@ -145,18 +171,21 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "subtract",
-      "description": "Subtract duration from a date/time",
+      "description": "Subtract duration from a date/time. Accepts ISO 8601, Unix timestamps, and common formats.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "datetime": {
             "type": "string",
-            "description": "Base date/time string"
+            "description": "Base date/time. Accepts: ISO 8601, Unix timestamp (seconds or ms), RFC 2822, SQL, or common formats."
           },
           "duration": {
             "type": "object",
@@ -168,6 +197,9 @@
               "months": {
                 "type": "number"
               },
+              "weeks": {
+                "type": "number"
+              },
               "days": {
                 "type": "number"
               },
@@ -181,6 +213,10 @@
                 "type": "number"
               }
             }
+          },
+          "timezone": {
+            "type": "string",
+            "description": "Timezone for output (e.g., 'Europe/Madrid'). Defaults to keeping the input's timezone."
           }
         },
         "required": [
@@ -189,28 +225,32 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "diff",
-      "description": "Calculate difference between two dates",
+      "description": "Calculate difference between two dates. Accepts ISO 8601, Unix timestamps, and common formats.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "start": {
             "type": "string",
-            "description": "Start date/time"
+            "description": "Start date/time. Accepts: ISO 8601, Unix timestamp, RFC 2822, SQL, or common formats."
           },
           "end": {
             "type": "string",
-            "description": "End date/time"
+            "description": "End date/time. Accepts: ISO 8601, Unix timestamp, RFC 2822, SQL, or common formats."
           },
           "unit": {
             "type": "string",
             "enum": [
               "years",
               "months",
+              "weeks",
               "days",
               "hours",
               "minutes",
@@ -226,12 +266,15 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": false
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     },
     {
       "name": "is-valid",
-      "description": "Validate a date/time string",
+      "description": "Validate a date/time string. Accepts ISO 8601, Unix timestamps, RFC 2822, SQL, and common formats. Returns whether it parses and what it parses to.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -241,7 +284,7 @@
           },
           "format": {
             "type": "string",
-            "description": "Expected format (optional if ISO)"
+            "description": "Explicit input format (Luxon tokens) to test against (optional)"
           }
         },
         "required": [
@@ -249,7 +292,10 @@
         ]
       },
       "annotations": {
-        "readOnlyHint": true
+        "version": "1.0.0",
+        "stability": "stable",
+        "readOnlyHint": true,
+        "idempotentHint": true
       }
     }
   ]

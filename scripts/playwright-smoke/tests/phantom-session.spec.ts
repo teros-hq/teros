@@ -7,7 +7,7 @@
  * of TER-650) populates the real origin.
  *
  * This spec verifies it end-to-end against Mongo:
- *   1. a scheduler recurring task opens a session with triggerKind='scheduled'
+ *   1. a scheduled Automate starter run opens a session with triggerKind='scheduled'
  *   2. a direct user message still records triggerKind='user_message'
  *
  * The session is persisted when the turn STARTS (session.started), before the LLM
@@ -17,26 +17,21 @@
  * Mutation check: reverting area C (triggerKind always user_message) makes test 1 never
  * find a 'scheduled' session → red.
  *
- * VALIDATED end-to-end against the real backend (2026-07-07): the fix produces the
- * 'scheduled' session. Environment requirements (met by the harness stack): the backend
- * under test must be the scheduler LEADER (a single backend on the DB — if another
- * backend shares the DB and holds the leader lock, it processes the dispatch); the
- * channel must be subscribed to the topic (created by `subscribeChannelToScheduler`,
- * since the WS action does not); the core model must exist in the `models` collection
- * and the user must have an active sub (seed + boot migrations).
+ * Since c550f85bd the scheduler is Automate: a `once` channel-event starter due now is
+ * claimed by the runner's next tick (5s after boot, then every 60s; the backend under test
+ * must be the automate leader — a single backend on the DB) and delivered as a `reminder`
+ * event → 'scheduled' (event-handler EVENT_TRIGGER_KIND). The run also passes the billing
+ * gate + daily quota (seed + boot migrations + ensureTerosProvider); a refused run is
+ * recorded in `automate_executions` with its reason.
  */
 import type { Page } from "@playwright/test"
 import { expect, test } from "../fixtures"
 import { closeDb } from "../helpers/db"
-import { openChat } from "../helpers/dom"
+import { composerInput, openChat } from "../helpers/dom"
 import { ensureTerosProvider } from "../helpers/provider"
 import { evalTeros, getPrimaryIds, wsRequest } from "../helpers/teros"
-import {
-  deleteRecurringTasksForChannel,
-  forceRecurringTaskDue,
-  subscribeChannelToScheduler,
-  waitForUsageSession,
-} from "../helpers/usage"
+import { channelStarter, deleteStartersForChannel } from "../helpers/automate"
+import { waitForUsageSession } from "../helpers/usage"
 
 test.afterAll(async () => {
   await closeDb()
@@ -69,7 +64,7 @@ async function expectSessionTriggerKind(
 }
 
 test.describe("usage triggerKind (TER-650) @usage", () => {
-  test("a scheduler recurring task records the session as triggerKind='scheduled'", async ({
+  test("a scheduled Automate starter records the session as triggerKind='scheduled'", async ({
     terosPage,
   }) => {
     test.setTimeout(150_000)
@@ -84,21 +79,20 @@ test.describe("usage triggerKind (TER-650) @usage", () => {
     expect(channelId, "ch_<16hex>").toMatch(/^ch_[0-9a-f]{16}$/)
 
     try {
-      const created = await wsRequest(terosPage, "scheduler.create-recurring-task", {
-        channelId,
-        message: "scheduled daily report",
-        cronExpression: "0 9 * * *",
-      })
-      expect(created, "create-recurring-task returned the task").toBeTruthy()
-
-      // The WS action does not create the channel subscription; without it the dispatch does not match.
-      await subscribeChannelToScheduler(channelId)
-      const forced = await forceRecurringTaskDue(channelId)
-      expect(forced, "the recurring task was marked as due").toBeGreaterThan(0)
+      // `once` due now → the runner's next tick fires it (no cron wait, no DB poking).
+      const created = await wsRequest(
+        terosPage,
+        "automate.create-starter",
+        channelStarter(privateWorkspaceId as string, channelId, agentId as string, {
+          type: "once",
+          at: new Date().toISOString(),
+        }),
+      )
+      expect(created, "create-starter returned the starter").toBeTruthy()
 
       await expectSessionTriggerKind(channelId, "scheduled", 120_000)
     } finally {
-      await deleteRecurringTasksForChannel(channelId)
+      await deleteStartersForChannel(channelId)
       await closeChannel(terosPage, channelId)
     }
   })
@@ -118,7 +112,7 @@ test.describe("usage triggerKind (TER-650) @usage", () => {
       `PWtrig${Date.now()}`,
     )
     try {
-      const input = terosPage.getByTestId("composer-input")
+      const input = composerInput(terosPage, channelId)
       await input.fill("hola")
       await input.press("Enter")
 

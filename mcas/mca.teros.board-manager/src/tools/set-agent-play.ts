@@ -17,8 +17,10 @@ export const setAgentPlay: ToolConfig = {
     },
     required: ['projectId', 'agentId', 'enabled'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     const agentId = args?.agentId as string;
@@ -33,6 +35,7 @@ export const setAgentPlay: ToolConfig = {
         projectId,
         agentId,
         enabled,
+        callerAgentId,
       }),
       15_000,
       'set_agent_play',

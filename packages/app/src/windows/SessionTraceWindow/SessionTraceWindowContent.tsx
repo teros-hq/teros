@@ -9,15 +9,21 @@
  *
  * Reads `admin-api.agent-usage-session-detail` (requireSystemAdmin server-side);
  * FORBIDDEN shows the same Shield empty-state as the other admin windows.
+ *
+ * Drawn as the OS prototype's page: `Page` on the sheet → MonitoringHeader
+ * (eyebrow + serif title + session status badge + view chips, with the id
+ * field + Load / refresh as the controls) → the trace view.
  */
 
-import { AlertTriangle, ListTree, RefreshCw, Search, Shield } from "@tamagui/lucide-icons"
 import { useState } from "react"
-import { Button, Input, Paragraph, ScrollView, Text, XStack, YStack } from "tamagui"
+import { View } from "react-native"
 import { FullscreenLoader } from "../../components/ui"
 import { getTerosClient } from "../../services/terosClientSingleton"
-import { MonitoringHeader, type MonitoringTarget, scrollbarThin } from "../../components/monitoring"
-import { useColors } from "../../components/mca/primitives/useColors"
+import { MonitoringHeader, type MonitoringTarget } from "../../components/monitoring"
+import { Btn, IconBtn } from "../../components/ui/ds/Buttons"
+import { Field } from "../../components/ui/ds/Field"
+import { EmptyState, Page } from "../../components/ui/ds/Page"
+import { T } from "../../components/ui/ds/Text"
 import { useTilingStore } from "../../store/tilingStore"
 import { SessionTraceView } from "./components/SessionTraceView"
 import { useSessionTrace } from "./hooks/useSessionTrace"
@@ -39,7 +45,6 @@ const SESSION_STATUS: Record<string, { level: "ok" | "degraded" | "error"; text:
 
 export function SessionTraceWindowContent({ sessionUsageId }: SessionTraceWindowProps) {
   const client = getTerosClient()
-  const c = useColors()
   const openWindow = useTilingStore((s) => s.openWindow)
   const nav = (target: MonitoringTarget) => openWindow(target, {}, false)
   const [inputValue, setInputValue] = useState(sessionUsageId ?? "")
@@ -53,87 +58,77 @@ export function SessionTraceWindowContent({ sessionUsageId }: SessionTraceWindow
   }
 
   return (
-    <YStack flex={1} backgroundColor="$background">
+    <Page>
       <MonitoringHeader
-        title="Session Trace"
+        title="Session trace"
         activeView="trace"
         statusLevel={trace ? (SESSION_STATUS[trace.session.status]?.level ?? "ok") : "ok"}
-        statusText={trace ? (SESSION_STATUS[trace.session.status]?.text ?? trace.session.status) : undefined}
+        statusText={
+          trace ? (SESSION_STATUS[trace.session.status]?.text ?? trace.session.status) : undefined
+        }
         onNavigate={nav}
+        controls={
+          <>
+            <Field
+              mono
+              icon="magnifying-glass"
+              value={inputValue}
+              onChangeText={setInputValue}
+              onSubmitEditing={submit}
+              placeholder="sessionUsageId (su_…)"
+              containerStyle={{ minWidth: 260, flexGrow: 1 }}
+              {...({ "aria-label": "Session usage id" } as any)}
+            />
+            <Btn size="md" variant="primary" icon="magnifying-glass" onPress={submit}>
+              Load
+            </Btn>
+            {submittedId ? (
+              <IconBtn
+                icon="arrows-clockwise"
+                disabled={loading}
+                onPress={reload}
+                title="Refresh"
+                {...({ "aria-label": "Refresh" } as any)}
+              />
+            ) : null}
+          </>
+        }
       />
-      <XStack
-        ai="center"
-        gap={10}
-        paddingHorizontal={16}
-        paddingVertical={12}
-        borderBottomColor={c.borderStrong}
-        borderBottomWidth={1}
-        flexWrap="wrap"
-      >
-        <ListTree size={18} color="$blue10" />
-        <Text fontSize={16} fontWeight="700" color="$gray12">
-          Session Trace
-        </Text>
-        <XStack flex={1} minWidth={240} ai="center" gap={6}>
-          <Input
-            flex={1}
-            size="$3"
-            value={inputValue}
-            onChangeText={setInputValue}
-            onSubmitEditing={submit}
-            placeholder="sessionUsageId (su_…)"
-            aria-label="Session usage id"
-          />
-          <Button size="$3" icon={Search} onPress={submit}>
-            Load
-          </Button>
-          {submittedId ? (
-            <Button size="$3" icon={RefreshCw} disabled={loading} onPress={reload} aria-label="Refresh" />
-          ) : null}
-        </XStack>
-      </XStack>
 
       {!submittedId ? (
-        <YStack flex={1} ai="center" jc="center" gap={10} padding={32}>
-          <ListTree size={36} color="$gray8" />
-          <Text fontSize={14} color="$gray10">
-            Enter a sessionUsageId to inspect a turn.
-          </Text>
-          <Paragraph fontSize={12} color="$gray9" textAlign="center" maxWidth={420}>
-            Copy it from the Agent Usage sessions table, a Sentry event, or the backend logs.
-          </Paragraph>
-        </YStack>
+        <EmptyState
+          icon="tree-structure"
+          title="Enter a sessionUsageId to inspect a turn."
+          text="Copy it from the Agent Usage sessions table, a Sentry event, or the backend logs."
+        />
       ) : loading ? (
-        <FullscreenLoader />
+        <View style={{ minHeight: 240 }}>
+          <FullscreenLoader />
+        </View>
       ) : error ? (
-        <YStack flex={1} ai="center" jc="center" gap={12} padding={32}>
-          {error === "Admin privileges required" ? (
-            <Shield size={40} color="$orange10" />
-          ) : (
-            <AlertTriangle size={40} color="$red10" />
-          )}
-          <Text fontSize={15} fontWeight="600" color="$gray12">
-            {error}
-          </Text>
-        </YStack>
+        <EmptyState
+          icon={error === "Admin privileges required" ? "shield-check" : "warning"}
+          title={error}
+          text={
+            error === "Admin privileges required"
+              ? "This window is restricted to system admins (role ∈ admin | super)."
+              : undefined
+          }
+        />
       ) : notFound ? (
-        <YStack flex={1} ai="center" jc="center" gap={10} padding={32}>
-          <AlertTriangle size={36} color="$gray8" />
-          <Text fontSize={14} color="$gray10">
-            No session found for{" "}
-            <Text fontFamily="$mono" color="$gray12">
+        <EmptyState
+          icon="warning"
+          title="No session found"
+          text={`No session found for ${submittedId}.`}
+          action={
+            <T step="code" tone="text3" selectable>
               {submittedId}
-            </Text>
-            .
-          </Text>
-        </YStack>
+            </T>
+          }
+        />
       ) : trace ? (
-        <ScrollView flex={1} style={scrollbarThin as never}>
-          <YStack padding={16}>
-            <SessionTraceView trace={trace} onOpenChild={openChild} />
-          </YStack>
-        </ScrollView>
+        <SessionTraceView trace={trace} onOpenChild={openChild} />
       ) : null}
-    </YStack>
+    </Page>
   )
 }

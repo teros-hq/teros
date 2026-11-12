@@ -38,7 +38,7 @@ export function createDeleteProjectHandler(
 
     const { workspaceId } = project
 
-    await boardService.deleteProject(projectId)
+    await boardService.deleteProject(projectId, ctx.userId)
 
     if (pubSubService) {
       await pubSubService.broadcastToWorkspace(workspaceId, {

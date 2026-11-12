@@ -142,6 +142,7 @@ function makeDriver(opts: MakeDriverOpts): {
   });
   const maxStepsReached = new Map<string, boolean>();
   const sessionSummaries = new Map<string, string>();
+  const lastCompactionAt = new Map<string, number>();
   const deps: TurnDriverDeps = {
     sessionStore: store as unknown as SessionStore,
     llmClient: opts.llmClient,
@@ -152,7 +153,10 @@ function makeDriver(opts: MakeDriverOpts): {
     maxSteps: opts.maxSteps ?? 10,
     interruptStrategy: boundaryAware,
     maxStepsReached,
+    stepResetRequested: new Map<string, boolean>(),
+    turnEndRequested: new Map<string, boolean>(),
     sessionSummaries,
+    lastCompactionAt,
     toolExecutionMode: opts.toolExecutionMode ?? 'sequential',
   };
   return { driver: new TurnDriver(deps), store, maxStepsReached, deps };
@@ -385,7 +389,10 @@ describe('TurnDriver.runTurn', () => {
     expect(finalText).toBe('all done');
   });
 
-  test('boundary_aware: a queued message aborts in-flight tool dispatch mid-flight', async () => {
+  // TER-445: a queued message never aborts an in-flight tool, under either
+  // strategy — the tool completes with its real result and the turn breaks at
+  // step_end (pinned in src/conversation/TurnDriver.test.ts).
+  test('boundary_aware: a queued message does NOT abort the in-flight tool (TER-445)', async () => {
     const exec = makeSignalProbeExecutor(700);
     const { driver } = makeDriver({ llmClient: slowToolLLM(), toolExecutor: exec });
 
@@ -394,7 +401,7 @@ describe('TurnDriver.runTurn', () => {
       getPendingItemCount: () => 1,
     });
 
-    expect(exec.abortedDuringRun).toEqual([true]);
+    expect(exec.abortedDuringRun).toEqual([false]);
   });
 
   test('agent_phase lifecycle: emits thinking on entry and idle in finally', async () => {

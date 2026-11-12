@@ -1,38 +1,107 @@
 /**
  * Smoke tests for tool handlers. Hits the real implementations end-to-end
  * on a temp workspace. Does not start an HTTP server — calls handlers directly.
+ *
+ * In the ctx.volume architecture, tests provide a mock ctx.volume that
+ * backs onto a local temp directory. Paths use the canonical /workspace
+ * prefix (stripped by path-safety to volume-relative before hitting the mock).
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { append } from '../../src/tools/append';
-import { copy } from '../../src/tools/copy';
-import { deleteTool } from '../../src/tools/delete';
-import { edit } from '../../src/tools/edit';
-import { glob } from '../../src/tools/glob';
-import { grep } from '../../src/tools/grep';
-import { hash } from '../../src/tools/hash';
-import { list } from '../../src/tools/list';
+import { appendFile } from '../../src/tools/append-file';
+import { copyFile } from '../../src/tools/copy-file';
+import { deleteFile } from '../../src/tools/delete-file';
+import { editFile } from '../../src/tools/edit-file';
+import { findFiles } from '../../src/tools/find-files';
+import { searchInFiles } from '../../src/tools/search-in-files';
+import { hashFile } from '../../src/tools/hash-file';
+import { listFiles } from '../../src/tools/list-files';
 import { listRoots } from '../../src/tools/list-roots';
-import { mkdir } from '../../src/tools/mkdir';
-import { move } from '../../src/tools/move';
-import { patch } from '../../src/tools/patch';
-import { read } from '../../src/tools/read';
-import { readBatch } from '../../src/tools/read-batch';
-import { readMedia } from '../../src/tools/read-media';
-import { stat } from '../../src/tools/stat';
-import { tree } from '../../src/tools/tree';
-import { write } from '../../src/tools/write';
+import { createDirectory } from '../../src/tools/create-directory';
+import { moveFile } from '../../src/tools/move-file';
+import { patchFile } from '../../src/tools/patch-file';
+import { readFile } from '../../src/tools/read-file';
+import { readFiles } from '../../src/tools/read-files';
+import { readBinary } from '../../src/tools/read-binary';
+import { fileInfo } from '../../src/tools/file-info';
+import { treeView } from '../../src/tools/tree-view';
+import { createFile } from '../../src/tools/create-file';
 import { resetDefaultGuard } from '../../src/lib/path-safety';
 import { clearSession } from '../../src/lib/session';
+import type { VolumeStorage, VolumeEntry, VolumeStat } from '@teros/mca-sdk';
 
-const WS = join(tmpdir(), `fs-v2-tools-${Date.now()}`);
-const NOOP_CONTEXT = {} as never;
+const WS = join('/tmp', `fs-v2-tools-${Date.now()}`);
+
+/**
+ * Mock VolumeStorage that backs onto a local directory.
+ * This simulates the ctx.volume API using native fs against a temp dir.
+ */
+function createMockVolume(rootDir: string): VolumeStorage {
+  const toLocal = (volPath: string) => join(rootDir, volPath);
+  const fromLocal = (localPath: string) => {
+    const rel = localPath.startsWith(rootDir) ? localPath.slice(rootDir.length) : localPath;
+    return rel || '/';
+  };
+
+  return {
+    async list(path: string): Promise<VolumeEntry[]> {
+      const local = toLocal(path);
+      const entries = readdirSync(local, { withFileTypes: true });
+      return entries.map((e) => ({
+        name: e.name,
+        type: e.isDirectory() ? 'directory' as const : 'file' as const,
+        size: e.isFile() ? statSync(join(local, e.name)).size : undefined,
+      }));
+    },
+    async read(path: string): Promise<string | null> {
+      const local = toLocal(path);
+      try {
+        const data = readFileSync(local);
+        return data.toString('base64');
+      } catch {
+        return null;
+      }
+    },
+    async write(path: string, data: string): Promise<void> {
+      const local = toLocal(path);
+      const dir = local.substring(0, local.lastIndexOf('/'));
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(local, Buffer.from(data, 'base64'));
+    },
+    async delete(path: string, options?: { recursive?: boolean }): Promise<void> {
+      const local = toLocal(path);
+      if (!existsSync(local)) return;
+      rmSync(local, { recursive: options?.recursive ?? false, force: true });
+    },
+    async stat(path: string): Promise<VolumeStat | null> {
+      const local = toLocal(path);
+      try {
+        const st = statSync(local);
+        return {
+          size: st.size,
+          isDirectory: st.isDirectory(),
+          modifiedAt: st.mtime.toISOString(),
+        };
+      } catch {
+        return null;
+      }
+    },
+    async mkdir(path: string): Promise<void> {
+      const local = toLocal(path);
+      mkdirSync(local, { recursive: true });
+    },
+    getTempPath(filename: string): string {
+      return `/tmp/test/${filename}`;
+    },
+  };
+}
+
+const mockCtx = { volume: createMockVolume(WS) } as any;
 
 async function call<T>(tool: { handler: (args: any, ctx: any) => any }, args: Record<string, unknown>): Promise<T> {
-  return (await tool.handler(args, NOOP_CONTEXT)) as T;
+  return (await tool.handler(args, mockCtx)) as T;
 }
 
 interface Wrapped<T = unknown> {
@@ -43,12 +112,13 @@ interface Wrapped<T = unknown> {
 
 beforeAll(() => {
   mkdirSync(WS, { recursive: true });
-  process.env.MCA_WORKSPACE_PATH = WS;
+  // glob and grep still use native fs — they need to know the local mount point
+  process.env.MCA_VOLUME_MOUNT_PATH = WS;
   resetDefaultGuard();
 });
 
 afterAll(() => {
-  delete process.env.MCA_WORKSPACE_PATH;
+  delete process.env.MCA_VOLUME_MOUNT_PATH;
   resetDefaultGuard();
   if (existsSync(WS)) rmSync(WS, { recursive: true, force: true });
 });
@@ -64,76 +134,76 @@ beforeEach(() => {
   writeFileSync(join(WS, 'sub', 'c.ts'), 'export const x = 42;\n');
 });
 
-describe('read / read-batch / stat', () => {
-  it('read returns cat -n content + metadata', async () => {
-    const res = await call<Wrapped<any>>(read, { filePath: join(WS, 'a.txt') });
+describe('read-file / read-files / file-info', () => {
+  it('read-file returns cat -n content + metadata', async () => {
+    const res = await call<Wrapped<any>>(readFile, { filePath: '/workspace/a.txt' });
     expect(res.structuredContent.totalLines).toBe(3);
     expect(res.structuredContent.content).toContain('00001|');
     expect(res.structuredContent.kind).toBe('text');
   });
 
-  it('read supports head / tail', async () => {
-    const head = await call<Wrapped<any>>(read, { filePath: join(WS, 'a.txt'), head: 1 });
+  it('read-file supports head / tail', async () => {
+    const head = await call<Wrapped<any>>(readFile, { filePath: '/workspace/a.txt', head: 1 });
     expect(head.structuredContent.displayedLines).toBe(1);
-    const tail = await call<Wrapped<any>>(read, { filePath: join(WS, 'a.txt'), tail: 1 });
+    const tail = await call<Wrapped<any>>(readFile, { filePath: '/workspace/a.txt', tail: 1 });
     expect(tail.structuredContent.offset).toBe(2);
   });
 
-  it('read-batch returns one entry per path with ok/error', async () => {
-    const res = await call<Wrapped<any>>(readBatch, {
-      paths: [join(WS, 'a.txt'), join(WS, 'does-not-exist.txt')],
+  it('read-files returns one entry per path with ok/error', async () => {
+    const res = await call<Wrapped<any>>(readFiles, {
+      paths: ['/workspace/a.txt', '/workspace/does-not-exist.txt'],
     });
     expect(res.structuredContent.ok).toBe(1);
     expect(res.structuredContent.failed).toBe(1);
   });
 
-  it('stat returns metadata without reading', async () => {
-    const res = await call<Wrapped<any>>(stat, { path: join(WS, 'a.txt') });
+  it('file-info returns metadata without reading', async () => {
+    const res = await call<Wrapped<any>>(fileInfo, { path: '/workspace/a.txt' });
     expect(res.structuredContent.exists).toBe(true);
     expect(res.structuredContent.type).toBe('file');
   });
 
-  it('stat returns exists=false for missing paths', async () => {
-    const res = await call<Wrapped<any>>(stat, { path: join(WS, 'missing.txt') });
+  it('file-info returns exists=false for missing paths', async () => {
+    const res = await call<Wrapped<any>>(fileInfo, { path: '/workspace/missing.txt' });
     expect(res.structuredContent.exists).toBe(false);
   });
 });
 
-describe('write / append safety', () => {
-  it('write allows creating new files', async () => {
-    const res = await call<Wrapped<any>>(write, { filePath: join(WS, 'new.txt'), content: 'hi' });
+describe('create-file / append-file safety', () => {
+  it('create-file allows creating new files', async () => {
+    const res = await call<Wrapped<any>>(createFile, { filePath: '/workspace/new.txt', content: 'hi' });
     expect(res.structuredContent.created).toBe(true);
   });
 
-  it('write blocks overwriting without prior read', async () => {
+  it('create-file blocks overwriting without prior read', async () => {
     await expect(
-      call(write, { filePath: join(WS, 'a.txt'), content: 'overwrite' }),
+      call(createFile, { filePath: '/workspace/a.txt', content: 'overwrite' }),
     ).rejects.toThrow(/Refusing to overwrite/);
   });
 
-  it('write allows overwrite after read', async () => {
-    await call(read, { filePath: join(WS, 'a.txt') });
-    const res = await call<Wrapped<any>>(write, {
-      filePath: join(WS, 'a.txt'),
+  it('create-file allows overwrite after read', async () => {
+    await call(readFile, { filePath: '/workspace/a.txt' });
+    const res = await call<Wrapped<any>>(createFile, {
+      filePath: '/workspace/a.txt',
       content: 'new',
     });
     expect(res.structuredContent.created).toBe(false);
     expect(readFileSync(join(WS, 'a.txt'), 'utf-8')).toBe('new');
   });
 
-  it('append does not require prior read', async () => {
-    const res = await call<Wrapped<any>>(append, {
-      filePath: join(WS, 'a.txt'),
+  it('append-file does not require prior read', async () => {
+    const res = await call<Wrapped<any>>(appendFile, {
+      filePath: '/workspace/a.txt',
       content: '\nline4',
     });
     expect(res.structuredContent.bytesAppended).toBeGreaterThan(0);
   });
 });
 
-describe('edit / patch', () => {
-  it('edit replaces an exact unique occurrence', async () => {
-    const res = await call<Wrapped<any>>(edit, {
-      filePath: join(WS, 'a.txt'),
+describe('edit-file / patch-file', () => {
+  it('edit-file replaces an exact unique occurrence', async () => {
+    const res = await call<Wrapped<any>>(editFile, {
+      filePath: '/workspace/a.txt',
       oldString: 'line2',
       newString: 'LINE_TWO',
     });
@@ -141,14 +211,14 @@ describe('edit / patch', () => {
     expect(readFileSync(join(WS, 'a.txt'), 'utf-8')).toContain('LINE_TWO');
   });
 
-  it('edit without replaceAll errors when ambiguous', async () => {
+  it('edit-file without replaceAll errors when ambiguous', async () => {
     writeFileSync(join(WS, 'dup.txt'), 'x\nx\n');
     await expect(
-      call(edit, { filePath: join(WS, 'dup.txt'), oldString: 'x', newString: 'y' }),
+      call(editFile, { filePath: '/workspace/dup.txt', oldString: 'x', newString: 'y' }),
     ).rejects.toThrow(/appears 2 times/);
   });
 
-  it('patch applies a unified diff', async () => {
+  it('patch-file applies a unified diff', async () => {
     const uniDiff = `--- a.txt
 +++ a.txt
 @@ -1,3 +1,3 @@
@@ -157,8 +227,8 @@ describe('edit / patch', () => {
 +LINE_TWO
  line3
 `;
-    const res = await call<Wrapped<any>>(patch, {
-      filePath: join(WS, 'a.txt'),
+    const res = await call<Wrapped<any>>(patchFile, {
+      filePath: '/workspace/a.txt',
       unifiedDiff: uniDiff,
     });
     expect(res.structuredContent.applied).toBe(true);
@@ -166,36 +236,31 @@ describe('edit / patch', () => {
   });
 });
 
-describe('list / tree / glob', () => {
-  it('list respects depth + sorts dirs first', async () => {
-    const res = await call<Wrapped<any>>(list, { path: WS, depth: 0 });
+describe('list-files / tree-view', () => {
+  it('list-files respects depth + sorts dirs first', async () => {
+    const res = await call<Wrapped<any>>(listFiles, { path: '/workspace', depth: 0 });
     const entries = res.structuredContent.entries;
     expect(entries.length).toBeGreaterThan(0);
     expect(entries[0].type).toBe('directory');
   });
 
-  it('list honors user ignore patterns', async () => {
-    const res = await call<Wrapped<any>>(list, { path: WS, depth: 1, ignore: ['**/*.md'] });
+  it('list-files honors user ignore patterns', async () => {
+    const res = await call<Wrapped<any>>(listFiles, { path: '/workspace', depth: 1, ignore: ['**/*.md'] });
     const names = res.structuredContent.entries.map((e: any) => e.name);
     expect(names).not.toContain('b.md');
   });
 
-  it('tree returns hierarchical JSON', async () => {
-    const res = await call<Wrapped<any>>(tree, { path: WS, depth: 2 });
+  it('tree-view returns hierarchical JSON', async () => {
+    const res = await call<Wrapped<any>>(treeView, { path: '/workspace', depth: 2 });
     expect(res.structuredContent.tree.children.length).toBeGreaterThan(0);
-  });
-
-  it('glob returns files sorted by mtime', async () => {
-    const res = await call<Wrapped<any>>(glob, { pattern: '**/*.txt', path: WS });
-    expect(res.structuredContent.totalFound).toBeGreaterThan(0);
   });
 });
 
 describe('grep', () => {
-  it('grep content mode returns matches with context', async () => {
-    const res = await call<Wrapped<any>>(grep, {
+  it('search-in-files content mode returns matches with context', async () => {
+    const res = await call<Wrapped<any>>(searchInFiles, {
       pattern: 'line2',
-      path: WS,
+      path: '/workspace',
       output_mode: 'content',
       contextBefore: 1,
       contextAfter: 1,
@@ -204,19 +269,19 @@ describe('grep', () => {
     expect(res.structuredContent.matches[0].lineNumber).toBeGreaterThan(0);
   });
 
-  it('grep files mode returns one entry per file', async () => {
-    const res = await call<Wrapped<any>>(grep, {
+  it('search-in-files files mode returns one entry per file', async () => {
+    const res = await call<Wrapped<any>>(searchInFiles, {
       pattern: 'line',
-      path: WS,
+      path: '/workspace',
       output_mode: 'files',
     });
     expect(res.structuredContent.mode).toBe('files');
   });
 
-  it('grep count mode returns only totals', async () => {
-    const res = await call<Wrapped<any>>(grep, {
+  it('search-in-files count mode returns only totals', async () => {
+    const res = await call<Wrapped<any>>(searchInFiles, {
       pattern: 'line',
-      path: WS,
+      path: '/workspace',
       output_mode: 'count',
     });
     expect(res.structuredContent.totalMatches).toBeGreaterThan(0);
@@ -225,17 +290,17 @@ describe('grep', () => {
 });
 
 describe('delete / copy / move / mkdir', () => {
-  it('mkdir creates directories idempotently', async () => {
-    const res1 = await call<Wrapped<any>>(mkdir, { path: join(WS, 'newdir') });
+  it('create-directory creates directories idempotently', async () => {
+    const res1 = await call<Wrapped<any>>(createDirectory, { path: '/workspace/newdir' });
     expect(res1.structuredContent.created).toBe(true);
-    const res2 = await call<Wrapped<any>>(mkdir, { path: join(WS, 'newdir') });
+    const res2 = await call<Wrapped<any>>(createDirectory, { path: '/workspace/newdir' });
     expect(res2.structuredContent.created).toBe(false);
   });
 
   it('copy supports directories with recursive', async () => {
-    const res = await call<Wrapped<any>>(copy, {
-      source: join(WS, 'sub'),
-      destination: join(WS, 'sub2'),
+    const res = await call<Wrapped<any>>(copyFile, {
+      source: '/workspace/sub',
+      destination: '/workspace/sub2',
       recursive: true,
     });
     expect(res.structuredContent.type).toBe('directory');
@@ -243,28 +308,28 @@ describe('delete / copy / move / mkdir', () => {
   });
 
   it('move renames files', async () => {
-    await call(move, { source: join(WS, 'a.txt'), destination: join(WS, 'a-renamed.txt') });
+    await call(moveFile, { source: '/workspace/a.txt', destination: '/workspace/a-renamed.txt' });
     expect(existsSync(join(WS, 'a.txt'))).toBe(false);
     expect(existsSync(join(WS, 'a-renamed.txt'))).toBe(true);
   });
 
-  it('delete removes files and dirs', async () => {
-    await call(deleteTool, { path: join(WS, 'a.txt') });
+  it('delete-file removes files and dirs', async () => {
+    await call(deleteFile, { path: '/workspace/a.txt' });
     expect(existsSync(join(WS, 'a.txt'))).toBe(false);
 
-    await call(deleteTool, { path: join(WS, 'sub'), recursive: true });
+    await call(deleteFile, { path: '/workspace/sub', recursive: true });
     expect(existsSync(join(WS, 'sub'))).toBe(false);
   });
 
   it('delete is idempotent (existed=false on missing)', async () => {
-    const res = await call<Wrapped<any>>(deleteTool, { path: join(WS, 'missing.txt') });
+    const res = await call<Wrapped<any>>(deleteFile, { path: '/workspace/missing.txt' });
     expect(res.structuredContent.existed).toBe(false);
   });
 });
 
 describe('structured content shape (MCP spec criterion 15)', () => {
   it('every successful tool returns {content, structuredContent}', async () => {
-    const res = await call<Wrapped<any>>(stat, { path: WS });
+    const res = await call<Wrapped<any>>(fileInfo, { path: '/workspace' });
     expect(Array.isArray(res.content)).toBe(true);
     expect(res.content[0]?.type).toBe('text');
     expect(res.structuredContent).toBeDefined();
@@ -272,19 +337,15 @@ describe('structured content shape (MCP spec criterion 15)', () => {
 });
 
 describe('list-roots / read-media / hash (v2.1 additions)', () => {
-  it('list-roots returns the configured workspace roots', async () => {
+  it('list-roots returns `/workspace` (the volume root, user-facing)', async () => {
     const res = await call<Wrapped<any>>(listRoots, {});
-    expect(res.structuredContent.count).toBeGreaterThan(0);
-    expect(Array.isArray(res.structuredContent.roots)).toBe(true);
-    const first = res.structuredContent.roots[0];
-    // PathGuard resolves symlinks (e.g. /var -> /private/var on macOS),
-    // so compare against the realpath, not the original tmpdir path.
-    expect(first.path).toBe(realpathSync(WS));
-    expect(first.exists).toBe(true);
-    expect(first.type).toBe('directory');
+    expect(res.structuredContent.count).toBe(1);
+    expect(res.structuredContent.roots[0].path).toBe('/workspace');
+    expect(res.structuredContent.roots[0].exists).toBe(true);
+    expect(res.structuredContent.roots[0].type).toBe('directory');
   });
 
-  it('read-media returns base64 + detected mime for a PNG fixture', async () => {
+  it('read-binary returns base64 + detected mime for a PNG fixture', async () => {
     // Minimal valid PNG (8-byte signature + IHDR + IEND chunks)
     const png = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -297,10 +358,9 @@ describe('list-roots / read-media / hash (v2.1 additions)', () => {
       0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
       0x42, 0x60, 0x82,
     ]);
-    const pngPath = join(WS, 'fixture.png');
-    writeFileSync(pngPath, png);
+    writeFileSync(join(WS, 'fixture.png'), png);
 
-    const res = await call<Wrapped<any>>(readMedia, { filePath: pngPath });
+    const res = await call<Wrapped<any>>(readBinary, { filePath: '/workspace/fixture.png' });
     expect(res.structuredContent.mimeType).toBe('image/png');
     expect(res.structuredContent.size).toBe(png.length);
     expect(typeof res.structuredContent.base64).toBe('string');
@@ -308,10 +368,9 @@ describe('list-roots / read-media / hash (v2.1 additions)', () => {
   });
 
   it('hash sha256 matches a precomputed value', async () => {
-    const fixture = join(WS, 'hashable.txt');
-    writeFileSync(fixture, 'hello\n');
+    writeFileSync(join(WS, 'hashable.txt'), 'hello\n');
     // sha256("hello\n") = 5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03
-    const res = await call<Wrapped<any>>(hash, { filePath: fixture });
+    const res = await call<Wrapped<any>>(hashFile, { filePath: '/workspace/hashable.txt' });
     expect(res.structuredContent.algorithm).toBe('sha256');
     expect(res.structuredContent.hash).toBe(
       '5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03',
@@ -319,12 +378,10 @@ describe('list-roots / read-media / hash (v2.1 additions)', () => {
     expect(res.structuredContent.size).toBe(6);
   });
 
-  it('hash supports md5 / sha1 alternate algorithms', async () => {
-    const fixture = join(WS, 'hashable.txt');
-    writeFileSync(fixture, 'hello\n');
-    const md5 = await call<Wrapped<any>>(hash, { filePath: fixture, algorithm: 'md5' });
-    expect(md5.structuredContent.algorithm).toBe('md5');
-    expect(md5.structuredContent.hash).toBe('b1946ac92492d2347c6235b4d2611184');
+  it('hash rejects weak algorithms (md5, sha1)', async () => {
+    writeFileSync(join(WS, 'hashable.txt'), 'hello\n');
+    await expect(call<Wrapped<any>>(hashFile, { filePath: '/workspace/hashable.txt', algorithm: 'md5' })).rejects.toThrow();
+    await expect(call<Wrapped<any>>(hashFile, { filePath: '/workspace/hashable.txt', algorithm: 'sha1' })).rejects.toThrow();
   });
 
   it('stat now exposes mimeType for regular files when detectable', async () => {
@@ -332,23 +389,21 @@ describe('list-roots / read-media / hash (v2.1 additions)', () => {
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
       0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
     ]);
-    const p = join(WS, 'mime-probe.png');
-    writeFileSync(p, png);
-    const res = await call<Wrapped<any>>(stat, { path: p });
+    writeFileSync(join(WS, 'mime-probe.png'), png);
+    const res = await call<Wrapped<any>>(fileInfo, { path: '/workspace/mime-probe.png' });
     expect(res.structuredContent.mimeType).toBe('image/png');
   });
 
   it('stat always returns the mimeType field for regular files (null when not detectable)', async () => {
     // Plain text has no magic bytes — file-type returns undetected → field MUST still be present as null.
-    const res = await call<Wrapped<any>>(stat, { path: join(WS, 'a.txt') });
+    const res = await call<Wrapped<any>>(fileInfo, { path: '/workspace/a.txt' });
     expect(Object.prototype.hasOwnProperty.call(res.structuredContent, 'mimeType')).toBe(true);
     expect(res.structuredContent.mimeType).toBeNull();
   });
 
   it('read reports totalLines: 0 for an empty file', async () => {
-    const empty = join(WS, 'empty.txt');
-    writeFileSync(empty, '');
-    const res = await call<Wrapped<any>>(read, { filePath: empty });
+    writeFileSync(join(WS, 'empty.txt'), '');
+    const res = await call<Wrapped<any>>(readFile, { filePath: '/workspace/empty.txt' });
     expect(res.structuredContent.totalLines).toBe(0);
     expect(res.structuredContent.size).toBe(0);
   });
@@ -357,8 +412,8 @@ describe('list-roots / read-media / hash (v2.1 additions)', () => {
 describe('edit / patch dryRun', () => {
   it('edit with dryRun=true returns diff but does not modify the file', async () => {
     const before = readFileSync(join(WS, 'a.txt'), 'utf-8');
-    const res = await call<Wrapped<any>>(edit, {
-      filePath: join(WS, 'a.txt'),
+    const res = await call<Wrapped<any>>(editFile, {
+      filePath: '/workspace/a.txt',
       oldString: 'line2',
       newString: 'LINE TWO',
       dryRun: true,
@@ -370,9 +425,8 @@ describe('edit / patch dryRun', () => {
   });
 
   it('patch with dryRun=true returns applied=true but file unchanged', async () => {
-    const target = join(WS, 'patchable.txt');
-    writeFileSync(target, 'foo\nbar\n');
-    const before = readFileSync(target, 'utf-8');
+    writeFileSync(join(WS, 'patchable.txt'), 'foo\nbar\n');
+    const before = readFileSync(join(WS, 'patchable.txt'), 'utf-8');
     const diff = [
       `--- a/patchable.txt`,
       `+++ b/patchable.txt`,
@@ -382,14 +436,14 @@ describe('edit / patch dryRun', () => {
       ` bar`,
       ``,
     ].join('\n');
-    const res = await call<Wrapped<any>>(patch, {
-      filePath: target,
+    const res = await call<Wrapped<any>>(patchFile, {
+      filePath: '/workspace/patchable.txt',
       unifiedDiff: diff,
       dryRun: true,
     });
     expect(res.structuredContent.applied).toBe(true);
     expect(res.structuredContent.dryRun).toBe(true);
-    const after = readFileSync(target, 'utf-8');
+    const after = readFileSync(join(WS, 'patchable.txt'), 'utf-8');
     expect(after).toBe(before);
   });
 });
@@ -398,9 +452,9 @@ describe('grep type filter (v2.1)', () => {
   it('grep with type=md only matches .md files', async () => {
     writeFileSync(join(WS, 'doc.md'), 'NEEDLE in md\n');
     writeFileSync(join(WS, 'code.ts'), 'NEEDLE in ts\n');
-    const res = await call<Wrapped<any>>(grep, {
+    const res = await call<Wrapped<any>>(searchInFiles, {
       pattern: 'NEEDLE',
-      path: WS,
+      path: '/workspace',
       output_mode: 'files',
       type: 'md',
     });

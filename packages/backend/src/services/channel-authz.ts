@@ -23,8 +23,15 @@ import type { WorkspaceService } from './workspace-service';
 /**
  * Mongo filter for "agents this user may use in this workspace":
  *   - agents scoped to the workspace, OR
- *   - superagents (workspaceId null/absent) owned by the caller or the
- *     workspace owner.
+ *   - superagents (workspaceId null/absent) owned by the **caller only**.
+ *
+ * The workspace owner's personal superagents are NOT included — they are
+ * private to the owner.  Including them was a cross-tenant information leak
+ * (SEC-2 class) where any workspace member could see the owner's agent names,
+ * roles, and avatars.
+ *
+ * The `_workspaceOwnerId` parameter is kept in the signature for API
+ * compatibility but is intentionally unused.
  *
  * Mirrors the `$or` built inline by `agent.list`. Callers add the concrete
  * `agentId` to turn it into an existence check.
@@ -32,15 +39,12 @@ import type { WorkspaceService } from './workspace-service';
 export function usableAgentFilter(
   userId: string,
   workspaceId: string,
-  workspaceOwnerId?: string | null,
+  _workspaceOwnerId?: string | null,
 ): Filter<Record<string, unknown>> {
-  const superagentOwnerIds = Array.from(
-    new Set([userId, workspaceOwnerId].filter(Boolean) as string[]),
-  );
   return {
     $or: [
       { workspaceId },
-      { ownerId: { $in: superagentOwnerIds }, workspaceId: { $in: [null, undefined] } },
+      { ownerId: userId, workspaceId: { $in: [null, undefined] } },
     ],
   };
 }
@@ -75,15 +79,13 @@ export async function assertCanCreateChannel(
     throw new HandlerError('ACCESS_DENIED', 'You do not have access to this workspace');
   }
 
-  // 2. The agent must be usable by the caller in this workspace.
-  const workspace = await db
-    .collection('workspaces')
-    .findOne({ workspaceId } as Filter<Record<string, unknown>>);
-  const workspaceOwnerId = (workspace as { ownerId?: string } | null)?.ownerId ?? null;
+  // 2. The agent must be usable by the caller in this workspace (SEC-2 /
+  //    MUW-REQ-1): workspace agents plus the caller's own superagents.
   const agent = await db.collection('agents').findOne({
     agentId,
-    ...usableAgentFilter(userId, workspaceId, workspaceOwnerId),
+    ...usableAgentFilter(userId, workspaceId),
   } as Filter<Record<string, unknown>>);
+
   if (!agent) {
     throw new HandlerError('ACCESS_DENIED', 'You do not have access to this agent');
   }

@@ -7,6 +7,8 @@
 
 import type { Transport } from './transport/types'
 import type { McaToolAnnotations, ToolTestStatus } from '@teros/shared'
+// Needed in scope for the method signature below; `export ... from` only re-exports.
+import type { ToolDetailsResponse } from '../types/tool-details'
 
 // ============================================================================
 // Shared types
@@ -82,6 +84,8 @@ export interface CatalogMcaDetail {
   changelog: Array<{ version: string; date: string; notes: string }>
   keywords: string[]
   verified: boolean
+  /** Catalog MCA ids this MCA depends on (e.g. ["mca.teros.bash"]) — the UI warns when unsatisfied. */
+  dependencies: string[]
   tools: string[]
   toolsDetailed: Array<{ name: string; description: string; group?: string }>
   /** Brand colours extracted from the icon (TER-538) for the hero gradient. */
@@ -238,6 +242,18 @@ export interface McaHealthWriteResult {
   recorded: number
 }
 
+/**
+ * Static metadata for one tool, used by the permission-approval detail UI.
+ * Declared once in types/tool-details.ts and re-exported here so callers can keep
+ * importing it from the domain API they use.
+ */
+export type {
+  ToolAnnotations,
+  ToolDetail,
+  ToolDetailsResponse,
+  ToolParameters,
+} from '../types/tool-details'
+
 // ============================================================================
 // AppApi
 // ============================================================================
@@ -275,6 +291,18 @@ export class AppApi {
       name,
       ...(context !== undefined ? { context } : {}),
     })
+  }
+
+  /**
+   * Change an app's scope between 'personal' and 'shared' (REQ-6).
+   * Personal apps are blocked in shared conversations and use per-user credentials.
+   * Shared apps use workspace-level credentials and work in all conversations.
+   */
+  setScope(
+    appId: string,
+    scope: 'personal' | 'shared',
+  ): Promise<{ appId: string; scope: 'personal' | 'shared' }> {
+    return this.transport.request('app.set-scope', { appId, scope })
   }
 
   // --------------------------------------------------------------------------
@@ -381,6 +409,20 @@ export class AppApi {
   }
 
   // --------------------------------------------------------------------------
+  // Todo real-time subscriptions
+  // --------------------------------------------------------------------------
+
+  /** Subscribe session to real-time todo-list events */
+  subscribeTodo(): Promise<{ userId: string }> {
+    return this.transport.request('todo.subscribe', {})
+  }
+
+  /** Unsubscribe session from real-time todo-list events */
+  unsubscribeTodo(): Promise<{ userId: string }> {
+    return this.transport.request('todo.unsubscribe', {})
+  }
+
+  // --------------------------------------------------------------------------
   // MCA live-test / health
   // --------------------------------------------------------------------------
 
@@ -426,6 +468,14 @@ export class AppApi {
   /** List the static input schemas for an MCA's tools (D-03/D-04). */
   getMcaToolSchemas(mcaId: string): Promise<{ tools: McaToolSchema[] }> {
     return this.transport.request('app.get-mca-tool-schemas', { mcaId })
+  }
+
+  /**
+   * Read description + parameters + annotations for the named tools of one app.
+   * Workspace-scoped (not admin) — powers the pending-permission detail card.
+   */
+  getToolDetails(appId: string, toolNames: string[]): Promise<ToolDetailsResponse> {
+    return this.transport.request('app.get-tool-details', { appId, toolNames })
   }
 
   /** Read all persisted MCA tool-health records (D-07/D-08). */

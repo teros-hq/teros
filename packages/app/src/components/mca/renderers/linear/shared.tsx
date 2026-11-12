@@ -24,12 +24,13 @@ import type React from 'react';
 import { Text } from 'tamagui';
 import { Badge, type KeyValueRow, ToolCallCard, useColors, useMcaTheme } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
+import { backendUrl } from '../../../../config/runtime';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-export const LINEAR_ICON = `${process.env.EXPO_PUBLIC_BACKEND_URL}/static/linear-icon.png`;
+export const LINEAR_ICON = `${backendUrl()}/static/mcas/mca.linear/icon.svg`;
 
 export const LINEAR_BRAND = {
   /** Linear's official primary brand color. Used for `StatusDot running`,
@@ -548,8 +549,7 @@ export function LinearToolShell({
   return (
     <ToolCallCard
       status={toolStatusForPrimitive(status)}
-      description={description}
-      verb={getToolLabel(toolName)}
+      description={description ?? getToolLabel(toolName)}
       iconUri={LINEAR_ICON}
       badge={badge ?? statusBadge(status)}
       defaultExpanded={defaultExpanded}

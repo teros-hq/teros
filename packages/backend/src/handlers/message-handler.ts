@@ -14,14 +14,17 @@ import {
   type Clock,
   ConversationManager,
   type ILLMClient,
+  LLMClientFactory,
   type PartInput,
   resolveStrategy,
   SessionLockManager,
   SystemClock,
   type SessionStore,
   type StreamEvent,
+  type ToolPart,
   WorkerCancelledError,
 } from "@teros/core"
+import { channelListScope } from "@teros/shared"
 import type {
   GetMessagesRequest,
   Message,
@@ -32,26 +35,48 @@ import type {
 } from "@teros/shared"
 import * as fs from "fs/promises"
 import type { Db } from "mongodb"
+import { COLLECTIONS, collection } from "../db"
 import * as path from "path"
 import type { WebSocket } from "ws"
 import { buildAvatarUrl } from "../lib/avatar-url"
 import { config } from "../config"
 import { captureException } from "../lib/sentry"
+import { redactMessagesForViewer } from "../auth/redact-messages"
+import { sizeForLegacyModelId, TEROS_SIZE_MODEL_ID } from "../models/providers/teros"
+import { resolveTerosRoute } from "../services/teros-upstream"
+import { laneForTrigger } from "../services/teros-lane"
+import { TerosRouterClient } from "../services/teros-router-client"
+import type { TerosRoutingForTurn } from "./message/llm-client-manager"
+import {
+  resolveVoiceLlmPlan,
+  VoiceFastFallbackClient,
+  type VoiceLlmPlan,
+} from "../services/voice-fast-llm"
 import type { SecretsManager } from "../secrets/secrets-manager"
-import { assertTerosHoursAvailable } from "../services/billing-gate"
+import { assertTerosHoursAvailable, getUserTerosProviderConfig } from "../services/billing-gate"
 import type { BoardService } from "../services/board-service"
 import type { ChannelManager } from "../services/channel-manager"
 import type { FeatureFlagService } from "../services/feature-flag-service"
 import type { McaManager } from "../services/mca-manager"
 import { ChannelRunningTracker } from "../services/channel-running-tracker"
+import { SuggestedPromptsService } from "../services/suggested-prompts-service"
+import { InternalLLMService } from "../services/internal-llm-service"
 import { getChannelWorkerRegistry } from "../services/channel-worker-host"
 import { McaMemoryHooks } from "../services/mca-memory-hooks"
 import { McaService } from "../services/mca-service"
 import { McaToolExecutor, type IToolExecutor } from "../services/mca-tool-executor"
+import { SkillService, type SkillInterpolationContext } from "../services/skill-service"
 import { ModelService, reconcileWithRuntimeModel } from "../services/model-service"
 import { ProviderService, type ResolvedProvider } from "../services/provider-service"
 import type { SessionManager } from "../services/session-manager"
-import { TranscriptionProviderFactory } from "../services/transcription"
+import {
+  TranscriptionProviderFactory,
+  TranscriptionLogService,
+  TranscriptCleaner,
+  VocabularyResolver,
+  type TranscriptCleanMode,
+  type TranscriptionOptions,
+} from "../services/transcription"
 import { UsageService } from "../services/usage-service"
 import { UsageTrackingService } from "../services/usage-tracking-service"
 import { usageContext } from "../services/agent-usage-context"
@@ -62,10 +87,13 @@ import type { EventHandler } from "./event-handler"
 import type { PubSubService } from "../services/pubsub-service"
 import type { MCAEventSubscriptionService } from "../services/mca-event-subscription-service"
 import type { VoiceHandler } from "./voice-handler"
+import type { VoiceLoop } from "./voice-loop"
+import type { VoiceModeToolsAdapter } from "../services/mca-tool-executor"
 import { BillingGateService, UpgradeRequiredError } from "../services/billing-gate.js"
 
 // Import extracted modules
 import {
+  buildPermissionBatchWakeText,
   createFormManager,
   createLLMClientManager,
   createPermissionManager,
@@ -84,11 +112,9 @@ import {
   type StreamingHelpers,
   type StreamingState,
 } from "./message"
-import {
-  normalizeFallbackMode,
-  type TerosFallbackMode,
-} from "../services/teros-fallback-client"
-
+import type { AwaitingAuthRegistry } from "./message/awaiting-auth-registry"
+import { updateTodoNodeRunning } from "./message/todo-running"
+import type { TodoAutoplayService } from "../services/todo-autoplay-service"
 import { createLogger } from '../lib/logger'
 
 const log = createLogger('MessageHandler')
@@ -133,18 +159,46 @@ export class MessageHandler {
   private eventHandler?: EventHandler
   private pubSubService?: PubSubService
   private mcaEventSubscriptionService?: MCAEventSubscriptionService
+  // To Do autoplay (TODOAP-REQ-8): sets the running flag of the To Do task
+  // linked to a channel around each agent turn. Wired post-construction.
+  private todoAutoplayService?: TodoAutoplayService
 
   // Voice handler — when set, text messages on channels with an active voice
   // session are NOT processed by the text engine (the voice handler owns the
   // conversation). Wired post-construction via setVoiceHandler().
   private voiceHandler?: VoiceHandler | null = null
 
+  // Voice Mode v2 — F2b (REQ-8): the native voice loop. When set, tool
+  // executors for channels with an ACTIVE native voice session get the
+  // set_mode/get_mode/pause_listening built-ins pushed per turn (the agent's
+  // own door to the mode axis). Wired post-construction via setVoiceLoop().
+  private voiceLoop?: VoiceLoop | null = null
+
   // Agent-usage instrumentation services (optional; wired post-construction)
   private agentUsageSessionService: import("../services/agent-usage-session-service").AgentUsageSessionService | null = null
   private toolExecutionService: import("../services/tool-execution-service").ToolExecutionService | null = null
+  // 🛡️ Teros Guard (docs/specs/security/20261106_teros-guard.md): review layer
+  // over `allow` calls. Wired post-construction; null = guard off (fail-open).
+  private terosGuardService: import("../services/teros-guard-service").TerosGuardService | null = null
+  private terosGuardFlag?: { get(): boolean }
   private featureFlagService?: FeatureFlagService
+  private awaitingAuthRegistry: AwaitingAuthRegistry | null = null
+
+  // Transcription logging — records every STT call to MongoDB for analytics & cost tracking
+  private transcriptionLogService: TranscriptionLogService
+
+  // Transcript cleaner — post-STT disfluency removal (fillers, false starts,
+  // stutters) before the text reaches the agent/user. Flag-gated (stt.clean).
+  private transcriptCleaner: TranscriptCleaner
+
+  // Contextual composer suggestions — cheap internal LLM, regenerated after
+  // every completed agent response (see maybeGenerateSuggestedPrompts).
+  private suggestedPromptsService: SuggestedPromptsService
+
+  private vocabularyResolver: VocabularyResolver | null = null
 
   private toolExecutorCache = new Map<string, CachedToolExecutor>()
+
 
   // Typing heartbeat intervals per channel
   private typingHeartbeats = new Map<string, ReturnType<typeof setInterval>>()
@@ -185,10 +239,44 @@ export class MessageHandler {
       this.channelManager,
     )
 
+    // Transcription logging service (writes to transcription_logs collection)
+    // (its indexes are applied at boot by ensureAllIndexes, src/db/indexes.ts)
+    this.transcriptionLogService = new TranscriptionLogService(db)
+
+    // Transcript cleaner (flag-gated): heuristic layer always available; the
+    // LLM layer uses the same credential-free internal LLM as autonaming.
+    this.transcriptCleaner = new TranscriptCleaner({
+      internalLLM: new InternalLLMService(db, this.providerService),
+    })
+
+    // Composer suggestion generation (cheap internal LLM — same credential-free
+    // Teros provider path as autonaming/letters). Lazily creates its own
+    // InternalLLMService client on first use.
+    this.suggestedPromptsService = new SuggestedPromptsService(
+      this.channelManager,
+      new InternalLLMService(db, this.providerService),
+    )
+
+    // Vocabulary resolver for dynamic per-user STT vocabulary.
+    // Queries MongoDB for user-specific entities (workspaces, projects, agents,
+    // skills, apps) and combines them with the static config vocabulary.
+    // Only initialized when secretsManager is available (needed for static vocab).
+    if (secretsManager) {
+      this.vocabularyResolver = new VocabularyResolver(db, secretsManager)
+    }
+
     // Initialize LLM client manager
     this.llmClientManager = createLLMClientManager({
       mockClient: mockLLMClient,
     })
+
+    // TER-617 secondary: when a provider's credentials are rotated, invalidate
+    // cached LLM clients built with the old API key so the new key takes effect
+    // without a backend restart. The providerService fires the hook from
+    // setProviderSecrets (called by updateProvider when auth is included).
+    this.providerService.onCredentialsChanged = (providerId) => {
+      this.llmClientManager.clearCacheForProvider(providerId)
+    }
 
     // Initialize permission manager with database for persistence
     this.permissionManager = createPermissionManager({
@@ -229,15 +317,103 @@ export class MessageHandler {
           return null
         }
       },
+      // PERMB-REQ-3: the agent wakes ONCE per permission batch — when the
+      // channel has no pending request left and every grant execution /
+      // deny rewrite finished. The outcomes are already in the agent's
+      // history (session-store tool parts); the wake text names them.
+      // NO synthetic user message is emitted here — the wake text is turn
+      // input only (session store), never a channel bubble (2026-10-25 revert
+      // lesson: user-role 'event' messages rendered as "Unsupported message
+      // type event" and violated the no-messages-in-user's-name rule).
+      onBatchResolved: async ({ channelId, outcomes }) => {
+        const channel = await this.channelManager.getChannel(channelId)
+        if (!channel) {
+          log.error({ channelId }, "onBatchResolved: channel not found — cannot wake")
+          return
+        }
+        await this.processAgentResponse(channelId, channel.agentId, buildPermissionBatchWakeText(outcomes))
+        // Recompute the channel's awaiting_user state — broadcasts the clear
+        // only if nothing else is pending.
+        this.broadcastAwaitingUserAfterResolution(channelId)
+      },
+      // PERMB-REQ-3: a deny replaces the marker in the agent's history with
+      // the denial as an error result.
+      rewriteDeniedToolPart: async ({ channelId, toolCallId, toolName, output }) => {
+        await this.updateSessionToolPartResult(channelId, toolCallId, toolName, { output, isError: true }, 0)
+      },
     })
+
+    // Orphaned permission sweeper — a no-op since PERMB-REQ-2: a pending
+    // request never expires by age (only explicit cancellation resolves it).
+    this.permissionManager.startOrphanedPermissionSweeper()
 
     // Inline user forms (tools.user-forms). Content-driven — no dedicated WS
     // event, so the only deps are the broadcast + field-level persist.
+    // v2 (interactions.non-blocking): onFormResolved saves the synthetic
+    // form_response user message + wakes the agent in a NEW turn.
     this.formManager = createFormManager({
       broadcastToChannel: this.broadcastToChannel.bind(this),
       db: this.db,
       updateMessageContentFields: async (messageId, fields) => {
         await this.channelManager.updateMessageContentFields(messageId, fields)
+      },
+      onFormResolved: async ({ channelId, resolution, formRequestId, spec }) => {
+        // Render the answer as readable text — this is what the agent reads
+        // (the LLM context is text parts) and what the UI shows as a summary.
+        let text: string
+        if (resolution.kind === "submitted") {
+          const lines = spec.fields
+            .map((f) => {
+              const v = (resolution as { values?: Record<string, unknown> }).values?.[f.id]
+              return v === undefined ? null : `${f.label}: ${String(v)}`
+            })
+            .filter(Boolean)
+          const notes = resolution.notes ? `\nNotes: ${resolution.notes}` : ""
+          text = `[Form response] ${spec.title ?? "Form"}\n${lines.join("\n")}${notes}`
+        } else if (resolution.kind === "dismissed") {
+          text = `[Form response] The user dismissed the form "${spec.title ?? "Form"}" without submitting — continue conversationally, do not re-send it.`
+        } else {
+          text = `[Form response] The form "${spec.title ?? "Form"}" was resolved as ${resolution.kind}.`
+        }
+
+        const channel = await this.channelManager.getChannel(channelId)
+        if (!channel) {
+          log.error({ channelId }, "onFormResolved: channel not found — cannot wake")
+          return
+        }
+        const messageId = this.channelManager.createMessageId()
+        const timestamp = new Date().toISOString()
+        const sender =
+          (await this.channelManager.getUserSender(channel.userId ?? "unknown")) ??
+          ({ type: "user" as const, id: channel.userId ?? "unknown", name: "User" } as const)
+        const message = {
+          messageId,
+          channelId,
+          role: "user" as const,
+          userId: channel.userId,
+          sender,
+          content:
+            resolution.kind === "submitted"
+              ? {
+                  type: "form_response" as const,
+                  formRequestId,
+                  values: resolution.values,
+                  ...(resolution.notes ? { notes: resolution.notes } : {}),
+                }
+              : { type: "form_response" as const, formRequestId, dismissed: true },
+          timestamp,
+        }
+        await this.channelManager.saveMessage(message as never)
+        this.broadcastToChannel(channelId, {
+          type: "message",
+          channelId,
+          message,
+        })
+        // Wake the agent in a NEW turn with the readable text.
+        await this.processAgentResponse(channelId, channel.agentId, text, messageId)
+        // v2: recompute the channel's awaiting_user state (spec §Implementation
+        // design 5) — broadcasts the clear only if nothing else is pending.
+        this.broadcastAwaitingUserAfterResolution(channelId)
       },
     })
 
@@ -272,6 +448,11 @@ export class MessageHandler {
     this.mcaEventSubscriptionService = service
   }
 
+  /** Set the To Do autoplay service (running flag of linked To Do tasks, TODOAP-REQ-8). */
+  setTodoAutoplayService(service: TodoAutoplayService): void {
+    this.todoAutoplayService = service
+  }
+
   setAgentUsageSessionService(
     service: import("../services/agent-usage-session-service").AgentUsageSessionService,
   ): void {
@@ -289,6 +470,28 @@ export class MessageHandler {
   }
 
   /**
+   * 🛡️ Wire the Teros Guard service + its cached global flag
+   * (`tools.teros-guard`). Called from server-bootstrap once; per-executor
+   * wiring happens in getToolExecutor.
+   */
+  setTerosGuard(
+    service: import("../services/teros-guard-service").TerosGuardService,
+    flag: { get(): boolean },
+  ): void {
+    this.terosGuardService = service
+    this.terosGuardFlag = flag
+  }
+
+  /**
+   * v2 non-blocking interactions: wire the awaiting-auth registry so the
+   * resolution hooks can compute the channel's full awaiting_user state
+   * (forms + permissions + auth) before broadcasting the clear.
+   */
+  setAwaitingAuthRegistry(registry: AwaitingAuthRegistry): void {
+    this.awaitingAuthRegistry = registry
+  }
+
+  /**
    * Wire in the VoiceHandler so the text engine can check whether a voice
    * session is active for a channel before processing a text message.
    * When voice is active, the voice handler owns the conversation and the
@@ -296,6 +499,33 @@ export class MessageHandler {
    */
   setVoiceHandler(voiceHandler: VoiceHandler): void {
     this.voiceHandler = voiceHandler
+  }
+
+  /**
+   * Wire in the native VoiceLoop (Voice Mode v2, F2b — REQ-8). When set,
+   * every tool executor built for a channel with an ACTIVE native voice
+   * session gets the voice mode tools adapter pushed per turn — the
+   * set_mode/get_mode/pause_listening built-ins the agent uses to change
+   * its own listening mode ("Alice, cállate media hora que tengo una
+   * reunión" → the agent decides, AC-7).
+   */
+  setVoiceLoop(voiceLoop: VoiceLoop): void {
+    this.voiceLoop = voiceLoop
+  }
+
+  /**
+   * Build the session-scoped voice mode tools adapter for a channel+agent
+   * (REQ-8). Returns null when no native voice session is active — the
+   * tools simply do not exist in a text chat.
+   */
+  private buildVoiceToolsAdapter(channelId: string, agentId: string): VoiceModeToolsAdapter | null {
+    const loop = this.voiceLoop
+    if (!loop || !loop.isVoiceSessionActive(channelId, agentId)) return null
+    return {
+      setMode: (mode) => loop.setVoiceSessionMode(channelId, agentId, mode),
+      getMode: () => loop.getVoiceSessionMode(channelId, agentId),
+      pauseListening: (minutes) => loop.pauseVoiceSessionListening(channelId, agentId, minutes),
+    }
   }
 
   /**
@@ -315,6 +545,8 @@ export class MessageHandler {
     channelId: string,
     workspaceId?: string,
     userId?: string,
+    skillService?: SkillService,
+    skillInterpolationCtx?: SkillInterpolationContext,
   ): Promise<McaToolExecutor | null> {
     if (this.mockToolExecutor) {
       log.debug({ agentId, channelId }, "Using mock tool executor")
@@ -364,6 +596,38 @@ export class MessageHandler {
       }
     }
 
+    // Flat tool-call format gate — same lifecycle and fail-safe-to-OFF as the proxy.
+    const resolveFlatToolsEnabled = async (): Promise<boolean> => {
+      try {
+        return (
+          (await this.featureFlagService?.resolve("tools.flat-toolcalls", {
+            userId,
+            workspaceId,
+          })) === true
+        )
+      } catch (error) {
+        log.warn({ err: error }, "tools.flat-toolcalls flag resolution failed — flat tools disabled")
+        return false
+      }
+    }
+
+    // Flows/workflows gate — same lifecycle and fail-safe-to-OFF as the proxy.
+    // When disabled, mca.teros.workflows tools are filtered from the tool list
+    // and blocked at execution time.
+    const resolveFlowsEnabled = async (): Promise<boolean> => {
+      try {
+        return (
+          (await this.featureFlagService?.resolve("flows.enabled", {
+            userId,
+            workspaceId,
+          })) === true
+        )
+      } catch (error) {
+        log.warn({ err: error }, "flows.enabled flag resolution failed — flows disabled")
+        return false
+      }
+    }
+
     const cached = this.toolExecutorCache.get(cacheKey)
     if (cached) {
       const age = Date.now() - cached.createdAt
@@ -371,6 +635,19 @@ export class MessageHandler {
         log.debug({ cacheKey, ageMs: age }, "Using cached tool executor")
         cached.executor.setProxyEnabled(await resolveProxyEnabled())
         cached.executor.setFormsEnabled(await resolveFormsEnabled())
+        cached.executor.setFlowsEnabled(await resolveFlowsEnabled())
+        cached.executor.setFlatToolsEnabled(await resolveFlatToolsEnabled())
+        // Voice mode tools (F2b, REQ-8): session-scoped — pushed fresh on
+        // every lookup so a session that started/ended between turns adds/
+        // removes the tools on the very next turn (no restart, no re-init).
+        cached.executor.setVoiceTools(this.buildVoiceToolsAdapter(channelId, agentId))
+        // Wire the skill service onto the cached executor when this caller provides
+        // one (the LLM path does; the restored-tool path passes undefined and must
+        // not downgrade an already-wired executor). Re-registers load_skill so an
+        // executor first cached without a skill service still exposes it (TER-618).
+        if (skillService) {
+          await cached.executor.setSkillContext(skillService, skillInterpolationCtx)
+        }
         return cached.executor
       }
       log.debug({ cacheKey }, "Tool executor cache expired, reinitializing")
@@ -380,6 +657,8 @@ export class MessageHandler {
     // Create tool executor for this conversation (channelId is baked in)
     const executor = new McaToolExecutor(this.mcaManager, this.mcaService, agentId, channelId, {
       workspaceId,
+      skillService,
+      skillInterpolationCtx,
     })
 
     // Wire the (optional) agent_usage tool-execution service. When present
@@ -391,6 +670,20 @@ export class MessageHandler {
 
     executor.setProxyEnabled(await resolveProxyEnabled())
     executor.setFormsEnabled(await resolveFormsEnabled())
+    executor.setFlowsEnabled(await resolveFlowsEnabled())
+    executor.setFlatToolsEnabled(await resolveFlatToolsEnabled())
+    // 🛡️ Teros Guard: wire service + flag + context/telemetry deps. Unwired
+    // (service null) = guard off — same fail-open as a flag OFF.
+    if (this.terosGuardService && this.terosGuardFlag) {
+      executor.setTerosGuard({
+        service: this.terosGuardService,
+        flag: this.terosGuardFlag,
+        sessionStore: this.sessionStore,
+        db: this.db,
+      })
+    }
+    // Voice mode tools (F2b, REQ-8): session-scoped from the first turn too.
+    executor.setVoiceTools(this.buildVoiceToolsAdapter(channelId, agentId))
 
     try {
       await executor.initialize()
@@ -401,6 +694,58 @@ export class MessageHandler {
       log.error({ err: error, cacheKey, agentId }, "Failed to initialize tool executor")
       return null
     }
+  }
+
+  /**
+   * v2 non-blocking interactions: an app the user was asked to connect (via
+   * show-app-auth) just became ready — the OAuth callback completed. Wake the
+   * channel's agent with a synthetic event message so it can continue whatever
+   * it was blocked on. Called from server-bootstrap's onAppAuthReady wiring.
+   */
+  async handleAuthReadyWake(channelId: string, appId: string): Promise<void> {
+    const channel = await this.channelManager.getChannel(channelId)
+    if (!channel) {
+      log.error({ channelId }, "handleAuthReadyWake: channel not found")
+      return
+    }
+    // Resolve a human-readable app name for the message.
+    let appName = appId
+    try {
+      const app = await this.db.collection("apps").findOne({ appId })
+      if (app?.name) appName = app.name as string
+    } catch {
+      // best-effort — the appId is still a usable identifier
+    }
+    const text = `[Auth] The user connected '${appName}'. The app is now authenticated — you can continue with it.`
+    const messageId = this.channelManager.createMessageId()
+    const timestamp = new Date().toISOString()
+    const sender =
+      (await this.channelManager.getUserSender(channel.userId ?? "unknown")) ??
+      ({ type: "user" as const, id: channel.userId ?? "unknown", name: "User" } as const)
+    const message = {
+      messageId,
+      channelId,
+      role: "user" as const,
+      userId: channel.userId,
+      sender,
+      content: {
+        type: "event" as const,
+        eventType: "app_auth_ready",
+        eventData: { appId, appName },
+        description: text,
+      },
+      timestamp,
+    }
+    await this.channelManager.saveMessage(message as never)
+    this.broadcastToChannel(channelId, {
+      type: "message",
+      channelId,
+      message,
+    })
+    await this.processAgentResponse(channelId, channel.agentId, text, messageId)
+    // v2: recompute the channel's awaiting_user state (spec §Implementation
+    // design 5) — broadcasts the clear only if nothing else is pending.
+    this.broadcastAwaitingUserAfterResolution(channelId)
   }
 
   /**
@@ -453,9 +798,10 @@ export class MessageHandler {
     const result = await this.permissionManager.handleResponse(
       requestId,
       granted,
-      // Executor for restored tools
-      async ({ channelId, messageId, toolCallId, toolName, input }) => {
-        await this.executeRestoredTool(channelId, messageId, toolCallId, toolName, input)
+      // Executor for restored tools — appId and workspaceId come from the
+      // persisted permission request for exact app targeting (incident-2026-08-14).
+      async ({ channelId, messageId, toolCallId, toolName, input, appId, workspaceId }) => {
+        await this.executeRestoredTool(channelId, messageId, toolCallId, toolName, input, appId, workspaceId)
       },
     )
 
@@ -530,8 +876,10 @@ export class MessageHandler {
     toolCallId: string,
     toolName: string,
     input: Record<string, any>,
+    appId?: string,
+    workspaceId?: string,
   ): Promise<void> {
-    log.info({ toolName, toolCallId }, "Executing restored tool")
+    log.info({ toolName, toolCallId, appId, workspaceId }, "Executing restored tool")
 
     // Get the channel to find the agent and workspace
     const channel = await this.channelManager.getChannel(channelId)
@@ -539,17 +887,20 @@ export class MessageHandler {
       throw new Error("Channel not found")
     }
 
-    // Resolve workspaceId from the channel so we get the correct workspace-scoped executor
-    if (!channel.workspaceId) {
+    // Resolve workspaceId: prefer the persisted value from the permission
+    // request (exact restoration, incident-2026-08-14), fall back to the
+    // channel's workspaceId for legacy messages that don't have it.
+    const resolvedWorkspaceId = workspaceId ?? channel.workspaceId;
+    if (!resolvedWorkspaceId) {
       throw new Error(
         `[MessageHandler.executeRestoredTool] Channel ${channelId} has no workspaceId. ` +
         `All channels must belong to a workspace (ENGINEERING-PRINCIPLES.md).`
       );
     }
-    const workspaceId = channel.workspaceId;
 
     // Get the tool executor for this conversation (channelId is baked in)
-    const toolExecutor = await this.getToolExecutor(channel.agentId, channelId, workspaceId, channel.userId)
+// load_skill not available in user-direct restored-tool path — only LLM path
+    const toolExecutor = await this.getToolExecutor(channel.agentId, channelId, resolvedWorkspaceId, channel.userId, undefined, undefined)
     if (!toolExecutor) {
       throw new Error("Tool executor not available")
     }
@@ -583,6 +934,17 @@ export class MessageHandler {
       userAvatarUrl = user?.profile?.avatarUrl
     }
 
+    // Resolve appId: prefer the persisted value from the permission request
+    // (exact restoration, incident-2026-08-14), fall back to the tool executor's
+    // mapping for legacy messages that don't have it stored.
+    const resolvedAppId = appId ?? toolExecutor.getAppIdForTool(toolName);
+    if (!resolvedAppId) {
+      throw new Error(
+        `[MessageHandler.executeRestoredTool] Cannot resolve appId for tool '${toolName}'. ` +
+          'The tool may not be available for this agent.',
+      );
+    }
+
     // Execute the tool directly through McaManager (bypassing permission check)
     const startTime = Date.now()
     let result: {
@@ -595,7 +957,9 @@ export class MessageHandler {
       result = await this.mcaManager!.executeTool(toolName, input, {
         agentId: channel.agentId,
         channelId,
+        appId: resolvedAppId,
         userId: channel.userId,
+        workspaceId: resolvedWorkspaceId,
         userDisplayName,
         userAvatarUrl,
       })
@@ -643,13 +1007,150 @@ export class MessageHandler {
 
     log.info({ toolName, status, durationMs: duration }, "Restored tool completed")
 
-    // Continue the agent's response by prompting it to continue
-    // The agent will see the tool result in the session history and continue from there
-    await this.processAgentResponse(
+    // v4 grant path (2026-10-27): the original turn ended with the
+    // 'permission_requested' marker as the tool part's completed output (the
+    // executor's endsTurn cut). The tool result written above reaches
+    // channel_messages + the broadcast (the UI) but NOT the session store —
+    // so the agent's next turn would still see the marker, not the result.
+    // Rewrite the session-store tool part (matched by callID) with the real
+    // output before waking the agent — then the history reads exactly as if
+    // the tool had run in-turn (Option A, Alice's recommendation).
+    // @spec PERMB-REQ-3
+    await this.updateSessionToolPartResult(
       channelId,
-      channel.agentId,
-      "[The user has approved the pending tool execution. Continue with your response based on the result.]",
+      toolCallId,
+      toolName,
+      result,
+      duration,
     )
+
+    // PERMB-REQ-3: no wake here — the permission batch wakes the agent once,
+    // when every request of the batch is decided and every grant finished
+    // (PermissionManager.onBatchResolved).
+  }
+
+  /**
+   * v4 grant path (2026-10-27): rewrite the session-store tool part of an
+   * approved permission with the REAL tool output. PERMB-REQ-3: also used on
+   * deny, with the denial as an error result.
+   * @spec PERMB-REQ-3
+   *
+   * The original turn ended with the 'permission_requested' marker as the
+   * tool part's completed output (McaToolExecutor's endsTurn cut →
+   * MessageProcessor.handleToolResult wrote the marker). Without this
+   * rewrite, the agent's next turn still sees the marker JSON as the
+   * tool_result — the wake text says "continue based on the result" but the
+   * result never existed in the model's context (Pablo's E2E gap, 23:36Z).
+   *
+   * Matches the part by callID (the LLM tool-call id — the same id the
+   * adapters use to pair tool_use ↔ tool_result), rewrites its state to
+   * ToolStateCompleted/ToolStateError with the real output, and persists via
+   * sessionStore.writePart (MongoSessionStore updates in place by
+   * (info.id, parts.id)). Mirrors the pattern of
+   * MessageProcessor.handleToolResult (core, L270-295).
+   *
+   * Fail-safe: if the part cannot be found (compaction boundary, legacy
+   * session, id mismatch) we log and continue — the wake still happens and
+   * the channel_messages record keeps the result for the UI. A missing
+   * rewrite degrades to the pre-fix behavior, never blocks the grant.
+   */
+  private async updateSessionToolPartResult(
+    channelId: string,
+    toolCallId: string,
+    toolName: string,
+    result: {
+      output: string;
+      isError: boolean;
+      attachments?: Array<{ url: string; mime: string; filename?: string }>;
+    },
+    durationMs: number,
+  ): Promise<void> {
+    if (!this.sessionStore) {
+      log.warn(
+        { channelId, toolCallId },
+        "updateSessionToolPartResult: no sessionStore — tool result not written to agent context",
+      )
+      return
+    }
+
+    try {
+      // Compaction-aware load (same as appendInterruptionNote) — the part
+      // lives on the assistant message of the turn that requested permission.
+      const { messages } = await this.sessionStore.getMessagesForLLM(channelId)
+
+      // Search backwards: the permission request is on the most recent
+      // assistant turn that has a tool part with this callID.
+      let targetPart: ToolPart | undefined
+      let targetMessageId: string | undefined
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i]
+        if (msg.info.role !== "assistant") continue
+        const part = msg.parts.find(
+          (p: any) => p.type === "tool" && p.callID === toolCallId,
+        ) as ToolPart | undefined
+        if (part) {
+          targetPart = part
+          targetMessageId = msg.info.id
+          break
+        }
+      }
+
+      if (!targetPart || !targetMessageId) {
+        log.warn(
+          { channelId, toolCallId, toolName },
+          "updateSessionToolPartResult: no session tool part found for callID — " +
+            "the agent will not see the real result (marker stays in history)",
+        )
+        return
+      }
+
+      const now = Date.now()
+      const startTime =
+        (targetPart.state as any).time?.start ?? now - durationMs
+
+      if (result.isError) {
+        targetPart.state = {
+          status: "error",
+          input: (targetPart.state as any).input ?? {},
+          error: result.output,
+          time: { start: startTime, end: now },
+        }
+      } else {
+        targetPart.state = {
+          status: "completed",
+          input: (targetPart.state as any).input ?? {},
+          output: result.output,
+          title: "",
+          metadata: {},
+          time: { start: startTime, end: now },
+          ...(result.attachments && result.attachments.length > 0
+            ? {
+                attachments: result.attachments.map((a) => ({
+                  id: `part_${now}_${Math.random().toString(36).substring(2, 9)}`,
+                  sessionID: channelId,
+                  messageID: targetMessageId,
+                  type: "file" as const,
+                  mime: a.mime,
+                  url: a.url,
+                  filename: a.filename,
+                })),
+              }
+            : {}),
+        }
+      }
+
+      await this.sessionStore.writePart(targetPart)
+      log.info(
+        { channelId, toolCallId, toolName, isError: result.isError },
+        "updateSessionToolPartResult: session tool part rewritten with the real output",
+      )
+    } catch (err) {
+      // Fail-safe: never block the grant/wake on a session-store failure.
+      log.error(
+        { err, channelId, toolCallId, toolName },
+        "updateSessionToolPartResult failed — the agent may not see the real result",
+      )
+    }
   }
 
   /**
@@ -744,6 +1245,33 @@ export class MessageHandler {
     // Get sender info for the user
     const sender = await this.channelManager.getUserSender(userId)
 
+    // v2 (interactions.non-blocking): a free user message while a form is
+    // pending auto-resolves it as `answered_in_chat` — the user's message
+    // always wins. The resolved formRequestId rides on the message as
+    // `respondsTo` (top-level, sibling of turnId) so the UI can link them.
+    // Only text messages resolve forms; permissions stay fail-closed (their
+    // widget owns them) and non-blocking forms only exist under the flag.
+    let respondsToFormId: string | null = null
+    if (request.content.type === "text") {
+      try {
+        respondsToFormId = await this.formManager.resolvePendingInChannelAsAnsweredInChat(
+          request.channelId,
+        )
+        // The answered_in_chat path intentionally skips onFormResolved (the
+        // user's message itself wakes the agent), so the awaiting_user chip
+        // clear must happen here — same computation as the other resolution
+        // hooks (broadcasts only when nothing else is pending).
+        if (respondsToFormId) {
+          this.broadcastAwaitingUserAfterResolution(request.channelId)
+        }
+      } catch (err) {
+        log.error(
+          { err, channelId: request.channelId },
+          "resolvePendingInChannelAsAnsweredInChat failed — sending the message anyway",
+        )
+      }
+    }
+
     const userMessage: Message = {
       messageId,
       channelId: request.channelId,
@@ -752,6 +1280,7 @@ export class MessageHandler {
       sender: sender || { type: "user", id: userId, name: "Unknown" },
       content: request.content,
       timestamp,
+      ...(respondsToFormId ? { respondsTo: respondsToFormId } : {}),
     }
 
     await this.channelManager.saveMessage(userMessage)
@@ -807,7 +1336,7 @@ export class MessageHandler {
 
     if (request.content.type === "text") {
       const textContent = request.content as { type: "text"; text: string }
-      this.processAgentResponse(request.channelId, channel.agentId, textContent.text, messageId).catch(
+      this.processAgentResponse(request.channelId, channel.agentId, textContent.text, messageId, undefined, undefined, request.skillIds).catch(
         (error) => {
           log.error({ err: error }, "Error in processAgentResponse")
         },
@@ -858,7 +1387,7 @@ export class MessageHandler {
         } else {
           log.warn({ channelId: request.channelId }, "Image attachment missing url/filename; reference omitted")
         }
-        this.processAgentResponse(request.channelId, channel.agentId, parts, messageId).catch(
+        this.processAgentResponse(request.channelId, channel.agentId, parts, messageId, undefined, undefined, request.skillIds).catch(
           (error) => {
             log.error({ err: error }, "Error in processAgentResponse for image")
           },
@@ -869,7 +1398,7 @@ export class MessageHandler {
         const messageForAgent = userText
           ? `${userText}\n\n${fileDescription}`
           : fileDescription
-        this.processAgentResponse(request.channelId, channel.agentId, messageForAgent, messageId).catch(
+        this.processAgentResponse(request.channelId, channel.agentId, messageForAgent, messageId, undefined, undefined, request.skillIds).catch(
           (error) => {
             log.error({ err: error }, "Error in processAgentResponse for file")
           },
@@ -1029,23 +1558,202 @@ export class MessageHandler {
     return { filePath, fileUrl }
   }
 
-  private async transcribeAudioFile(filePath: string): Promise<string> {
+  /**
+   * Context passed to transcribeAudioFile for logging purposes.
+   * All fields are optional — the method works with or without them.
+   */
+  private transcribeAudioFile(
+    filePath: string,
+    context?: {
+      userId?: string
+      channelId?: string
+      messageId?: string
+      agentId?: string
+    },
+  ): Promise<string> {
+    return this._transcribeAudioFile(filePath, context)
+  }
+
+  /**
+   * Apply transcript cleaning (flag stt.clean) to a raw STT result.
+   *
+   * Resolution:
+   * - stt.clean off (default) → raw transcript, zero change.
+   * - stt.clean-literal true (user/workspace override) → raw transcript
+   *   (opt-out for literal dictations).
+   * - stt.clean on → clean with stt.clean-mode ('heuristic' | 'llm').
+   *
+   * Best-effort: any failure returns the raw transcript — the voice flow
+   * never breaks because cleaning failed.
+   */
+  private async cleanTranscript(
+    raw: string,
+    context?: {
+      userId?: string
+      channelId?: string
+      messageId?: string
+      agentId?: string
+    },
+  ): Promise<string> {
+    try {
+      if (!raw || !raw.trim()) return raw
+      if (!this.featureFlagService) return raw
+
+      const flagContext = {
+        userId: context?.userId,
+        workspaceId: context?.channelId
+          ? (await this.channelManager.getChannel(context.channelId).catch(() => null))?.workspaceId
+          : undefined,
+      }
+
+      const enabled = await this.featureFlagService.resolve("stt.clean", flagContext)
+      if (!enabled) return raw
+
+      const literal = await this.featureFlagService.resolve("stt.clean-literal", flagContext)
+      if (literal) return raw
+
+      const mode = await this.featureFlagService.resolve("stt.clean-mode", flagContext)
+      const cleanMode: TranscriptCleanMode = mode === "llm" ? "llm" : "heuristic"
+
+      const result = await this.transcriptCleaner.clean(raw, cleanMode, context)
+      if (result.cleaned) {
+        log.info(
+          {
+            messageId: context?.messageId,
+            channelId: context?.channelId,
+            userId: context?.userId,
+            mode: result.mode,
+            layers: result.layers,
+            durationMs: result.durationMs,
+            rawChars: raw.length,
+            cleanChars: result.text.length,
+          },
+          "Transcript cleaned",
+        )
+      }
+      return result.text
+    } catch (err) {
+      log.warn({ err }, "Transcript cleaning failed — delivering raw transcript")
+      return raw
+    }
+  }
+
+  private async _transcribeAudioFile(
+    filePath: string,
+    context?: {
+      userId?: string
+      channelId?: string
+      messageId?: string
+      agentId?: string
+    },
+  ): Promise<string> {
     if (!this.secretsManager) {
       throw new Error("SecretsManager not available — cannot transcribe audio")
     }
     const providerType = TranscriptionProviderFactory.getDefaultProvider(this.secretsManager)
-    if (!providerType) {
-      throw new Error(
-        "No transcription provider configured.\n" +
-          "Configure OpenAI key in .secrets/system/openai.json or ElevenLabs key in .secrets/system/elevenlabs.json",
-      )
-    }
     const provider = TranscriptionProviderFactory.create(this.secretsManager, {
       provider: providerType,
     })
-    const result = await provider.transcribe(filePath)
-    log.debug({ transcription: result.text }, "Audio transcription result")
-    return result.text
+
+    // Read the default language code from transcription config (.secrets/system/transcription.json).
+    // When set (e.g. "es"), we pass it to the provider to prevent auto-detection from
+    // misidentifying Spanish as Catalan/Galician/Portuguese — a well-known Whisper issue.
+    const languageCode = TranscriptionProviderFactory.getDefaultLanguageCode(this.secretsManager)
+
+    // Build the vocabulary: combine static config terms with dynamic per-user entities
+    // (workspaces, projects, agents, skills, apps). The VocabularyResolver caches
+    // results per-user+workspace for 5 minutes to avoid hitting MongoDB on every transcription.
+    // Agents, projects, skills and apps are scoped to the current workspace (resolved from
+    // the channel). Workspace names remain global (user can reference any workspace by name).
+    // Falls back to static-only vocabulary if the resolver isn't available.
+    let vocabulary: string[] | null = null
+    if (this.vocabularyResolver && context?.userId) {
+      try {
+        const maxTerms = VocabularyResolver.getMaxTermsForProvider(providerType)
+        // Resolve workspaceId from the channel so dynamic entities are workspace-scoped
+        let workspaceId: string | undefined
+        if (context.channelId) {
+          const channel = await this.channelManager.getChannel(context.channelId).catch(() => null)
+          workspaceId = channel?.workspaceId ?? undefined
+        }
+        const dynamicVocab = await this.vocabularyResolver.resolveVocabulary(context.userId, maxTerms, workspaceId)
+        vocabulary = dynamicVocab.length > 0 ? dynamicVocab : null
+      } catch (err) {
+        log.warn({ err, userId: context.userId }, "Failed to resolve dynamic vocabulary, falling back to static")
+        vocabulary = TranscriptionProviderFactory.getDefaultVocabulary(this.secretsManager)
+      }
+    } else {
+      vocabulary = TranscriptionProviderFactory.getDefaultVocabulary(this.secretsManager)
+    }
+
+    const options: TranscriptionOptions = {}
+    if (languageCode) options.languageCode = languageCode
+    if (vocabulary) options.vocabulary = vocabulary
+
+    const startTime = Date.now()
+    const audioSizeBytes = TranscriptionLogService.getFileSize(filePath)
+
+    try {
+      const result = await provider.transcribe(filePath, Object.keys(options).length > 0 ? options : undefined)
+      const durationMs = Date.now() - startTime
+
+      log.debug({ transcription: result.text, language: result.language, forcedLanguage: languageCode, vocabulary }, "Audio transcription result")
+
+      // Log to MongoDB (best-effort — never blocks transcription)
+      const model = result.metadata?.model ?? providerType
+      const cost = TranscriptionLogService.computeCost(providerType, result.duration)
+
+      this.transcriptionLogService.log({
+        timestamp: new Date(),
+        provider: providerType,
+        model,
+        language: result.language ?? null,
+        languageConfidence: result.languageConfidence,
+        forcedLanguageCode: languageCode,
+        audioPath: filePath,
+        audioDurationSeconds: result.duration,
+        audioSizeBytes,
+        transcriptionText: result.text,
+        transcriptionCharCount: result.text.length,
+        cost,
+        success: true,
+        durationMs,
+        userId: context?.userId,
+        channelId: context?.channelId,
+        messageId: context?.messageId,
+        agentId: context?.agentId,
+      })
+
+      // Post-STT cleaning (flag stt.clean) — between the provider and the
+      // delivery to agent/user. Raw text is preserved in transcription_logs.
+      return this.cleanTranscript(result.text, context)
+    } catch (error) {
+      const durationMs = Date.now() - startTime
+      const errorMessage = error instanceof Error ? error.message : String(error)
+
+      // Log the failure too — important for debugging transcription issues
+      this.transcriptionLogService.log({
+        timestamp: new Date(),
+        provider: providerType,
+        model: providerType,
+        language: null,
+        forcedLanguageCode: languageCode,
+        audioPath: filePath,
+        audioSizeBytes,
+        transcriptionText: "",
+        transcriptionCharCount: 0,
+        cost: null,
+        success: false,
+        errorMessage,
+        durationMs,
+        userId: context?.userId,
+        channelId: context?.channelId,
+        messageId: context?.messageId,
+        agentId: context?.agentId,
+      })
+
+      throw error
+    }
   }
 
   /**
@@ -1057,7 +1765,7 @@ export class MessageHandler {
     mimeType?: string,
   ): Promise<{ text: string }> {
     const { filePath } = await this.saveAudioFile(userId, audioData, mimeType)
-    const text = await this.transcribeAudioFile(filePath)
+    const text = await this.transcribeAudioFile(filePath, { userId })
     fs.unlink(filePath).catch(() => {})
     return { text }
   }
@@ -1070,8 +1778,9 @@ export class MessageHandler {
     channelId: string,
     messageId: string,
   ): Promise<void> {
+    if (!(await this.channelManager.canAccessChannel(channelId, userId))) throw new Error("Access denied")
     const message = await this.channelManager.getMessage(messageId)
-    if (!message) throw new Error("Message not found")
+    if (!message || message.channelId !== channelId) throw new Error("Message not found")
     if (message.content?.type !== "voice") throw new Error("Not a voice message")
     if (!message.content.url) throw new Error("Voice message has no audio file")
 
@@ -1081,7 +1790,7 @@ export class MessageHandler {
     const filePath = path.join(config.uploads.basePath, message.content.url.replace("/uploads/", ""))
 
     try {
-      const text = await this.transcribeAudioFile(filePath)
+      const text = await this.transcribeAudioFile(filePath, { userId, channelId, messageId })
 
       const updatedContent = {
         type: "voice" as const,
@@ -1168,7 +1877,7 @@ export class MessageHandler {
     )
 
     try {
-      const text = await this.transcribeAudioFile(filePath)
+      const text = await this.transcribeAudioFile(filePath, { userId, channelId, messageId, agentId })
 
       const updatedContent = {
         type: "voice" as const,
@@ -1269,14 +1978,20 @@ export class MessageHandler {
       request.before,
     )
 
-    const tokenBudget = await this.usageService.calculateBudget(request.channelId)
+    // Token usage is admin-only now (Pablo, 2026-10-30): removed from this
+    // user-facing response. Admins read it via admin-api.channel-token-budget
+    // (requireAdmin-guarded — see handlers/domains/admin-api/channel-usage.ts).
+
+    // Redaction enforcement (MUW-REQ-9, MUW-NFR-2): non-owners must not see
+    // redacted content. The channel creator always receives the full content.
+    const isOwner = channel.userId === userId
+    const safeMessages = redactMessagesForViewer(result.messages, isOwner)
 
     this.sendResponse(ws, {
       type: "messages_history",
       channelId: request.channelId,
-      messages: result.messages,
+      messages: safeMessages,
       hasMore: result.hasMore,
-      tokenBudget,
     })
   }
 
@@ -1363,6 +2078,17 @@ export class MessageHandler {
     // 'event_subscription'). Omitted for a direct user message. Delegated child
     // turns ignore it (they resolve to 'delegation' via the parent id). TER-650.
     triggerKindOverride?: AgentUsageTriggerKind,
+    skillIds?: string[],
+    // Voice Mode v2 — F5a: this turn originated in VOICE (the native loop's
+    // final transcript). When true, the `voice.llm` flag is resolved per user:
+    // 'agent' (default) = zero change; 'fast' = a fast model + a trimmed voice
+    // context (short system prompt + last ~12 history lines), with automatic
+    // fallback to the agent model on error. Text turns never pass this.
+    voiceTurn?: boolean,
+    // F5a: which LLM leg ended up running the turn ('agent' | 'fast') — fired
+    // right before the prompt is dispatched so the voice loop can stamp the
+    // latency trace (the budget splits the LLM histogram by leg).
+    onVoiceLlmLeg?: (leg: "agent" | "fast", info?: { toolCount: number }) => void,
   ): Promise<void> {
     // Resolve channel and workspaceId BEFORE creating the tool executor so the
     // correct workspace-scoped executor (and its app list) is selected from the cache.
@@ -1381,7 +2107,75 @@ export class MessageHandler {
     }
     const workspaceId = channel.workspaceId;
 
-    const toolExecutor = await this.getToolExecutor(agentId, channelId, workspaceId, channel.userId)
+    // Get agent and workspace data BEFORE creating the tool executor so we can
+    // wire the skill service with interpolation context (TER-618).
+    const agent = await this.db.collection("agents").findOne({ agentId })
+
+    let workspaceName: string | undefined
+    if (workspaceId) {
+      const workspace = await collection(this.db, COLLECTIONS.workspaces).findOne({ workspaceId })
+      workspaceName = workspace?.name || undefined
+    }
+
+    const skillInterpolationCtx = agent
+      ? {
+          agent: {
+            name: agent.name || '',
+            fullName: agent.fullName || agent.name || '',
+            role: agent.role || '',
+            intro: agent.intro || '',
+            email: agent.email,
+          },
+          workspace: workspaceName ? { name: workspaceName } : undefined,
+        }
+      : undefined
+
+    // Resolve per-request skillIds (from @mention / slash-command). Silently discard
+    // invalid/unassigned/disabled/cross-workspace skills — never break the conversation.
+    // TODO(TER-618-followup): extract skillIds resolution into a reusable helper
+    // (e.g., SkillService.resolveSkillIds) so it can be unit-tested without mocking
+    // the full processAgentResponse flow. Currently duplicated in test helper.
+    const skillService = new SkillService(this.db)
+    const loadedSkillsContent: Array<{ name: string; content: string }> = []
+    if (skillIds && skillIds.length > 0 && skillInterpolationCtx) {
+      // Security: validate and dedup skillIds (Eve audit INVAL-1)
+      const MAX_SKILL_IDS = 10
+      const SKILL_ID_REGEX = /^sk_[a-zA-Z0-9]+$/
+
+      // Dedup with Set
+      const uniqueSkillIds = [...new Set(skillIds)]
+
+      // Limit to max
+      if (uniqueSkillIds.length > MAX_SKILL_IDS) {
+        log.warn({ agentId, channelId, count: uniqueSkillIds.length }, 'Too many skillIds requested, truncating to 10')
+      }
+      const limitedSkillIds = uniqueSkillIds.slice(0, MAX_SKILL_IDS)
+
+      for (const skillId of limitedSkillIds) {
+        if (typeof skillId !== 'string' || !SKILL_ID_REGEX.test(skillId)) {
+          log.warn({ agentId, channelId, skillId }, 'Invalid skillId format, skipping')
+          continue
+        }
+        const result = await skillService.loadSkillForInjection(
+          agentId,
+          workspaceId,
+          { skillId },
+          skillInterpolationCtx,
+        )
+        if (result) {
+          loadedSkillsContent.push(result)
+        }
+      }
+    }
+
+    const toolExecutor = await this.getToolExecutor(
+      agentId,
+      channelId,
+      workspaceId,
+      channel.userId,
+      skillService,
+      skillInterpolationCtx,
+    )
 
     const typingManager = createTypingManager(
       channelId,
@@ -1394,6 +2188,7 @@ export class MessageHandler {
     this.updateTaskRunning(channelId, true).catch((err) => {
       log.error({ err, channelId }, "Failed to mark task running")
     })
+    this.updateTodoRunning(channelId, true)
 
     this.channelRunningTracker.registerTypingContext(channelId, {
       agentId,
@@ -1410,22 +2205,64 @@ export class MessageHandler {
         userAvatarUrl = user?.profile?.avatarUrl
       }
 
-      // Get agent for usage tracking and config resolution
-      const agent = await this.db.collection("agents").findOne({ agentId })
-
-      // Resolve workspace name for the <context> block
-      let workspaceName: string | undefined
-      if (workspaceId) {
-        const workspace = await this.db.collection("workspaces").findOne({ workspaceId })
-        workspaceName = workspace?.name || undefined
+      // Fase 1/2 — environment context (flag `prompt.environment-context`):
+      // harness snapshot of the workspace volume + app context prehooks
+      // (manifest `contextPrehook` of the agent's installed apps). Built here
+      // (not in ModelService) because the flag service and the McaManager
+      // live on this handler. Any failure degrades to no <environment> block.
+      let environmentContext: import("../services/environment-context-service").EnvironmentContextResult | undefined
+      try {
+        const envFlag = await this.featureFlagService?.resolve("prompt.environment-context", {
+          userId: channel.userId,
+          workspaceId,
+        })
+        if (envFlag === true && this.mcaManager) {
+          const { buildEnvironmentContext } = await import("../services/environment-context-service")
+          const viewer = channelId ? await this.mcaService.getChannelViewer(channelId) : undefined
+          const { apps } = await this.mcaService.getAgentApps(agentId, workspaceId, viewer ?? undefined)
+          // Resolve the workspace volume hostPath (cwd for the Fase 1 snapshot).
+          let volumeHostPath: string | undefined
+          const workspace = await collection(this.db, COLLECTIONS.workspaces).findOne(
+            { workspaceId },
+            { projection: { volumeId: 1 } },
+          )
+          if (workspace?.volumeId) {
+            const volume = await collection(this.db, COLLECTIONS.volumes).findOne(
+              { volumeId: workspace.volumeId },
+              { projection: { hostPath: 1 } },
+            )
+            volumeHostPath = volume?.hostPath
+          }
+          environmentContext = await buildEnvironmentContext({
+            hostPath: volumeHostPath,
+            apps: apps.map((a) => a.app),
+            execution: { agentId, channelId, userId: channel.userId, workspaceId },
+            executeTool: (toolName, input) =>
+              this.mcaManager!.executeTool(toolName, input, {
+                agentId,
+                channelId,
+                userId: channel.userId,
+                workspaceId,
+              }),
+          })
+        }
+      } catch (err) {
+        log.warn({ err, channelId }, "Failed to build environment context — continuing without it")
+        environmentContext = undefined
       }
 
-      const agentConfig = await this.modelService.getEffectiveAgentConfig(agentId, channelId, {
-        userName: userDisplayName,
-        workspaceName,
-        workspaceId,
-        parentChannelId: channel.originChannelId,
-      })
+      const agentConfig = await this.modelService.getEffectiveAgentConfig(
+        agentId,
+        channelId,
+        {
+          userName: userDisplayName,
+          workspaceName,
+          workspaceId,
+          parentChannelId: channel.originChannelId,
+        },
+        loadedSkillsContent,
+        environmentContext,
+      )
       if (!agentConfig) {
         throw new Error(`Could not resolve config for agent ${agentId}`)
       }
@@ -1443,14 +2280,94 @@ export class MessageHandler {
           userAvatarUrl,
           (channel as any).headless,
           hasObserverChannel,
+          (channel as any).scope,
         )
       }
 
       // FASE 3: No channel-bound proxy needed — channelId is baked into the executor.
       const boundExecutor = toolExecutor
 
-      const { client: llmClient, providerType: resolvedProviderType } =
+      const { client: llmClient, providerType: resolvedProviderType, clientKey, terosRouting } =
         await this.resolveLLMClient(agentId, workspaceId, agentConfig, channel.userId)
+
+      // ── Voice fast LLM leg (F5a) ───────────────────────────────────────────
+      // A voice-originated turn resolves `voice.llm` per user. 'agent' (the
+      // default) leaves everything above untouched — zero change. 'fast'
+      // swaps THIS turn's model for a configurable fast Teros model and
+      // trims the context (short voice system prompt + last ~12 history
+      // lines; the compaction summary still rides the prompt). Tools,
+      // permissions, streaming and persistence are identical — only the
+      // model and the context of this turn change. On a transient error
+      // before any output, VoiceFastFallbackClient retries the turn on the
+      // agent's own model with its full system prompt back.
+      let effectiveLlmClient: ILLMClient = llmClient
+      let effectiveClientKey = clientKey
+      let effectiveSystemPrompt = agentConfig.systemPrompt
+      let effectiveSystemPromptVolatile = agentConfig.systemPromptVolatile
+      let voiceHistoryLimit: number | undefined
+      let voiceLlmLeg: "agent" | "fast" = "agent"
+      let voiceToolCountForTrace = 0
+      if (voiceTurn && this.featureFlagService && channel.userId) {
+        try {
+          const [llmFlag, fastModelFlag, fastEffortFlag] = await Promise.all([
+            this.featureFlagService.resolve("voice.llm", { userId: channel.userId, workspaceId }),
+            this.featureFlagService.resolve("voice.llm-fast-model", { userId: channel.userId, workspaceId }),
+            this.featureFlagService.resolve("voice.llm-fast-effort", { userId: channel.userId, workspaceId }),
+          ])
+          // F5j (2026-10-05): pass the turn's tool count so the plan selector
+          // can skip the fast leg when the tool list exceeds the Fireworks
+          // grammar-safe ceiling (1062-tool live incident: grammar 400 on
+          // every fast candidate). toolExecutor.getTools() is sync and cached.
+          const voiceToolCount = toolExecutor?.getTools()?.length ?? 0
+          voiceToolCountForTrace = voiceToolCount
+          const { plan, degradeReason } = resolveVoiceLlmPlan(
+            {
+              llm: String(llmFlag),
+              fastModel: String(fastModelFlag),
+              fastEffort: String(fastEffortFlag),
+            },
+            {
+              name: agentConfig.agent.name,
+              fullName: agentConfig.agent.fullName,
+              role: agentConfig.agent.role,
+            },
+            resolvedProviderType,
+            voiceToolCount,
+          )
+          if (degradeReason) {
+            log.warn({ channelId, agentId }, degradeReason)
+          }
+          if (plan.mode === "fast") {
+            const fastClient = await this.buildVoiceFastClient(plan, agentConfig, terosRouting)
+            if (fastClient) {
+              effectiveLlmClient = new VoiceFastFallbackClient(
+                fastClient,
+                llmClient,
+                agentConfig.systemPrompt,
+              )
+              // Distinct clientKey → the worker registry swaps the worker for
+              // this turn's client (same mechanism as a provider switch).
+              effectiveClientKey = `${clientKey}:voice-fast:${plan.modelId}`
+              effectiveSystemPrompt = plan.systemPrompt
+              effectiveSystemPromptVolatile = undefined
+              voiceHistoryLimit = plan.historyLimit
+              voiceLlmLeg = "fast"
+              log.info(
+                { channelId, agentId, model: plan.modelId, effort: plan.reasoningEffort },
+                "Voice turn on the FAST LLM leg (voice.llm=fast)",
+              )
+            } else {
+              log.warn(
+                { channelId, agentId, model: plan.modelId },
+                "Voice fast client could not be built — keeping the agent model",
+              )
+            }
+          }
+        } catch (err) {
+          // Flag resolution failure must never break the voice turn.
+          log.warn({ err, channelId }, "voice.llm flag resolution failed — keeping the agent model")
+        }
+      }
 
       if (!this.sessionStore) {
         throw new Error("SessionStore not available")
@@ -1521,6 +2438,7 @@ export class MessageHandler {
                   toolCallId: ctx.toolCallId,
                   messageId: ctx.messageId,
                   toolName: ctx.toolName,
+                  workspaceId: channel.workspaceId,
                 })
               },
               onPermissionGranted: async (toolCallId?: string) => {
@@ -1534,6 +2452,7 @@ export class MessageHandler {
                 })
               },
             },
+            channel.workspaceId,
           ),
         )
 
@@ -1566,22 +2485,11 @@ export class MessageHandler {
                   toolName: ctx.toolName,
                 })
               },
-              onFormSubmitted: async (toolCallId?: string) => {
-                if (!toolCallId) return
-                const ctx = toolExecutor.getToolCallContext(toolCallId)
-                if (!ctx?.messageId) return
-                await streamHelpers.updateToolStatus("running", {
-                  toolCallId: ctx.toolCallId,
-                  messageId: ctx.messageId,
-                  toolName: ctx.toolName,
-                })
-              },
             },
           ),
         )
 
         // Before execute callback - update status to 'running' for tools with 'allow' permission
-        // Note: For 'ask' permission, this is handled by onPermissionGranted above
         // The callback is only invoked when permission is 'allow' (see mca-tool-executor.ts)
         // The toolCallId is now passed from the executor for proper concurrent tool tracking
         toolExecutor.setBeforeExecuteCallback(async (_toolName: string, toolCallId?: string) => {
@@ -1604,7 +2512,7 @@ export class MessageHandler {
 
       const conversationManager = new ConversationManager(
         this.sessionStore,
-        llmClient,
+        effectiveLlmClient,
         agentId,
         boundExecutor ?? undefined,
         getChannelWorkerRegistry(),
@@ -1612,7 +2520,10 @@ export class MessageHandler {
           maxSteps: agentConfig.llm.maxSteps,
           enableStreaming: true,
           clock: this.clock,
-          memoryHooks: boundExecutor ? new McaMemoryHooks(boundExecutor, agentId) : undefined,
+          memoryHooks:
+            boundExecutor && boundExecutor.hasMca('mca.teros.memory')
+              ? new McaMemoryHooks(boundExecutor, agentId)
+              : undefined,
           interruptStrategy: turnStrategy,
           // Tool execution mode (TER-386): resolved from the `tools.parallel-execution` feature
           // flag (default false → sequential). Switching it on revives the grouped-permission
@@ -1645,6 +2556,11 @@ export class MessageHandler {
           // makes the core re-send raw historical tool-call args, exactly as
           // before this feature.
           toolArgEviction: config.toolArgEviction.enabled ? undefined : false,
+          // TER-617/TER-386: clientKey identifies the LLM client for this
+          // turn. The registry uses it to detect mid-conversation provider
+          // changes and replace the worker so the new client takes effect
+          // on the next message — no restart or new conversation required.
+          clientKey: effectiveClientKey,
           // cacheBlockSize: per-agent feature flag (0 = disable mod-N, use legacy moving breakpoint)
           cacheBlockSize: agentConfig.llm.cacheBlockSize,
           compaction: agentConfig.llm.compaction
@@ -1656,6 +2572,15 @@ export class MessageHandler {
                 // Route compaction token counting through the provider's BPE
                 // tokenizer instead of the char heuristic (CTX-003).
                 provider: agentConfig.llm.provider,
+                // CTX-020: route the summarization LLM call through a fast
+                // model of the SAME provider so a reasoning-heavy conversation
+                // model (e.g. GLM-5.3 with thinking) can't blow the compaction
+                // timeout and kill the turn (2026-09-30 M6 incident). Only
+                // applied for the teros provider, where a guaranteed-fast
+                // sibling exists; other providers keep their own model.
+                // TPROV-REQ-8: on the teros provider the summary runs on size S;
+                // the size router maps the id to the configured upstream model.
+                summaryModel: agentConfig.llm.provider === "teros" ? TEROS_SIZE_MODEL_ID.s : undefined,
               }
             : (() => {
                 log.warn({ channelId }, "No compaction config for channel")
@@ -1709,6 +2634,11 @@ export class MessageHandler {
       const triggerKind: AgentUsageTriggerKind = parentSessionUsageId
         ? "delegation"
         : (triggerKindOverride ?? "user_message")
+      // TLANE-REQ-2: the turn's latency lane comes from what started it; a
+      // voice turn always has a person waiting.
+      const lane = voiceTurn ? "interactive" : laneForTrigger(triggerKind)
+      // TLANE-REQ-3: the Teros Guard judges this turn's tool calls on its lane.
+      toolExecutor?.startTerosGuardTurn(lane)
 
       // Pre-compute the expected upstream so error/timeout turns (which never
       // reach session.delta) still bucket under the real upstream, not the
@@ -1718,10 +2648,18 @@ export class MessageHandler {
       // these with identical values via session.delta. Discriminant matches the
       // factory's (resolvedCredentials.providerType, see llm-client-manager). F3
       // refines this for the cutover failover mode (→ together).
-      const expectedActualProvider =
-        resolvedProviderType === "teros" ? "fireworks" : undefined
-      const expectedActualModel =
-        resolvedProviderType === "teros" ? agentConfig.llm.modelString : undefined
+      // TPROV-REQ-9: the expected upstream/model come from the size's route.
+      const expectedRoute =
+        resolvedProviderType === "teros" && terosRouting && this.secretsManager
+          ? resolveTerosRoute({
+              size: sizeForLegacyModelId(agentConfig.llm.modelId),
+              lane,
+              config: terosRouting.routing,
+              secrets: this.secretsManager,
+            })
+          : null
+      const expectedActualProvider = expectedRoute?.actualProvider
+      const expectedActualModel = expectedRoute?.modelString
 
       let usageHandle: SessionUsageHandle | null = null
       if (this.agentUsageSessionService && channel.userId) {
@@ -1740,6 +2678,8 @@ export class MessageHandler {
             modelId: agentConfig.llm.modelId,
             ...(expectedActualProvider ? { actualProvider: expectedActualProvider } : {}),
             ...(expectedActualModel ? { actualModel: expectedActualModel } : {}),
+            // TLANE-REQ-9: Teros turns record their lane.
+            ...(resolvedProviderType === "teros" ? { lane } : {}),
           })
         } catch (err) {
           // Instrumentation failure must never block the turn.
@@ -1765,7 +2705,15 @@ export class MessageHandler {
         ...(userMessageId ? { messageId: userMessageId } : {}),
         assistantTurnId,
         parts,
-        systemPrompt: agentConfig.systemPrompt,
+        // TLANE-REQ-2/3: every LLM request of this turn (stream, retries,
+        // compaction) runs on the turn's lane.
+        lane,
+        systemPrompt: effectiveSystemPrompt,
+        systemPromptVolatile: effectiveSystemPromptVolatile,
+        // Voice fast leg (F5a): the trimmed voice context — only the last N
+        // history lines ride the prompt (the compaction summary still rides
+        // it). Undefined (every other turn) = full history.
+        ...(voiceHistoryLimit ? { historyLimit: voiceHistoryLimit } : {}),
         // FK propagated to: StreamPublisher → onMessageComplete → recordDelta
         // (tokens) AND to executeTool → tool-execution-service (tool rows).
         ...(usageHandle
@@ -1786,6 +2734,10 @@ export class MessageHandler {
             }
           : {}),
       }
+
+      // F5a: surface the leg to the voice loop (stamps the latency trace).
+      // Fire-and-forget semantics: the callback must be side-effect-only.
+      onVoiceLlmLeg?.(voiceLlmLeg, { toolCount: voiceToolCountForTrace })
 
       // F3a retired the `captureLatitude` wrapper — the sole coupling of the
       // Latitude client to the hot path. Traces now leave via the post-session
@@ -1830,10 +2782,20 @@ export class MessageHandler {
                     }
                   ).context
                 : undefined
+            // Turn-deadline kill (TER-650): the absolute 30-min watchdog ended
+            // the turn, so durationMs is "elapsed until the kill", not real
+            // work. Flag it so reporting can exclude/adjust (duration-capped
+            // bug, 2026-10-27). Duck-typed to avoid importing the core error
+            // class into the handler (same pattern as classifyError).
+            const isTurnDeadlineKill =
+              usageError instanceof Error &&
+              /turn-deadline/.test(usageError.message) &&
+              usageErrorKind === "network_error"
             this.agentUsageSessionService.end({
               handle: usageHandle,
               status,
               errorKind: usageErrorKind,
+              durationCapped: isTurnDeadlineKill || undefined,
               errorMessage:
                 usageError instanceof Error ? usageError.message : usageError,
               errorSubReason:
@@ -1862,6 +2824,7 @@ export class MessageHandler {
       this.updateTaskRunning(channelId, false).catch((err) => {
         log.error({ err, channelId }, "Failed to update task running state")
       })
+      this.updateTodoRunning(channelId, false)
     }
   }
 
@@ -1920,12 +2883,60 @@ export class MessageHandler {
    *
    * Extracted from `processAgentResponse` (R4 refactor) — sole call site.
    */
+  /**
+   * Build the FAST leg's LLM client for a voice turn (F5a).
+   *
+   * Same single source of truth as the agent client (TER-617/F3): the upstream
+   * key/baseUrl/modelString come from `resolveTerosUpstream('fireworks', …)`
+   * — never read the Fireworks system secret here. The reasoning effort comes
+   * from the plan (the `voice.llm-fast-effort` flag; 'none' for deepseek/kimi,
+   * 'low' required for glm-5p3-flash).
+   *
+   * Returns null when the upstream cannot serve the fast model (missing
+   * system secret) — the caller keeps the agent model (never break the turn).
+   */
+  private async buildVoiceFastClient(
+    plan: Extract<VoiceLlmPlan, { mode: "fast" }>,
+    agentConfig: Awaited<ReturnType<ModelService["getEffectiveAgentConfig"]>> & {},
+    terosRouting: TerosRoutingForTurn | null,
+  ): Promise<ILLMClient | null> {
+    // The system secrets live on the backend's SecretsManager — unavailable
+    // in some test harnesses → keep the agent model (never break the voice turn).
+    if (!this.secretsManager || !terosRouting) {
+      return null
+    }
+    // TPROV-REQ-8: the fast leg is a Teros SIZE (S by default, per the flag);
+    // its upstream, model and effort come from the config like any turn.
+    const client = new TerosRouterClient({
+      size: sizeForLegacyModelId(plan.modelId),
+      config: terosRouting.routing,
+      secrets: this.secretsManager,
+      maxTokens: agentConfig.llm.maxTokens,
+    })
+    // Voice turns are interactive (TLANE-REQ-2).
+    if (!client.primaryRoute("interactive")) {
+      log.warn({ model: plan.modelId }, "Voice fast leg: the size's upstream cannot serve — keeping the agent model")
+      return null
+    }
+    return client
+  }
+
+  /** The Teros routing (sizes + failover) that applies to this user's turns (TPROV-REQ-4). */
+  private async terosRoutingFor(userId: string): Promise<TerosRoutingForTurn> {
+    const cfg = await getUserTerosProviderConfig(this.db, userId)
+    if (!cfg?.sizes || !cfg.failover) {
+      throw new Error("Teros provider config has no size routes — run migrations 20261103_001 and 20261109_001")
+    }
+    const updatedAt = cfg.updatedAt instanceof Date ? cfg.updatedAt.toISOString() : String(cfg.updatedAt)
+    return { id: cfg._id, version: updatedAt, routing: { sizes: cfg.sizes, failover: cfg.failover } }
+  }
+
   private async resolveLLMClient(
     agentId: string,
     workspaceId: string,
     agentConfig: Awaited<ReturnType<ModelService["getEffectiveAgentConfig"]>> & {},
     userId: string,
-  ): Promise<{ client: ILLMClient; providerType?: string }> {
+  ): Promise<{ client: ILLMClient; providerType?: string; clientKey: string; terosRouting: TerosRoutingForTurn | null }> {
     let resolvedCredentials: ResolvedProviderCredentials | undefined
     const resolvedProvider = await this.providerService.resolveProviderForAgent(
       agentId,
@@ -1981,18 +2992,13 @@ export class MessageHandler {
       )
     }
 
-    // Teros failover policy (TER-617/F3): resolve the `teros.fallback` flag only
-    // for teros turns (off|on-error|cutover). The flag varies per user/workspace
-    // (override + %rollout); the manager builds the Together-wrapped client when
-    // armed and a ZDR-safe target exists.
-    let terosFallbackMode: TerosFallbackMode = "off"
-    if (resolvedCredentials.providerType === "teros" && this.featureFlagService) {
-      const raw = await this.featureFlagService.resolve("teros.fallback", { userId, workspaceId })
-      terosFallbackMode = normalizeFallbackMode(raw)
-    }
+    // Teros routing (TPROV-REQ-4): the user's provider config decides, per size,
+    // the upstream, the model and the failover. No flag.
+    const terosRouting =
+      resolvedCredentials.providerType === "teros" ? await this.terosRoutingFor(userId) : null
 
     const llmClient = await this.llmClientManager.getClient(agentConfig.llm, resolvedCredentials, {
-      terosFallbackMode,
+      terosRouting: terosRouting ?? undefined,
     })
     if (!llmClient) {
       throw new Error(
@@ -2000,7 +3006,19 @@ export class MessageHandler {
       )
     }
 
-    return { client: llmClient, providerType: resolvedCredentials.providerType }
+    // TER-617/TER-386: build a clientKey that uniquely identifies the LLM
+    // client for this turn. The registry uses it to detect mid-conversation
+    // changes (provider switch, model change, teros.fallback cutover flip)
+    // and replace the worker so the new client takes effect immediately.
+    // Format: `providerId[:fallbackMode]:modelString` — the fallback mode
+    // is included only when armed (not 'off') so a cutover flip changes the
+    // key even when providerId + modelString are unchanged.
+    // TPROV-NFR-1: a teros key carries the config version so an admin edit
+    // (upstream, model, failover) replaces the worker on the next turn.
+    const terosSegment = terosRouting ? `:${terosRouting.id}@${terosRouting.version}` : '';
+    const clientKey = `${resolvedCredentials.providerId}${terosSegment}:${agentConfig.llm.modelString}`;
+
+    return { client: llmClient, providerType: resolvedCredentials.providerType, clientKey, terosRouting };
   }
 
   /**
@@ -2034,6 +3052,8 @@ export class MessageHandler {
       broadcastChannelListStatus: this.broadcastChannelListStatus.bind(this),
       broadcastChannelStatus: this.broadcastChannelStatus.bind(this),
       maybeAutonameChannel: this.maybeAutonameChannel.bind(this),
+      maybeGenerateSuggestedPrompts: this.maybeGenerateSuggestedPrompts.bind(this),
+      pubSubService: this.pubSubService,
     }
   }
 
@@ -2088,6 +3108,17 @@ export class MessageHandler {
    * Update the running flag on a task linked to a channel and emit event to origin.
    * No-op if boardService is not set or channel is not linked to a task.
    */
+  /**
+   * Set the running flag of the To Do task linked to a channel (TODOAP-REQ-8).
+   * Fire and forget; a no-op when autoplay is not wired or no task is linked.
+   */
+  private updateTodoRunning(channelId: string, running: boolean): void {
+    if (!this.todoAutoplayService) return
+    updateTodoNodeRunning(this.db, this.todoAutoplayService, channelId, running).catch((err) => {
+      log.error({ err, channelId }, "Failed to update To Do task running state")
+    })
+  }
+
   private async updateTaskRunning(channelId: string, running: boolean): Promise<void> {
     if (!this.eventHandler) return
 
@@ -2096,7 +3127,7 @@ export class MessageHandler {
       const task = this.boardService ? await this.boardService.getTaskByChannel(channelId) : null
 
       if (task) {
-        const updated = await this.boardService!.setRunning(task.taskId, running)
+        const updated = await this.boardService!.setRunning(task.taskId, running, task.assignedAgentId || 'system')
         if (!updated) return // No change (already in desired state)
 
         // Broadcast to board UI subscribers
@@ -2248,6 +3279,10 @@ export class MessageHandler {
         channel: {
           channelId,
           ...channelData,
+          // Partial updates still say where the channel belongs, so a client
+          // never lists a channel of another workspace, a headless run or a
+          // sub-conversation because of them (CHAN-REQ-11).
+          ...channelListScope(channel),
         },
       })
 
@@ -2272,6 +3307,8 @@ export class MessageHandler {
       title?: string
       hasUnread?: boolean
       externalActionRequested?: boolean
+      /** Contextual composer suggestions (fresh set after each agent response). */
+      suggestedPrompts?: string[]
     },
   ): void {
     this.broadcastToChannel(channelId, {
@@ -2279,6 +3316,48 @@ export class MessageHandler {
       channelId,
       ...status,
     })
+  }
+
+  /**
+   * Regenerate the composer's contextual suggested prompts after a completed
+   * agent response. Fire-and-forget from handleMessageComplete. On failure the
+   * previous set (if any) stays — the chat is never blocked by this.
+   */
+  private async maybeGenerateSuggestedPrompts(channelId: string): Promise<void> {
+    try {
+      const prompts = await this.suggestedPromptsService.generateForChannel(channelId)
+      if (!prompts || prompts.length === 0) {
+        log.debug({ channelId }, "Suggested prompts: nothing usable generated, keeping previous")
+        return
+      }
+
+      await this.channelManager.setSuggestedPrompts(channelId, prompts)
+
+      // Push the fresh set to every open view of this channel.
+      this.broadcastChannelStatus(channelId, { suggestedPrompts: prompts })
+    } catch (error) {
+      log.error({ err: error }, "Error in maybeGenerateSuggestedPrompts")
+    }
+  }
+
+  /**
+   * v2 non-blocking interactions: after a form/permission/auth resolution,
+   * recompute the channel's awaiting_user state and broadcast the clear when
+   * nothing else is waiting for the user (spec §Implementation design 5).
+   * The enter broadcasts live in the managers (they fire at registration);
+   * this is the single clear point — it sees all three sources.
+   */
+  private broadcastAwaitingUserAfterResolution(channelId: string): void {
+    const formsPending = this.formManager.hasPendingInChannel(channelId)
+    const permissionsPending = this.permissionManager.hasPendingInChannel(channelId)
+    const authPending = this.awaitingAuthRegistry?.hasChannel(channelId) ?? false
+    if (!formsPending && !permissionsPending && !authPending) {
+      this.broadcastToChannel(channelId, {
+        type: "channel_status",
+        channelId,
+        awaitingUser: null,
+      })
+    }
   }
 
   private sendResponse(ws: WebSocket, message: any): void {

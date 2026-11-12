@@ -336,7 +336,9 @@ describe("billing.purchase-boost — refusals charge nothing", () => {
     expect(err.message).toMatch(/declined/i)
     // charge-before-grant: a failed charge grants nothing.
     expect(await db.collection("billing_hour_boosts").countDocuments({})).toBe(0)
-    expect(await db.collection("billing_invoices").countDocuments({})).toBe(0)
+    // Nothing paid; the failed attempt leaves a 'held' trace (BIL-5)
+    expect(await db.collection("billing_invoices").countDocuments({ status: "paid" })).toBe(0)
+    expect(await db.collection("billing_invoices").countDocuments({ status: "held" })).toBe(1)
   })
 })
 

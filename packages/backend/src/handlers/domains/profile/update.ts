@@ -12,6 +12,8 @@ interface UpdateProfileData {
   description?: string
   locale?: string
   timezone?: string
+  /** CSUM-REQ-2 */
+  conversationSummary?: boolean
 }
 
 interface ProfileData {
@@ -22,9 +24,11 @@ interface ProfileData {
   description?: string
   locale?: string
   timezone?: string
+  conversationSummary: boolean
   createdAt: string
 }
 
+/** @spec CSUM-REQ-2 */
 export function createUpdateProfileHandler(userService: UserService) {
   return async function updateProfile(
     ctx: WsHandlerContext,
@@ -35,6 +39,9 @@ export function createUpdateProfileHandler(userService: UserService) {
     if (Object.keys(data).length === 0) {
       throw new HandlerError('INVALID_UPDATE', 'No fields to update')
     }
+    if (data.conversationSummary !== undefined && typeof data.conversationSummary !== 'boolean') {
+      throw new HandlerError('INVALID_UPDATE', 'conversationSummary must be a boolean')
+    }
 
     const updated = await userService.updateProfile(ctx.userId, {
       displayName: data.displayName,
@@ -42,6 +49,7 @@ export function createUpdateProfileHandler(userService: UserService) {
       description: data.description,
       locale: data.locale,
       timezone: data.timezone,
+      conversationSummary: data.conversationSummary,
     })
 
     if (!updated) {
@@ -56,6 +64,7 @@ export function createUpdateProfileHandler(userService: UserService) {
       description: updated.profile.description,
       locale: updated.profile.locale,
       timezone: updated.profile.timezone,
+      conversationSummary: updated.profile.conversationSummary,
       createdAt: updated.createdAt.toISOString(),
     }
   }

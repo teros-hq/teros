@@ -1,15 +1,27 @@
-import type { Activity } from "@tamagui/lucide-icons"
-import type { ReactNode } from "react"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "./colors"
+import type { ComponentType, ReactNode } from "react"
+import { View } from "react-native"
+import { useColors } from "../mca/primitives/useColors"
+import { Card } from "../ui/ds/Card"
+import { Ph } from "../ui/ds/Icon"
+import { T } from "../ui/ds/Text"
+
+/** An icon slot: a Phosphor name (preferred) or a legacy icon component. */
+type IconSlot = string | ComponentType<{ size?: number; color?: string }>
+
+function Glyph({ icon, size, color }: { icon?: IconSlot; size: number; color: string }) {
+  if (!icon) return null
+  if (typeof icon === "string") return <Ph name={icon} size={size} color={color} />
+  const Cmp = icon
+  return <Cmp size={size} color={color} />
+}
 
 /**
- * KPI tile — stat variant (mono value + unit + delta + optional sparkline slot)
- * or status variant (colored value + status icon + sub). Matches the design's
- * hub/activity/model-health KPI strips.
+ * KPI tile — the OS prototype's `Stat` card: label (sm · text2), a big serif
+ * figure, then unit / delta / sparkline / sub. The status variant paints the
+ * figure in the status colour next to its icon.
  */
 export function KpiTile({
-  icon: Icon,
+  icon,
   label,
   value,
   unit,
@@ -18,10 +30,10 @@ export function KpiTile({
   sub,
   valueColor,
   statusColor,
-  statusIcon: StatusIcon,
+  statusIcon,
   sparkline,
 }: {
-  icon?: typeof Activity
+  icon?: IconSlot
   label: string
   value: string
   unit?: string
@@ -30,89 +42,121 @@ export function KpiTile({
   sub?: string
   valueColor?: string
   statusColor?: string
-  statusIcon?: typeof Activity
+  statusIcon?: IconSlot
   sparkline?: ReactNode
 }) {
+  const c = useColors()
   return (
-    <YStack backgroundColor={tokens.bgCard} padding={16} gap={8} minWidth={0} flex={1}>
-      <XStack ai="center" gap={6}>
-        {Icon ? <Icon size={13} color={tokens.textTertiary} /> : null}
-        <Text
-          fontSize={10}
-          fontWeight="600"
-          letterSpacing={0.6}
-          textTransform="uppercase"
-          color={tokens.textTertiary}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
+    <Card pad={20} style={{ minHeight: 100, flex: 1, minWidth: 0 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <Glyph icon={icon} size={13} color={c.text3} />
+        <T step="sm" tone="text2" ellipsis style={{ flexShrink: 1 }}>
           {label}
-        </Text>
-      </XStack>
+        </T>
+      </View>
       {statusColor ? (
         <>
-          <XStack ai="center" gap={7}>
-            {StatusIcon ? <StatusIcon size={18} color={statusColor} /> : null}
-            <Text fontSize={20} fontWeight="700" color={statusColor}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 10,
+              marginBottom: 6,
+            }}
+          >
+            <Glyph icon={statusIcon} size={18} color={statusColor} />
+            <T
+              step="2xl"
+              color={statusColor}
+              numberOfLines={1}
+              style={{ fontSize: 28, lineHeight: 32 }}
+            >
               {value}
-            </Text>
-          </XStack>
+            </T>
+          </View>
           {sub ? (
-            <Text fontSize={11} color={tokens.textTertiary} numberOfLines={1}>
+            <T step="sm" tone="text3" ellipsis>
               {sub}
-            </Text>
+            </T>
           ) : null}
         </>
       ) : (
         <>
-          <XStack ai="baseline" gap={4}>
-            <Text fontFamily="$mono" fontSize={26} fontWeight="600" color={valueColor ?? tokens.text}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "baseline",
+              gap: 6,
+              marginTop: 10,
+              marginBottom: 6,
+            }}
+          >
+            <T step="2xl" color={valueColor ?? c.text} numberOfLines={1} style={{ flexShrink: 1 }}>
               {value}
-            </Text>
-            {unit ? <Text fontSize={12} color={tokens.textTertiary}>{unit}</Text> : null}
-          </XStack>
+            </T>
+            {unit ? (
+              <T step="sm" tone="text3">
+                {unit}
+              </T>
+            ) : null}
+          </View>
           {delta || sparkline ? (
-            <XStack ai="center" jc="space-between" gap={8}>
-              <Text fontFamily="$mono" fontSize={11} fontWeight="600" color={deltaColor ?? tokens.textTertiary} numberOfLines={1}>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 8,
+              }}
+            >
+              <T step="codenote" color={deltaColor ?? c.text3} numberOfLines={1}>
                 {delta ?? ""}
-              </Text>
+              </T>
               {sparkline ? (
-                <YStack flex={1} maxWidth={120} height={30} minWidth={0}>
-                  {sparkline}
-                </YStack>
+                <View style={{ flex: 1, maxWidth: 120, height: 30, minWidth: 0 }}>{sparkline}</View>
               ) : null}
-            </XStack>
+            </View>
           ) : null}
           {sub ? (
-            <Text fontSize={11} color={tokens.textTertiary} numberOfLines={1}>
+            <T step="sm" tone="text3" ellipsis>
               {sub}
-            </Text>
+            </T>
           ) : null}
         </>
       )}
-    </YStack>
+    </Card>
   )
 }
 
 /**
- * Row of KPI tiles with hairline dividers (the design's `gap:1px; background:border`
- * grid). Tiles wrap responsively; the container paints the divider color behind them.
+ * Row of KPI tiles — the prototype's `Stats` grid: cards on the sheet with a
+ * 10px gap, wrapping to fewer columns on narrow panes.
  */
 export function KpiStrip({ children }: { children: ReactNode }) {
   return (
-    <XStack
-      flexWrap="wrap"
-      gap={1}
-      backgroundColor={tokens.border}
-      borderBottomWidth={1}
-      borderBottomColor={tokens.border}
-    >
-      {children}
-    </XStack>
+    <View style={{ flexDirection: "row", flexWrap: "wrap", margin: -5 }}>
+      {Array.isArray(children)
+        ? children.filter(Boolean).map((child, i) => (
+            <View
+              key={i}
+              style={{
+                flexGrow: 1,
+                flexBasis: 160,
+                minWidth: 160,
+                padding: 5,
+                flexDirection: "row",
+              }}
+            >
+              {child}
+            </View>
+          ))
+        : children}
+    </View>
   )
 }
 
-/** Section title + optional right slot, wrapping content. The design's chart/table sections. */
+/** A section card: `T base` title + optional right slot over the content (the prototype's chart/list cards). */
 export function SectionCard({
   title,
   right,
@@ -123,14 +167,21 @@ export function SectionCard({
   children: ReactNode
 }) {
   return (
-    <YStack gap={12}>
-      <XStack ai="baseline" jc="space-between" gap={10}>
-        <Text fontSize={16} fontWeight="640" color={tokens.text}>
-          {title}
-        </Text>
+    <Card pad>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: 14,
+          flexWrap: "wrap",
+        }}
+      >
+        <T step="base">{title}</T>
         {right}
-      </XStack>
+      </View>
       {children}
-    </YStack>
+    </Card>
   )
 }

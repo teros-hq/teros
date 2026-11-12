@@ -57,3 +57,17 @@ describe('buildHealthReport', () => {
     expect(r.body.mcaManager).toBe('disabled')
   })
 })
+
+// Spec DEP-REQ-7: the deploy verifies which commit answers after the nginx
+// switch, so /health must say which release it is.
+describe('buildHealthReport release (DEP)', () => {
+  it('[DEP-AC-9] includes the release passed in and null when there is none', async () => {
+    const { deps } = makeDeps({ mongoOk: true })
+    const withRelease = await buildHealthReport({ ...deps, release: 'abc123' })
+    expect(withRelease.body.release).toBe('abc123')
+    const without = await buildHealthReport(deps)
+    expect(without.body.release).toBeNull()
+    const empty = await buildHealthReport({ ...deps, release: null })
+    expect(empty.body.release).toBeNull()
+  })
+})

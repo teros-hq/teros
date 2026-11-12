@@ -1,8 +1,9 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
-export const gitCommit: ToolConfig = {
+export const gitCommit: ToolConfig = lockedGitTool('git-commit', {
   annotations: { readOnlyHint: false },
   description:
     'Create a commit with the staged changes. Returns `{ sha, branch, message }`. Use `amend: true` to amend the previous commit instead.',
@@ -50,12 +51,12 @@ export const gitCommit: ToolConfig = {
       flags.unshift(`--author=${a.author.name} <${a.author.email}>`);
     }
 
-    const result = runGit(repoPath, ['commit', ...flags]);
+    const result = await runGit(repoPath, ['commit', ...flags]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     // Resolve sha + branch for the response so the agent has the commit reference.
-    const shaResult = runGit(repoPath, ['rev-parse', 'HEAD']);
-    const branchResult = runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
+    const shaResult = await runGit(repoPath, ['rev-parse', 'HEAD']);
+    const branchResult = await runGit(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']);
 
     return {
       repoPath,
@@ -66,4 +67,4 @@ export const gitCommit: ToolConfig = {
       amended: a.amend === true,
     };
   },
-};
+});

@@ -17,6 +17,19 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 })
 
+// jsdom does not implement scrollIntoView; MentionDropdown calls it on the
+// selected item every render (render tests assert structure, not scrolling).
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView ?? (() => {})
+
+// jsdom lacks ResizeObserver; Tamagui and InputComposer.web read it at render.
+// Without a polyfill, components that reference it throw in CI (where the
+// warning surfaces as a render failure rather than a harmless console error).
+globalThis.ResizeObserver = globalThis.ResizeObserver ?? class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 // jsdom's requestAnimationFrame fires recursively; RN-Web's Animated loop then
 // keeps the event loop alive and hangs the worker. No-op rAF so animations
 // never tick (render tests assert structure, not motion).
@@ -55,17 +68,19 @@ vi.mock('expo-secure-store', () => ({
   deleteItemAsync: vi.fn(async () => {}),
   isAvailableAsync: vi.fn(async () => false),
 }))
-// expo-keep-awake reaches expo-modules-core's EventEmitter the same way.
-// Reached via hooks/useWakeLock (VoiceSessionContext).
-vi.mock('expo-keep-awake', () => ({
-  activateKeepAwakeAsync: vi.fn(async () => {}),
-  deactivateKeepAwake: vi.fn(async () => {}),
-}))
 vi.mock('expo-localization', () => ({
   getLocales: () => [{ languageCode: 'en', languageTag: 'en-US', regionCode: 'US', textDirection: 'ltr' }],
   getCalendars: () => [{ timeZone: 'UTC' }],
   locale: 'en-US',
   locales: ['en-US'],
+}))
+// expo-keep-awake imports expo-modules-core, whose EventEmitter accesses
+// globalThis.expo.EventEmitter at module load — undefined in jsdom. Reached via
+// useWakeLock → VoiceSessionContext. Stub by package name, same pattern as
+// expo-secure-store / expo-localization above.
+vi.mock('expo-keep-awake', () => ({
+  activateKeepAwakeAsync: vi.fn(async () => {}),
+  deactivateKeepAwake: vi.fn(() => {}),
 }))
 // MarkdownContent imports WebView as a DEFAULT and uses it at module load
 // (tableConfig), so the mock must expose `default` too (HtmlBubble only used the

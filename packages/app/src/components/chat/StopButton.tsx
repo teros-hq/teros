@@ -1,160 +1,155 @@
-import { Square } from '@tamagui/lucide-icons';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
-import type { GestureResponderEvent } from 'react-native';
-import { Button } from 'tamagui'
-import { useColors } from '../mca/primitives/useColors'
-import { colors as semanticColors } from '../mca/primitives/colors';
-import { t } from '../../lib/i18n';
-import { HardCancelModal } from './HardCancelModal';
+import React, { useCallback, useMemo, useRef, useState } from "react"
+import type { GestureResponderEvent } from "react-native"
+import { Pressable } from "react-native"
+import { useColors } from "../mca/primitives/useColors"
+import { Ph } from "../ui/ds"
+import { t } from "../../lib/i18n"
+import { HardCancelModal } from "./HardCancelModal"
 
-const LONG_PRESS_MS = 500;
-
-// Red tints used by the stop button. Kept semantic (theme-agnostic) because red
-// is a safety signal; the surface behind the button is provided by the chat
-// input container, so no theme-adaptive tokens are needed here.
-const stopRed = {
-  border: 'rgba(239, 68, 68, 0.25)',
-  hoverBg: 'rgba(239, 68, 68, 0.12)',
-  pressBg: 'rgba(239, 68, 68, 0.20)',
-  pulseRest: 'rgba(239, 68, 68, 0.10)',
-  pulsePeak: 'rgba(239, 68, 68, 0.18)',
-} as const;
+const LONG_PRESS_MS = 500
 
 interface StopButtonProps {
-  onSoftStop: () => void | Promise<void>;
-  onHardStop: () => void | Promise<void>;
-  hasIrreversibleToolInFlight?: boolean;
-  irreversibleToolName?: string;
+  onSoftStop: () => void | Promise<void>
+  onHardStop: () => void | Promise<void>
+  hasIrreversibleToolInFlight?: boolean
+  irreversibleToolName?: string
 }
 
+/**
+ * `.send.stop` — the composer's STOP state: the 48px ink pill (inverted)
+ * with a stop glyph. Tap = soft stop; hold (or Shift+click / Shift+Enter) =
+ * the hard-cancel confirmation. While holding, a ring grows around the pill
+ * (`.send.stop.holding`) so the long press reads as progress.
+ */
 export function StopButton({
   onSoftStop,
   onHardStop,
   hasIrreversibleToolInFlight = false,
   irreversibleToolName,
 }: StopButtonProps): React.ReactElement {
-  const [modalOpen, setModalOpen] = useState(false);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressFired = useRef(false);
-
-  // Hook kept for future theme-adaptive work even though this component only
-  // needs semantic red tints today.
-  const _c = useColors();
+  const c = useColors()
+  const [modalOpen, setModalOpen] = useState(false)
+  const [holding, setHolding] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const longPressFired = useRef(false)
 
   const clearTimer = useCallback(() => {
     if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-      longPressTimer.current = null;
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
     }
-  }, []);
+    setHolding(false)
+  }, [])
 
   const handlePressIn = useCallback(() => {
-    longPressFired.current = false;
+    longPressFired.current = false
+    setHolding(true)
     longPressTimer.current = setTimeout(() => {
-      longPressFired.current = true;
-      setModalOpen(true);
-    }, LONG_PRESS_MS);
-  }, []);
+      longPressFired.current = true
+      setHolding(false)
+      setModalOpen(true)
+    }, LONG_PRESS_MS)
+  }, [])
 
   const handlePressOut = useCallback(() => {
-    clearTimer();
-  }, [clearTimer]);
+    clearTimer()
+  }, [clearTimer])
 
   const handlePress = useCallback(
     (e: GestureResponderEvent) => {
-      clearTimer();
-      const native = (e as { nativeEvent?: { shiftKey?: boolean } }).nativeEvent;
-      const shiftKey = native?.shiftKey ?? false;
+      clearTimer()
+      const native = (e as { nativeEvent?: { shiftKey?: boolean } }).nativeEvent
+      const shiftKey = native?.shiftKey ?? false
       if (longPressFired.current || shiftKey) {
-        if (shiftKey && !modalOpen) setModalOpen(true);
-        return;
+        if (shiftKey && !modalOpen) setModalOpen(true)
+        return
       }
-      void onSoftStop();
+      void onSoftStop()
     },
     [clearTimer, modalOpen, onSoftStop],
-  );
+  )
 
   const handleHardConfirm = useCallback(async () => {
-    setModalOpen(false);
-    await onHardStop();
-  }, [onHardStop]);
+    setModalOpen(false)
+    await onHardStop()
+  }, [onHardStop])
 
   const handleKeyDown = useCallback(
     (e: { shiftKey?: boolean; key?: string; preventDefault?: () => void }) => {
-      if (e.shiftKey && e.key === 'Enter') {
-        e.preventDefault?.();
-        setModalOpen(true);
+      if (e.shiftKey && e.key === "Enter") {
+        e.preventDefault?.()
+        setModalOpen(true)
       }
     },
     [],
-  );
+  )
 
-  const pulseCss = useMemo(
+  const holdCss = useMemo(
     () => `
-      @keyframes stopPulse {
-        0%, 100% { box-shadow: 0 0 0 0 ${stopRed.pulseRest}; }
-        50% { box-shadow: 0 0 0 4px ${stopRed.pulsePeak}; }
+      @keyframes stopHoldRing {
+        from { box-shadow: 0 0 0 0 ${c.navActive}; }
+        to { box-shadow: 0 0 0 8px ${c.navActive}; }
       }
-      .stop-btn-pulse {
-        animation: stopPulse 2.5s ease-in-out infinite;
-      }
+      .stop-btn-holding { animation: stopHoldRing ${LONG_PRESS_MS}ms linear forwards; }
+      .stop-btn:focus-visible { outline: 2px solid ${c.accent}; outline-offset: 2px; }
     `,
-    [],
-  );
+    [c.navActive, c.accent],
+  )
 
   return (
     <>
-      <div
-        className="stop-btn-pulse"
-        style={{ display: 'inline-flex', borderRadius: 12, lineHeight: 0 }}
+      <style>{holdCss}</style>
+      <Pressable
+        testID="composer-stop"
+        accessibilityRole="button"
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        onPress={handlePress}
+        aria-label={t("chat.stop.ariaLabel")}
+        // `onKeyDown` / aria-describedby / className land on the DOM element via RN-Web prop forwarding.
+        {...({
+          onKeyDown: handleKeyDown,
+          "aria-describedby": "stop-btn-hint",
+          className: holding ? "stop-btn stop-btn-holding" : "stop-btn",
+          title: t("chat.stop.hardHint"),
+        } as object)}
+        style={({ pressed }) => [
+          {
+            width: 48,
+            height: 48,
+            borderRadius: 100,
+            // The "soft" tone of the design system (the sidebar "+"): a quiet
+            // violet disc that sits next to the mint send instead of a black
+            // hole. Holding it fills the ring (holdCss) for the hard stop.
+            backgroundColor: c.tint.i.bg,
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            transform: pressed ? [{ scale: 0.94 }] : undefined,
+          },
+          {
+            cursor: "pointer",
+            transition: "transform 0.3s cubic-bezier(.16,1,.3,1), background 0.25s",
+            touchAction: "none",
+          } as any,
+        ]}
       >
-        <style>{pulseCss}</style>
-        <Button
-          width={42}
-          height={42}
-          padding={0}
-          borderRadius={12}
-          backgroundColor="transparent"
-          borderWidth={1}
-          borderColor={stopRed.border}
-          onPressIn={handlePressIn}
-          onPressOut={handlePressOut}
-          onPress={handlePress}
-          hoverStyle={{
-            backgroundColor: stopRed.hoverBg,
-          }}
-          pressStyle={{
-            backgroundColor: stopRed.pressBg,
-            scale: 0.95,
-          }}
-          // RN-Web zeroes `outline` by default, hiding Tab focus from keyboard users.
-          focusStyle={{
-            outlineWidth: 2,
-            outlineColor: semanticColors.indigo,
-            outlineStyle: 'solid',
-            outlineOffset: 2,
-          }}
-          icon={<Square size={18} color={semanticColors.red} fill="none" strokeWidth={2} />}
-          aria-label={t('chat.stop.ariaLabel')}
-          aria-describedby="stop-btn-hint"
-          accessibilityRole="button"
-          // `onKeyDown` lands on the underlying DOM element via RN-Web prop forwarding; spread to bypass the RN type surface.
-          {...({ onKeyDown: handleKeyDown } as { onKeyDown: typeof handleKeyDown })}
-        />
-      </div>
+        <Ph name="stop" size={16} weight="fill" color={c.accent} />
+      </Pressable>
       {/* Offscreen (not display:none) so screen readers pick it up via aria-describedby. */}
-      <Button
-        unstyled
+      <span
         id="stop-btn-hint"
-        position="absolute"
-        width={1}
-        height={1}
-        overflow="hidden"
-        opacity={0}
-        pointerEvents="none"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          opacity: 0,
+          pointerEvents: "none",
+        }}
       >
-        {t('chat.stop.hardHint')}
-      </Button>
+        {t("chat.stop.hardHint")}
+      </span>
       <HardCancelModal
         open={modalOpen}
         hasIrreversibleToolInFlight={hasIrreversibleToolInFlight}
@@ -163,5 +158,5 @@ export function StopButton({
         onCancel={() => setModalOpen(false)}
       />
     </>
-  );
+  )
 }

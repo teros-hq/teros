@@ -44,6 +44,7 @@ import {
   type SpecsheetSection,
   SuccessBlock,
   ToolCallCard,
+  useColors,
 } from '../primitives';
 import {
   channelDisplayName,
@@ -179,6 +180,7 @@ function formatUptime(seconds: number | undefined): string | null {
 }
 
 function HealthCheckRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<HealthCheckResult>(output) : null;
   const result =
     parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'status' in (parsed as any)
@@ -228,7 +230,7 @@ function HealthCheckRenderer({ toolName, status, output, error, duration }: Tool
           {issues.length > 0 && (
             <YStack gap={6}>
               <Text
-                color={globalColors.secondary}
+                color={c.text2}
                 fontSize={9}
                 fontFamily="$mono"
                 textTransform="uppercase"
@@ -247,11 +249,11 @@ function HealthCheckRenderer({ toolName, status, output, error, duration }: Tool
                   borderColor={`${issueAccent(issue.code)}33`}
                 >
                   <IconChip text={issue.code} accent={issueAccent(issue.code)} />
-                  <Text color={globalColors.primary} fontSize={10}>
+                  <Text color={c.text} fontSize={10}>
                     {issue.message}
                   </Text>
                   {issue.action && (
-                    <Text color={globalColors.secondary} fontSize={9}>
+                    <Text color={c.text2} fontSize={9}>
                       → {issue.action.description}
                       {issue.action.url ? ` (${issue.action.url})` : ''}
                     </Text>
@@ -280,6 +282,7 @@ function channelMetaCount(channel: SlackChannel): React.ReactNode {
 }
 
 function ListChannelsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? parseOutput(output) : null;
   const { items, total, nextCursor } = unwrapList<SlackChannel>(parsed, 'channels');
@@ -308,7 +311,7 @@ function ListChannelsRenderer({ toolName, status, output, error, duration }: Too
                       subtitle={ch.topic || ch.purpose || undefined}
                       badges={
                         ch.isArchived ? (
-                          <IconChip text="ARCHIVED" accent={globalColors.muted} />
+                          <IconChip text="ARCHIVED" accent={c.text3} />
                         ) : null
                       }
                       meta={channelMetaCount(ch)}
@@ -319,7 +322,7 @@ function ListChannelsRenderer({ toolName, status, output, error, duration }: Too
             </ScrollView>
           )}
           {(total != null || nextCursor) && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               {total != null ? `${total} channels` : null}
               {nextCursor ? ` · more available (cursor: ${shortId(nextCursor)})` : null}
             </Text>
@@ -331,6 +334,7 @@ function ListChannelsRenderer({ toolName, status, output, error, duration }: Too
 }
 
 function GetChannelRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput(output) : null;
   const channel = unwrap<SlackChannel>(parsed, 'channel', 'id');
 
@@ -375,7 +379,7 @@ function GetChannelRenderer({ toolName, status, output, error, duration }: ToolC
                 <IconChip text="PUBLIC" accent={SLACK_BRAND.green} />
               )}
               {channel.isArchived ? (
-                <IconChip text="ARCHIVED" accent={globalColors.muted} />
+                <IconChip text="ARCHIVED" accent={c.text3} />
               ) : null}
             </XStack>
           }
@@ -414,6 +418,7 @@ function CreateChannelRenderer({ toolName, status, output, error, duration }: To
 }
 
 function ArchiveChannelRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput(output) : null;
   const channel = unwrap<SlackChannel>(parsed, 'channel', 'id');
   return (
@@ -423,8 +428,8 @@ function ArchiveChannelRenderer({ toolName, status, output, error, duration }: T
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
-              icon={<Hash size={12} color={globalColors.muted} />}
+              accent={c.text3}
+              icon={<Hash size={12} color={c.text3} />}
               size={26}
             />
           }
@@ -625,6 +630,7 @@ function SendThreadReplyRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<SendThreadResult>(output) : null;
   const result =
     parsed && typeof parsed === 'object' && 'threadTs' in (parsed as any)
@@ -652,7 +658,7 @@ function SendThreadReplyRenderer({
           subtitle={
             <XStack gap={4} alignItems="center">
               {tsText(result.ts)}
-              <Text color={globalColors.muted} fontSize={9}>
+              <Text color={c.text3} fontSize={9}>
                 in thread {shortId(result.threadTs, 6, 4)}
               </Text>
             </XStack>
@@ -697,6 +703,7 @@ function ListMessagesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? parseOutput<ListMessagesResult>(output) : null;
   const result =
@@ -730,7 +737,7 @@ function ListMessagesRenderer({
                   >
                     <XStack gap={8} alignItems="center" flexWrap="wrap">
                       <Avatar name={m.userName ?? m.user ?? '?'} size={22} />
-                      <Text color={globalColors.primary} fontSize={10} fontWeight="600">
+                      <Text color={c.text} fontSize={10} fontWeight="600">
                         {m.userName ?? m.user ?? 'unknown'}
                       </Text>
                       <MetaStrip items={messageMetaItems(m)} />
@@ -743,7 +750,7 @@ function ListMessagesRenderer({
             </ScrollView>
           )}
           {(result?.total != null || result?.nextCursor) && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               {result?.total != null ? `${result.total} messages` : null}
               {result?.isThread ? ' · thread' : ''}
               {result?.nextCursor ? ` · more available` : ''}
@@ -766,6 +773,7 @@ interface ReactionResult {
 }
 
 function AddReactionRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<ReactionResult>(output) : null;
   const r =
     parsed && typeof parsed === 'object' && 'name' in (parsed as any)
@@ -787,7 +795,7 @@ function AddReactionRenderer({ toolName, status, output, error, duration }: Tool
           subtitle={
             <XStack gap={4} alignItems="center">
               {tsText(r.timestamp)}
-              <Text color={globalColors.muted} fontSize={9}>
+              <Text color={c.text3} fontSize={9}>
                 in {shortId(r.channel, 6, 4)}
               </Text>
             </XStack>
@@ -806,6 +814,7 @@ function RemoveReactionRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<ReactionResult>(output) : null;
   const r =
     parsed && typeof parsed === 'object' && 'name' in (parsed as any)
@@ -818,7 +827,7 @@ function RemoveReactionRenderer({
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
+              accent={c.text3}
               icon={<Text fontSize={14}>🙂</Text>}
               size={26}
             />
@@ -827,7 +836,7 @@ function RemoveReactionRenderer({
           subtitle={
             <XStack gap={4} alignItems="center">
               {tsText(r.timestamp)}
-              <Text color={globalColors.muted} fontSize={9}>
+              <Text color={c.text3} fontSize={9}>
                 in {shortId(r.channel, 6, 4)}
               </Text>
             </XStack>
@@ -856,6 +865,7 @@ function userBadges(user: SlackUser): React.ReactNode {
 }
 
 function ListUsersRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? parseOutput(output) : null;
   const { items, total, nextCursor } = unwrapList<SlackUser>(parsed, 'users');
@@ -885,7 +895,7 @@ function ListUsersRenderer({ toolName, status, output, error, duration }: ToolCa
                     badges={userBadges(u)}
                     meta={
                       u.tz ? (
-                        <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                        <Text color={c.text3} fontSize={9} fontFamily="$mono">
                           {u.tz}
                         </Text>
                       ) : null
@@ -896,7 +906,7 @@ function ListUsersRenderer({ toolName, status, output, error, duration }: ToolCa
             </ScrollView>
           )}
           {(total != null || nextCursor) && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               {total != null ? `${total} users` : null}
               {nextCursor ? ` · more available` : null}
             </Text>
@@ -959,6 +969,7 @@ function GetUserPresenceRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const { text3 } = useSlackColors();
   const parsed = output ? parseOutput<SlackPresence>(output) : null;
   const p =
@@ -988,7 +999,7 @@ function GetUserPresenceRenderer({
         <ResourceCard
           leading={
             <IconTile
-              accent={chip?.accent ?? globalColors.muted}
+              accent={chip?.accent ?? c.text3}
               icon={<Text fontSize={14}>{p.online ? '🟢' : '⚫'}</Text>}
               size={26}
             />
@@ -1050,6 +1061,7 @@ function UploadFileRenderer({ toolName, status, output, error, duration }: ToolC
 }
 
 function ListFilesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor, text3 } = useSlackColors();
   const parsed = output ? parseOutput(output) : null;
   const { items, total } = unwrapList<SlackFile>(parsed, 'files');
@@ -1079,7 +1091,7 @@ function ListFilesRenderer({ toolName, status, output, error, duration }: ToolCa
                     subtitle={f.prettyType ?? f.mimetype}
                     badges={
                       f.size != null ? (
-                        <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+                        <Text color={c.text3} fontSize={9} fontFamily="$mono">
                           {formatBytes(f.size)}
                         </Text>
                       ) : null
@@ -1090,7 +1102,7 @@ function ListFilesRenderer({ toolName, status, output, error, duration }: ToolCa
               </YStack>
             </ScrollView>
           )}
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {total != null ? `${total} files` : null}
             {paging?.pages && paging.pages > 1
               ? ` · page ${paging.page ?? 1}/${paging.pages}`
@@ -1113,6 +1125,7 @@ function SearchMessagesRenderer({
   error,
   duration,
 }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? parseOutput(output) : null;
   const matches = ((parsed as any)?.matches ?? []) as SlackSearchMessageHit[];
@@ -1151,7 +1164,7 @@ function SearchMessagesRenderer({
                         <Text color={SLACK_BRAND.green} fontSize={9} fontWeight="600">
                           #{m.channelName}
                         </Text>
-                        <Text color={globalColors.primary} fontSize={9}>
+                        <Text color={c.text} fontSize={9}>
                           {m.userName ?? m.user ?? 'unknown'}
                         </Text>
                         <MetaStrip items={hitMeta} />
@@ -1164,7 +1177,7 @@ function SearchMessagesRenderer({
               </YStack>
             </ScrollView>
           )}
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {total != null ? `${total} total` : null}
             {page ? ` · page ${page}` : ''}
           </Text>
@@ -1175,6 +1188,7 @@ function SearchMessagesRenderer({
 }
 
 function SearchFilesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor, text3 } = useSlackColors();
   const parsed = output ? parseOutput(output) : null;
   const matches = ((parsed as any)?.matches ?? []) as SlackSearchFileHit[];
@@ -1227,7 +1241,7 @@ function SearchFilesRenderer({ toolName, status, output, error, duration }: Tool
               </YStack>
             </ScrollView>
           )}
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {total != null ? `${total} total` : null}
             {page ? ` · page ${page}` : ''}
           </Text>
@@ -1431,6 +1445,7 @@ interface ListScheduledOutput {
 }
 
 function ListScheduledRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListScheduledOutput | null) : null;
   const items = parsed?.messages ?? [];
@@ -1475,7 +1490,7 @@ function ListScheduledRenderer({ toolName, status, output, error, duration }: To
             </ScrollView>
           )}
           {parsed?.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -1581,6 +1596,7 @@ function PinMessageRenderer({ toolName, status, output, error, duration }: ToolC
 }
 
 function UnpinMessageRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as PinResult | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -1589,7 +1605,7 @@ function UnpinMessageRenderer({ toolName, status, output, error, duration }: Too
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
+              accent={c.text3}
               icon={<Text fontSize={12}>📌</Text>}
               size={26}
             />
@@ -1719,6 +1735,7 @@ interface RemoveBookmarkOutput {
 }
 
 function RemoveBookmarkRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as RemoveBookmarkOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -1727,7 +1744,7 @@ function RemoveBookmarkRenderer({ toolName, status, output, error, duration }: T
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
+              accent={c.text3}
               icon={<Text fontSize={12}>🔖</Text>}
               size={26}
             />
@@ -1799,6 +1816,7 @@ interface GetFileOutput {
 }
 
 function GetFileRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const palette = useColors();
   const { text3 } = useSlackColors();
   const parsed = output ? (parseOutput(output) as GetFileOutput | null) : null;
   const file = parsed?.file ?? null;
@@ -1815,15 +1833,15 @@ function GetFileRenderer({ toolName, status, output, error, duration }: ToolCall
           {fileRows(file).length > 0 && <KeyValueGrid rows={fileRows(file)} />}
           {parsed?.comments && parsed.comments.length > 0 && (
             <YStack gap={3} marginTop={6}>
-              <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+              <Text color={palette.text3} fontSize={9} fontFamily="$mono">
                 Comments ({parsed.comments.length})
               </Text>
               {parsed.comments.slice(0, 10).map((c) => (
                 <XStack key={c.id} gap={6} alignItems="flex-start">
-                  <Text color={globalColors.muted} fontSize={9} fontFamily="$mono" minWidth={56}>
+                  <Text color={palette.text3} fontSize={9} fontFamily="$mono" minWidth={56}>
                     {shortId(c.user ?? '?', 4, 3)}
                   </Text>
-                  <Text flex={1} color={globalColors.primary} fontSize={10}>
+                  <Text flex={1} color={palette.text} fontSize={10}>
                     {c.comment}
                   </Text>
                 </XStack>
@@ -1874,6 +1892,7 @@ interface LeaveChannelOutput {
 }
 
 function LeaveChannelRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as LeaveChannelOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -1882,8 +1901,8 @@ function LeaveChannelRenderer({ toolName, status, output, error, duration }: Too
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
-              icon={<Hash size={12} color={globalColors.muted} />}
+              accent={c.text3}
+              icon={<Hash size={12} color={c.text3} />}
               size={26}
             />
           }
@@ -1905,6 +1924,7 @@ interface ListChannelMembersOutput {
 }
 
 function ListChannelMembersRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListChannelMembersOutput | null) : null;
   const members = parsed?.members ?? [];
@@ -1918,7 +1938,7 @@ function ListChannelMembersRenderer({ toolName, status, output, error, duration 
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             #{shortId(parsed.channelId, 6, 4)} · {parsed.count} members
           </Text>
           {members.length === 0 ? (
@@ -1929,7 +1949,7 @@ function ListChannelMembersRenderer({ toolName, status, output, error, duration 
                 {members.map((uid) => (
                   <XStack key={uid} gap={6} alignItems="center" paddingVertical={2}>
                     <Avatar name={uid} size={18} />
-                    <Text color={globalColors.primary} fontSize={10} fontFamily="$mono">
+                    <Text color={c.text} fontSize={10} fontFamily="$mono">
                       {uid}
                     </Text>
                   </XStack>
@@ -1938,7 +1958,7 @@ function ListChannelMembersRenderer({ toolName, status, output, error, duration 
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -2187,6 +2207,7 @@ interface GetReactionsOutput {
 }
 
 function GetReactionsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as GetReactionsOutput | null) : null;
   const reactions = parsed?.reactions ?? [];
   return (
@@ -2199,7 +2220,7 @@ function GetReactionsRenderer({ toolName, status, output, error, duration }: Too
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed?.type === 'message'
               ? `#${shortId(parsed.target.channel ?? '', 6, 4)} · ${parsed.target.timestamp ?? ''}`
               : `file ${shortId(parsed?.target.file ?? '', 6, 4)}`}
@@ -2451,6 +2472,7 @@ interface ListListItemsOutput {
 }
 
 function ListListItemsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListListItemsOutput | null) : null;
   const items = parsed?.items ?? [];
@@ -2464,7 +2486,7 @@ function ListListItemsRenderer({ toolName, status, output, error, duration }: To
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             List {shortId(parsed.listId, 6, 4)} · {parsed.count} item{parsed.count === 1 ? '' : 's'}
           </Text>
           {items.length === 0 ? (
@@ -2496,7 +2518,7 @@ function ListListItemsRenderer({ toolName, status, output, error, duration }: To
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -2719,6 +2741,7 @@ function streamTile(): React.ReactNode {
 }
 
 function StartStreamRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as StartStreamOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -2732,7 +2755,7 @@ function StartStreamRenderer({ toolName, status, output, error, duration }: Tool
           meta={
             <XStack gap={6} alignItems="center">
               <IconChip text="streaming" accent={globalColors.indigo} />
-              <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+              <Text color={c.text3} fontSize={9} fontFamily="$mono">
                 id {shortId(parsed.streamId, 4, 3)}
               </Text>
             </XStack>
@@ -2829,6 +2852,7 @@ function callTile(active: boolean): React.ReactNode {
 }
 
 function AddCallRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as CuratedCallShape | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -2843,7 +2867,7 @@ function AddCallRenderer({ toolName, status, output, error, duration }: ToolCall
             <XStack gap={6} alignItems="center">
               <IconChip
                 text={parsed.status.toUpperCase()}
-                accent={parsed.status === 'active' ? globalColors.green : globalColors.muted}
+                accent={parsed.status === 'active' ? globalColors.green : c.text3}
               />
               {externalLink(parsed.joinUrl, 'join')}
             </XStack>
@@ -2861,6 +2885,7 @@ interface EndCallOutput {
 }
 
 function EndCallRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as EndCallOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -2873,7 +2898,7 @@ function EndCallRenderer({ toolName, status, output, error, duration }: ToolCall
           verb="disabled"
           meta={
             parsed.duration != null ? (
-              <IconChip text={`${Math.round(parsed.duration)}s`} accent={globalColors.muted} />
+              <IconChip text={`${Math.round(parsed.duration)}s`} accent={c.text3} />
             ) : null
           }
         />
@@ -2900,6 +2925,7 @@ function UpdateCallRenderer({ toolName, status, output, error, duration }: ToolC
 }
 
 function GetCallRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as CuratedCallShape | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -2913,7 +2939,7 @@ function GetCallRenderer({ toolName, status, output, error, duration }: ToolCall
             <XStack gap={6} alignItems="center">
               <IconChip
                 text={parsed.status.toUpperCase()}
-                accent={parsed.status === 'active' ? globalColors.green : globalColors.muted}
+                accent={parsed.status === 'active' ? globalColors.green : c.text3}
               />
               {externalLink(parsed.joinUrl, 'join')}
             </XStack>
@@ -3029,6 +3055,7 @@ interface PurposeOrTopicOutput {
 }
 
 function SetChannelPurposeRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as PurposeOrTopicOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -3046,7 +3073,7 @@ function SetChannelPurposeRenderer({ toolName, status, output, error, duration }
           subtitle={`#${shortId(parsed.channelId, 6, 4)}`}
           verb="updated"
         >
-          {parsed.purpose && <Text color={globalColors.primary} fontSize={10}>{parsed.purpose}</Text>}
+          {parsed.purpose && <Text color={c.text} fontSize={10}>{parsed.purpose}</Text>}
         </ResourceCard>
       )}
     </SlackToolShell>
@@ -3054,6 +3081,7 @@ function SetChannelPurposeRenderer({ toolName, status, output, error, duration }
 }
 
 function SetChannelTopicRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as PurposeOrTopicOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -3071,7 +3099,7 @@ function SetChannelTopicRenderer({ toolName, status, output, error, duration }: 
           subtitle={`#${shortId(parsed.channelId, 6, 4)}`}
           verb="updated"
         >
-          {parsed.topic && <Text color={globalColors.primary} fontSize={10}>{parsed.topic}</Text>}
+          {parsed.topic && <Text color={c.text} fontSize={10}>{parsed.topic}</Text>}
         </ResourceCard>
       )}
     </SlackToolShell>
@@ -3267,6 +3295,7 @@ interface RevokeFilePublicOutput {
 }
 
 function RevokeFilePublicRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as RevokeFilePublicOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -3275,7 +3304,7 @@ function RevokeFilePublicRenderer({ toolName, status, output, error, duration }:
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
+              accent={c.text3}
               icon={<Text fontSize={12}>🔒</Text>}
               size={26}
             />
@@ -3320,6 +3349,7 @@ interface ListRemoteFilesOutput {
 }
 
 function ListRemoteFilesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListRemoteFilesOutput | null) : null;
   const files = parsed?.files ?? [];
@@ -3346,7 +3376,7 @@ function ListRemoteFilesRenderer({ toolName, status, output, error, duration }: 
                     subtitle={f.fileType ?? f.externalUrl ?? undefined}
                     meta={
                       <XStack gap={6} alignItems="center">
-                        {f.fileType ? <IconChip text={f.fileType} accent={globalColors.muted} /> : null}
+                        {f.fileType ? <IconChip text={f.fileType} accent={c.text3} /> : null}
                         {externalLink(f.externalUrl, 'open')}
                       </XStack>
                     }
@@ -3356,7 +3386,7 @@ function ListRemoteFilesRenderer({ toolName, status, output, error, duration }: 
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -3566,6 +3596,7 @@ interface ListUserChannelsOutput {
 }
 
 function ListUserChannelsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const palette = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListUserChannelsOutput | null) : null;
   const channels = parsed?.channels ?? [];
@@ -3579,7 +3610,7 @@ function ListUserChannelsRenderer({ toolName, status, output, error, duration }:
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={palette.text3} fontSize={9} fontFamily="$mono">
             {parsed.userId ? `user ${shortId(parsed.userId, 4, 3)} · ` : ''}
             {parsed.count} channel{parsed.count === 1 ? '' : 's'}
           </Text>
@@ -3603,7 +3634,7 @@ function ListUserChannelsRenderer({ toolName, status, output, error, duration }:
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={palette.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -3692,6 +3723,7 @@ interface ListMyReactionsOutput {
 }
 
 function ListMyReactionsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListMyReactionsOutput | null) : null;
   const items = parsed?.items ?? [];
@@ -3705,7 +3737,7 @@ function ListMyReactionsRenderer({ toolName, status, output, error, duration }: 
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} reaction{parsed.count === 1 ? '' : 's'} given
           </Text>
           {items.length === 0 ? (
@@ -3755,6 +3787,7 @@ interface GetTeamDndOutput {
 }
 
 function GetTeamDndRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as GetTeamDndOutput | null) : null;
   const users = parsed?.users ?? [];
   return (
@@ -3767,7 +3800,7 @@ function GetTeamDndRenderer({ toolName, status, output, error, duration }: ToolC
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} user{parsed.count === 1 ? '' : 's'}
           </Text>
           {users.length === 0 ? (
@@ -3847,6 +3880,7 @@ function StarItemRenderer({ toolName, status, output, error, duration }: ToolCal
 }
 
 function UnstarItemRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? (parseOutput(output) as StarOutput | null) : null;
   return (
     <SlackToolShell toolName={toolName} status={status} duration={duration}>
@@ -3855,7 +3889,7 @@ function UnstarItemRenderer({ toolName, status, output, error, duration }: ToolC
         <ResourceCard
           leading={
             <IconTile
-              accent={globalColors.muted}
+              accent={c.text3}
               icon={<Text fontSize={12}>⭐</Text>}
               size={26}
             />
@@ -3884,6 +3918,7 @@ interface ListStarsOutput {
 }
 
 function ListStarsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListStarsOutput | null) : null;
   const items = parsed?.items ?? [];
@@ -3897,7 +3932,7 @@ function ListStarsRenderer({ toolName, status, output, error, duration }: ToolCa
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} item{parsed.count === 1 ? '' : 's'} saved
           </Text>
           {items.length === 0 ? (
@@ -3924,7 +3959,7 @@ function ListStarsRenderer({ toolName, status, output, error, duration }: ToolCa
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -3947,6 +3982,7 @@ interface ListEmojiOutput {
 }
 
 function ListEmojiRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListEmojiOutput | null) : null;
   const emojis = parsed?.emojis ?? [];
@@ -3960,7 +3996,7 @@ function ListEmojiRenderer({ toolName, status, output, error, duration }: ToolCa
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} custom emoji{parsed.count === 1 ? '' : 's'}
           </Text>
           {emojis.length === 0 ? (
@@ -3980,7 +4016,7 @@ function ListEmojiRenderer({ toolName, status, output, error, duration }: ToolCa
                     }
                     title={e.name}
                     subtitle={e.isAlias ? `alias for :${e.aliasFor}:` : undefined}
-                    meta={e.isAlias ? <IconChip text="ALIAS" accent={globalColors.muted} /> : null}
+                    meta={e.isAlias ? <IconChip text="ALIAS" accent={c.text3} /> : null}
                   />
                 ))}
               </YStack>
@@ -4070,6 +4106,7 @@ interface GetAccessLogsOutput {
 }
 
 function GetAccessLogsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as GetAccessLogsOutput | null) : null;
   const logs = parsed?.logs ?? [];
@@ -4083,7 +4120,7 @@ function GetAccessLogsRenderer({ toolName, status, output, error, duration }: To
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} login{parsed.count === 1 ? '' : 's'}
           </Text>
           {logs.length === 0 ? (
@@ -4125,6 +4162,7 @@ interface GetIntegrationLogsOutput {
 }
 
 function GetIntegrationLogsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as GetIntegrationLogsOutput | null) : null;
   const logs = parsed?.logs ?? [];
@@ -4138,7 +4176,7 @@ function GetIntegrationLogsRenderer({ toolName, status, output, error, duration 
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} integration event{parsed.count === 1 ? '' : 's'}
           </Text>
           {logs.length === 0 ? (
@@ -4391,6 +4429,7 @@ function connectTile(): React.ReactNode {
 }
 
 function ListConnectInvitesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListConnectInvitesOutput | null) : null;
   const invites = parsed?.invites ?? [];
@@ -4399,7 +4438,7 @@ function ListConnectInvitesRenderer({ toolName, status, output, error, duration 
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} invite{parsed.count === 1 ? '' : 's'} pending
           </Text>
           {invites.length === 0 ? (
@@ -4427,7 +4466,7 @@ function ListConnectInvitesRenderer({ toolName, status, output, error, duration 
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -4585,6 +4624,7 @@ interface ListAuthTeamsOutput {
 }
 
 function ListAuthTeamsRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const { scrollbarColor } = useSlackColors();
   const parsed = output ? (parseOutput(output) as ListAuthTeamsOutput | null) : null;
   const teams = parsed?.teams ?? [];
@@ -4593,7 +4633,7 @@ function ListAuthTeamsRenderer({ toolName, status, output, error, duration }: To
       <ErrorWithHint error={error} toolName={toolName} />
       {!error && status === 'completed' && parsed && (
         <YStack gap={4}>
-          <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+          <Text color={c.text3} fontSize={9} fontFamily="$mono">
             {parsed.count} workspace{parsed.count === 1 ? '' : 's'}
           </Text>
           {teams.length === 0 ? (
@@ -4618,7 +4658,7 @@ function ListAuthTeamsRenderer({ toolName, status, output, error, duration }: To
             </ScrollView>
           )}
           {parsed.hasMore && (
-            <Text color={globalColors.muted} fontSize={9} fontFamily="$mono">
+            <Text color={c.text3} fontSize={9} fontFamily="$mono">
               + more available (use cursor to paginate)
             </Text>
           )}
@@ -4764,6 +4804,7 @@ const RENDERERS: Record<string, React.ComponentType<ToolCallRendererProps>> = {
 // ============================================================================
 
 function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererProps) {
+  const c = useColors();
   const shortName = getShortToolName(toolName);
 
   const badge = __DEV__ ? (
@@ -4794,7 +4835,7 @@ function FallbackRenderer({ toolName, status, output, error }: ToolCallRendererP
           <Text color={globalColors.badgeError.text} fontSize={10} fontWeight="600">
             [dev] Missing sub-renderer for "{shortName}"
           </Text>
-          <Text color={globalColors.secondary} fontSize={9}>
+          <Text color={c.text2} fontSize={9}>
             Register it in the RENDERERS map in SlackRenderer.tsx.
           </Text>
         </YStack>

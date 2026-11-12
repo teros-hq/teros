@@ -45,10 +45,62 @@
     "get-subscription": {
       "name": "get-subscription",
       "description": "Get information about the current ElevenLabs subscription including character usage and limits."
+    },
+    "list-phone-numbers": {
+      "name": "list-phone-numbers",
+      "description": "List phone numbers connected to ElevenLabs with their assigned agent and capabilities."
+    },
+    "import-twilio-number": {
+      "name": "import-twilio-number",
+      "description": "Import a Twilio phone number into ElevenLabs for inbound and outbound agent calls.",
+      "params": {
+        "phoneNumber": "E.164 phone number, e.g. +15551234567",
+        "label": "Descriptive label",
+        "twilioSid": "Twilio Account SID (AC...) or API Key SID (SK...)",
+        "twilioToken": "Twilio Auth Token or API Key Secret",
+        "agentId": "Optional agent ID to assign"
+      }
+    },
+    "outbound-call": {
+      "name": "outbound-call",
+      "description": "Make an outbound phone call from a connected ElevenLabs number using an agent. The agent starts the conversation when the recipient answers.",
+      "params": {
+        "toNumber": "Destination phone number in E.164 format (e.g. +34600123456)",
+        "agentId": "Optional agent ID. Defaults to Teros Voice Agent",
+        "phoneNumberId": "Optional phone_number_id of the caller number. Defaults to the first connected number",
+        "firstMessage": "Optional first message override for this call",
+        "dynamicVariables": "Optional dynamic variables passed to the agent",
+        "notifyChannel": "Notify the initiating channel when the call ends (one-time post-call subscription). Default: true. Set false for fire-and-forget calls."
+      }
+    },
+    "get-conversation": {
+      "name": "get-conversation",
+      "description": "Get details of an ElevenLabs conversation (transcript, analysis, status) by its ID.",
+      "params": {
+        "conversationId": "The conversation ID"
+      }
+    },
+    "get-agent": {
+      "name": "get-agent",
+      "description": "Get the full configuration of an ElevenLabs ConvAI agent (name, first message, system prompt, ASR keywords, tools, phone numbers, metadata). If agentId is omitted, uses the AGENT_ID system secret (Teros Voice Agent by default).",
+      "params": {
+        "agentId": "Optional ElevenLabs agent ID (e.g. agent_8101kb0xa4jje0s963kw6nhfmdh7). Defaults to the AGENT_ID system secret."
+      }
+    },
+    "update-agent": {
+      "name": "update-agent",
+      "description": "Update an ElevenLabs ConvAI agent configuration. Partial merge: only the fields you pass are modified — tools, TTS, phone numbers, and the rest of the conversation_config stay intact. Use get-agent first to inspect the current state. If agentId is omitted, uses the AGENT_ID system secret.",
+      "params": {
+        "agentId": "Optional ElevenLabs agent ID. Defaults to the AGENT_ID system secret (Teros Voice Agent).",
+        "name": "New display name for the agent.",
+        "firstMessage": "New first message (the opening line the agent speaks when the call connects). Maps to conversation_config.agent.first_message.",
+        "systemPrompt": "New system prompt. Maps to conversation_config.agent.prompt.prompt. Keep the {{call_context}} placeholder if you want per-call context to keep working.",
+        "asrKeywords": "New ASR keyword list (replaces the existing one). Maps to conversation_config.asr.keywords. Pass an empty array to clear."
+      }
     }
   },
   "name": "ElevenLabs",
-  "description": "ElevenLabs Text-to-Speech - generate natural-sounding speech from text using AI voices",
+  "description": "ElevenLabs voice app — generate natural-sounding speech from text (TTS) and make phone calls with a conversational voice agent (outbound calls via Twilio, call transcripts and analysis, ConvAI agent configuration).",
   "changelog": [
     {
       "notes": "Initial release — turn text into natural speech, browse and inspect AI voices, build multi-speaker conversations, and track plan usage"

@@ -29,6 +29,7 @@ export const TASK_FIELDS = [
   'position',
   'title',
   'description',
+  'instructions',
   'priority',
   'archived',
   'archiveNote',
@@ -46,6 +47,19 @@ export const TASK_FIELDS = [
   'createdBy',
   'createdAt',
   'updatedAt',
+
+  // Workflow extension fields (§WF2 — workflow task integration)
+  // Present when a task is created by the workflow engine. The engine's
+  // WsBoardBridge.getTask() reads output.data from the response;
+  // these must be in the whitelist or they get stripped before the caller
+  // sees them. pickFields() only includes keys that exist in the object,
+  // so non-workflow tasks are unaffected.
+  'workflowInputGate',
+  'workflowOutputGate',
+  'input',
+  'output',
+  'workflowExecutionId',
+  'workflowNodeId',
 ] as const;
 
 export const TASK_WITH_PROGRESS_FIELDS = [...TASK_FIELDS, 'progressNotes'] as const;
@@ -117,6 +131,7 @@ export const BOARD_STATUS_AGENT_FIELDS = [
   'slots',
   'playEnabled',
   'activeSlots',
+  'activeTasks',
   'tasksInReview',
   'tasksToDo',
   'tasksBlocked',

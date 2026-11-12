@@ -109,6 +109,11 @@ export interface UserMessage {
     /** Absent on legacy messages — ResumeService treats absent as `done`. */
     queueState?: 'pending' | 'running' | 'done';
   };
+  /** MUW-F1: true = content is protected from non-owners in LLM context. */
+  redacted?: boolean;
+
+  /** MUW-F1: cross-reference to channel_messages.messageId for redaction propagation. */
+  channelMessageId?: string;
 }
 
 export interface AssistantMessage {
@@ -146,6 +151,12 @@ export interface AssistantMessage {
   // Optional fields
   summary?: boolean; // If this is a summary message
   error?: MessageError;
+
+  /** MUW-F1: true = content is protected from non-owners in LLM context. */
+  redacted?: boolean;
+
+  /** MUW-F1: cross-reference to channel_messages.messageId for redaction propagation. */
+  channelMessageId?: string;
 }
 
 export type MessageError =
@@ -248,6 +259,9 @@ export interface ToolStatePendingApproval {
     appId: string;
     toolName: string;
     createdAt: number;
+    /** Workspace where the tool was invoked — persisted for exact restoration
+     *  (incident-2026-08-14). */
+    workspaceId?: string;
   };
 }
 

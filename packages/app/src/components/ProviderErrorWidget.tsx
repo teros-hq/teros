@@ -1,12 +1,10 @@
-import { AlertTriangle, Lock, RefreshCw, Repeat } from "@tamagui/lucide-icons"
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { Animated } from "react-native"
-import { Button, Text, View, XStack, YStack } from "tamagui"
+import { Animated, Platform, Pressable, View } from "react-native"
 import { usePulseAnimation } from "../hooks/usePulseAnimation"
 import { getDateLocale } from "../i18n"
 import { useColors } from "./mca/primitives/useColors"
-import { colors as semanticColors, surface } from "./mca/primitives/colors"
+import { Btn, Ph, T } from "./ui/ds"
 
 /**
  * ProviderErrorWidget — the honest, warm error card for Teros LLM-provider
@@ -20,7 +18,7 @@ import { colors as semanticColors, surface } from "./mca/primitives/colors"
  *     red, primary action Change model. The precise cause (billing vs missing
  *     model) is NEVER surfaced to the user — it lives in the ops dashboard.
  *
- * Follows the RateLimitWidget grammar (dark card, 360 max-width, dot, disclosure)
+ * Follows the RateLimitWidget grammar (card, 380 max-width, dot, disclosure)
  * so it reads as the same product surface. See docs mockup (TER-699).
  */
 
@@ -61,12 +59,6 @@ const CLASS_CONFIG: Record<string, ClassConfig> = {
 /** The errorClasses this widget owns. Others fall through to the generic ErrorBlock. */
 export function isProviderErrorClass(errorClass?: unknown): boolean {
   return typeof errorClass === "string" && errorClass in CLASS_CONFIG
-}
-
-const TONE_COLORS: Record<Tone, { accent: string; edge: string }> = {
-  amber: { accent: semanticColors.amber, edge: "rgba(245,158,11,0.5)" },
-  neutral: { accent: surface.dark.text2, edge: surface.dark.borderStrong },
-  danger: { accent: semanticColors.red, edge: "rgba(239,68,68,0.45)" },
 }
 
 export interface ProviderErrorWidgetProps {
@@ -160,135 +152,166 @@ export function ProviderErrorWidget({
   // Defensive: only rendered for known provider classes (isProviderErrorClass).
   if (!config) return null
 
-  const tone = TONE_COLORS[config.tone]
+  // Tone → the theme's status tints (amber / neutral hairline / red).
+  const tone =
+    config.tone === "amber"
+      ? { accent: c.tint.a.tx, edge: c.tint.a.bd, bg: c.tint.a.bg }
+      : config.tone === "danger"
+        ? { accent: c.tint.r.tx, edge: c.tint.r.bd, bg: c.tint.r.bg }
+        : { accent: c.text2, edge: c.borderStrong, bg: c.wash }
   const isTransient = config.variant === "transient"
   const detail = upstreamMessage || technicalMessage
   const showCountdown = isTransient && hasTimeInfo
 
   return (
-    <YStack
+    <View
       testID={`provider-error-card-${config.variant}`}
-      backgroundColor={c.bgInner}
-      borderColor={c.border}
-      borderWidth={1}
-      borderLeftWidth={2}
-      borderLeftColor={tone.edge}
-      borderRadius={12}
-      padding={16}
-      paddingHorizontal={20}
-      marginVertical="$2"
-      marginHorizontal="$2"
-      maxWidth={380}
-      alignSelf="flex-start"
+      style={{
+        backgroundColor: c.bgStep,
+        borderWidth: 1,
+        borderColor: c.border,
+        borderLeftWidth: 2,
+        borderLeftColor: tone.edge,
+        borderRadius: 16,
+        padding: 16,
+        paddingHorizontal: 18,
+        marginVertical: 8,
+        marginHorizontal: 8,
+        maxWidth: 380,
+        alignSelf: "flex-start",
+      }}
     >
       {/* Header: indicator + title */}
-      <XStack alignItems="center" gap={10} marginBottom={8}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }}>
         {isTransient ? (
           <PulsingDot color={tone.accent} />
-        ) : config.tone === "danger" ? (
-          <Lock size={15} color={tone.accent} />
         ) : (
-          <AlertTriangle size={15} color={tone.accent} />
+          <View
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 7,
+              backgroundColor: tone.bg,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ph
+              name={config.tone === "danger" ? "lock-simple" : "warning"}
+              size={13}
+              color={tone.accent}
+            />
+          </View>
         )}
-        <Text color={c.text} fontWeight="600" fontSize={13}>
-          {t(`errors.provider.${config.copyKey}.title`)}
-        </Text>
-      </XStack>
+        <T step="sm">{t(`errors.provider.${config.copyKey}.title`)}</T>
+      </View>
 
       {/* Hint */}
-      <Text
-        color={c.text2}
-        fontSize={12}
-        lineHeight={18}
-        marginBottom={showCountdown ? 12 : 0}
-      >
+      <T step="12" tone="text2" style={{ lineHeight: 18, marginBottom: showCountdown ? 12 : 0 }}>
         {t(`errors.provider.${config.copyKey}.hint`)}
-      </Text>
+      </T>
 
       {/* Countdown — transient only */}
       {showCountdown && (
         <>
-          <XStack justifyContent="space-between" alignItems="center" marginBottom={12}>
-            <Text color={c.text3} fontSize={12}>
-              {t("errors.remaining", { time: timeLeft })}
-            </Text>
-            {resetTime ? (
-              <Text color={c.text3} fontSize={12}>
-                {t("errors.availableAt", { time: resetTime })}
-              </Text>
-            ) : null}
-          </XStack>
           <View
-            height={3}
-            backgroundColor={c.border}
-            borderRadius={2}
-            overflow="hidden"
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <T step="codenote" tone="text3">
+              {t("errors.remaining", { time: timeLeft })}
+            </T>
+            {resetTime ? (
+              <T step="codenote" tone="text3">
+                {t("errors.availableAt", { time: resetTime })}
+              </T>
+            ) : null}
+          </View>
+          <View
+            style={{ height: 3, backgroundColor: c.wash2, borderRadius: 2, overflow: "hidden" }}
           >
             <View
-              height="100%"
-              width={`${progress}%`}
-              borderRadius={2}
-              backgroundColor={tone.accent}
+              style={{
+                height: "100%",
+                width: `${progress}%`,
+                borderRadius: 2,
+                backgroundColor: tone.accent,
+                ...(Platform.OS === "web" ? ({ transition: "width 1s linear" } as any) : null),
+              }}
             />
           </View>
         </>
       )}
 
       {/* Actions */}
-      <XStack gap="$2" alignItems="center" marginTop={13} flexWrap="wrap">
-        {isTransient && onRetry ? (
-          <Button
-            testID="provider-error-retry"
-            size="$2"
-            backgroundColor={c.badges.info.bg}
-            borderColor={c.badges.info.border}
-            color={c.badges.info.text}
-            onPress={onRetry}
-            icon={RefreshCw}
-            fontSize="$1"
-          >
-            {t("common.retry")}
-          </Button>
-        ) : null}
-        {onChangeModel ? (
-          <Button
-            testID="provider-error-change-model"
-            size="$2"
-            backgroundColor={isTransient ? c.bgInner : c.badges.info.bg}
-            borderColor={isTransient ? c.border : c.badges.info.border}
-            color={isTransient ? c.text2 : c.badges.info.text}
-            onPress={onChangeModel}
-            icon={Repeat}
-            fontSize="$1"
-          >
-            {t("errors.changeModel")}
-          </Button>
-        ) : null}
-      </XStack>
+      {(isTransient && onRetry) || onChangeModel ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 13,
+            flexWrap: "wrap",
+          }}
+        >
+          {isTransient && onRetry ? (
+            <Btn
+              testID="provider-error-retry"
+              variant="primary"
+              size="sm"
+              icon="arrow-clockwise"
+              onPress={onRetry}
+            >
+              {t("common.retry")}
+            </Btn>
+          ) : null}
+          {onChangeModel ? (
+            <Btn
+              testID="provider-error-change-model"
+              variant={isTransient ? "sec" : "primary"}
+              size="sm"
+              icon="swap"
+              onPress={onChangeModel}
+            >
+              {t("errors.changeModel")}
+            </Btn>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Technical details — the literal upstream text lives here, never in the body */}
       {detail ? (
-        <YStack marginTop={11}>
-          <Text
-            color={c.text3}
-            fontSize={11}
+        <View style={{ marginTop: 11 }}>
+          <Pressable
             onPress={() => setShowTechnical((v) => !v)}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              {
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                alignSelf: "flex-start",
+                opacity: pressed ? 0.7 : 1,
+              },
+              Platform.OS === "web" ? ({ cursor: "pointer" } as any) : null,
+            ]}
           >
-            {showTechnical ? t("errors.hideTechnicalDetails") : t("errors.showTechnicalDetails")}
-          </Text>
+            <T step="12" tone="text3">
+              {showTechnical ? t("errors.hideTechnicalDetails") : t("errors.showTechnicalDetails")}
+            </T>
+            <Ph name={showTechnical ? "caret-up" : "caret-down"} size={11} color={c.text3} />
+          </Pressable>
           {showTechnical ? (
-            <Text
-              marginTop={6}
-              color={c.text2}
-              fontSize={11}
-              fontFamily="$mono"
-              lineHeight={16}
-            >
+            <T step="code" tone="text2" style={{ marginTop: 6, fontSize: 11, lineHeight: 16 }}>
               {detail}
-            </Text>
+            </T>
           ) : null}
-        </YStack>
+        </View>
       ) : null}
-    </YStack>
+    </View>
   )
 }

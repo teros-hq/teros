@@ -1,8 +1,10 @@
 /**
  * Agent Hours Tracker
  *
- * Reads from agent_usage_rollups_user_hourly and accumulates
- * userActiveMs into billing_subscriptions.agentHoursUsed.
+ * Reads from agent_usage_rollups_user_hourly and accumulates the billed
+ * metric — userWorkMs (decision #29: SUM of per-session overlaps, so parallel
+ * agents each burn quota), falling back to userActiveMs on pre-#29 buckets —
+ * into billing_subscriptions.agentHoursUsed.
  *
  * Idempotent via lastBilledHourBucket on the subscription doc.
  * Only processes rollup hour buckets strictly greater than the
@@ -11,7 +13,7 @@
  *
  * Runs as a background job gated by leader election.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §10 — Acumulación de horas agente
  */
 
 import type { Collection, Db } from "mongodb"
@@ -27,6 +29,7 @@ import {
   type BillingHourLedgerEntry,
   type BillingPlan,
 } from "../models/billing.js"
+import { computeBillableHorizon } from "./agent-usage-rollup-job.js"
 import { waitUntilIdle } from "../lib/drain.js"
 import { LEADER_LOCKS, type LeaderElectionService } from "./leader-election.js"
 
@@ -89,6 +92,12 @@ export class AgentHoursTracker {
     private readonly leader: LeaderElectionService | null = null,
     public readonly opts: AgentHoursTrackerOptions = DEFAULT_TRACKER_OPTS,
     private readonly pubsub: BillingEventPublisher | null = null,
+    /**
+     * Hour (exclusive) up to which rollups are final and may be billed (BIL-3).
+     * Injected for tests; production reads the rollup completion markers.
+     */
+    private readonly billableHorizon: (now: Date) => Promise<Date> = (now) =>
+      computeBillableHorizon(db, now),
   ) {
     this.rollupsCol = db.collection("agent_usage_rollups_user_hourly")
     this.billingCol = db.collection("billing_subscriptions")
@@ -229,6 +238,11 @@ export class AgentHoursTracker {
     // Cache plans within a tick so the 80% check is O(distinct plans), not O(subs).
     const planCache = new Map<string, BillingPlan | null>()
 
+    // Bill only hours whose rollups are final (BIL-3). The cursor below never
+    // goes back, so billing a still-open or failed hour (or jumping over it to a
+    // later one) would lose its time for good when it is rolled up later.
+    const horizon = await this.billableHorizon(new Date())
+
     let lastBeat = Date.now()
 
     try {
@@ -248,13 +262,19 @@ export class AgentHoursTracker {
 
         try {
           // Sum only this user's rollups strictly after their own cursor.
+          // Billed metric = userWorkMs (decision #29: SUM of per-session
+          // overlaps — parallel agents each burn quota). $ifNull falls back to
+          // userActiveMs for pre-#29 buckets (schemaVersion 1, no userWorkMs),
+          // so historical hours keep billing at their original speed.
           const agg = (await this.rollupsCol
             .aggregate([
-              { $match: { "groupKey.userId": userId, hourBucket: { $gt: userCutoff } } },
+              {
+                $match: { "groupKey.userId": userId, hourBucket: { $gt: userCutoff, $lt: horizon } },
+              },
               {
                 $group: {
                   _id: null,
-                  totalMs: { $sum: "$userActiveMs" },
+                  totalMs: { $sum: { $ifNull: ["$userWorkMs", "$userActiveMs"] } },
                   maxHourBucket: { $max: "$hourBucket" },
                   count: { $sum: 1 },
                   rollupIds: { $push: "$_id" },

@@ -2,7 +2,7 @@
  * provider.list-models — List available LLM models (active)
  */
 
-import { type WsHandlerContext, resolveRetention } from '@teros/shared'
+import { type WsHandlerContext, isProviderTypeAllowedInEdition, resolveRetention } from '@teros/shared'
 import { ModelService } from '../../../services/model-service'
 import type { Db } from 'mongodb'
 
@@ -12,7 +12,12 @@ export function createListModelsHandler(db: Db, modelService?: ModelService) {
     const models = await svc.listModels('active')
 
     return {
-      models: models.map((m) => ({
+      models: models
+        // Edition gate (TER-EDITION): local-Ollama models are not offered by
+        // the model picker in cloud — local inference only exists in
+        // self-hosted. ollama-cloud rows pass in every edition.
+        .filter((m) => isProviderTypeAllowedInEdition(m.provider))
+        .map((m) => ({
         modelId: m.modelId,
         name: m.name,
         provider: m.provider,

@@ -6,6 +6,12 @@
  * Sin imports: funciones puras (Blob/AnalyserNode/Math son globales del runtime).
  */
 
+/**
+ * Cap del búfer rodante de muestras del waveform. Cualquier ancho renderizable
+ * (≈140 barras en 700 px) queda cubierto; quien dibuja toma las últimas N.
+ */
+export const MAX_WAVEFORM_SAMPLES = 240;
+
 /** Ensambla los chunks de grabación en un único Blob; null si no hay chunks. */
 export function assembleBlob(chunks: Blob[]): Blob | null {
   if (!chunks.length) return null;
@@ -63,4 +69,27 @@ export function expandSamples(samples: number[], targetLength: number): number[]
   }
 
   return expanded;
+}
+
+/** Convierte un Blob de audio a base64 (para persistir en audioStore/localStorage). */
+export async function blobToBase64(blob: Blob): Promise<string> {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Decide si la página debe bloquear el unload (beforeunload) porque hay audio
+ * en riesgo: grabando, pausado con blob en mano, o envío en vuelo.
+ * `state` es el WebRecordingState del composer; `isSending` cubre el upload.
+ */
+export function shouldBlockUnload(
+  state: 'idle' | 'recording' | 'paused',
+  isSending: boolean,
+): boolean {
+  return state !== 'idle' || isSending;
 }

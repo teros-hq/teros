@@ -408,13 +408,13 @@ describe("McaStatusDashboard", () => {
     })
 
     it("renders category headers in the fixed semantic order regardless of input order (D-12)", async () => {
-      // Input order is deliberately out of semantic order: data, communication, development, productivity.
+      // Input order is deliberately out of semantic order: data, development, productivity, communication.
       listAllMcas.mockResolvedValue({
         mcas: [
           mcaCatalogEntry("m-data", "Data MCA", ["tool-a"], { category: "data" }),
-          mcaCatalogEntry("m-comm", "Comm MCA", ["tool-a"], { category: "communication" }),
           mcaCatalogEntry("m-dev", "Dev MCA", ["tool-a"], { category: "development" }),
           mcaCatalogEntry("m-prod", "Prod MCA", ["tool-a"], { category: "productivity" }),
+          mcaCatalogEntry("m-comm", "Comm MCA", ["tool-a"], { category: "communication" }),
         ],
       })
 
@@ -428,11 +428,12 @@ describe("McaStatusDashboard", () => {
       const idxCommunication = bodyText.indexOf(catCommunication)
       const idxData = bodyText.indexOf(catData)
 
-      // CATEGORY_ORDER: productivity → development → communication → data.
-      expect(idxProductivity).toBeGreaterThanOrEqual(0)
+      // CATEGORY_ORDER (= catalog CAT_ORDER since 995cf78d3): communication → productivity →
+      // development → data.
+      expect(idxCommunication).toBeGreaterThanOrEqual(0)
+      expect(idxCommunication).toBeLessThan(idxProductivity)
       expect(idxProductivity).toBeLessThan(idxDevelopment)
-      expect(idxDevelopment).toBeLessThan(idxCommunication)
-      expect(idxCommunication).toBeLessThan(idxData)
+      expect(idxDevelopment).toBeLessThan(idxData)
     })
   })
 

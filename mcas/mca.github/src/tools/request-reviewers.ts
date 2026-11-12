@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const requestReviewers: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -32,6 +32,7 @@ export const requestReviewers: ToolConfig = {
       reviewers?: string[];
       team_reviewers?: string[];
     };
+    assertOwnerRepo(owner, repo);
     const hasUsers = Array.isArray(reviewers) && reviewers.length > 0;
     const hasTeams = Array.isArray(team_reviewers) && team_reviewers.length > 0;
     if (!hasUsers && !hasTeams) {

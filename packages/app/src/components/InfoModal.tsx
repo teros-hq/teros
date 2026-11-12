@@ -20,22 +20,16 @@
  *     <Paragraph>...</Paragraph>
  *   </InfoModal>
  *
- * Animación: usa la curva signature del proyecto (`animation="card"` +
+ * Look: the OS prototype's centred card (radius 24, serif title, pill
+ * buttons). Animación: curva signature del proyecto (`animation="card"` +
  * `enterStyle={{ opacity: 0, scale: 0.96 }}`, `transformOrigin="top"`).
- * Driver `@tamagui/animations-css` (PWA-safe, ver CLAUDE.md).
  */
 
-import { Info } from "@tamagui/lucide-icons"
 import React, { useState, type ReactNode } from "react"
-import {
-  Button,
-  Dialog,
-  Paragraph,
-  ScrollView,
-  Unspaced,
-  XStack,
-  YStack,
-} from "tamagui"
+import { Platform, View } from "react-native"
+import { Dialog, ScrollView, Unspaced, YStack } from "tamagui"
+import { useColors } from "./mca/primitives/useColors"
+import { Btn, IconBtn, T } from "./ui/ds"
 
 export interface InfoModalProps {
   /** Title shown at the top of the dialog. */
@@ -76,15 +70,15 @@ export function InfoModal({
   closeLabel = "Close",
 }: InfoModalProps): React.ReactElement {
   const [open, setOpen] = useState(false)
+  const c = useColors()
 
   const triggerNode = trigger ?? (
-    <Button
-      size="$1"
-      circular
-      chromeless
-      icon={<Info size={iconSize} color="$color9" />}
-      aria-label={ariaLabel ?? `More information about: ${title}`}
-      // role/button is implicit on Tamagui Button via the native element.
+    <IconBtn
+      icon="info"
+      plain
+      sm={iconSize <= 14}
+      accessibilityLabel={ariaLabel ?? `More information about: ${title}`}
+      onPress={() => setOpen(true)}
     />
   )
 
@@ -99,51 +93,53 @@ export function InfoModal({
         <Dialog.Overlay
           key="overlay"
           animation="card"
-          opacity={0.5}
+          backgroundColor={c.bgFrame}
+          opacity={0.6}
           enterStyle={{ opacity: 0 }}
           exitStyle={{ opacity: 0 }}
         />
         <Dialog.Content
           key="content"
-          bordered
-          elevate
           animation="card"
           enterStyle={{ opacity: 0, scale: 0.96 }}
           exitStyle={{ opacity: 0, scale: 0.96 }}
           transformOrigin="top"
           width={520}
-          maxWidth="90%"
-          padding="$5"
-          gap="$4"
+          maxWidth="92%"
+          padding={0}
+          borderWidth={0}
+          borderRadius={24}
+          backgroundColor={c.bgStep}
+          style={Platform.OS === "web" ? ({ boxShadow: c.lift } as any) : undefined}
         >
-          <Dialog.Title fontWeight="600" fontSize="$6">
-            {title}
-          </Dialog.Title>
-          <ScrollView maxHeight={420} showsVerticalScrollIndicator={false}>
-            <YStack gap="$3">{children}</YStack>
-          </ScrollView>
-          <XStack justifyContent="flex-end">
-            <Dialog.Close asChild>
-              <Button size="$3" onPress={() => setOpen(false)}>
-                {closeLabel}
-              </Button>
-            </Dialog.Close>
-          </XStack>
+          <View style={{ padding: 24, gap: 16 }}>
+            <Dialog.Title asChild>
+              <View style={{ paddingRight: 36 }}>
+                <T step="xl">{title}</T>
+              </View>
+            </Dialog.Title>
+            <ScrollView maxHeight={420} showsVerticalScrollIndicator={false}>
+              <YStack gap="$3">{children}</YStack>
+            </ScrollView>
+            <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+              <Dialog.Close asChild>
+                <Btn variant="sec" onPress={() => setOpen(false)}>
+                  {closeLabel}
+                </Btn>
+              </Dialog.Close>
+            </View>
+          </View>
           <Unspaced>
-            <Dialog.Close asChild>
-              <Button
-                position="absolute"
-                top="$3"
-                right="$3"
-                size="$2"
-                circular
-                chromeless
-                aria-label="Close dialog"
-                onPress={() => setOpen(false)}
-              >
-                ×
-              </Button>
-            </Dialog.Close>
+            <View style={{ position: "absolute", top: 16, right: 16 }}>
+              <Dialog.Close asChild>
+                <IconBtn
+                  icon="x"
+                  plain
+                  accessibilityLabel="Close dialog"
+                  onPress={() => setOpen(false)}
+                />
+              </Dialog.Close>
+            </View>
           </Unspaced>
         </Dialog.Content>
       </Dialog.Portal>
@@ -163,21 +159,22 @@ export function InfoModal({
  */
 export function InfoBullet({
   marker = "●",
-  color = "$color10",
+  color,
   children,
 }: {
   marker?: string
   color?: string
   children: ReactNode
 }): React.ReactElement {
+  const c = useColors()
   return (
-    <XStack gap="$2" alignItems="flex-start">
-      <Paragraph color={color} fontSize="$2" lineHeight="$2">
+    <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+      <T step="sm" color={color ?? c.accent} style={{ fontSize: 9, lineHeight: 18 }}>
         {marker}
-      </Paragraph>
-      <Paragraph flex={1} fontSize="$2" lineHeight="$2">
+      </T>
+      <T step="sm" tone="text2" style={{ flex: 1 }}>
         {children}
-      </Paragraph>
-    </XStack>
+      </T>
+    </View>
   )
 }

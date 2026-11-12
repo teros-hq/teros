@@ -19,6 +19,7 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import type { VolumeService } from '../../../services/volume-service'
 import type { WorkspaceService } from '../../../services/workspace-service'
+import { canUseVolumeContext } from '../../../auth/workspace-access'
 
 // ============================================================================
 // TYPES
@@ -93,6 +94,10 @@ export function createFsListHandler(deps: FsListDeps) {
 
     if (!workspaceId) throw new HandlerError('MISSING_FIELDS', 'workspaceId is required')
     if (!requestedPath) throw new HandlerError('MISSING_FIELDS', 'path is required')
+
+    if (!(await canUseVolumeContext(db, ctx.userId, workspaceId, 'read'))) {
+      throw new HandlerError('FORBIDDEN', `No access to workspace ${workspaceId}`)
+    }
 
     // Resolve the workspace volume host path
     let volumeHostPath: string

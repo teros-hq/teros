@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertOwnerRepo, githubRequest } from '../lib';
 
 export const getWorkflowRun: ToolConfig = {
   annotations: { readOnlyHint: true },
@@ -16,6 +16,7 @@ export const getWorkflowRun: ToolConfig = {
   },
   handler: async (args, context) => {
     const { owner, repo, run_id } = args as { owner: string; repo: string; run_id: number };
+    assertOwnerRepo(owner, repo);
     return await githubRequest(context, `/repos/${owner}/${repo}/actions/runs/${run_id}`);
   },
 };

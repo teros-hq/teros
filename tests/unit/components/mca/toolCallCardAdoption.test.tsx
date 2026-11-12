@@ -48,7 +48,6 @@ const MINIMUM_MIGRATED: ReadonlyArray<string> = [
   'ContactsRenderer.tsx',
   'Context7Renderer.tsx',
   'ConversationsRenderer.tsx',
-  'DockerEnvRenderer.tsx',
   'DriveRenderer.tsx',
   'ElevenLabsRenderer.tsx',
   'FeedbackRenderer.tsx',

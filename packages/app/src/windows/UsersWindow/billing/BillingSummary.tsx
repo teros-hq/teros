@@ -1,24 +1,23 @@
 /**
  * BillingSummary — the read view of a user's subscription for the admin detail
- * drill-in: plan / effective price / hours (coloured by threshold) / status /
- * period / team, plus a usage bar (base vs boost segments) and the read-only
- * notes. Actions: "Editar" (parent toggles the edit form), "Ver auditoría"
- * (opens the scoped billing-audit window) and "Exportar CSV".
+ * drill-in: plan / hours / effective price / status as `Stat` tiles, a usage
+ * bar (base vs boost segments) and the read-only notes. Actions: "Editar"
+ * (parent toggles the edit form), "Ver auditoría" (opens the scoped
+ * billing-audit window) and "Exportar CSV".
  *
- * Presentational: it composes monitoring KPI primitives + tokens (no hardcoded
- * hex, no StyleSheet). The CSV escape hatch is confined to `exportCsv.ts`; audit
- * navigation goes through the tiling store exactly as the previous billing panel did.
+ * Presentational: ds `Stats` / `Card` / `Btn` / `Badge`; colours from
+ * `useColors()`. The CSV escape hatch is confined to `exportCsv.ts`; audit
+ * navigation goes through the tiling store exactly as the previous panel did.
  */
 
 import { useTranslation } from "react-i18next"
-import { Text, XStack, YStack } from "tamagui"
-import { tokens } from "../../../components/monitoring/colors"
-import { KpiStrip, KpiTile } from "../../../components/monitoring/Kpi"
+import { View } from "react-native"
+import { useColors } from "../../../components/mca/primitives/useColors"
+import { Badge, Btn, Card, Stat, Stats, T } from "../../../components/ui/ds"
 import type { BillingInfo, UserSummary } from "../../../services/AdminApi"
 import { useTilingStore } from "../../../store/tilingStore"
 import { buildBillingCsv, downloadCsv } from "../exportCsv"
-import { hoursColor, hoursUsage, planBadge } from "../usersModel"
-import { Button } from "./formPrimitives"
+import { hoursTone, hoursUsage } from "../usersModel"
 import { PeriodHoursCard } from "./PeriodHoursCard"
 
 export interface BillingSummaryProps {
@@ -30,19 +29,11 @@ export interface BillingSummaryProps {
   onChanged?: () => void
 }
 
-/** Bar fill colour: green under 75%, amber to 90%, red above (visual bar). */
-function barColor(pct: number): string {
-  if (pct > 90) return tokens.error
-  if (pct > 75) return tokens.warning
-  return tokens.success
-}
-
-/** Billing status → value colour (paid→green, pending/invoiced→amber, overdue→red). */
-function statusColor(status?: string): string {
-  if (status === "paid") return tokens.success
-  if (status === "pending" || status === "invoiced") return tokens.warning
-  if (status === "overdue") return tokens.error
-  return tokens.textTertiary
+/** Bar fill tone: violet under 75%, amber to 90%, red above (visual bar). */
+function barTone(pct: number): "i" | "a" | "r" {
+  if (pct > 90) return "r"
+  if (pct > 75) return "a"
+  return "i"
 }
 
 export function BillingSummary({ user, billing, onEdit, onChanged }: BillingSummaryProps) {
@@ -66,78 +57,80 @@ export function BillingSummary({ user, billing, onEdit, onChanged }: BillingSumm
   }
 
   return (
-    <YStack gap={14} paddingTop={4} testID="billing-summary">
-      <XStack ai="center" jc="flex-end" gap={8} flexWrap="wrap">
-        <Button
+    <View style={{ gap: 14 }} testID="billing-summary">
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        <Btn
           testID="billing-audit-btn"
-          label={t("windows.usersPanel.billing.viewAudit")}
+          variant="sec"
+          size="sm"
+          icon="clock-counter-clockwise"
           onPress={() => openWindow("billing-audit", { userId: user.userId, userName })}
-        />
-        <Button
+        >
+          {t("windows.usersPanel.billing.viewAudit")}
+        </Btn>
+        <Btn
           testID="billing-export-btn"
-          label={t("windows.usersPanel.billing.exportCsv")}
+          variant="sec"
+          size="sm"
+          icon="download-simple"
           onPress={onExport}
-        />
-        <Button
+        >
+          {t("windows.usersPanel.billing.exportCsv")}
+        </Btn>
+        <Btn
           testID="billing-edit-btn"
-          label={t("windows.usersPanel.billing.edit")}
-          tone="primary"
+          variant="primary"
+          size="sm"
+          icon="pencil-simple"
           onPress={onEdit}
-        />
-      </XStack>
+        >
+          {t("windows.usersPanel.billing.edit")}
+        </Btn>
+      </View>
 
       <BillingKpis billing={billing} />
       <UsageBar billing={billing} />
 
       <PeriodHoursCard user={user} onChanged={onChanged} />
 
-      <Text fontSize={11} color={tokens.textMuted}>
-        {t("windows.usersPanel.billing.period")}: {billing.currentPeriodStart?.slice(0, 10) ?? "—"}{" "}
-        → {billing.currentPeriodEnd?.slice(0, 10) ?? "—"}
-      </Text>
+      <T step="12" tone="text3">
+        {t("windows.usersPanel.billing.period")}:{" "}
+        <T step="code" tone="text3">
+          {billing.currentPeriodStart?.slice(0, 10) ?? "—"} →{" "}
+          {billing.currentPeriodEnd?.slice(0, 10) ?? "—"}
+        </T>
+      </T>
 
       {billing.teamId ? (
-        <YStack
-          gap={4}
-          padding={12}
-          borderRadius={10}
-          borderWidth={1}
-          borderColor={`${tokens.accent}33`}
-          backgroundColor={`${tokens.accent}0F`}
-        >
-          <Text fontSize={13} fontWeight="600" color={tokens.accent}>
+        <Card nested pad>
+          <T step="sm" tone="accent">
             {t("windows.usersPanel.billing.team")}: {billing.teamName ?? billing.teamId}
-          </Text>
-          <Text fontFamily="$mono" fontSize={11} color={tokens.textMuted}>
+          </T>
+          <T step="code" tone="text3" style={{ marginTop: 4 }}>
             {billing.teamId}
-          </Text>
-        </YStack>
+          </T>
+        </Card>
       ) : null}
 
       {billing.billingNotes ? (
-        <YStack
-          gap={4}
-          padding={10}
-          borderRadius={8}
-          borderWidth={1}
-          borderColor={tokens.border}
-          backgroundColor={tokens.bgInner}
-        >
-          <Text
-            fontSize={10}
-            fontWeight="600"
-            letterSpacing={0.6}
-            textTransform="uppercase"
-            color={tokens.textTertiary}
-          >
+        <Card nested pad>
+          <T step="xs" tone="text2" style={{ marginBottom: 6 }}>
             {t("windows.usersPanel.billing.notes")}
-          </Text>
-          <Text fontSize={12} color={tokens.textSecondary} lineHeight={18}>
+          </T>
+          <T step="sm" tone="text2">
             {billing.billingNotes}
-          </Text>
-        </YStack>
+          </T>
+        </Card>
       ) : null}
-    </YStack>
+    </View>
   )
 }
 
@@ -145,33 +138,28 @@ function BillingKpis({ billing }: { billing: BillingInfo }) {
   const { t } = useTranslation()
   const usage = hoursUsage(billing)
   const price = billing.effectivePrice ?? 0
+  const tone = hoursTone(usage.pct, usage.unmetered)
   return (
-    <KpiStrip>
-      <KpiTile
-        label={t("windows.usersPanel.billing.plan")}
-        value={billing.planName}
-        valueColor={planBadge(billing.planId, billing.planName).color}
-      />
-      <KpiTile
+    <Stats cols={4}>
+      <Stat label={t("windows.usersPanel.billing.plan")} v={billing.planName} />
+      <Stat
         label={t("windows.usersPanel.billing.hoursUsed")}
-        value={usage.label}
-        valueColor={hoursColor(usage.pct, usage.unmetered)}
+        v={usage.label}
+        sub={usage.pct != null ? `${Math.round(usage.pct * 100)} %` : undefined}
+        accent={tone === "a" || tone === "r"}
       />
-      <KpiTile
+      <Stat
         label={t("windows.usersPanel.billing.price")}
-        value={price > 0 ? `€${price}` : t("windows.usersPanel.billing.free")}
+        v={price > 0 ? `€${price}` : t("windows.usersPanel.billing.free")}
       />
-      <KpiTile
-        label={t("windows.usersPanel.billing.status")}
-        value={billing.billingStatus ?? "—"}
-        valueColor={statusColor(billing.billingStatus)}
-      />
-    </KpiStrip>
+      <Stat label={t("windows.usersPanel.billing.status")} v={billing.billingStatus ?? "—"} />
+    </Stats>
   )
 }
 
 function UsageBar({ billing }: { billing: BillingInfo }) {
   const { t } = useTranslation()
+  const c = useColors()
   const limit = billing.effectiveLimit ?? 0
   const used = billing.agentHoursUsed ?? 0
   const boost = billing.boostHours ?? 0
@@ -182,62 +170,63 @@ function UsageBar({ billing }: { billing: BillingInfo }) {
   const usedPct = Math.min((used / limit) * 100, 100)
   const basePct = Math.min((Math.max(limit - boost, 0) / limit) * 100, 100)
   const atLimit = used >= limit
+  const tone = barTone(usedPct)
+  const fill = tone === "i" ? c.accent : c.tint[tone].tx
 
   return (
-    <YStack gap={4}>
-      <YStack
-        position="relative"
-        height={8}
-        borderRadius={4}
-        overflow="hidden"
-        backgroundColor={tokens.bgInner}
+    <View style={{ gap: 6 }}>
+      <View
+        style={{
+          position: "relative",
+          height: 6,
+          borderRadius: 3,
+          overflow: "hidden",
+          backgroundColor: c.wash2,
+        }}
       >
         {boost > 0 ? (
-          <XStack position="absolute" top={0} left={0} right={0} bottom={0}>
-            <YStack width={`${basePct}%`} backgroundColor={`${tokens.textMuted}33`} />
-            <YStack flex={1} backgroundColor={`${tokens.accent}33`} />
-          </XStack>
+          <View
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              flexDirection: "row",
+            }}
+          >
+            <View style={{ width: `${basePct}%` }} />
+            <View style={{ flex: 1, backgroundColor: c.tint.i.bg }} />
+          </View>
         ) : null}
-        <YStack
-          position="absolute"
-          top={0}
-          left={0}
-          bottom={0}
-          width={`${usedPct}%`}
-          backgroundColor={barColor(usedPct)}
+        <View
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            bottom: 0,
+            width: `${usedPct}%`,
+            borderRadius: 3,
+            backgroundColor: fill,
+          }}
         />
-      </YStack>
-      <XStack ai="center" gap={8} flexWrap="wrap">
-        <Text fontSize={11} color={tokens.textMuted}>
+      </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <T step="12" tone="text3">
           {t("windows.usersPanel.billing.pctUsed", { pct: usedPct.toFixed(0) })}
           {overage > 0
             ? ` · ${t("windows.usersPanel.billing.overage", { hours: overage.toFixed(1) })}`
             : ""}
           {boost > 0 ? ` · ${t("windows.usersPanel.billing.boost", { hours: boost })}` : ""}
-        </Text>
+        </T>
         {atLimit ? (
-          <XStack
-            testID="billing-limit-badge"
-            ai="center"
-            paddingVertical={2}
-            paddingHorizontal={7}
-            borderRadius={5}
-            borderWidth={1}
-            borderColor={`${tokens.error}55`}
-            backgroundColor={`${tokens.error}1A`}
-          >
-            <Text
-              fontSize={10}
-              fontWeight="700"
-              letterSpacing={0.4}
-              textTransform="uppercase"
-              color={tokens.error}
-            >
+          <View testID="billing-limit-badge">
+            <Badge tone="r" cap dot>
               {t("windows.usersPanel.billing.limitReached")}
-            </Text>
-          </XStack>
+            </Badge>
+          </View>
         ) : null}
-      </XStack>
-    </YStack>
+      </View>
+    </View>
   )
 }

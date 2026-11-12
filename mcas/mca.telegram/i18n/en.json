@@ -1,0 +1,152 @@
+{
+  "tools": {
+    "health-check": {
+      "name": "health-check",
+      "description": "Internal health check. Verifies MTProto connectivity and reports link status."
+    },
+    "auth-status": {
+      "name": "auth-status",
+      "description": "Check the Telegram connection status: whether the account is linked, who is signed in, and whether real-time event forwarding is active."
+    },
+    "auth-send-code": {
+      "name": "auth-send-code",
+      "description": "Step 1 of linking a Telegram account: request a login code for the given phone number. Telegram sends the code to the user's Telegram app (or SMS). Then call auth-sign-in with the code the user provides. If the account has 2FA enabled, auth-sign-in will also ask for the password.",
+      "params": {
+        "phoneNumber": "Phone number in international format, e.g. \"+34612345678\""
+      }
+    },
+    "auth-sign-in": {
+      "name": "auth-sign-in",
+      "description": "Step 2 of linking a Telegram account: complete sign-in with the code the user received (from auth-send-code). If the account has two-factor authentication enabled, pass the 2FA password too. On success the session is persisted and the account is linked.",
+      "params": {
+        "code": "The login code the user received in Telegram (or by SMS)",
+        "password": "Two-factor authentication password (only if the account has 2FA enabled)"
+      }
+    },
+    "auth-disconnect": {
+      "name": "auth-disconnect",
+      "description": "Disconnect the linked Telegram account: logs out from Telegram (invalidating the session on Telegram's side), wipes the persisted session, and stops real-time event forwarding."
+    },
+    "list-chats": {
+      "name": "list-chats",
+      "description": "List the user's Telegram conversations (dialogs): private chats, groups, supergroups and channels, most-recent first. Returns chat IDs usable with the other tools.",
+      "params": {
+        "limit": "Max conversations to return (default: 20, max: 100)",
+        "archived": "List archived conversations instead of the main list (default: false)"
+      }
+    },
+    "get-chat-history": {
+      "name": "get-chat-history",
+      "description": "Read message history from any Telegram chat (private, group, supergroup or channel). Returns newest-first by default with pagination support.",
+      "params": {
+        "chat": "Chat identifier: chat ID from list-chats (e.g. \"-1001234567890\" or \"5612345678\"), @username, or t.me link",
+        "limit": "Max messages to return (default: 20, max: 100)",
+        "offsetId": "Return messages older than this message ID (for pagination — use the oldest ID of the previous page)",
+        "minId": "Return only messages newer than this message ID",
+        "fromUser": "Only messages from this user (@username or user ID)",
+        "search": "Only messages containing this text",
+        "order": "\"desc\" (newest first, default) or \"asc\" (oldest first)"
+      }
+    },
+    "search-messages": {
+      "name": "search-messages",
+      "description": "Search the user's Telegram messages. Two modes: global search across all conversations (default), or scoped search inside one chat (pass `chat`).",
+      "params": {
+        "query": "Text to search for",
+        "chat": "Optional: limit the search to this chat (chat ID, @username or t.me link). Without it, searches all conversations.",
+        "limit": "Max results to return (default: 20, max: 50)",
+        "fromUser": "Only messages from this user (only valid with `chat`)"
+      }
+    },
+    "send-message": {
+      "name": "send-message",
+      "description": "Send a text message to a Telegram chat (private chat, group, supergroup or channel). Supports replying to a specific message and disabling the link preview.",
+      "params": {
+        "chat": "Destination: chat ID from list-chats, @username, or t.me link",
+        "text": "Message text (max 4096 characters). Markdown formatting (**bold**, __italic__, `code`) is parsed by default.",
+        "replyToMsgId": "Message ID to reply to (optional)",
+        "linkPreview": "Show link preview (default: true)",
+        "parseMarkdown": "Parse Markdown formatting in the text (default: true). Set false to send raw text."
+      }
+    },
+    "send-media": {
+      "name": "send-media",
+      "description": "Send a file (image, video, audio or document) to a Telegram chat. Reads the file from a local path inside the container — use /workspace/... for files in the user's workspace volume, or a public HTTPS URL.",
+      "params": {
+        "chat": "Destination: chat ID from list-chats, @username, or t.me link",
+        "file": "Local file path (e.g. \"/workspace/report.pdf\") or public HTTPS URL",
+        "caption": "Optional caption shown with the media (max 1024 characters)",
+        "asDocument": "Send as a plain document instead of auto-detecting image/video/audio type (default: false)",
+        "asVoiceNote": "Send an audio file as a voice note (default: false)",
+        "replyToMsgId": "Message ID to reply to (optional)"
+      }
+    },
+    "download-media": {
+      "name": "download-media",
+      "description": "Download the media attached to a Telegram message (photo, video, audio, document, sticker...) and save it to a local path. Use /workspace/... to save into the user's workspace so other tools and agents can access the file.",
+      "params": {
+        "chat": "Chat where the message lives: chat ID, @username or t.me link",
+        "messageId": "ID of the message with the media (from get-chat-history or an event)",
+        "outputPath": "Local path to save the file (e.g. \"/workspace/photo.jpg\"). Defaults to /workspace/telegram-media/<messageId>.<ext>",
+        "thumb": "Download only the thumbnail instead of the full media (default: false)"
+      }
+    },
+    "edit-message": {
+      "name": "edit-message",
+      "description": "Edit a message sent by the linked account. Telegram only allows editing your own messages (in channels, within 48h; in private chats/groups, within 48h unless the chat has longer edit windows).",
+      "params": {
+        "chat": "Chat where the message lives: chat ID, @username or t.me link",
+        "messageId": "ID of the message to edit",
+        "text": "New message text (max 4096 characters)",
+        "linkPreview": "Show link preview (default: true)"
+      }
+    },
+    "delete-messages": {
+      "name": "delete-messages",
+      "description": "Delete one or more messages in a chat. With revoke=true (default) the messages are deleted for EVERYONE in the chat; with revoke=false they are only deleted for the linked account. Deleting other people's messages requires admin rights in groups/channels.",
+      "params": {
+        "chat": "Chat where the messages live: chat ID, @username or t.me link",
+        "messageIds": "IDs of the messages to delete (one or more)",
+        "revoke": "Delete for everyone (default: true). false = only delete for yourself."
+      }
+    },
+    "create-group": {
+      "name": "create-group",
+      "description": "Create a new Telegram group or channel. kind=\"group\" creates a small group chat with the given members; kind=\"supergroup\" creates a large group; kind=\"channel\" creates a broadcast channel. Returns the new chat's ID for use with the other tools.",
+      "params": {
+        "title": "Name of the group or channel",
+        "kind": "\"group\" (small chat, default), \"supergroup\" (large/forum group) or \"channel\" (broadcast)",
+        "about": "Optional description (supergroups and channels only)",
+        "members": "Usernames or user IDs to add as initial members (@username or numeric ID). Required for kind=\"group\" (at least 1 besides you); optional for supergroups/channels."
+      }
+    },
+    "manage-members": {
+      "name": "manage-members",
+      "description": "Manage members of a Telegram group/supergroup/channel: list members, add (invite) a user, remove/kick a user, or ban/unban a user. Listing requires the account to have access to the member list; kick/ban require admin rights.",
+      "params": {
+        "chat": "Group/supergroup/channel: chat ID, @username or t.me link",
+        "action": "\"list\" (default), \"add\", \"remove\", \"ban\" or \"unban\"",
+        "user": "Target user: @username or user ID (required for add/remove/ban/unban)",
+        "limit": "For action=\"list\": max members to return (default: 50, max: 200)"
+      }
+    },
+    "mark-as-read": {
+      "name": "mark-as-read",
+      "description": "Mark messages in a Telegram chat as read (clears the unread counter and mention badge).",
+      "params": {
+        "chat": "Chat to mark as read: chat ID, @username or t.me link",
+        "maxId": "Mark messages up to this ID as read (default: all current messages)"
+      }
+    }
+  },
+  "name": "Telegram",
+  "description": "Full Telegram integration via MTProto (teleproto). Connect your personal account to read chats and history, send messages and media, manage groups and members, and receive real-time message events.",
+  "changelog": [
+    {
+      "notes": "Real-time event forwarding is now native: telegram.message.received/edited/deleted are emitted automatically at boot when the account is linked (no tool call needed). Removed the manual events-start/events-status tools."
+    },
+    {
+      "notes": "Initial release — connect your Telegram account, read chats and history, send messages and media, manage groups and members, and receive real-time message events"
+    }
+  ]
+}

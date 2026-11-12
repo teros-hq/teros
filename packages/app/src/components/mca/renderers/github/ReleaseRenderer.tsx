@@ -15,25 +15,27 @@ import {
   KeyValueGrid,
   type KeyValueRow,
   ResourceCard,
-  colors as globalColors,
   parseOutput,
+  useColors,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
 import {
   GITHUB_PALETTE,
   type GitHubRelease,
   GitHubToolShell,
+  actionLabel,
   relativeTime,
   releaseChipProps,
   scrollStyle,
+  listItems,
 } from './shared';
 
 // list-releases
 export function ListReleasesRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
-  const parsed = output ? parseOutput<GitHubRelease[]>(output) : null;
-  const releases = Array.isArray(parsed) ? parsed : [];
+  const parsed = output ? parseOutput<unknown>(output) : null;
+  const releases = listItems<GitHubRelease>(parsed);
   return (
-    <GitHubToolShell toolName={toolName} status={status} description={`${releases.length} release${releases.length === 1 ? '' : 's'}`}>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'releases', `${releases.length}`)}>
       {error && <ErrorBlock error={error} />}
       {!error && status === 'completed' && releases.length === 0 && <Empty message="No releases." />}
       {!error && status === 'completed' && releases.length > 0 && (
@@ -60,6 +62,7 @@ export function ListReleasesRenderer({ toolName, status, output, error, duration
 
 // create-release
 export function CreateReleaseRenderer({ toolName, status, output, error, duration }: ToolCallRendererProps) {
+  const c = useColors();
   const parsed = output ? parseOutput<GitHubRelease>(output) : null;
   const release = parsed && typeof parsed === 'object' && !Array.isArray(parsed) && 'tag_name' in (parsed as object)
     ? (parsed as GitHubRelease)
@@ -71,7 +74,7 @@ export function CreateReleaseRenderer({ toolName, status, output, error, duratio
   if (release?.author?.login) rows.push({ key: 'author', value: `@${release.author.login}` });
 
   return (
-    <GitHubToolShell toolName={toolName} status={status}>
+    <GitHubToolShell toolName={toolName} status={status} description={release ? actionLabel(toolName, status, release.tag_name, release.name?.trim()) : actionLabel(toolName, status, 'release')}>
       {error && <ErrorBlock error={error} />}
       {!error && release && (
         <ResourceCard
@@ -87,7 +90,7 @@ export function CreateReleaseRenderer({ toolName, status, output, error, duratio
               <MarkdownContent text={release.body} />
             </ScrollView>
           ) : (
-            <Text color={globalColors.muted} fontSize={10} fontStyle="italic">
+            <Text color={c.text3} fontSize={10} fontStyle="italic">
               No release notes.
             </Text>
           )}

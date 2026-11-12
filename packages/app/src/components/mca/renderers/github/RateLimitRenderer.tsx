@@ -15,7 +15,7 @@ import {
   parseOutput,
 } from '../../primitives';
 import type { ToolCallRendererProps } from '../../types';
-import { GITHUB_PALETTE, GitHubToolShell, relativeTime } from './shared';
+import { GITHUB_PALETTE, GitHubToolShell, actionLabel, relativeTime } from './shared';
 
 interface BucketLimit {
   limit: number;
@@ -72,7 +72,7 @@ export function RateLimitRenderer({ toolName, status, output, error, duration }:
   const accent = core ? bucketAccent(core) : GITHUB_PALETTE.queued;
 
   return (
-    <GitHubToolShell toolName={toolName} status={status} defaultExpanded>
+    <GitHubToolShell toolName={toolName} status={status} description={actionLabel(toolName, status, 'rate limit', core ? `core: ${core.remaining}/${core.limit}` : undefined)}>
       {error && <ErrorBlock error={error} />}
       {!error && result && (
         <ResourceCard

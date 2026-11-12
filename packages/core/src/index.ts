@@ -56,6 +56,7 @@ export {
   SessionError,
   ToolError,
   ValidationError,
+  MessageOutputLengthError,
 } from './errors/AgentError';
 // ID Generation
 export {
@@ -132,6 +133,7 @@ export type {
   LLMFinishInfo,
   LLMResponse,
   LLMUsageInfo,
+  LlmLane,
   StreamingCallbacks,
   StreamMessageOptions,
   ToolDefinition,
@@ -150,6 +152,8 @@ export {
   estimateCostBreakdownUsd,
 } from './llm/token-counter';
 export type { CostBreakdownInput, CostBreakdownUsd } from './llm/token-counter';
+export { lookupModelPrice, lookupModelPriceAt } from './llm/model-pricing';
+export type { ModelPrice } from './llm/model-pricing';
 export type { LLMConfig } from './llm/LLMClientFactory';
 export { LLMClientFactory } from './llm/LLMClientFactory';
 export type { Claude45Model, ModelId, Provider } from './llm/models';
@@ -170,6 +174,8 @@ export type {
   ApiKeyInfo,
   AppAuthInfo,
   AppCredentialStatus,
+  GitHubInstallationSummary,
+  GitHubSavedBranch,
   McaAuthType,
   McaOAuthConfig,
   McaOAuthState,
@@ -183,13 +189,14 @@ export { NoOpMemoryHooks } from './memory';
 export type { IMemoryHooks, MemoryHookOptions, ResponseMetadata } from './memory/IMemoryHooks';
 // Prompts
 export { SystemPromptBuilder } from './prompts/SystemPromptBuilder';
+export { generateProjectTree } from './prompts/tree-generator';
 // Queue
 export { MessageQueue } from './queue/MessageQueue';
 export * from './queue/types';
 export { InMemorySessionStore } from './session/InMemorySessionStore';
 export { SessionLockManager } from './session/SessionLockManager';
 // Session Management
-export { type MessagesForLLM, SessionStore } from './session/SessionStore';
+export { type MessagesForLLM, SessionStore, filterRedactedForViewer } from './session/SessionStore';
 export * from './session/types';
 // Streaming
 export {

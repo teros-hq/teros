@@ -1,5 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
-import { githubRequest } from '../lib';
+import { assertGitHubSegment, assertOwnerRepo, githubRequest } from '../lib';
 
 export const triggerWorkflow: ToolConfig = {
   annotations: { readOnlyHint: false },
@@ -19,6 +19,8 @@ export const triggerWorkflow: ToolConfig = {
     const { owner, repo, workflow_id, ref, inputs } = args as {
       owner: string; repo: string; workflow_id: string; ref: string; inputs?: Record<string, unknown>;
     };
+    assertOwnerRepo(owner, repo);
+    assertGitHubSegment(workflow_id, 'workflow_id');
     await githubRequest(context, `/repos/${owner}/${repo}/actions/workflows/${workflow_id}/dispatches`, {
       method: 'POST',
       body: { ref, inputs: inputs ?? {} },

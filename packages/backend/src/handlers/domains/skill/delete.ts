@@ -6,7 +6,7 @@ import type { Db } from 'mongodb'
 import { HandlerError } from '../../../ws-framework/WsRouter'
 import type { WsHandlerContext } from '@teros/shared'
 import type { SkillService } from '../../../services/skill-service'
-import { canAccessWorkspace } from '../../../auth/workspace-access'
+import { canWriteWorkspace } from '../../../auth/workspace-access'
 
 interface DeleteSkillData {
   skillId: string
@@ -26,7 +26,7 @@ export function createDeleteSkillHandler(skillService: SkillService, db: Db) {
     if (!existing) {
       throw new HandlerError('SKILL_NOT_FOUND', `Skill ${skillId} not found`)
     }
-    if (!(await canAccessWorkspace(db, ctx.userId, existing.workspaceId))) {
+    if (!(await canWriteWorkspace(db, ctx.userId, existing.workspaceId))) {
       throw new HandlerError('FORBIDDEN_WORKSPACE', `No access to workspace ${existing.workspaceId}`)
     }
 

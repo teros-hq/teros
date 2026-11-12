@@ -6,7 +6,7 @@
  *   - workspace.usage-*       (forces workspaceId)
  *   - user-api.my-usage-*     (forces userId = ctx.userId, default triggerKind='user_message')
  *
- *
+ * Design doc: docs/usage-instrumentation.md §10
  */
 
 import type { Filter } from "mongodb"

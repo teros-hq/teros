@@ -8,6 +8,11 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "1.0.0",
+        "stability": "stable"
       }
     },
     {

@@ -40,8 +40,10 @@ export const listTasks: ToolConfig = {
     },
     required: ['projectId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const projectId = args?.projectId as string;
     if (!projectId) throw new Error('projectId is required');
@@ -55,6 +57,7 @@ export const listTasks: ToolConfig = {
             assignedAgentId: args?.assignedAgentId,
             tags: args?.tags,
             archived: args?.archived,
+            callerAgentId,
           }),
           15_000,
           'list_tasks',

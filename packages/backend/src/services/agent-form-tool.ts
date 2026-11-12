@@ -1,6 +1,6 @@
 /**
  * Built-in inline-form tool — `request-user-input`.
- *
+ * (docs/specs/20260705_inline-user-forms.md)
  *
  * A synthetic tool injected by McaToolExecutor (gated by the `tools.user-forms`
  * feature flag) that lets the agent send the user a structured form to fill
@@ -58,12 +58,13 @@ export function buildFormToolDefinition(): ToolDefinition {
   return {
     name: FORM_TOOL_NAME,
     description:
-      "Send the user a structured form to fill inline in the chat, and wait for their answers. " +
+      "Send the user a structured form to fill inline in the chat. " +
       "Use this instead of asking several questions in prose whenever you need specific, typed values " +
-      "(choices, dates, amounts, short texts). The call blocks until the user submits; the result contains " +
-      "their answers keyed by field id, plus an optional free-text 'notes' the user can always add — read it, " +
-      "it may qualify or correct their answers. If the result says the form was dismissed, do not re-send it: " +
-      "continue conversationally. If it says forms are unavailable on this channel (voice/headless), ask for " +
+      "(choices, dates, amounts, short texts). If the result says the form was displayed, END YOUR TURN — " +
+      "do not wait or poll: the user's answers arrive as a new message in your next turn, keyed by field id, " +
+      "plus an optional free-text 'notes' the user can always add — read it, it may qualify or correct their answers. " +
+      "If the result instead contains the answers directly, continue normally. If the result says the form was dismissed, " +
+      "do not re-send it: continue conversationally. If it says forms are unavailable on this channel (voice/headless), ask for " +
       `each field in conversation instead. Keep forms short (max ${MAX_FORM_FIELDS} fields, ideally fewer). ` +
       "For an adaptive question-by-question flow, send a form with a SINGLE select/radio field (it renders as a " +
       "compact multiple-choice question; the notes field doubles as a free-text answer) and chain calls, deciding " +

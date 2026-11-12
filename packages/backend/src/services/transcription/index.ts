@@ -24,3 +24,17 @@ export {
 export type { WhisperProviderConfig } from './WhisperTranscriptionProvider';
 // Providers
 export { WhisperTranscriptionProvider } from './WhisperTranscriptionProvider';
+// Logging
+export { TranscriptionLogService, type TranscriptionLogEntry } from './TranscriptionLogService';
+// Vocabulary resolver (dynamic per-user vocabulary)
+export { VocabularyResolver } from './VocabularyResolver';
+// Transcript cleaner (post-STT disfluency removal)
+export {
+  TranscriptCleaner,
+  heuristicClean,
+  isPlausibleClean,
+  type TranscriptCleanContext,
+  type TranscriptCleanMode,
+  type TranscriptCleanResult,
+  type TranscriptCleanerDeps,
+} from './transcript-cleaner';

@@ -118,11 +118,11 @@
     },
     "add-workspace-member": {
       "name": "add-workspace-member",
-      "description": "Añade un miembro a un workspace.",
+      "description": "Añade un miembro a un workspace por email. Si el email pertenece a una cuenta de Teros existente, el miembro se añade como activo inmediatamente. Si no, se crea un miembro pendiente y se envía un email de invitación. Solo los administradores del workspace pueden usar esta herramienta.",
       "params": {
         "workspaceId": "El ID del workspace",
-        "userId": "El ID del usuario a añadir",
-        "role": "Rol del miembro"
+        "email": "El email de la persona a invitar",
+        "role": "Rol del miembro (owner no está permitido)"
       }
     },
     "remove-workspace-member": {
@@ -140,13 +140,6 @@
         "workspaceId": "El ID del workspace",
         "userId": "El ID del usuario",
         "role": "Nuevo rol para el miembro"
-      }
-    },
-    "list-apps": {
-      "name": "list-apps",
-      "description": "Lista las apps del usuario.",
-      "params": {
-        "workspaceId": "Opcional: Filtra apps por ID de workspace. Si no se proporciona, lista todas las apps del usuario en todos los workspaces."
       }
     },
     "get-app": {

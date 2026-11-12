@@ -249,13 +249,13 @@
     },
     "create-association": {
       "name": "create-association",
-      "description": "Create an association between two HubSpot CRM objects (e.g., contact-company, deal-contact). Uses v4 associations API. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationType?",
+      "description": "Create an association between two HubSpot CRM objects (e.g., contact-company, deal-contact, task-deal). Uses v4 associations API with the verified HUBSPOT_DEFINED typeId for the pair. Params: fromObjectType, fromObjectId, toObjectType, toObjectId, associationTypeId?",
       "params": {
-        "fromObjectType": "Source object type: contacts, companies, deals, tickets.",
+        "fromObjectType": "Source object type: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "fromObjectId": "Source object HubSpot ID.",
-        "toObjectType": "Target object type: contacts, companies, deals, tickets.",
+        "toObjectType": "Target object type: contacts, companies, deals, tickets, tasks, notes, calls, emails, meetings.",
         "toObjectId": "Target object HubSpot ID.",
-        "associationType": "Association type ID or label (e.g., \"contact_to_company\", \"deal_to_contact\"). Optional — HubSpot will use default if omitted."
+        "associationTypeId": "Optional association type ID (e.g. \"216\" for task→deal). If omitted, the verified default HUBSPOT_DEFINED typeId for the pair is used."
       }
     },
     "delete-association": {
@@ -271,11 +271,11 @@
     },
     "list-associations": {
       "name": "list-associations",
-      "description": "List all associations for a HubSpot object. Params: objectType, objectId, toObjectType, limit?",
+      "description": "List the associated records of a given type for a HubSpot object (e.g., a deal's tasks, a contact's companies). Uses GET /crm/v4/objects/{objectType}/{objectId}/associations/{toObjectType}. Params: objectType, objectId, toObjectType, limit?",
       "params": {
-        "objectType": "Object type.",
+        "objectType": "Object type of the record being queried.",
         "objectId": "HubSpot object ID.",
-        "toObjectType": "Associated object type to retrieve.",
+        "toObjectType": "Associated object type to retrieve (e.g., tasks for a deal).",
         "limit": "Max results. Default 100."
       }
     },
@@ -297,14 +297,14 @@
     },
     "create-engagement": {
       "name": "create-engagement",
-      "description": "Create a HubSpot engagement (call, email, meeting, note, task). Uses the v3 engagements API. Params: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?",
+      "description": "Create a HubSpot engagement (call, email, meeting, note, task). Uses the v3 engagements API. Params: type (call|email|meeting|note|task), subject?, body?, status?, direction?, startTime?, duration?, associatedObjectType?, associatedObjectId?, properties?. startTime is optional — if omitted, the current time is used as the engagement timestamp.",
       "params": {
         "type": "Engagement type.",
         "subject": "Subject or title of the engagement.",
         "body": "Body/content of the engagement.",
         "status": "Status (e.g., \"COMPLETED\", \"SCHEDULED\", \"NOT_STARTED\").",
-        "direction": "Direction: INBOUND or OUTBOUND (for calls/emails).",
-        "startTime": "Start time ISO string (for meetings/calls).",
+        "direction": "Direction. For calls: INBOUND or OUTBOUND. For emails: EMAIL (outgoing), INCOMING_EMAIL, FORWARDED_EMAIL or DRAFT_EMAIL (legacy INBOUND/OUTBOUND are mapped automatically).",
+        "startTime": "Engagement timestamp / due date, ISO string. Optional — defaults to now. HubSpot requires hs_timestamp on every engagement type.",
         "duration": "Duration in milliseconds (for calls).",
         "associatedObjectType": "Associated object type: contacts, companies, deals, tickets.",
         "associatedObjectId": "HubSpot ID of the associated object.",
@@ -322,11 +322,13 @@
     },
     "list-engagements": {
       "name": "list-engagements",
-      "description": "List HubSpot engagements (calls, emails, meetings, notes, tasks). Params: type (call|email|meeting|note|task), limit?, after?",
+      "description": "List HubSpot engagements (calls, emails, meetings, notes, tasks). Params: type (call|email|meeting|note|task), limit?, after?, ownerId?, status?, properties?. ownerId filters by HubSpot owner (hubspot_owner_id) — use it for \"my tasks/engagements\"; owner IDs come from /crm/v3/owners. status filters by the type's status property (hs_task_status, hs_call_status, hs_email_status, hs_meeting_status; not supported for notes). When ownerId or status is provided the tool uses the search endpoint (POST /crm/v3/objects/{type}/search) because the plain list endpoint does not support server-side filtering.",
       "params": {
         "type": "Engagement type.",
         "limit": "Results per page. Min 1, max 100, default 50.",
-        "after": "Pagination cursor.",
+        "after": "Pagination cursor (from a previous page).",
+        "ownerId": "Filter by HubSpot owner ID (hubspot_owner_id), e.g. for \"my tasks\". Owner IDs come from /crm/v3/owners.",
+        "status": "Filter by status, e.g. NOT_STARTED | IN_PROGRESS | WAITING | COMPLETED for tasks. Mapped to the type's status property; not supported for notes.",
         "properties": "Additional properties to include."
       }
     },

@@ -65,7 +65,7 @@ export function createRequestAccessHandler(
         throw new HandlerError('INVALID_INPUT', 'requestedPlanId is required for an upgrade request')
       }
       // Self-serve, like billing.change-plan / preview-plan-change: only PUBLIC
-      // plans are requestable. A hidden tier (isPublic:false, e.g. plan_unlimited)
+      // plans are requestable. A hidden tier (isPublic:false)
       // must not be visible nor self-nominable here either — only an admin grants it.
       const plan = await getBillingPlansCollection(db).findOne({ _id: data.requestedPlanId })
       if (!plan || !plan.isPublic) {

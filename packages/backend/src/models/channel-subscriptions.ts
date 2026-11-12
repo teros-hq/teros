@@ -13,6 +13,7 @@
  */
 
 import type { Collection, Db } from 'mongodb';
+import { COLLECTIONS, ensureCollectionIndexes } from '../db';
 
 // ============================================================================
 // TYPES
@@ -40,25 +41,9 @@ export function getChannelSubscriptionsCollection(db: Db): Collection<ChannelSub
  * Must be called once at startup (e.g. in bootstrap or PubSubService.init).
  */
 export async function ensureChannelSubscriptionIndexes(db: Db): Promise<void> {
-  const col = getChannelSubscriptionsCollection(db);
-
-  // Unique compound index — prevents duplicate subscriptions
-  await col.createIndex(
-    { subscriberChannelId: 1, observedChannelId: 1 },
-    { unique: true, name: 'unique_subscription' },
-  );
-
-  // Index for getObservers(observedChannelId) — the hot read path
-  await col.createIndex(
-    { observedChannelId: 1 },
-    { name: 'observed_channel_lookup' },
-  );
-
-  // Index for listing all subscriptions of a subscriber
-  await col.createIndex(
-    { subscriberChannelId: 1 },
-    { name: 'subscriber_channel_lookup' },
-  );
+  // Declared in src/db/indexes.ts (GOV-4); boot applies the whole registry with
+  // ensureAllIndexes after migrations. Kept for tests and scripts.
+  await ensureCollectionIndexes(getChannelSubscriptionsCollection(db), COLLECTIONS.channelSubscriptions);
 
   console.log('[ChannelSubscriptions] MongoDB indexes ensured for channel_subscriptions');
 }

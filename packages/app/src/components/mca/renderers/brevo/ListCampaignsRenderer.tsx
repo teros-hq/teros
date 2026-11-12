@@ -49,7 +49,7 @@ export function ListCampaignsRenderer({ status, output, error, appIcon }: ToolCa
   return (
     <ToolCallCard
       status={status}
-      verb="List campaigns"
+      description="List campaigns"
       badge={badge}
       iconUri={appIcon}
       animateExpand

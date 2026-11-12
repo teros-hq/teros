@@ -8,6 +8,9 @@
  *    complete-onboarding must NOT clear onboardingCompletedAt/termsAcceptedAt, or
  *    the onboarding guard redirect-loops the user (global breakage).
  *  - impersonation: start/stop/meta + hydrate restoring it from storage.
+ *  - security (Req 6.6.1): sessionToken must NOT be persisted to storage on web.
+ *    Only the non-sensitive user profile is persisted. The token lives in-memory
+ *    (Zustand state) only.
  *
  * authStore imports `services/storage`, which imports react-native (Flow source
  * bun can't parse). We stub storage with an in-memory Map BEFORE importing the
@@ -29,7 +32,12 @@ const fakeStorage = {
   },
 }
 const AUTH_KEY = 'teros-auth'
-mock.module('../../services/storage', () => ({ storage: fakeStorage, STORAGE_KEYS: { AUTH: AUTH_KEY } }))
+// Simulate web behavior: shouldPersistSessionToken = false (token is in-memory only)
+mock.module('../../services/storage', () => ({
+  storage: fakeStorage,
+  STORAGE_KEYS: { AUTH: AUTH_KEY },
+  shouldPersistSessionToken: false,
+}))
 
 let mod: typeof import('../authStore')
 type User = import('../authStore').User
@@ -126,11 +134,15 @@ describe('normalizeAuthUser', () => {
 // ============================================================================
 
 describe('login / resetSession', () => {
-  it('login authenticates and persists user+token', () => {
+  it('login authenticates and persists user (but NOT sessionToken on web)', () => {
     auth().login({ userId: 'user_1', email: 'a@x.com' }, 'tok')
     expect(auth().isAuthenticated).toBe(true)
     expect(auth().user).toEqual({ userId: 'user_1', email: 'a@x.com' })
-    expect(mem.get(AUTH_KEY)).toEqual({ user: { userId: 'user_1', email: 'a@x.com' }, sessionToken: 'tok' })
+    // Token is in-memory only on web — not in persisted storage
+    expect(auth().sessionToken).toBe('tok')
+    expect(mem.get(AUTH_KEY)).toEqual({ user: { userId: 'user_1', email: 'a@x.com' } })
+    // Critical security check: sessionToken must NOT be in persisted storage
+    expect((mem.get(AUTH_KEY) as any).sessionToken).toBeUndefined()
   })
 
   it('resetSession clears state, impersonation and removes storage', async () => {
@@ -207,7 +219,8 @@ describe('completeOnboarding', () => {
 // ============================================================================
 
 describe('hydrate', () => {
-  it('restores an authenticated session (with impersonation) from storage', async () => {
+  it('restores an authenticated session (with impersonation) from storage (native path)', async () => {
+    // On native, token IS persisted in SecureStorage — full session restore
     mem.set(AUTH_KEY, {
       user: { userId: 'user_1', email: 'a@x.com' },
       sessionToken: 'tok',
@@ -217,6 +230,7 @@ describe('hydrate', () => {
     expect(auth().isAuthenticated).toBe(true)
     expect(auth().isHydrated).toBe(true)
     expect(auth().user?.userId).toBe('user_1')
+    expect(auth().sessionToken).toBe('tok')
     expect(auth().impersonation).toEqual({
       isImpersonating: true,
       impersonatedBy: 'user_admin',
@@ -224,7 +238,19 @@ describe('hydrate', () => {
     })
   })
 
-  it('marks hydrated but unauthenticated when the stored token is missing', async () => {
+  it('restores user profile but NOT token on web (token is in-memory only)', async () => {
+    // On web, only { user } is persisted — token is null, user must re-authenticate
+    mem.set(AUTH_KEY, { user: { userId: 'user_1', email: 'a@x.com' } })
+    await auth().hydrate()
+    expect(auth().isAuthenticated).toBe(false)
+    expect(auth().isHydrated).toBe(true)
+    expect(auth().user?.userId).toBe('user_1')
+    expect(auth().user?.email).toBe('a@x.com')
+    expect(auth().sessionToken).toBeNull()
+    expect(auth().impersonation).toBeNull()
+  })
+
+  it('marks hydrated but unauthenticated when the stored token is empty string', async () => {
     mem.set(AUTH_KEY, { user: { userId: 'user_1' }, sessionToken: '' })
     await auth().hydrate()
     expect(auth().isAuthenticated).toBe(false)
@@ -257,11 +283,13 @@ describe('impersonation', () => {
       impersonatedByName: 'Admin',
     })
     // Persisted so the banner reappears on reload (and the impersonated session survives).
+    // On web, sessionToken is NOT persisted (in-memory only) — only user + impersonation meta.
     expect(mem.get(AUTH_KEY)).toEqual({
       user: { userId: 'user_2', email: 'b@x.com' },
-      sessionToken: 'imp_tok',
       impersonation: { isImpersonating: true, impersonatedBy: 'user_admin', impersonatedByName: 'Admin' },
     })
+    // Critical security check: sessionToken must NOT be in persisted storage
+    expect((mem.get(AUTH_KEY) as any).sessionToken).toBeUndefined()
   })
 
   it('stopImpersonation clears the meta without touching user or token', () => {
@@ -280,10 +308,11 @@ describe('impersonation', () => {
     const meta = { isImpersonating: true, impersonatedBy: 'user_admin', impersonatedByName: 'Admin' }
     auth().setImpersonationMeta(meta)
     expect(auth().impersonation).toEqual(meta)
+    // On web, sessionToken is NOT persisted — only user + impersonation meta
     expect(mem.get(AUTH_KEY)).toEqual({
       user: { userId: 'user_2', email: 'b@x.com' },
-      sessionToken: 'imp_tok',
       impersonation: meta,
     })
+    expect((mem.get(AUTH_KEY) as any).sessionToken).toBeUndefined()
   })
 })

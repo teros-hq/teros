@@ -70,6 +70,7 @@ transport.onclose = () => {
     log.debug({ appId }, 'McaManager operation');
     managed.status = 'standby';
     managed.restartCount = 0; // Reset restart count for clean shutdowns
+    managed.errorAt = undefined; // Clear error timestamp on clean shutdown
     managed.client = null;
     managed.process = undefined;
     return;
@@ -78,6 +79,7 @@ transport.onclose = () => {
   log.warn({ appId }, 'MCA process died');
   managed.status = 'error';
   managed.lastError = 'Process exited unexpectedly';
+  managed.errorAt = new Date();
 
   // Auto-restart if under limit
   if (managed.restartCount < ctx.config.maxRestarts) {

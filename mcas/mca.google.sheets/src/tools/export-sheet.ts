@@ -1,6 +1,5 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import {
-  ensureAuthenticated,
   initializeGoogleClients,
   saveToDownloads,
   withAuthRetry,
@@ -45,7 +44,6 @@ export const exportSheet: ToolConfig = {
   },
   handler: async (args, context) => {
     const clients = await initializeGoogleClients(context);
-    await ensureAuthenticated(context);
 
     const {
       fileId,

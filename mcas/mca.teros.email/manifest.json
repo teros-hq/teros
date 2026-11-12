@@ -1,0 +1,88 @@
+{
+  "$schema": "https://teros.ai/schemas/mca-manifest.json",
+  "id": "mca.teros.email",
+  "name": "Email",
+  "version": "0.2.0",
+  "description": "Self-hosted email over Stalwart (JMAP) — PERSONAL plane for Teros agents (and humans with a personal mailbox). Each installed instance IS one mailbox (MAIL_ACCOUNT user secret): list folders and messages, read full bodies, send with its own identity, mark read/unread and destroy. The admin plane (domains, accounts, provisioning, DNS, rename) lives in mca.teros.admin.email.",
+  "type": "utility",
+  "icon": "icon.svg",
+  "category": "communication",
+  "entrypoint": "src/index.ts",
+  "author": {
+    "name": "Nira Solana",
+    "email": "nira@teros.ai"
+  },
+  "availability": {
+    "enabled": true,
+    "multi": false,
+    "system": true,
+    "hidden": true,
+    "role": "user",
+    "defaultEnabled": true,
+    "provisions": {
+      "scope": "super-agents"
+    }
+  },
+  "layers": {
+    "tools": true,
+    "events": false,
+    "ui": false,
+    "permissions": false,
+    "auth": {
+      "type": "api-key",
+      "systemSecrets": [
+        "STALWART_BASE_URL",
+        "STALWART_ADMIN_TOKEN",
+        "STALWART_MASTER_SECRET"
+      ],
+      "systemSecretsAny": [
+        [
+          "STALWART_BASE_URL",
+          "STALWART_ADMIN_TOKEN"
+        ]
+      ],
+      "userSecretsOptional": false,
+      "userSecretsRequired": [
+        "MAIL_ACCOUNT"
+      ],
+      "userSecrets": [
+        "MAIL_ACCOUNT",
+        "MAIL_PASSWORD",
+        "MAIL_FROM_NAME"
+      ]
+    },
+    "agent": false
+  },
+  "runtime": {
+    "transport": "http",
+    "port": 3000,
+    "healthCheck": "/health",
+    "containerMode": "per-app"
+  },
+  "keywords": [
+    "email",
+    "mail",
+    "jmap",
+    "stalwart",
+    "inbox",
+    "send",
+    "mailbox"
+  ],
+  "changelog": [
+    {
+      "version": "0.1.1",
+      "date": "2026-11-01",
+      "notes": "Single direct transport (STALWART_BASE_URL + STALWART_ADMIN_TOKEN, e.g. relay.teros.ai) — the Stalwart Lab proxy mode and its STALWART_LAB_* secrets are removed."
+    },
+    {
+      "version": "0.1.0",
+      "date": "2026-11-01",
+      "notes": "Initial release — one mailbox per installed instance, 12 tools (mail + admin) plus private health check, derived passwords (HMAC-SHA256, base62, 32 chars), dual transport (Stalwart Lab proxy or direct admin token), hardened JMAP error handling (errors inside HTTP 200 are thrown, never swallowed)."
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-11-01",
+      "notes": "Split: the 5 admin tools (admin-list-domains, admin-list-accounts, admin-create-account, admin-change-password, dns-zone) move to mca.teros.admin.email (admin plane for the human, role:admin). mca.teros.email stays as the personal plane of the agent/human mailbox: 7 tools over its own mailbox."
+    }
+  ]
+}

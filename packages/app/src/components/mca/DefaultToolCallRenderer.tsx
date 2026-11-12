@@ -18,31 +18,41 @@
  * primitive.
  */
 
-import { FallbackBody, getShortToolName, ToolCallCard, tenseByStatus } from './primitives';
+import { useMemo } from 'react';
+import { useToolDetails } from '../../hooks/mca/useToolDetails';
+import { FallbackBody, getShortToolName, ToolCallCard } from './primitives';
+import { usePermissionControls } from './primitives/PermissionControlsContext';
 import { humanizeLabel } from './primitives/utils';
 import type { ToolCallRendererProps } from './types';
 import { withPermissionSupport } from './withPermissionSupport';
 
+/**
+ * PERMW-REQ-4: while the tool waits for a decision, the header says what the
+ * tool does in words — the tool's humanized description from the tool details
+ * — and names the app ("HubSpot · Create a new HubSpot contact"). Before the
+ * details load (or when they never do) it reads the humanized tool name, as
+ * before. The details are only fetched while a permission is pending (the
+ * permission context is set), the same lookup PermissionDetail makes.
+ *
+ * @spec PERMW-REQ-4
+ */
 function DefaultToolCallRendererBase(props: ToolCallRendererProps) {
   const { toolName, input, status, output, error, appIcon, attachments } = props;
 
-  const shortName = getShortToolName(toolName);
-  const human = humanizeLabel(shortName);
+  const permission = usePermissionControls();
+  const detailNames = useMemo(() => [toolName], [toolName]);
+  const { details, appName } = useToolDetails(permission ? permission.appId : undefined, detailNames);
+  const detailDescription = details[toolName]?.description?.trim();
 
-  // Generic tense forms for an unknown tool. The shortName is already a
-  // verb-noun phrase 90% of the time (`list-events`, `create-issue`,
-  // `delete-file`), so we treat it as the bare future form.
-  const future = human.toLowerCase();
-  const description = tenseByStatus(status, {
-    future,
-    present: capitalize(toGerundish(future)),
-    past: capitalize(toPastish(future)),
-  });
+  // Static description: the tool's own words when known, else the humanized
+  // tool name. No tense conjugation.
+  const description = detailDescription || humanizeLabel(getShortToolName(toolName));
 
   return (
     <ToolCallCard
       status={status}
       description={description}
+      appName={appName}
       iconUri={appIcon}
       animateExpand
     >
@@ -51,38 +61,12 @@ function DefaultToolCallRendererBase(props: ToolCallRendererProps) {
   );
 }
 
-// withPermissionSupport injects the ControlsBar via context when status is
-// pending_permission — the FallbackBody renders inside ToolCallCard, the
-// HOC takes care of the rest. No more bespoke widget wiring here.
+// withPermissionSupport handles pending_permission: it renders the ControlsBar as
+// a sibling below the card, and hands the approval detail down through
+// PermissionControlsContext so ToolCallCard appends it to the body. FallbackBody
+// contributes nothing while pending (its ParamsTable is suppressed, because the
+// detail's AnnotatedParamsTable shows the same input with more), so the approval
+// detail is the whole body for a default-rendered tool. No bespoke wiring here.
+/** @spec PERMW-REQ-4 */
 export const DefaultToolCallRenderer = withPermissionSupport(DefaultToolCallRendererBase);
 
-// ─── small string helpers ──────────────────────────────────────────────────
-//
-// We don't conjugate English. We just nudge the bare phrase into a passable
-// gerund / past form so the description doesn't read "Listed list events".
-// If a renderer cares about correct verb forms it should register a custom
-// description — this is the fallback after all.
-
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-function toGerundish(phrase: string): string {
-  // first token is the verb-ish; everything after is the object phrase
-  const [first, ...rest] = phrase.split(' ');
-  if (!first) return phrase;
-  let verb = first;
-  if (verb.endsWith('e') && !verb.endsWith('ee')) verb = `${verb.slice(0, -1)}ing`;
-  else verb = `${verb}ing`;
-  return [verb, ...rest].join(' ');
-}
-
-function toPastish(phrase: string): string {
-  const [first, ...rest] = phrase.split(' ');
-  if (!first) return phrase;
-  let verb = first;
-  if (verb.endsWith('e')) verb = `${verb}d`;
-  else if (verb.endsWith('y')) verb = `${verb.slice(0, -1)}ied`;
-  else verb = `${verb}ed`;
-  return [verb, ...rest].join(' ');
-}

@@ -61,25 +61,25 @@ export const TOOL_ACCENTS: Record<string, string> = {};
  * sub-renderer through the `description` override.
  */
 export const TOOL_LABELS: Record<string, string> = {
-  '-health-check': 'Health check',
+  'health-check': 'Health check',
   'list-roots': 'Workspace roots',
-  read: 'Read file',
-  'read-batch': 'Read files (batch)',
-  'read-media': 'Read media',
-  write: 'Write file',
-  append: 'Append to file',
-  edit: 'Edit file',
-  patch: 'Apply patch',
-  list: 'List directory',
-  tree: 'Tree directory',
-  stat: 'Stat path',
-  hash: 'Hash file',
-  glob: 'Glob files',
-  grep: 'Grep contents',
-  delete: 'Delete path',
-  copy: 'Copy',
-  move: 'Move',
-  mkdir: 'Make directory',
+  'read-file': 'Read file',
+  'read-files': 'Read files (batch)',
+  'read-binary': 'Read media',
+  'create-file': 'Write file',
+  'append-file': 'Append to file',
+  'edit-file': 'Edit file',
+  'patch-file': 'Apply patch',
+  'list-files': 'List directory',
+  'tree-view': 'Tree directory',
+  'file-info': 'Stat path',
+  'hash-file': 'Hash file',
+  'find-files': 'Find files',
+  'search-in-files': 'Search in files',
+  'delete-file': 'Delete path',
+  'copy-file': 'Copy',
+  'move-file': 'Move',
+  'create-directory': 'Make directory',
 };
 
 /**
@@ -393,8 +393,7 @@ export function FilesystemToolShell({
   return (
     <ToolCallCard
       status={statusType(status)}
-      description={permissionDescription ?? undefined}
-      verb={permissionDescription ? undefined : verbLabel}
+      description={permissionDescription ?? verbLabel}
       iconUri={appIcon}
       badge={badge}
       defaultExpanded={expanded}

@@ -1,6 +1,7 @@
 import type { HttpToolConfig as ToolConfig } from '@teros/mca-sdk';
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 type StashAction = 'push' | 'pop' | 'apply' | 'drop' | 'list' | 'clear';
 
@@ -13,7 +14,7 @@ type StashAction = 'push' | 'pop' | 'apply' | 'drop' | 'list' | 'clear';
  *  - `list`: return all stash entries.
  *  - `clear`: drop every stash entry.
  */
-export const gitStash: ToolConfig = {
+export const gitStash: ToolConfig = lockedGitTool('git-stash', {
   annotations: { readOnlyHint: false },
   description:
     'Manage the stash. Default action `push` saves uncommitted changes. Other actions: pop, apply, drop, list, clear.',
@@ -74,7 +75,7 @@ export const gitStash: ToolConfig = {
         break;
     }
 
-    const result = runGit(repoPath, argv);
+    const result = await runGit(repoPath, argv);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     if (action === 'list') {
@@ -94,4 +95,4 @@ export const gitStash: ToolConfig = {
       details: result.stdout.trim() || result.stderr.trim(),
     };
   },
-};
+});

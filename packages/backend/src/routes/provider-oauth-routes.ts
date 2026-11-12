@@ -24,6 +24,7 @@ import {
   generateAuthorizationUrl,
 } from '@teros/core';
 import { ProviderService } from '../services/provider-service';
+import type { SessionManager } from '../services/session-manager';
 
 // ============================================================================
 // TYPES
@@ -32,6 +33,7 @@ import { ProviderService } from '../services/provider-service';
 export interface ProviderOAuthRoutesConfig {
   db: Db;
   providerService?: ProviderService;
+  sessionManager?: SessionManager;
 }
 
 interface OAuthSession {
@@ -60,11 +62,10 @@ setInterval(() => {
 // ============================================================================
 
 function sendJson(res: ServerResponse, status: number, data: unknown): void {
+  // ACAO is set by the main request handler via resolveAllowedOrigin() —
+  // do not override it with a wildcard here.
   res.writeHead(status, {
     'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(JSON.stringify(data));
 }
@@ -103,6 +104,21 @@ function parseQueryParams(url: string): Record<string, string> {
   return params;
 }
 
+/**
+ * Resolve the authenticated userId from the Bearer token.
+ * Uses SessionManager.getSession() which validates the token against the DB.
+ */
+async function resolveUserId(
+  req: IncomingMessage,
+  sessionManager: SessionManager,
+): Promise<string | null> {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader?.startsWith('Bearer ')) return null;
+  const token = authHeader.slice(7);
+  const session = await sessionManager.getSession(token);
+  return session?.userId ?? null;
+}
+
 // ============================================================================
 // ROUTE HANDLERS
 // ============================================================================
@@ -111,15 +127,35 @@ function parseQueryParams(url: string): Record<string, string> {
  * Start OAuth flow for Anthropic
  * GET /api/providers/oauth/anthropic/start?userId=xxx
  *
- * Returns the authorization URL to open in browser
+ * Returns the authorization URL to open in browser.
+ *
+ * Security: userId is resolved from the caller's Bearer session token, not
+ * trusted from the query string. If a userId query param is provided, it must
+ * match the authenticated session userId — otherwise the request is rejected.
  */
 async function handleAnthropicStart(
-  _req: IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
-  userId: string,
+  config: ProviderOAuthRoutesConfig,
+  queryUserId: string,
 ): Promise<void> {
-  if (!userId) {
-    sendError(res, 400, 'userId is required');
+  const { sessionManager } = config;
+
+  if (!sessionManager) {
+    sendError(res, 500, 'Session management is not configured');
+    return;
+  }
+
+  // Resolve the authenticated userId from the Bearer token
+  const authenticatedUserId = await resolveUserId(req, sessionManager);
+  if (!authenticatedUserId) {
+    sendError(res, 401, 'Valid session token required');
+    return;
+  }
+
+  // If a userId was passed as a query param, it must match the session user
+  if (queryUserId && queryUserId !== authenticatedUserId) {
+    sendError(res, 403, 'userId does not match the authenticated session');
     return;
   }
 
@@ -130,11 +166,11 @@ async function handleAnthropicStart(
     // Store verifier for later exchange
     oauthSessions.set(verifier, {
       verifier,
-      userId,
+      userId: authenticatedUserId,
       createdAt: Date.now(),
     });
 
-    console.log(`[ProviderOAuth] Started Anthropic OAuth for user ${userId}`);
+    console.log(`[ProviderOAuth] Started Anthropic OAuth for user ${authenticatedUserId}`);
 
     sendJson(res, 200, {
       authUrl: url,
@@ -245,10 +281,10 @@ export function createProviderOAuthRoutes(config: ProviderOAuthRoutesConfig) {
     res: ServerResponse,
     path: string,
   ): Promise<boolean> {
-    // Handle CORS preflight
+    // Handle CORS preflight — ACAO is set by the main request handler via
+    // resolveAllowedOrigin(); only methods/headers need to be echoed here.
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       });
@@ -259,7 +295,7 @@ export function createProviderOAuthRoutes(config: ProviderOAuthRoutesConfig) {
     // Route: GET /api/providers/oauth/anthropic/start
     if (path === '/api/providers/oauth/anthropic/start' && req.method === 'GET') {
       const params = parseQueryParams(req.url || '');
-      await handleAnthropicStart(req, res, params.userId);
+      await handleAnthropicStart(req, res, config, params.userId);
       return true;
     }
 

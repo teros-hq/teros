@@ -1,8 +1,9 @@
 import { HealthCheckBuilder } from '@teros/mca-sdk';
 import { validateCredentials } from '../lib/index.js';
-import type { ToolDefinition } from '@teros/mca-sdk';
+import type { ToolConfig } from '@teros/mca-sdk';
 
-export const healthCheck: ToolDefinition = {
+export const healthCheck: ToolConfig = {
+  annotations: { readOnlyHint: true },
   description:
     'Internal health check tool. Verifies Holded API key and connectivity by making a lightweight request to the contacts endpoint.',
   parameters: {

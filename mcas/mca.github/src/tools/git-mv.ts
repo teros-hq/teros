@@ -4,12 +4,13 @@ import { dirname, resolve } from 'path';
 
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Move/rename a tracked file or directory and stage the rename.
  * Preserves git history (`git mv` = `mv` + `git add` + `git rm`).
  */
-export const gitMv: ToolConfig = {
+export const gitMv: ToolConfig = lockedGitTool('git-mv', {
   annotations: { readOnlyHint: false },
   description:
     'Move or rename a tracked file/directory while preserving git history. Both `from` and `to` are relative to repo root.',
@@ -46,8 +47,13 @@ export const gitMv: ToolConfig = {
     const absTo = resolve(repoPath, a.to);
     mkdirSync(dirname(absTo), { recursive: true });
 
+    // `--` separates the agent-supplied paths from the flag section so a
+    // dash-leading path can never be parsed as an option (verified: `git mv
+    // <flags> -- <from> <to>` keeps normal rename semantics). Same pattern as
+    // `git-rm`/`git-add` in this MCA. Paths are NOT ref-validated — they may
+    // legitimately contain spaces and other ref-unsafe characters.
     const flags = a.force ? ['-f'] : [];
-    const result = runGit(repoPath, ['mv', ...flags, a.from, a.to]);
+    const result = await runGit(repoPath, ['mv', ...flags, '--', a.from, a.to]);
     if (result.code !== 0) throwClassifiedGitError(result);
 
     return {
@@ -57,4 +63,4 @@ export const gitMv: ToolConfig = {
       details: result.stdout.trim(),
     };
   },
-};
+});

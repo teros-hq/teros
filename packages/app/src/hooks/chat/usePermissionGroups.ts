@@ -1,9 +1,10 @@
 /**
  * usePermissionGroups (TER-375).
  *
- * Reactive view over the channel's messages that detects runs of ≥2 consecutive
- * `pending_permission` tool calls — the parallel groups whose Allow/Deny is
- * owned by a single `GroupedPermissionPanel`.
+ * Reactive view over the channel's messages that detects runs of ≥2 pending
+ * tool calls — the batches ChatView frames with a header before the first
+ * pending card and a footer (Deny all / Allow all) after the last card
+ * (PERMW-REQ-3).
  *
  * Two-step to stay cheap:
  *   1. The zustand selector returns a stable *string signature* (Object.is
@@ -24,10 +25,11 @@ import {
 
 const EMPTY: PermissionGroupingResult = {
   groups: [],
-  groupedRequestIds: new Set(),
   groupByAnchorId: new Map(),
+  groupByFirstPendingId: new Map(),
 }
 
+/** @spec PERMW-REQ-3 */
 export function usePermissionGroups(channelId: string | undefined): PermissionGroupingResult {
   const signature = useChatStore((state) => {
     if (!channelId) return ''

@@ -3,6 +3,7 @@
  */
 
 import { HandlerError } from '../../../ws-framework/WsRouter'
+import { assertAppVisible, assertAppManageable } from './app-visibility'
 import type { WsHandlerContext } from '@teros/shared'
 import type { McaManager } from '../../../services/mca-manager'
 import type { McaService } from '../../../services/mca-service'
@@ -30,6 +31,7 @@ export function createGetToolsHandler(
     if (!app) {
       throw new HandlerError('APP_NOT_FOUND', 'App not found')
     }
+    assertAppVisible(mcaService, app, ctx.userId)
 
     // Check access: owner, system app, or workspace member
     const canAccess =

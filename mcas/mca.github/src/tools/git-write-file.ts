@@ -4,6 +4,7 @@ import { dirname, resolve } from 'path';
 
 import { assertIsRepo, resolveRepoPath, runGit } from '../lib/git-local';
 import { throwClassifiedGitError } from './_git-error';
+import { lockedGitTool } from './_locked';
 
 /**
  * Write file content to the working tree and stage it. Equivalent to
@@ -14,7 +15,7 @@ import { throwClassifiedGitError } from './_git-error';
  * Creates parent directories if missing. Use `stage: false` to write without
  * staging (rare; typically the caller wants the change ready to commit).
  */
-export const gitWriteFile: ToolConfig = {
+export const gitWriteFile: ToolConfig = lockedGitTool('git-write-file', {
   annotations: { readOnlyHint: false },
   description:
     'Write file content into the working tree (creates parent dirs) and stage it. Use `stage: false` to skip staging.',
@@ -68,7 +69,7 @@ export const gitWriteFile: ToolConfig = {
 
     let staged = false;
     if (a.stage !== false) {
-      const result = runGit(repoPath, ['add', '--', a.path]);
+      const result = await runGit(repoPath, ['add', '--', a.path]);
       if (result.code !== 0) throwClassifiedGitError(result);
       staged = true;
     }
@@ -80,4 +81,4 @@ export const gitWriteFile: ToolConfig = {
       staged,
     };
   },
-};
+});

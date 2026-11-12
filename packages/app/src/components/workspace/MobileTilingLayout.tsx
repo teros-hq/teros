@@ -1,428 +1,421 @@
 /**
- * MobileTilingLayout - Mobile layout with all tabs consolidated
+ * MobileTilingLayout — the phone shell of the OS prototype (design-testing).
  *
- * On mobile, instead of showing splits, we show:
- * - A single pane with all tabs from all containers
- * - A menu icon at the top left to open the sidebar
- * - The active tab takes up the full screen
+ * On mobile we consolidate every tab from every container into one strip:
+ *   top bar   ☰ · Teros · (pending approvals) · agent pill · new chat
+ *   tab strip ‹ › · pill tabs · ⌂ · ⋯
+ *   content   the active window, full width, on the sheet
  */
 
-import { ChevronLeft, ChevronRight, LayoutGrid, Menu, Plus, X } from '@tamagui/lucide-icons';
-import React, { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Circle, Text, XStack, YStack } from 'tamagui';
-import { useTabState } from '../../hooks/useTabState';
-import { useNavbarStore } from '../../store/navbarStore';
-import { type ContainerNode, type LayoutNode, useTilingStore } from '../../store/tilingStore';
-import { useWorkspaceStore } from '../../store/workspaceStore';
-import { NewConversationModal } from '../NewConversationModal';
-import { TerosLoading } from '../TerosLoading';
-import { useColors } from '../mca/primitives/useColors';
-import { colors as semanticColors, surface } from '../mca/primitives/colors';
-import { WindowContent } from './WindowContent';
+import React, { useCallback, useEffect, useMemo, useState } from "react"
+import { Platform, Pressable, ScrollView, View } from "react-native"
+import { useTranslation } from "react-i18next"
+import { LinearGradient } from "expo-linear-gradient"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+import { Circle, Text, XStack, YStack } from "tamagui"
+import { useTabState } from "../../hooks/useTabState"
+import { useNavbarStore } from "../../store/navbarStore"
+import { type ContainerNode, type LayoutNode, useTilingStore } from "../../store/tilingStore"
+import { useWorkspaceStore } from "../../store/workspaceStore"
+import { NewConversationModal } from "../NewConversationModal"
+import { PermissionIndicator } from "../navbar/PermissionIndicator"
+import { TerosLogo } from "../TerosLogo"
+import { TerosLoading } from "../TerosLoading"
+import { useColors } from "../mca/primitives/useColors"
+import { Btn, CountPill, IconBtn, Ph, T, WorkingDot } from "../ui/ds"
+import { WindowContent } from "./WindowContent"
+import { buildTabColors } from "./tabColors"
 
 /** Collect all windows from all containers in the layout tree */
 function collectAllWindows(node: LayoutNode | null): string[] {
-  if (!node) return [];
-
-  if (node.type === 'container') {
-    return node.windowIds;
-  }
-
-  // Split node - recurse
-  return [...collectAllWindows(node.first), ...collectAllWindows(node.second)];
+  if (!node) return []
+  if (node.type === "container") return node.windowIds
+  return [...collectAllWindows(node.first), ...collectAllWindows(node.second)]
 }
 
 /** Find the container that has a specific window */
-function findContainerForWindow(node: LayoutNode | null, windowId: string): ContainerNode | null {
-  if (!node) return null;
-
-  if (node.type === 'container') {
-    if (node.windowIds.includes(windowId)) {
-      return node;
-    }
-    return null;
-  }
-
-  // Split node - recurse
+export function findContainerForWindow(
+  node: LayoutNode | null,
+  windowId: string,
+): ContainerNode | null {
+  if (!node) return null
+  if (node.type === "container") return node.windowIds.includes(windowId) ? node : null
   return (
     findContainerForWindow(node.first, windowId) || findContainerForWindow(node.second, windowId)
-  );
+  )
 }
 
 export function MobileTilingLayout() {
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
-  const insets = useSafeAreaInsets();
+  const c = useColors()
+  const insets = useSafeAreaInsets()
+  const { t } = useTranslation()
 
-  const windows = useTilingStore((state) => state.windows);
-  const activeDesktop = useTilingStore((state) => state.desktops[state.activeDesktopIndex]);
-  const closeWindow = useTilingStore((state) => state.closeWindow);
-  const focusWindow = useTilingStore((state) => state.focusWindow);
-  const openWindow = useTilingStore((state) => state.openWindow);
-  const navigateBack = useTilingStore((state) => state.navigateBack);
-  const navigateForward = useTilingStore((state) => state.navigateForward);
+  const windows = useTilingStore((state) => state.windows)
+  const activeDesktop = useTilingStore((state) => state.desktops[state.activeDesktopIndex])
+  const closeWindow = useTilingStore((state) => state.closeWindow)
+  const focusWindow = useTilingStore((state) => state.focusWindow)
+  const openWindow = useTilingStore((state) => state.openWindow)
+  const openNewTab = useTilingStore((state) => state.openNewTab)
+  const navigateBack = useTilingStore((state) => state.navigateBack)
+  const navigateForward = useTilingStore((state) => state.navigateForward)
+  const pinWindow = useTilingStore((state) => state.pinWindow)
+  const setCompactShell = useTilingStore((state) => state.setCompactShell)
+  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId)
+  const { setMobileMenuOpen } = useNavbarStore()
 
-  const layout = activeDesktop?.layout;
-  const activeContainerId = activeDesktop?.activeContainerId;
+  const layout = activeDesktop?.layout
+  const activeContainerId = activeDesktop?.activeContainerId
 
-  const { setMobileMenuOpen } = useNavbarStore();
+  const [showNewConversationModal, setShowNewConversationModal] = useState(false)
 
-  // Collect all window IDs from all containers
-  const allWindowIds = useMemo(() => collectAllWindows(layout), [layout]);
+  // Preview windows (docs/specs/ui/preview-tabs.md) are pushed as a new
+  // screen in the caller's pane while this compact shell is mounted.
+  useEffect(() => {
+    setCompactShell(true)
+    return () => setCompactShell(false)
+  }, [setCompactShell])
 
-  // Get all window objects
+  const allWindowIds = useMemo(() => collectAllWindows(layout), [layout])
   const allWindows = useMemo(
     () => allWindowIds.map((id) => windows[id]).filter(Boolean),
     [allWindowIds, windows],
-  );
+  )
 
-  // Find the active window - use the active window from the active container
   const activeWindow = useMemo(() => {
-    if (!layout) return null;
-
-    // Find the active container and its active window
+    if (!layout) return null
     const findActiveWindow = (node: LayoutNode): string | null => {
-      if (node.type === 'container') {
-        if (node.id === activeContainerId) {
-          return node.activeWindowId;
-        }
-        return null;
-      }
-      return findActiveWindow(node.first) || findActiveWindow(node.second);
-    };
+      if (node.type === "container")
+        return node.id === activeContainerId ? node.activeWindowId : null
+      return findActiveWindow(node.first) || findActiveWindow(node.second)
+    }
+    const activeWindowId = findActiveWindow(layout)
+    return activeWindowId ? windows[activeWindowId] : allWindows[0] || null
+  }, [layout, activeContainerId, windows, allWindows])
 
-    const activeWindowId = findActiveWindow(layout);
-    return activeWindowId ? windows[activeWindowId] : allWindows[0] || null;
-  }, [layout, activeContainerId, windows, allWindows]);
-
-  const handleTabPress = useCallback(
-    (windowId: string) => {
-      focusWindow(windowId);
-    },
-    [focusWindow],
-  );
-
-  const handleCloseTab = useCallback(
-    (windowId: string) => {
-      closeWindow(windowId);
-    },
-    [closeWindow],
-  );
-
-  const handleOpenLauncher = useCallback(() => {
-    openWindow('launcher', {}, true);
-  }, [openWindow]);
-
-  const canGoBack = activeWindow ? (activeWindow.historyIndex ?? 0) > 0 : false;
-  const canGoForward = activeWindow
-    ? (activeWindow.historyIndex ?? 0) < (activeWindow.history?.length ?? 1) - 1
-    : false;
-
-  if (!layout || allWindows.length === 0) {
-    return <EmptyMobileLayout onOpenLauncher={handleOpenLauncher} />;
-  }
-
-  return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Tab bar with menu button */}
-      <XStack
-        height={44 + insets.top}
-        paddingTop={insets.top}
-        backgroundColor={isDark ? c.bgCard : "#C8C8C8"}
-        borderBottomWidth={1}
-        borderBottomColor={isDark ? c.border : "rgba(10,10,15,0.12)"}
-        alignItems="center"
-        paddingHorizontal={4}
-      >
-        {/* Menu button */}
-        <XStack
-          width={36}
-          height={36}
-          justifyContent="center"
-          alignItems="center"
-          borderRadius={8}
-          cursor="pointer"
-          opacity={0.6}
-          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
-          pressStyle={{ backgroundColor: c.bgCardHover }}
-          marginLeft={4}
-          onPress={() => setMobileMenuOpen(true)}
-        >
-          <Menu size={18} color={semanticColors.indigo} />
-        </XStack>
-
-        {/* Back / Forward navigation buttons */}
-        <XStack alignSelf="center" gap={0}>
-          <XStack
-            width={32}
-            height={32}
-            justifyContent="center"
-            alignItems="center"
-            borderRadius={6}
-            opacity={canGoBack ? 0.7 : 0.2}
-            cursor={canGoBack ? 'pointer' : 'default'}
-            hoverStyle={canGoBack ? { backgroundColor: c.bgCardHover, opacity: 1 } : {}}
-            pressStyle={canGoBack ? { backgroundColor: c.bgCardHover } : {}}
-            onPress={canGoBack && activeWindow ? () => navigateBack(activeWindow.id) : undefined}
-          >
-            <ChevronLeft size={16} color={c.text3} />
-          </XStack>
-          <XStack
-            width={32}
-            height={32}
-            justifyContent="center"
-            alignItems="center"
-            borderRadius={6}
-            opacity={canGoForward ? 0.7 : 0.2}
-            cursor={canGoForward ? 'pointer' : 'default'}
-            hoverStyle={canGoForward ? { backgroundColor: c.bgCardHover, opacity: 1 } : {}}
-            pressStyle={canGoForward ? { backgroundColor: c.bgCardHover } : {}}
-            onPress={canGoForward && activeWindow ? () => navigateForward(activeWindow.id) : undefined}
-          >
-            <ChevronRight size={16} color={c.text3} />
-          </XStack>
-        </XStack>
-
-        {/* Scrollable tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={{ flex: 1 }}
-          contentContainerStyle={{ alignItems: 'center', gap: 2, paddingHorizontal: 4 }}
-        >
-          <XStack gap={2} alignItems="center">
-            {allWindows.map((window) => (
-              <MobileTab
-                key={window.id}
-                window={window}
-                isActive={activeWindow?.id === window.id}
-                onSelect={() => handleTabPress(window.id)}
-                onClose={() => handleCloseTab(window.id)}
-              />
-            ))}
-          </XStack>
-        </ScrollView>
-
-        {/* Add button */}
-        <XStack
-          width={36}
-          height={36}
-          justifyContent="center"
-          alignItems="center"
-          opacity={0.6}
-          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
-          borderRadius={8}
-          cursor="pointer"
-          marginRight={4}
-          onPress={handleOpenLauncher}
-        >
-          <Plus size={18} color={semanticColors.indigo} />
-        </XStack>
-      </XStack>
-
-      {/* Content */}
-      <YStack flex={1} backgroundColor={c.bgPage}>
-        {activeWindow && (
-          <WindowContent
-            key={activeWindow.id}
-            window={{
-              id: activeWindow.id,
-              type: activeWindow.type,
-              props: activeWindow.props,
-              mode: 'docked',
-              isMinimized: false,
-              isMaximized: false,
-              hasNotification: activeWindow.hasNotification,
-              notificationCount: activeWindow.notificationCount,
-              createdAt: Date.now(),
-              isPinned: false,
-            }}
-          />
-        )}
-      </YStack>
-    </YStack>
-  );
-}
-
-// ============================================
-// MOBILE TAB COMPONENT
-// ============================================
-
-interface MobileTabProps {
-  window: { id: string; type: string; props: Record<string, any>; hasNotification: boolean };
-  isActive: boolean;
-  onSelect: () => void;
-  onClose: () => void;
-}
-
-function MobileTab({ window, isActive, onSelect, onClose }: MobileTabProps) {
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
-  // Use shared hook for tab state
-  const { Icon, iconColor, title, showSpinner, showRedDot, showBlueDot, showIcon } = useTabState(
-    window,
-    isActive,
-  );
-
-  const handleCloseClick = useCallback(
-    (e: any) => {
-      e.stopPropagation();
-      onClose();
-    },
-    [onClose],
-  );
-
-  return (
-    <XStack
-      height={36}
-      paddingHorizontal={10}
-      paddingRight={6}
-      gap={6}
-      alignItems="center"
-      backgroundColor={isActive ? (isDark ? c.bgCardHover : '#F8F4EC') : 'transparent'}
-      borderRadius={6}
-      cursor="pointer"
-      hoverStyle={{ backgroundColor: isActive ? (isDark ? c.bgCardHover : '#F8F4EC') : (isDark ? c.bgCard : 'rgba(10,10,15,0.08)') }}
-      pressStyle={{ backgroundColor: c.bgCardHover }}
-      onPress={onSelect}
-    >
-      {/* Status indicator */}
-      {showSpinner && <TerosLoading size={14} color={semanticColors.indigo} />}
-      {showRedDot && <Circle size={8} backgroundColor={semanticColors.red} />}
-      {showBlueDot && <Circle size={8} backgroundColor={semanticColors.indigo} />}
-      {showIcon && Icon && <Icon size={14} color={iconColor} />}
-
-      <Text fontSize={13} color={isActive ? c.text : (isDark ? c.text3 : 'rgba(10,10,15,0.50)')} numberOfLines={1} maxWidth={100}>
-        {title}
-      </Text>
-
-      <XStack
-        width={22}
-        height={22}
-        borderRadius={4}
-        justifyContent="center"
-        alignItems="center"
-        opacity={0.5}
-        hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
-        onPress={handleCloseClick}
-      >
-        <X size={12} color={c.text3} />
-      </XStack>
-    </XStack>
-  );
-}
-
-// ============================================
-// EMPTY STATE
-// ============================================
-
-function EmptyMobileLayout({ onOpenLauncher }: { onOpenLauncher: () => void }) {
-  const c = useColors();
-  const isDark = c.bgPage === surface.dark.bgPage;
-  const insets = useSafeAreaInsets();
-  const { setMobileMenuOpen } = useNavbarStore();
-  const activeWorkspaceId = useWorkspaceStore((s) => s.activeWorkspaceId);
-  const { openWindow } = useTilingStore();
-  const [showNewConversationModal, setShowNewConversationModal] = useState(false);
+  const handleTabPress = useCallback((windowId: string) => focusWindow(windowId), [focusWindow])
+  const handleCloseTab = useCallback((windowId: string) => closeWindow(windowId), [closeWindow])
+  const handleOpenLauncher = useCallback(() => openNewTab(), [openNewTab])
 
   const handleSelectAgent = (agent: { agentId: string; name: string; fullName: string }) => {
+    // Preview routing (preview-tabs.md): on the compact shell the preview
+    // pushes in the source pane with a back caret — not a separate tab.
     openWindow(
-      'chat',
+      "chat",
       {
         agentId: agent.agentId,
         agentName: agent.name || agent.fullName,
         workspaceId: activeWorkspaceId ?? undefined,
       },
-      true,
-    );
-  };
+      false,
+    )
+  }
+
+  // A window pushed from another one (preview) goes back to its opener: the
+  // phone reads as stacked screens (list → detail ‹ back).
+  const opener = activeWindow?.openerId ? windows[activeWindow.openerId] : undefined
+  const canGoBack = activeWindow ? Boolean(opener) || (activeWindow.historyIndex ?? 0) > 0 : false
+  const goBack = useCallback(() => {
+    if (!activeWindow) return
+    if (opener) focusWindow(opener.id)
+    else navigateBack(activeWindow.id)
+  }, [activeWindow, opener, focusWindow, navigateBack])
+  const canGoForward = activeWindow
+    ? (activeWindow.historyIndex ?? 0) < (activeWindow.history?.length ?? 1) - 1
+    : false
+
+  const empty = !layout || allWindows.length === 0
 
   return (
-    <YStack flex={1} backgroundColor={c.bgPage}>
-      {/* Header with menu */}
+    <YStack flex={1} backgroundColor={c.bgFrame}>
+      {/* One bar (44px + inset): menu · ‹ › · tabs · approvals · new chat —
+          the previous two-row chrome read as too heavy on a phone. */}
       <XStack
         height={44 + insets.top}
         paddingTop={insets.top}
-        backgroundColor={isDark ? c.bgCard : "#C8C8C8"}
-        borderBottomWidth={1}
-        borderBottomColor={isDark ? c.border : "rgba(10,10,15,0.12)"}
         alignItems="center"
-        paddingHorizontal={4}
+        paddingLeft={6}
+        paddingRight={8}
+        gap={2}
       >
-        <XStack
-          width={36}
-          height={36}
-          justifyContent="center"
-          alignItems="center"
-          borderRadius={8}
-          cursor="pointer"
-          opacity={0.6}
-          hoverStyle={{ backgroundColor: c.bgCardHover, opacity: 1 }}
-          pressStyle={{ backgroundColor: c.bgCardHover }}
-          marginLeft={4}
+        <IconBtn
+          icon="list"
+          plain
           onPress={() => setMobileMenuOpen(true)}
+          title={t("nav.menu", { defaultValue: "Menú" })}
+        />
+        {!empty ? (
+          <>
+            <IconBtn
+              icon="caret-left"
+              plain
+              sm
+              disabled={!canGoBack}
+              onPress={canGoBack ? goBack : undefined}
+            />
+            <IconBtn
+              icon="caret-right"
+              plain
+              sm
+              disabled={!canGoForward}
+              onPress={
+                canGoForward && activeWindow ? () => navigateForward(activeWindow.id) : undefined
+              }
+            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ flex: 1 }}
+              contentContainerStyle={{ alignItems: "center", gap: 4, paddingHorizontal: 4 }}
+            >
+              {allWindows.map((window) => (
+                <MobileTab
+                  key={window.id}
+                  window={window}
+                  isActive={activeWindow?.id === window.id}
+                  onSelect={() => handleTabPress(window.id)}
+                  onClose={() => handleCloseTab(window.id)}
+                  onPin={() => pinWindow(window.id)}
+                />
+              ))}
+            </ScrollView>
+            <IconBtn icon="plus" plain sm onPress={handleOpenLauncher} />
+          </>
+        ) : (
+          <XStack flex={1} alignItems="center" gap={8} paddingLeft={4}>
+            <TerosLogo size={20} animated={false} />
+            <T step="base">Teros</T>
+          </XStack>
+        )}
+        <PermissionIndicator collapsed />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("nav.newChat", { defaultValue: "Nuevo chat" })}
+          onPress={() => setShowNewConversationModal(true)}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: c.inkPill,
+            alignItems: "center",
+            justifyContent: "center",
+            marginLeft: 4,
+          }}
         >
-          <Menu size={18} color={semanticColors.indigo} />
-        </XStack>
+          <Ph name="pencil-simple-line" size={15} color={c.inkPillText} />
+        </Pressable>
       </XStack>
 
-      {/* New conversation flow - same experience as desktop EmptyLayout */}
-      <YStack flex={1} justifyContent="center" alignItems="center" gap={16}>
-        {/* Primary: New Conversation */}
-        <XStack
-          alignItems="center"
-          gap={14}
-          paddingHorizontal={28}
-          paddingLeft={14}
-          height={56}
-          borderWidth={1.5}
-          borderColor={c.border}
-          borderRadius={14}
-          cursor="pointer"
-          hoverStyle={{ backgroundColor: c.bgCardHover, borderColor: c.borderStrong }}
-          pressStyle={{ scale: 0.97 }}
-          onPress={() => setShowNewConversationModal(true)}
-        >
-          <YStack
-            width={32}
-            height={32}
-            borderRadius={6}
-            backgroundColor={semanticColors.indigo}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Plus size={20} color="white" />
+      {/* The sheet — runs to the screen's bottom edge and owns the safe
+          zone: content keeps the inset as padding, and a fade (like the
+          sidebar's scroll fades) turns the sheet into the frame colour over
+          the home-indicator band, so there is no white step and no grey
+          strip. */}
+      <YStack
+        flex={1}
+        backgroundColor={c.bgSheet}
+        borderTopLeftRadius={16}
+        borderTopRightRadius={16}
+        overflow="hidden"
+        paddingBottom={insets.bottom}
+        position="relative"
+      >
+        {insets.bottom > 0 ? (
+          <LinearGradient
+            colors={["transparent", c.bgFrame]}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: insets.bottom + 28,
+              zIndex: 10,
+            }}
+            pointerEvents="none"
+          />
+        ) : null}
+        {empty ? (
+          <YStack flex={1} justifyContent="center" alignItems="center" gap={14} padding={24}>
+            <T step="xs" tone="accent">
+              Teros
+            </T>
+            <T step="3xl" center>
+              {t("windows.emptyTitle", { defaultValue: "¿Qué abrimos?" })}
+            </T>
+            <T step="base" tone="text2" center>
+              {t("windows.emptyLead", {
+                defaultValue: "Empieza un chat con un agente o abre una ventana desde el launcher.",
+              })}
+            </T>
+            <YStack gap={10} marginTop={6} alignSelf="stretch" alignItems="center">
+              <Btn
+                variant="primary"
+                size="lg"
+                icon="chat-circle"
+                onPress={() => setShowNewConversationModal(true)}
+              >
+                {t("nav.newChat", { defaultValue: "Nuevo chat" })}
+              </Btn>
+              <Btn variant="sec" size="lg" icon="squares-four" onPress={handleOpenLauncher}>
+                {t("windows.openLauncher", { defaultValue: "Abrir launcher" })}
+              </Btn>
+            </YStack>
           </YStack>
-          <Text fontSize={18} fontWeight="500" color={c.text}>
-            New Conversation
-          </Text>
-        </XStack>
-
-        {/* Secondary: Open Window Selector */}
-        <XStack
-          alignItems="center"
-          gap={9}
-          paddingHorizontal={18}
-          paddingVertical={8}
-          borderRadius={10}
-          cursor="pointer"
-          hoverStyle={{ backgroundColor: c.bgCardHover }}
-          onPress={onOpenLauncher}
-        >
-          <LayoutGrid size={15} color={c.text3} />
-          <Text fontSize={15} color={c.text3}>
-            Open Window Selector
-          </Text>
-        </XStack>
-
-        <NewConversationModal
-          visible={showNewConversationModal}
-          onClose={() => setShowNewConversationModal(false)}
-          onSelectAgent={handleSelectAgent}
-        />
+        ) : (
+          <>
+            {/* Content */}
+            <YStack flex={1} backgroundColor={c.bgSheet}>
+              {activeWindow && (
+                <WindowContent
+                  key={activeWindow.id}
+                  window={{
+                    id: activeWindow.id,
+                    type: activeWindow.type,
+                    props: activeWindow.props,
+                    mode: "docked",
+                    isMinimized: false,
+                    isMaximized: false,
+                    hasNotification: activeWindow.hasNotification,
+                    notificationCount: activeWindow.notificationCount,
+                    createdAt: Date.now(),
+                    isPinned: false,
+                  }}
+                />
+              )}
+            </YStack>
+          </>
+        )}
       </YStack>
+
+      <NewConversationModal
+        visible={showNewConversationModal}
+        onClose={() => setShowNewConversationModal(false)}
+        onSelectAgent={handleSelectAgent}
+      />
     </YStack>
-  );
+  )
 }
+
+// ============================================
+// MOBILE TAB (`.wtab`, pill)
+// ============================================
+
+interface MobileTabProps {
+  window: {
+    id: string
+    type: string
+    props: Record<string, any>
+    hasNotification: boolean
+    notificationCount?: number
+    preview?: boolean
+  }
+  isActive: boolean
+  onSelect: () => void
+  onClose: () => void
+  onPin: () => void
+}
+
+function MobileTab({ window, isActive, onSelect, onClose, onPin }: MobileTabProps) {
+  const c = useColors()
+  const TC = buildTabColors(c)
+  const { Icon, title, showSpinner, showRedDot, showBlueDot, showIcon, definition, meta } = useTabState(
+    window,
+    isActive,
+  )
+  const phIcon = meta?.phIcon ?? ((definition as any)?.phIcon as string | undefined)
+  const isPreview = Boolean(window.preview)
+
+  const handleCloseClick = useCallback(
+    (e: any) => {
+      e.stopPropagation()
+      onClose()
+    },
+    [onClose],
+  )
+
+  const fg = isActive ? (isPreview ? c.text2 : c.text) : c.text3
+  const glyph = isActive ? c.accent : c.text3
+
+  return (
+    <XStack
+      height={32}
+      paddingLeft={10}
+      paddingRight={isActive ? 4 : 10}
+      gap={6}
+      alignItems="center"
+      backgroundColor={isActive ? c.navActive : "transparent"}
+      borderRadius={10}
+      cursor="pointer"
+      pressStyle={{ backgroundColor: c.wash2 }}
+      onPress={onSelect}
+    >
+      <View style={{ width: 16, height: 16, alignItems: "center", justifyContent: "center" }}>
+        {showSpinner && <TerosLoading size={14} color={TC.spinnerAccent} />}
+        {showRedDot && <Circle size={8} backgroundColor={TC.redDot} />}
+        {showBlueDot && <Circle size={8} backgroundColor={TC.blueDot} />}
+        {showIcon &&
+          (meta?.spinner && meta.dotColor ? (
+          <WorkingDot size={8} color={meta.dotColor} />
+        ) : meta?.dotColor ? (
+            <View
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: 4,
+                backgroundColor: meta.dotHollow ? "transparent" : meta.dotColor,
+                borderWidth: meta.dotHollow ? 1.5 : 0,
+                borderColor: meta.dotColor,
+              }}
+            />
+          ) : phIcon ? (
+            <Ph name={phIcon} size={14} color={glyph} />
+          ) : Icon ? (
+            <Icon size={14} color={glyph} />
+          ) : null)}
+      </View>
+      <Text fontSize={13} fontFamily="Saans" color={fg} numberOfLines={1} maxWidth={140}>
+        {title}
+      </Text>
+      {!isActive && window.hasNotification && (window.notificationCount ?? 0) > 0 ? (
+        <CountPill n={window.notificationCount!} />
+      ) : null}
+      {isActive && isPreview ? (
+        <XStack
+          width={24}
+          height={24}
+          borderRadius={6}
+          justifyContent="center"
+          alignItems="center"
+          opacity={0.6}
+          pressStyle={{ opacity: 1 }}
+          onPress={(e: any) => {
+            e?.stopPropagation?.()
+            onPin()
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Pin tab"
+        >
+          <Ph name="push-pin" size={12} color={fg} />
+        </XStack>
+      ) : null}
+      {isActive ? (
+        <XStack
+          width={24}
+          height={24}
+          borderRadius={6}
+          justifyContent="center"
+          alignItems="center"
+          opacity={0.6}
+          pressStyle={{ opacity: 1 }}
+          onPress={handleCloseClick}
+          accessibilityRole="button"
+          accessibilityLabel="Close tab"
+        >
+          <Ph name="x" size={12} color={fg} />
+        </XStack>
+      ) : null}
+    </XStack>
+  )
+}
+
+// Platform guard kept for parity with the desktop container (web-only hover styles).
+void Platform

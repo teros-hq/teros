@@ -5,9 +5,14 @@
 # Copies the full monorepo so yarn can resolve all workspace package.json files,
 # then runs TypeScript directly with bun (no build step — faster CI iteration).
 
-FROM oven/bun:1.3.4-alpine
+FROM oven/bun:1.3.4-alpine@sha256:1d653098bf847813e26adb2435f932b7cfa3c132a7e25dd5216dbb1f67dbd118
 
-RUN apk add --no-cache curl nodejs npm python3 make g++ && npm install -g yarn
+# bash: the terminal-crew unit tests (terminal-agent-auth, terminal-sleep)
+# spawnSync("bash") for real-shell behaviour (materializeClaudeDirScript,
+# scrollback resume, teros-agent-state). Alpine ships busybox ash only —
+# without bash those tests fail with `out.status === null` in CI while
+# passing on dev machines (2026-10-26, run 40310824941).
+RUN apk add --no-cache bash curl git nodejs npm python3 make g++ && npm install -g yarn
 
 WORKDIR /app
 
@@ -15,7 +20,9 @@ WORKDIR /app
 # Así la capa (cara, ~12 min) del yarn install solo se invalida cuando cambian las deps, no en
 # cada cambio de código. `COPY --parents` (Dockerfile 1.7-labs) preserva la estructura de dirs
 # de los globs. yarn workspaces necesita TODOS los package.json (packages/* + mcas/*) para resolver.
-COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json ./
+# mcas/*/*.tgz: deps vendorizadas `file:./x.tgz` (p.ej. @teros/ocr en file-processor) — sin ellas
+# `yarn install --frozen-lockfile` falla con "Tarball is not in network".
+COPY --parents package.json yarn.lock packages/*/package.json mcas/*/package.json mcas/*/*.tgz ./
 
 # --ignore-engines: bun's bundled Node may be older than what some RN packages
 # declare as minimum. The backend never runs RN code, so this is safe.

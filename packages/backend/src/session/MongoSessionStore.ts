@@ -15,7 +15,7 @@
  */
 
 import type { Message, MessagesForLLM, MessageWithParts, Part, Session } from '@teros/core';
-import { SessionStore } from '@teros/core';
+import { SessionStore, filterRedactedForViewer } from '@teros/core';
 import type { Collection, Db, ObjectId } from 'mongodb';
 import type { Compaction, StoredMessage } from '../types/database';
 
@@ -29,22 +29,7 @@ export class MongoSessionStore extends SessionStore {
     this.sessions = db.collection<Session>('sessions');
     this.messages = db.collection<StoredMessage>('session_messages');
     this.compactions = db.collection<Compaction>('compactions');
-
-    // Ensure indexes
-    this.ensureIndexes().catch((err) => {
-      console.error('[MongoSessionStore] Failed to create indexes:', err);
-    });
-  }
-
-  private async ensureIndexes(): Promise<void> {
-    // Messages: query by sessionId, order by _id
-    await this.messages.createIndex({ sessionId: 1, _id: 1 });
-    // Messages: find by message info.id
-    await this.messages.createIndex({ 'info.id': 1 });
-    // Compactions: query by sessionId, get latest
-    await this.compactions.createIndex({ sessionId: 1, _id: -1 });
-    // Sessions: query by userId
-    await this.sessions.createIndex({ userId: 1, 'time.updated': -1 });
+    // Indexes (session_messages, compactions, sessions) live in src/db/indexes.ts (GOV-4).
   }
 
   // ============================================================================
@@ -94,13 +79,22 @@ export class MongoSessionStore extends SessionStore {
   // ============================================================================
 
   async writeMessage(message: Message): Promise<void> {
-    const storedMessage: StoredMessage = {
-      sessionId: message.sessionID,
-      info: message,
-      parts: [],
-    };
-
-    await this.messages.insertOne(storedMessage);
+    // Idempotent by info.id (2026-10-28): MessageProcessor writes an assistant
+    // message TWICE (next() opens it, finish() persists the completed info) and
+    // the blind insertOne left a second, always-empty doc behind on every turn —
+    // 300k+ junk docs (47% of session_messages) on RAW at diagnosis time, and
+    // every history load returns both copies. Upsert on info.id: the finish()
+    // write updates the info in place; parts are never touched here (they
+    // stream in via writePart). Pre-existing duplicates are left as-is —
+    // dedupe + unique index is follow-up work.
+    await this.messages.updateOne(
+      { 'info.id': message.id },
+      {
+        $set: { sessionId: message.sessionID, info: message },
+        $setOnInsert: { parts: [] as Part[] },
+      },
+      { upsert: true },
+    );
 
     // Touch session
     await this.sessions.updateOne({ id: message.sessionID } as any, {
@@ -175,8 +169,17 @@ export class MongoSessionStore extends SessionStore {
   /**
    * Get messages with compaction awareness
    * This is the main method for loading conversation for LLM
+   *
+   * MUW-F1: when `viewerId` is provided, redacted messages are filtered
+   * for non-owners (viewerId !== session.userId). Internal callers
+   * (compaction, reconciliation, interruption notes) omit `viewerId`
+   * and receive the full, unfiltered context.
    */
-  async getMessagesForLLM(sessionId: string): Promise<MessagesForLLM> {
+  async getMessagesForLLM(
+    sessionId: string,
+    viewerId?: string,
+    opts?: { viewerKind?: 'human' | 'agent' },
+  ): Promise<MessagesForLLM> {
     // 1. Check for latest compaction
     const lastCompaction = await this.compactions.findOne({ sessionId }, { sort: { _id: -1 } });
 
@@ -196,9 +199,16 @@ export class MongoSessionStore extends SessionStore {
         parts: msg.parts || [],
       }));
 
+    // MUW-F1: filter redacted content for non-owners
+    let ownerId: string | undefined;
+    if (viewerId) {
+      const session = await this.sessions.findOne({ id: sessionId } as any);
+      ownerId = (session as any)?.userId;
+    }
+
     return {
       summary: lastCompaction?.summary,
-      messages: messageWithParts,
+      messages: filterRedactedForViewer(messageWithParts, ownerId, viewerId, opts),
     };
   }
 
@@ -309,6 +319,11 @@ export class MongoSessionStore extends SessionStore {
     sessionId: string,
     summary: string,
     compactedMessageIds: string[],
+    stats?: {
+      messagesCompacted: number;
+      tokensBefore: number;
+      tokensAfter: number;
+    },
   ): Promise<void> {
     // Boundary = last COMPACTED message (CTX-002), NOT the session's last one.
     const boundaryId = await this.resolveCompactionBoundary(sessionId, compactedMessageIds);
@@ -320,11 +335,11 @@ export class MongoSessionStore extends SessionStore {
       return;
     }
 
-    // Create compaction record
+    // Create compaction record with real token stats from the CompactionResult
     await this.createCompaction(sessionId, summary, boundaryId, {
-      messagesCompacted: compactedMessageIds.length,
-      tokensBefore: 0, // Will be updated by caller if needed
-      tokensAfter: 0,
+      messagesCompacted: stats?.messagesCompacted ?? compactedMessageIds.length,
+      tokensBefore: stats?.tokensBefore ?? 0,
+      tokensAfter: stats?.tokensAfter ?? 0,
     });
   }
 

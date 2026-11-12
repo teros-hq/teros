@@ -16,7 +16,50 @@ import type { WsHandlerContext } from '@teros/shared'
 import type { Db } from 'mongodb'
 import { requireSuperAdmin } from '../../../auth/auth-helpers'
 import type { FeatureFlagService } from '../../../services/feature-flag-service'
+import { getFeatureFlagDefinition } from '@teros/shared'
 import type { FeatureFlagValue, FeatureFlagTargetType } from '@teros/shared'
+
+/**
+ * Wrap a FeatureFlagService call so TypeErrors thrown by validateFeatureFlagValue
+ * (e.g. "Feature flag \"x\" expects boolean, got string") surface as
+ * HandlerError('INVALID_VALUE') with the real message, instead of being
+ * swallowed as INTERNAL_ERROR with a generic "unexpected error" message.
+ */
+async function withFlagValidation<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn()
+  } catch (error: unknown) {
+    if (error instanceof TypeError) {
+      throw new HandlerError('INVALID_VALUE', error.message)
+    }
+    throw error
+  }
+}
+
+/**
+ * Coerce a value to the type expected by the feature flag.
+ * MCAs / LLM tool calls often serialize booleans and numbers as strings
+ * (e.g. "true" instead of true). This converts them back so the backend
+ * validation passes instead of rejecting with "expects boolean, got string".
+ */
+function coerceFlagValue(key: string, value: unknown): unknown {
+  const def = getFeatureFlagDefinition(key)
+  if (!def) return value
+
+  if (typeof value !== 'string') return value
+
+  switch (def.type) {
+    case 'boolean':
+      if (value === 'true') return true
+      if (value === 'false') return false
+      return value
+    case 'number':
+      const num = Number(value)
+      return Number.isNaN(num) ? value : num
+    default:
+      return value
+  }
+}
 
 // ── List ───────────────────────────────────────────────────────────────────
 
@@ -100,7 +143,7 @@ export function createFeatureFlagsUpdateHandler(db: Db, featureFlagService: Feat
       throw new HandlerError('MISSING_FIELDS', 'key and defaultValue are required')
     }
 
-    await featureFlagService.setDefault(data.key, data.defaultValue, ctx.userId)
+    await withFlagValidation(() => featureFlagService.setDefault(data.key!, coerceFlagValue(data.key!, data.defaultValue!) as FeatureFlagValue, ctx.userId))
 
     return { success: true, key: data.key }
   }
@@ -182,14 +225,14 @@ export function createFeatureFlagsSetOverrideHandler(
       throw new HandlerError('INVALID_TARGET_TYPE', 'targetType must be user, workspace, or company')
     }
 
-    await featureFlagService.setOverride(
-      data.key,
-      data.targetType,
-      data.targetId,
-      data.value,
+    await withFlagValidation(() => featureFlagService.setOverride(
+      data.key!,
+      data.targetType!,
+      data.targetId!,
+      coerceFlagValue(data.key!, data.value!) as FeatureFlagValue,
       ctx.userId,
       data.note,
-    )
+    ))
 
     return { success: true, key: data.key, targetType: data.targetType, targetId: data.targetId }
   }
@@ -262,7 +305,7 @@ export function createFeatureFlagsSetRolloutHandler(
       }
     }
 
-    await featureFlagService.setRollout(data.key, data.value, data.percentage, ctx.userId, data.note)
+    await withFlagValidation(() => featureFlagService.setRollout(data.key!, coerceFlagValue(data.key!, data.value!) as FeatureFlagValue, data.percentage!, ctx.userId, data.note))
 
     return { success: true, key: data.key, value: data.value, percentage: data.percentage }
   }

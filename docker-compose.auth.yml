@@ -1,0 +1,41 @@
+# datastore-isolation P0b — the datastore tourniquet, as an OPT-IN override.
+#
+# NOT used by the regular deploy (scripts/deploy-server.sh runs plain
+# `docker compose up -d mongodb qdrant`). Applied only at the infra flip, per
+# the runbook in docs/specs/security/20261014_datastore-isolation.md (§P0b):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.auth.yml up -d mongodb qdrant
+#
+# Once flipped, every later `docker compose` invocation on that host must pass
+# the same two -f files (or set COMPOSE_FILE=docker-compose.yml:docker-compose.auth.yml
+# in the host .env), otherwise compose recreates the services WITHOUT auth.
+#
+# Effects (merged over docker-compose.yml):
+#   - mongodb: root user → the official image starts mongod with --auth;
+#     docker/mongo-init/ creates teros_rw (readWrite) and teros_ro (read) on a
+#     FRESH volume; on an EXISTING volume use scripts/security/mongo-create-users.sh.
+#   - qdrant: requires QDRANT__SERVICE__API_KEY.
+#   - backend (compose-run only): connects as the rw role user, not root.
+#     A pm2/host backend reads the URI from MONGODB_URI or the `database`
+#     system secret instead — see the runbook.
+services:
+  qdrant:
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY is required (openssl rand -hex 32; must match qdrantApiKey in the memory credentials)}
+
+  mongodb:
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?MONGO_ROOT_USER is required (enables Mongo auth)}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?MONGO_ROOT_PASSWORD is required (openssl rand -hex 32)}
+      MONGO_RW_USER: ${MONGO_RW_USER:-teros_rw}
+      MONGO_RW_PASSWORD: ${MONGO_RW_PASSWORD:?MONGO_RW_PASSWORD is required (openssl rand -hex 32)}
+      MONGO_RO_USER: ${MONGO_RO_USER:-teros_ro}
+      MONGO_RO_PASSWORD: ${MONGO_RO_PASSWORD:?MONGO_RO_PASSWORD is required (openssl rand -hex 32)}
+    volumes:
+      - ./docker/mongo-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh -u \"$$MONGO_INITDB_ROOT_USERNAME\" -p \"$$MONGO_INITDB_ROOT_PASSWORD\" --authenticationDatabase admin --quiet --eval \"db.adminCommand('ping')\""]
+
+  backend:
+    environment:
+      MONGODB_URI: mongodb://${MONGO_RW_USER:-teros_rw}:${MONGO_RW_PASSWORD}@mongodb:27017/teros?authSource=admin

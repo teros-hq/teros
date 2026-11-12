@@ -1,32 +1,44 @@
 /**
- * GitHub App — server-to-server auth for `mca.github` (and future apps).
+ * GitHub App — install-callback persistence + webhook handling for `mca.github`.
  *
  * Teros owns ONE GitHub App registered on github.com. Users INSTALL the App
- * on their repos; identity is `Teros[bot]`. The user-facing flow is:
+ * on their repos. Two flows exist:
  *
- *   1. Frontend redirects user to `https://github.com/apps/<slug>/installations/new?state=<csrf>`.
- *   2. User selects repos and confirms; GitHub redirects to the Setup URL with
- *      `?installation_id=<n>&setup_action=install&state=<csrf>`.
- *   3. `handleInstallation()` validates state, persists `INSTALLATION_ID` in
- *      the user credentials.
- *   4. The MCA (per-app container) reads `INSTALLATION_ID` from `userSecrets`
- *      and the App's private key from `systemSecrets`. It signs a JWT and
- *      exchanges it for a 1h installation access token (cached in-memory).
+ *   userOAuth (v5, the only manifest mode today — `mca.github`):
+ *   1. Frontend redirects user to `https://github.com/login/oauth/authorize`
+ *      (built from `GITHUB_APP_CLIENT_ID` + env-resolved redirect_uri).
+ *   2. User authorizes; GitHub redirects to the Callback URL with
+ *      `?code=<c>&state=<csrf>` and, when the flow included an install,
+ *      `&installation_id=<n>`.
+ *   3. `McaOAuth.handleCallback` exchanges `code` for a per-user
+ *      `user_access_token` (persisted as USER_ACCESS_TOKEN) and captures
+ *      `installation_id` best-effort (used by the frontend "manage
+ *      installation" link via `getAuthStatus`).
  *
- * This module covers steps 3 + the webhook verification used by GitHub to
- * notify us about install/uninstall events. It does NOT generate installation
- * tokens — that lives in the MCA process (see `mcas/mca.github/src/lib/github-app-token.ts`).
+ *   legacy server-to-server (`userOAuth: false`, no manifest uses it today):
+ *   1. Frontend redirects user to
+ *      `https://github.com/apps/<slug>/installations/new?state=<csrf>`.
+ *   2. User selects repos and confirms; GitHub redirects to the Setup URL
+ *      with `?installation_id=<n>&setup_action=install&state=<csrf>`.
+ *   3. `handleInstallation()` validates state, persists `INSTALLATION_ID`
+ *      in the user credentials.
+ *
+ * This module covers the legacy install callback + the webhook verification
+ * used by GitHub to notify us about install/uninstall events. It does NOT
+ * generate installation tokens — with the MCA's installation-token resolver
+ * removed (dead since v5, task_16d9e3d1ee40658d), nothing does; if a
+ * server-to-server manifest ever returns, the resolver must be reintroduced
+ * alongside it.
  *
  * Why split? The backend is multi-tenant and never holds installation tokens
- * in memory; the MCA process is per-app per-user, isolated by container, and
- * is the right place to cache the short-lived secrets.
+ * in memory; the MCA process is per-app per-user, isolated by container.
  */
 
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { Collection, Db } from 'mongodb';
 import type { McpCatalogEntry } from '../types/database';
 import type { AuthManager } from './auth-manager';
-import type { McaOAuth, McaOAuthStateDocument } from './mca-oauth';
+import { clearGitHubInstallationCache, type McaOAuth, type McaOAuthStateDocument } from './mca-oauth';
 
 /** GitHub webhook event names we care about. */
 export type GitHubWebhookEvent =
@@ -74,10 +86,7 @@ export class GitHubAppService {
     private catalogCollection: Collection<McpCatalogEntry>,
   ) {
     this.deliveriesCollection = db.collection('github_webhook_deliveries');
-    // TTL index — webhook deliveries kept 7 days for idempotency.
-    this.deliveriesCollection
-      .createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 })
-      .catch((err) => console.warn('[GitHubAppService] TTL index create failed:', err));
+    // TTL index (deliveries kept 7 days for idempotency) lives in src/db/indexes.ts.
   }
 
   // ==========================================================================
@@ -108,8 +117,7 @@ export class GitHubAppService {
     };
 
     // Wipe legacy OAuth credentials if the user is migrating from the old flow.
-    // The MCA's runtime check (resolveInstallationToken) will then fall through
-    // cleanly. We deliberately set them to undefined rather than just adding
+    // We deliberately set them to undefined rather than just adding
     // INSTALLATION_ID so AuthManager.set replaces the stored doc.
     credentials.ACCESS_TOKEN = undefined;
     credentials.REFRESH_TOKEN = undefined;
@@ -179,6 +187,7 @@ export class GitHubAppService {
    */
   async processInstallationEvent(payload: InstallationPayload): Promise<void> {
     const installationId = String(payload.installation.id);
+    clearGitHubInstallationCache();
 
     switch (payload.action) {
       case 'created':
@@ -190,8 +199,6 @@ export class GitHubAppService {
         break;
 
       case 'deleted':
-        // The installation is gone — clear the INSTALLATION_ID so subsequent
-        // tool calls fail cleanly with APP_NOT_INSTALLED.
         await this.clearInstallationFromCredentials(installationId);
         console.log(
           `[GitHubAppService] installation.deleted — cleared INSTALLATION_ID ${installationId}`,
@@ -200,8 +207,6 @@ export class GitHubAppService {
 
       case 'suspend':
       case 'unsuspend':
-        // We don't store a separate "suspended" flag — the next API call will
-        // hit a 403 and surface to the user via the existing error mapping.
         console.log(
           `[GitHubAppService] installation.${payload.action} — id=${installationId}`,
         );

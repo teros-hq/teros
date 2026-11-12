@@ -22,8 +22,10 @@ export const addTaskDependency: ToolConfig = {
     },
     required: ['taskId', 'dependsOnTaskId'],
   },
-  handler: async (args) => {
+  handler: async (args, context) => {
     assertBackendConnected();
+    const callerAgentId = (context?.execution as any)?.agentId;
+    if (!callerAgentId) throw new Error('Agent ID not found in execution context');
     const wsClient = getWsClient();
     const taskId = args?.taskId as string;
     const dependsOnTaskId = args?.dependsOnTaskId as string;
@@ -35,6 +37,7 @@ export const addTaskDependency: ToolConfig = {
       wsClient.queryConversations<any>('add_dependency', {
         taskId,
         dependsOnTaskId,
+        callerAgentId,
       }),
       15_000,
       'add_dependency',

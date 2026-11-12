@@ -13,7 +13,7 @@
  *
  * Idempotent via filter `{status:'running'}`.
  *
- *
+ * Design doc: docs/usage-instrumentation.md §8 — Reconciliación de huérfanas
  */
 
 import type { Logger } from "pino"

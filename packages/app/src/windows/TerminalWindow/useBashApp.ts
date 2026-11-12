@@ -1,36 +1,64 @@
 /**
  * useBashApp — resolves the appId of the bash MCA for a given workspace
  *
- * Looks for an installed app with mcaId === 'mca.teros.bash' in the workspace.
- * Returns { appId, loading } — appId is null if not found or still loading.
+ * Uses mca.teros.bash (Docker container). Returns { appId, mcaId, status,
+ * loading, reload } — appId is null if not found or still loading.
+ *
+ * (Until 2026-10-19 this preferred mca.teros.admin.bash for host access;
+ * the admin MCAs were retired in favor of Teros Remote — task_674f6a80d7618a49.)
  */
 
-import { useEffect, useState } from 'react';
-import { getTerosClient } from '../../services/terosClientSingleton';
+import { useCallback, useEffect, useState } from "react"
+import { getTerosClient } from "../../services/terosClientSingleton"
 
-export function useBashApp(workspaceId?: string): { appId: string | null; loading: boolean } {
-  const [appId, setAppId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const client = getTerosClient();
+const PREFERRED_MCAS = ["mca.teros.bash"] as const
+
+export function useBashApp(workspaceId?: string): {
+  appId: string | null
+  mcaId: string | null
+  status: string | null
+  loading: boolean
+  reload: () => void
+} {
+  const [appId, setAppId] = useState<string | null>(null)
+  const [mcaId, setMcaId] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [nonce, setNonce] = useState(0)
+  const client = getTerosClient()
 
   useEffect(() => {
+    void nonce
     if (!workspaceId || !client) {
-      setLoading(false);
-      return;
+      setLoading(false)
+      return
     }
 
-    setLoading(true);
-    setAppId(null);
-
+    setLoading(true)
     client
       .listWorkspaceApps(workspaceId)
       .then((apps) => {
-        const bash = apps.find((a: any) => a.mcaId === 'mca.teros.bash');
-        setAppId(bash?.appId ?? null);
+        for (const preferred of PREFERRED_MCAS) {
+          const found = apps.find((a: any) => a.mcaId === preferred)
+          if (found) {
+            setAppId(found.appId)
+            setMcaId(found.mcaId)
+            setStatus((found as any).status ?? null)
+            return
+          }
+        }
+        setAppId(null)
+        setMcaId(null)
+        setStatus(null)
       })
-      .catch(() => setAppId(null))
-      .finally(() => setLoading(false));
-  }, [workspaceId]);
+      .catch(() => {
+        setAppId(null)
+        setMcaId(null)
+        setStatus(null)
+      })
+      .finally(() => setLoading(false))
+  }, [workspaceId, client, nonce])
 
-  return { appId, loading };
+  const reload = useCallback(() => setNonce((n) => n + 1), [])
+  return { appId, mcaId, status, loading, reload }
 }

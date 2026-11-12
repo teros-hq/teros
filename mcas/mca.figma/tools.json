@@ -10,6 +10,7 @@
         "properties": {}
       },
       "annotations": {
+        "readOnlyHint": true,
         "summary": "Check Figma connection status",
         "group": "Status"
       }
@@ -17,14 +18,6 @@
     {
       "name": "get-file",
       "description": "Get the structure of a Figma file (pages, frames, top-level components). Returns curated { name, lastModified, version, thumbnailUrl, document, componentCount, styleCount }. Params: fileKey, depth (1-10, def 2), geometry?, branchData?, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "Open a file's pages and frames",
-        "group": "Files"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -38,10 +31,10 @@
           },
           "geometry": {
             "type": "string",
+            "description": "Set to 'paths' to include vector path data (heavier payload).",
             "enum": [
               "paths"
-            ],
-            "description": "Set to 'paths' to include vector path data (heavier payload)."
+            ]
           },
           "branchData": {
             "type": "boolean",
@@ -62,19 +55,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "Open a file's pages and frames",
+        "group": "Files"
       }
     },
     {
       "name": "get-node",
       "description": "Get a single node from a Figma file as a curated tree. Returns the node directly (not wrapped). Use this to drill into a frame/component beyond the depth returned by get-file. Params: fileKey, nodeId (accepts \"1-2\" or \"1:2\"), depth (1-10, def 3), fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "Inspect a single frame or component",
-        "group": "Files"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -106,19 +98,18 @@
           "fileKey",
           "nodeId"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "Inspect a single frame or component",
+        "group": "Files"
       }
     },
     {
       "name": "get-file-styles",
       "description": "List styles defined in a Figma file. Returns { styles: [{id, key, name, type, description}], count }. type ∈ FILL/TEXT/EFFECT/GRID. Params: fileKey, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "List a file's color and text styles",
-        "group": "Styles"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -141,19 +132,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "List a file's color and text styles",
+        "group": "Styles"
       }
     },
     {
       "name": "get-file-variables",
       "description": "Get design tokens (variables) from a Figma file, grouped by collection. Returns { collections: [{id, name, modes, variables, defaultModeId}] }. Each variable has { id, name, type, values: { [modeId]: value } }. type ∈ COLOR/FLOAT/STRING/BOOLEAN. Params: fileKey, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "List a file's design tokens",
-        "group": "Styles"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -176,19 +166,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "List a file's design tokens",
+        "group": "Styles"
       }
     },
     {
       "name": "get-components",
       "description": "List components defined in a Figma file. Returns { components: [{id, key, name, description, componentSetId?}], count }. Params: fileKey, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "List components in a file",
-        "group": "Components"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -211,19 +200,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "List components in a file",
+        "group": "Components"
       }
     },
     {
       "name": "get-component-sets",
       "description": "List component sets (variant groups) defined in a Figma file. Returns { componentSets: [{id, key, name, description}], count }. Params: fileKey, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "List variant groups in a file",
-        "group": "Components"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -246,19 +234,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "List variant groups in a file",
+        "group": "Components"
       }
     },
     {
       "name": "export-images",
       "description": "Export Figma nodes as images. Returns { images: [{nodeId, url, format, scale}] }. URLs are pre-signed S3 links and expire in ~30 minutes. Formats: png|jpg|svg|pdf. Scale 0.01-4 (default 1). Params: fileKey, nodeIds, format?, scale?, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "Export frames as images",
-        "group": "Exports"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -303,19 +290,18 @@
           "fileKey",
           "nodeIds"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "Export frames as images",
+        "group": "Exports"
       }
     },
     {
       "name": "get-comments",
       "description": "List comments on a Figma file. Returns { comments: [{id, message, createdAt, user, resolved, parentId?, clientMeta?}], count }. parentId !== undefined indicates a reply. Params: fileKey, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "List comments on a file",
-        "group": "Comments"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -338,20 +324,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "List comments on a file",
+        "group": "Comments"
       }
     },
     {
       "name": "create-comment",
       "description": "Create a new comment on a Figma file, or reply to an existing one. Returns the created comment { id, message, createdAt, user, resolved, parentId? }. To reply, set parentCommentId. To anchor on a canvas position, set clientMeta { x, y } or { node_id }. Params: fileKey, message, parentCommentId?, clientMeta?, fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": false,
-        "summary": "Post a comment or reply",
-        "group": "Comments"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -398,21 +382,20 @@
           "fileKey",
           "message"
         ]
+      },
+      "annotations": {
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "summary": "Post a comment or reply",
+        "group": "Comments"
       }
     },
     {
       "name": "delete-comment",
       "description": "Delete a comment from a Figma file. Returns { ok: true, fileKey, commentId } on success. Not reversible — confirm with the user before invoking. Params: fileKey, commentId.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": true,
-        "irreversible": true,
-        "summary": "Delete a comment",
-        "group": "Comments"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -429,19 +412,21 @@
           "fileKey",
           "commentId"
         ]
+      },
+      "annotations": {
+        "irreversible": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "summary": "Delete a comment",
+        "group": "Comments"
       }
     },
     {
       "name": "list-file-versions",
       "description": "List the version history of a Figma file. Returns { versions: [{id, createdAt, label, description, user, thumbnailUrl?}], count, nextPage? }. Use to audit changes, compare versions, or find when a design broke. Params: fileKey, pageSize (1-50, def 30), before? (cursor from previous nextPage), fields?, includeRaw.",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "Browse a file's version history",
-        "group": "Versions"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -472,19 +457,19 @@
         "required": [
           "fileKey"
         ]
-      }
-    },
-    {
-      "name": "extract-colors",
-      "description": "Extract solid colors from a file or node, formatted for CSS variables, Tailwind config, or JSON. Returns { count, output: string, format }. Params: fileKey, nodeId? (scope to one node), format? (default css).",
+      },
       "annotations": {
         "version": "2.1.0",
         "stability": "stable",
         "readOnlyHint": true,
         "idempotentHint": true,
-        "summary": "Extract colors as CSS or Tailwind",
-        "group": "Exports"
-      },
+        "summary": "Browse a file's version history",
+        "group": "Versions"
+      }
+    },
+    {
+      "name": "extract-colors",
+      "description": "Extract solid colors from a file or node, formatted for CSS variables, Tailwind config, or JSON. Returns { count, output: string, format }. Params: fileKey, nodeId? (scope to one node), format? (default css).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -509,19 +494,18 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "Extract colors as CSS or Tailwind",
+        "group": "Exports"
       }
     },
     {
       "name": "extract-typography",
       "description": "Extract typography styles (font family, size, weight, line height, letter spacing) used in TEXT nodes of a Figma file. Returns { count, output: string, format }. Params: fileKey, format? (default css).",
-      "annotations": {
-        "version": "2.1.0",
-        "stability": "stable",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "summary": "Extract fonts as CSS or Tailwind",
-        "group": "Exports"
-      },
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -542,6 +526,13 @@
         "required": [
           "fileKey"
         ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "version": "2.1.0",
+        "stability": "stable",
+        "summary": "Extract fonts as CSS or Tailwind",
+        "group": "Exports"
       }
     }
   ]
