@@ -138,7 +138,9 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.image }}-${{ matrix.arch }}
+          # Arch first: with the image last, the manifest job's pattern cannot match
+          # another image that shares the prefix (mca-runtime vs mca-runtime-bash).
+          name: digests-${{ matrix.arch }}-${{ matrix.image }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -155,7 +157,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
-          pattern: digests-${{ matrix.image }}-*
+          pattern: digests-*-${{ matrix.image }}
           merge-multiple: true
 
       - name: Set up Docker Buildx
